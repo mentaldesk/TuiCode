@@ -1,12 +1,16 @@
 using System.IO.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Services;
 
 var services = new ServiceCollection();
 
 services.AddSingleton<IFileSystem>(_ => new FileSystem());
+services.AddSingleton<ICommandService, CommandService>();
+services.AddSingleton<IKeybindingService, KeybindingService>();
 
 services.AddTransient<FileExplorerView>();
 services.AddTransient<SidebarPart>();
