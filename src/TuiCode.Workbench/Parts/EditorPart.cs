@@ -1,52 +1,48 @@
+using TuiCode.Editor;
+
 namespace TuiCode.Workbench.Parts;
 
 public sealed class EditorPart : FrameView
 {
-    private readonly TextView _textView;
+    public EditorGroup Group { get; }
 
-    public event EventHandler<IFileInfo>? FileSaved;
-
-    public IFileInfo? CurrentFile { get; private set; }
-
-    public string Content
+    public event EventHandler<IFileInfo>? FileSaved
     {
-        get => _textView.Text;
-        set => _textView.Text = value;
+        add => Group.FileSaved += value;
+        remove => Group.FileSaved -= value;
     }
 
-    public bool IsDirty => _textView.IsDirty;
+    public IFileInfo? CurrentFile => Group.ActiveTab?.File;
+    public bool IsDirty => Group.ActiveTab?.IsDirty ?? false;
+
+    public string? Content
+    {
+        get => Group.ActiveTab?.Content;
+        set
+        {
+            if (Group.ActiveTab is { } tab && value is not null)
+                tab.Content = value;
+        }
+    }
 
     public EditorPart()
     {
         Title = "Editor";
         BorderStyle = LineStyle.Single;
 
-        _textView = new TextView
+        Group = new EditorGroup
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(),
-            Height = Dim.Fill(),
-            ReadOnly = true
+            Height = Dim.Fill()
         };
-        Add(_textView);
+        Add(Group);
     }
 
-    public void Open(IFileInfo file)
-    {
-        CurrentFile = file;
-        _textView.Text = file.FileSystem.File.ReadAllText(file.FullName);
-        _textView.ReadOnly = false;
-        Title = $"Editor — {file.Name}";
-    }
-
-    public void Save()
-    {
-        if (CurrentFile is null) return;
-        var content = _textView.Text;
-        if (content.Length > 0 && !content.EndsWith('\n'))
-            content += '\n';
-        CurrentFile.FileSystem.File.WriteAllText(CurrentFile.FullName, content);
-        FileSaved?.Invoke(this, CurrentFile);
-    }
+    public EditorTab Open(IFileInfo file) => Group.OpenOrFocus(file);
+    public void Save() => Group.SaveActive();
+    public void CloseActive() => Group.CloseActive();
+    public void NextTab() => Group.NextTab();
+    public void PreviousTab() => Group.PreviousTab();
 }

@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\src\TuiCode.Workbench\TuiCode.Workbench.csproj" />
     <ProjectReference Include="..\..\src\TuiCode.Explorer\TuiCode.Explorer.csproj" />
     <ProjectReference Include="..\..\src\TuiCode.Abstractions\TuiCode.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\TuiCode.Editor\TuiCode.Editor.csproj" />
   </ItemGroup>
 
 </Project>
