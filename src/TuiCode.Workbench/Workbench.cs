@@ -4,8 +4,11 @@ namespace TuiCode.Workbench;
 
 public sealed class Workbench : Window
 {
+    public SidebarPart Sidebar { get; }
+
     public Workbench(SidebarPart sidebar, EditorPart editor, StatusBarPart statusBar)
     {
+        Sidebar = sidebar;
         Title = string.Empty;
         BorderStyle = LineStyle.None;
 
@@ -25,5 +28,8 @@ public sealed class Workbench : Window
         statusBar.Height = 1;
 
         Add(sidebar, editor, statusBar);
+
+        sidebar.Explorer.FileActivated += (_, path) =>
+            statusBar.SetMessage($"Activated: {path}");
     }
 }

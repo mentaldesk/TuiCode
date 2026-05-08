@@ -1,15 +1,12 @@
-using Microsoft.Extensions.DependencyInjection;
 using TuiCode.Workbench;
 
-public sealed class App
+public sealed class App : IDisposable
 {
-    private readonly IServiceProvider _services;
+    public WorkbenchHost Host { get; }
 
-    public App(IServiceProvider services) => _services = services;
+    public App(WorkbenchHost host) => Host = host;
 
-    public void Run()
-    {
-        using var host = _services.GetRequiredService<WorkbenchHost>();
-        host.Run();
-    }
+    public void Run() => Host.Run();
+
+    public void Dispose() => Host.Dispose();
 }
