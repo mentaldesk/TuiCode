@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TuiCode.Workbench\TuiCode.Workbench.csproj" />
     <ProjectReference Include="..\TuiCode.Explorer\TuiCode.Explorer.csproj" />
+    <ProjectReference Include="..\TuiCode.Editor\TuiCode.Editor.csproj" />
   </ItemGroup>
 
   <ItemGroup>

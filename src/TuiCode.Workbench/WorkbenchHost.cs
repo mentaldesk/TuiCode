@@ -59,6 +59,9 @@ public sealed class WorkbenchHost : IDisposable
     {
         _commands.Register(CommandIds.Quit, () => _app.RequestStop());
         _commands.Register(CommandIds.SaveActiveEditor, () => _workbench.Editor.Save());
+        _commands.Register(CommandIds.CloseActiveEditor, () => _workbench.Editor.CloseActive());
+        _commands.Register(CommandIds.NextEditor, () => _workbench.Editor.NextTab());
+        _commands.Register(CommandIds.PreviousEditor, () => _workbench.Editor.PreviousTab());
         _commands.Register(CommandIds.FocusExplorer, () => _workbench.Sidebar.Explorer.SetFocus());
         _commands.Register(CommandIds.FocusEditor, () => _workbench.Editor.SetFocus());
         _commands.Register(CommandIds.FocusNextPart, FocusNextPart);
@@ -78,6 +81,9 @@ public sealed class WorkbenchHost : IDisposable
     {
         _keybindings.Bind("Ctrl+Q", CommandIds.Quit);
         _keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
+        _keybindings.Bind("Ctrl+W", CommandIds.CloseActiveEditor);
+        _keybindings.Bind("Ctrl+Tab", CommandIds.NextEditor);
+        _keybindings.Bind("Ctrl+Shift+Tab", CommandIds.PreviousEditor);
         _keybindings.Bind("F6", CommandIds.FocusNextPart);
         _keybindings.Bind("Shift+F6", CommandIds.FocusPreviousPart);
         _keybindings.Bind("Ctrl+Alt+Shift+W X", CommandIds.FocusExplorer);

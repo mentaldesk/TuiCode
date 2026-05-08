@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/TuiCode.Abstractions/TuiCode.Abstractions.csproj" />
+    <Project Path="src/TuiCode.Editor/TuiCode.Editor.csproj" />
     <Project Path="src/TuiCode.Explorer/TuiCode.Explorer.csproj" />
     <Project Path="src/TuiCode.Workbench/TuiCode.Workbench.csproj" />
     <Project Path="src/TuiCode/TuiCode.csproj" />
