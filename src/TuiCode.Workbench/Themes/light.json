@@ -1,0 +1,17 @@
+{
+  "editor.background": "#ffffff",
+  "editor.foreground": "#1e1e1e",
+
+  "sideBar.background": "#f3f3f3",
+  "sideBar.foreground": "#3b3b3b",
+
+  "statusBar.background": "#007acc",
+  "statusBar.foreground": "#ffffff",
+
+  "tab.activeBackground": "#ffffff",
+  "tab.activeForeground": "#1e1e1e",
+  "tab.inactiveBackground": "#ececec",
+  "tab.inactiveForeground": "#6c6c6c",
+
+  "focusBorder": "#0090f1"
+}

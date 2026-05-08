@@ -11,6 +11,8 @@ public sealed class SidebarPart : FrameView
         Explorer = explorer;
         Title = "Explorer";
         BorderStyle = LineStyle.Single;
+        SchemeName = Services.SchemeNames.Sidebar;
+        explorer.SchemeName = Services.SchemeNames.Sidebar;
 
         explorer.X = 0;
         explorer.Y = 0;

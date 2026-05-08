@@ -65,6 +65,13 @@ The DOTNET_ROOT export is only needed for `dotnet test` on macOS — the test pr
 - **`TerminalFlowControl`** (in `TuiCode.Workbench`) snapshots `stty -g` and runs `stty -ixon -ixoff` on Unix so `Ctrl+S` reaches the app instead of being eaten as XOFF flow control. Restored on `Dispose`. macOS Terminal.app and most Unix ttys swallow `Ctrl+S` by default; this fix is mandatory.
 - **Three-modifier combos require a capable terminal.** TuiCode assumes the terminal passes full modifier combinations to the application. macOS Terminal.app silently strips most three-modifier combos (`Ctrl+Alt+Shift+letter`) and collapses `Ctrl+Shift+letter` onto `Ctrl+letter`. iTerm2 / Ghostty / WezTerm / Alacritty are recommended on macOS; modern Linux terminals (kitty, foot, GNOME Terminal with `modifyOtherKeys`) are fine.
 
+## Theming
+
+- **Themes ship as flat token JSON** in `src/TuiCode.Workbench/Themes/*.json`, embedded as resources. VS Code-style names (`editor.background`, `sideBar.foreground`, …) — see `ThemeTokens` for the canonical list.
+- **Views are theme-aware via `View.SchemeName`** only. They never read colours directly. Set the name to one of the `SchemeNames` constants (`tuicode.editor`, `tuicode.sidebar`, …) once at construction; `ThemeService` (re)registers the scheme under that name with TG's `SchemeManager` whenever a theme loads, and TG redraws automatically.
+- **Add a new themed view**: pick (or add) a `SchemeNames` constant; map it inside `ThemeService.RegisterSchemes` to the relevant tokens; make sure every shipped theme JSON defines those tokens (`GetColor` throws on missing tokens, by design — unmapped tokens are bugs, not silent fallbacks).
+- **`Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`.** Fully qualify it (`Terminal.Gui.Drawing.Attribute(...)`) when constructing one.
+
 ## Composition and wiring
 
 - `Program.cs` is the only place that talks to MS.DI directly. Resolve the entry-point `App`, ask the host for the workbench, plug in the working-directory root, then run.
@@ -78,4 +85,4 @@ The DOTNET_ROOT export is only needed for `dotnet test` on macOS — the test pr
 - **Commit messages**: short imperative subject, body explaining *why*. Look at `git log` for tone.
 - **Don't add comments that restate what the code does.** Only add a comment when the WHY is non-obvious — a hidden constraint, a TG quirk, a workaround. The codebase deliberately runs comment-light; respect that.
 - **Don't introduce abstractions ahead of need.** YAGNI applies — `TextBuffer` (mentioned in DESIGN.md) doesn't exist yet because `TextView.Text` is sufficient at v1. Add the wrapper when you actually need to swap implementations.
-- **Don't add settings/config plumbing yet.** All defaults are hardcoded in code. JSON configuration (themes, keybindings, editor settings) lands in milestone 7. Resist the urge to add a half-finished settings layer earlier.
+- **Don't add settings/config plumbing yet.** Themes ship as embedded JSON resources in `TuiCode.Workbench/Themes/` (milestone 6). Keybindings and general settings stay hardcoded in `WorkbenchHost` until milestone 7 introduces `~/.tuicode/settings.json` with user-override merging. Resist the urge to land a half-finished settings layer earlier.

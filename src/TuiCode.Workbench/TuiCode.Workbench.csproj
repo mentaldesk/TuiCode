@@ -16,4 +16,12 @@
     <ProjectReference Include="..\TuiCode.Editor\TuiCode.Editor.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Themes\*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TuiCode.Tests" />
+  </ItemGroup>
+
 </Project>
