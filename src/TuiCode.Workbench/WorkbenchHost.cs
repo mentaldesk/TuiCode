@@ -4,6 +4,7 @@ namespace TuiCode.Workbench;
 
 public sealed class WorkbenchHost : IDisposable
 {
+    private readonly TerminalFlowControl _flowControl;
     private readonly IApplication _app;
     private readonly Workbench _workbench;
     private bool _disposed;
@@ -11,6 +12,7 @@ public sealed class WorkbenchHost : IDisposable
     public WorkbenchHost(Workbench workbench, ITimeProvider? timeProvider = null)
     {
         ConfigureDefaultKeyBindings();
+        _flowControl = new TerminalFlowControl();
         _app = Application.Create(timeProvider ?? new SystemTimeProvider());
         _app.Init(driverName: null!);
         _workbench = workbench;
@@ -40,5 +42,6 @@ public sealed class WorkbenchHost : IDisposable
         _disposed = true;
         _workbench.Dispose();
         _app.Dispose();
+        _flowControl.Dispose();
     }
 }

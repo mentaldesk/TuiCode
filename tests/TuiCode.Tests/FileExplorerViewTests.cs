@@ -26,7 +26,7 @@ public class FileExplorerViewTests
     }
 
     [Fact]
-    public void ActivateSelected_fires_FileActivated_with_full_path_for_file_selection()
+    public void ActivateSelected_fires_FileActivated_for_a_selected_file()
     {
         var fs = new MockFileSystem();
         fs.AddDirectory("/work");
@@ -41,11 +41,11 @@ public class FileExplorerViewTests
             .Single(f => f.Name == "readme.md");
         explorer.SelectedObject = file;
 
-        string? activatedPath = null;
-        explorer.FileActivated += (_, path) => activatedPath = path;
+        IFileInfo? activated = null;
+        explorer.FileActivated += (_, f) => activated = f;
         explorer.ActivateSelected();
 
-        Assert.Equal(file.FullName, activatedPath);
+        Assert.Same(file, activated);
     }
 
     [Fact]
