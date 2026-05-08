@@ -25,7 +25,7 @@ Eventually TuiCode should support git worktrees and integrated LLM-assisted codi
 ## Stack
 
 - **.NET 10**, single executable, single solution.
-- **Terminal.Gui v2** (prerelease / `v2_develop` NuGet). v1 is in maintenance; v2 has the layout system, `TabView`, and theming hooks we need.
+- **Terminal.Gui v2** (`Terminal.Gui` 2.1.0+ on NuGet). v1 is in maintenance; v2 has the layout system, `TabView`, and theming hooks we need.
 - **Microsoft.Extensions.DependencyInjection** for service composition.
 - **System.Text.Json** for config files (themes, keybindings, settings).
 - Plain `TextView` from Terminal.Gui for the editor at v1. The buffer abstraction is wrapped in `TermCode.Editor.TextBuffer` so it can be replaced with a piece-table / gap-buffer later without touching call sites.
