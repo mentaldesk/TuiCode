@@ -48,7 +48,10 @@ public sealed class EditorPart : FrameView
     public void Save()
     {
         if (CurrentFile is null) return;
-        CurrentFile.FileSystem.File.WriteAllText(CurrentFile.FullName, _textView.Text);
+        var content = _textView.Text;
+        if (content.Length > 0 && !content.EndsWith('\n'))
+            content += '\n';
+        CurrentFile.FileSystem.File.WriteAllText(CurrentFile.FullName, content);
         FileSaved?.Invoke(this, CurrentFile);
     }
 

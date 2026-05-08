@@ -33,9 +33,48 @@ public class EditorPartTests
 
         editor.Save();
 
-        Assert.Equal("edited", fs.File.ReadAllText("/work/notes.txt"));
+        Assert.Equal("edited\n", fs.File.ReadAllText("/work/notes.txt"));
         Assert.NotNull(savedFile);
         Assert.Equal("/work/notes.txt", savedFile!.FullName);
+    }
+
+    [Fact]
+    public void Open_then_Save_round_trips_a_trailing_newline_unchanged()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/x.txt", new MockFileData("hello\n"));
+
+        using var editor = new EditorPart();
+        editor.Open(fs.FileInfo.New("/work/x.txt"));
+        editor.Save();
+
+        Assert.Equal("hello\n", fs.File.ReadAllText("/work/x.txt"));
+    }
+
+    [Fact]
+    public void Save_appends_a_final_newline_when_the_buffer_does_not_end_with_one()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/x.txt", new MockFileData("hello"));
+
+        using var editor = new EditorPart();
+        editor.Open(fs.FileInfo.New("/work/x.txt"));
+        editor.Save();
+
+        Assert.Equal("hello\n", fs.File.ReadAllText("/work/x.txt"));
+    }
+
+    [Fact]
+    public void Save_does_not_add_a_newline_to_an_empty_buffer()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/x.txt", new MockFileData(""));
+
+        using var editor = new EditorPart();
+        editor.Open(fs.FileInfo.New("/work/x.txt"));
+        editor.Save();
+
+        Assert.Equal("", fs.File.ReadAllText("/work/x.txt"));
     }
 
     [Fact]
