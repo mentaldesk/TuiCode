@@ -27,10 +27,11 @@ public sealed class KeybindingService : IKeybindingService
         var node = _root;
         foreach (var key in keys)
         {
-            if (!node.Children.TryGetValue(key, out var child))
+            var normalized = Normalize(key);
+            if (!node.Children.TryGetValue(normalized, out var child))
             {
                 child = new ChordNode();
-                node.Children[key] = child;
+                node.Children[normalized] = child;
             }
             node = child;
         }
@@ -39,14 +40,16 @@ public sealed class KeybindingService : IKeybindingService
 
     public KeyHandlingResult Handle(Key key)
     {
+        var normalized = Normalize(key);
+
         // Esc cancels an in-flight chord and is consumed silently.
-        if (_current != _root && IsEscape(key))
+        if (_current != _root && IsEscape(normalized))
         {
             ResetChord();
             return KeyHandlingResult.Consumed;
         }
 
-        if (!_current.Children.TryGetValue(key, out var next))
+        if (!_current.Children.TryGetValue(normalized, out var next))
         {
             // Unknown key. If we were in a chord, abandon it (and consume — VS Code does
             // the same: a stray key during a chord doesn't reach the focused view).
@@ -58,7 +61,7 @@ public sealed class KeybindingService : IKeybindingService
             return KeyHandlingResult.Pass;
         }
 
-        _chordSoFar.Add(key);
+        _chordSoFar.Add(normalized);
 
         if (next.CommandId is not null)
         {
@@ -72,6 +75,25 @@ public sealed class KeybindingService : IKeybindingService
         _current = next;
         SetChordDisplay(string.Join(" ", _chordSoFar.Select(k => k.ToString())));
         return KeyHandlingResult.ChordInProgress;
+    }
+
+    /// <summary>
+    /// Collapse case for bare letters: typing "x" and "X" should both match a
+    /// binding written as "X". TG distinguishes them (Shift bit + KeyCode), so
+    /// without this any letter chord step would only fire for the exact case
+    /// the user wrote in the binding string. Modifier-stacked letters (e.g.
+    /// Ctrl+S) are already case-collapsed by TG itself; only Shift+letter with
+    /// no other modifier needs to be normalized here.
+    /// </summary>
+    private static Key Normalize(Key key)
+    {
+        if (key.IsShift && !key.IsCtrl && !key.IsAlt)
+        {
+            var ch = (char)key.AsRune.Value;
+            if (char.IsLetter(ch))
+                return new Key(char.ToLowerInvariant(ch));
+        }
+        return key;
     }
 
     private void ResetChord()

@@ -80,8 +80,8 @@ public sealed class WorkbenchHost : IDisposable
         _keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
         _keybindings.Bind("F6", CommandIds.FocusNextPart);
         _keybindings.Bind("Shift+F6", CommandIds.FocusPreviousPart);
-        _keybindings.Bind("Ctrl+W X", CommandIds.FocusExplorer);
-        _keybindings.Bind("Ctrl+W E", CommandIds.FocusEditor);
+        _keybindings.Bind("Ctrl+Alt+Shift+W X", CommandIds.FocusExplorer);
+        _keybindings.Bind("Ctrl+Alt+Shift+W E", CommandIds.FocusEditor);
     }
 
     private static void NeutralizeBuiltinQuitKey()

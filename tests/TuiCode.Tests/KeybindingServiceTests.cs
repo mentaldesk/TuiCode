@@ -100,6 +100,23 @@ public class KeybindingServiceTests
         Assert.Equal(["focus.explorer"], fired);
     }
 
+    [Theory]
+    [InlineData("X", "x")] // binding uppercase, type lowercase
+    [InlineData("x", "X")] // binding lowercase, type uppercase
+    [InlineData("X", "X")] // both upper
+    [InlineData("x", "x")] // both lower
+    public void Letter_chord_step_is_case_insensitive_without_extra_modifiers(string boundLetter, string typedLetter)
+    {
+        var (commands, keys, fired) = SetUp();
+        keys.Bind($"Ctrl+Alt+Shift+W {boundLetter}", "focus");
+        commands.Register("focus", () => fired.Add("focus"));
+
+        keys.Handle(ParseKey("Ctrl+Alt+Shift+W"));
+        keys.Handle(ParseKey(typedLetter));
+
+        Assert.Equal(["focus"], fired);
+    }
+
     [Fact]
     public void ChordChanged_event_fires_on_enter_and_clear()
     {
