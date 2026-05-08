@@ -2,7 +2,7 @@ namespace TuiCode.Explorer;
 
 public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 {
-    public event EventHandler<string>? FileActivated;
+    public event EventHandler<IFileInfo>? FileActivated;
 
     public FileExplorerView()
     {
@@ -21,6 +21,6 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
     public void ActivateSelected()
     {
         if (SelectedObject is IFileInfo file)
-            FileActivated?.Invoke(this, file.FullName);
+            FileActivated?.Invoke(this, file);
     }
 }

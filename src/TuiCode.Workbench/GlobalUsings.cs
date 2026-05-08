@@ -1,3 +1,4 @@
+global using System.IO.Abstractions;
 global using Terminal.Gui;
 global using Terminal.Gui.App;
 global using Terminal.Gui.Drawing;
