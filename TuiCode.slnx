@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TuiCode.Explorer/TuiCode.Explorer.csproj" />
     <Project Path="src/TuiCode.Workbench/TuiCode.Workbench.csproj" />
     <Project Path="src/TuiCode/TuiCode.csproj" />
   </Folder>

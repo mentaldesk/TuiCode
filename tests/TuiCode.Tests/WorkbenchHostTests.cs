@@ -1,3 +1,4 @@
+using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Parts;
 
@@ -8,10 +9,7 @@ public class WorkbenchHostTests
     [Fact]
     public async Task CtrlQ_quits_the_workbench()
     {
-        var workbench = new Workbench.Workbench(
-            new SidebarPart(),
-            new EditorPart(),
-            new StatusBarPart());
+        using var workbench = BuildWorkbench();
         using var host = new WorkbenchHost(workbench);
 
         host.App.Iteration += OnFirstIteration;
@@ -29,4 +27,10 @@ public class WorkbenchHostTests
                 host.App.InjectKey(ctrlQ);
         }
     }
+
+    private static Workbench.Workbench BuildWorkbench() =>
+        new(
+            new SidebarPart(new FileExplorerView()),
+            new EditorPart(),
+            new StatusBarPart());
 }

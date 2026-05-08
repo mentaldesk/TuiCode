@@ -8,10 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Terminal.Gui" Version="2.1.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\TuiCode.Explorer\TuiCode.Explorer.csproj" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.1.1" />
   </ItemGroup>
 
 </Project>
