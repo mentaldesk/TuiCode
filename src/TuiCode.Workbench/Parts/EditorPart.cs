@@ -2,9 +2,6 @@ namespace TuiCode.Workbench.Parts;
 
 public sealed class EditorPart : FrameView
 {
-    private static readonly Key CtrlS =
-        Key.TryParse("Ctrl+S", out var k) ? k : Key.Empty;
-
     private readonly TextView _textView;
 
     public event EventHandler<IFileInfo>? FileSaved;
@@ -32,8 +29,6 @@ public sealed class EditorPart : FrameView
             Height = Dim.Fill(),
             ReadOnly = true
         };
-
-        _textView.KeyDown += OnKeyDown;
         Add(_textView);
     }
 
@@ -53,14 +48,5 @@ public sealed class EditorPart : FrameView
             content += '\n';
         CurrentFile.FileSystem.File.WriteAllText(CurrentFile.FullName, content);
         FileSaved?.Invoke(this, CurrentFile);
-    }
-
-    private void OnKeyDown(object? sender, Key key)
-    {
-        if (key == CtrlS)
-        {
-            Save();
-            key.Handled = true;
-        }
     }
 }

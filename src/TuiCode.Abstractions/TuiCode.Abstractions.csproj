@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -8,11 +8,6 @@
 
   <ItemGroup>
     <PackageReference Include="Terminal.Gui" Version="2.1.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\TuiCode.Explorer\TuiCode.Explorer.csproj" />
-    <ProjectReference Include="..\TuiCode.Abstractions\TuiCode.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

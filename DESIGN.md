@@ -30,6 +30,10 @@ Eventually TuiCode should support git worktrees and integrated LLM-assisted codi
 - **System.Text.Json** for config files (themes, keybindings, settings).
 - Plain `TextView` from Terminal.Gui for the editor at v1. The buffer abstraction is wrapped in `TermCode.Editor.TextBuffer` so it can be replaced with a piece-table / gap-buffer later without touching call sites.
 
+## Terminal compatibility
+
+TuiCode assumes a terminal that passes full modifier combinations (e.g. `Ctrl+Alt+Shift+W`) through to the application. macOS Terminal.app strips most three-modifier combos and collapses `Ctrl+Shift+letter` onto `Ctrl+letter`, which silently breaks chord leaders that rely on those distinctions. **iTerm2, Ghostty, WezTerm, and Alacritty** are recommended on macOS; modern Linux terminals (kitty, foot, GNOME Terminal with `modifyOtherKeys`) handle this correctly out of the box.
+
 ## Architecture
 
 The single architectural idea borrowed from VS Code on day one is **parts + services**:

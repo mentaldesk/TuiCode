@@ -1,6 +1,8 @@
+using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Services;
 
 namespace TuiCode.Tests;
 
@@ -10,7 +12,9 @@ public class WorkbenchHostTests
     public async Task CtrlQ_quits_the_workbench()
     {
         using var workbench = BuildWorkbench();
-        using var host = new WorkbenchHost(workbench);
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings);
 
         host.App.Iteration += OnFirstIteration;
 
