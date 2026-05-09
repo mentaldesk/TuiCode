@@ -17,6 +17,8 @@ public sealed class ThemePickerView : View
         Y = 0;
         Width = Dim.Fill();
         Height = Dim.Fill();
+        // Required: TG only allows focus on a descendant if every ancestor has CanFocus = true.
+        CanFocus = true;
 
         var themes = settings.AvailableThemes.ToArray();
         _list = new ListView

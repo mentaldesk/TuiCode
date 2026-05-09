@@ -47,6 +47,9 @@ public sealed class KeybindingsPickerView : View
         Y = 0;
         Width = Dim.Fill();
         Height = Dim.Fill();
+        // Required: TG only allows focus on a descendant if every ancestor has CanFocus = true.
+        // Without this, _list.SetFocus() returns false and clicks don't transfer focus into the picker.
+        CanFocus = true;
 
         _search = new TextField
         {

@@ -151,10 +151,10 @@ public sealed class SettingsView : Window
     /// <summary>Public so panels can call back to return focus to the categories list (e.g. on Left arrow).</summary>
     public void FocusCategories() => _categoriesList.SetFocus();
 
-    private void FocusActivePanel()
+    private bool FocusActivePanel()
     {
-        if (_keybindingsPicker.Visible) _keybindingsPicker.FocusContent();
-        else _themePicker.FocusContent();
+        if (_keybindingsPicker.Visible) return _keybindingsPicker.FocusContent();
+        return _themePicker.FocusContent();
     }
 
     private void RegisterScopeBindings()
