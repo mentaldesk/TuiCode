@@ -14,7 +14,8 @@ public class WorkbenchHostTests
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
-        using var host = new WorkbenchHost(workbench, commands, keybindings);
+        var theme = new ThemeService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -38,7 +39,8 @@ public class WorkbenchHostTests
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
-        using var host = new WorkbenchHost(workbench, commands, keybindings);
+        var theme = new ThemeService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -70,7 +72,8 @@ public class WorkbenchHostTests
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
-        using var host = new WorkbenchHost(workbench, commands, keybindings);
+        var theme = new ThemeService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
@@ -109,7 +112,8 @@ public class WorkbenchHostTests
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
-        using var host = new WorkbenchHost(workbench, commands, keybindings);
+        var theme = new ThemeService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));

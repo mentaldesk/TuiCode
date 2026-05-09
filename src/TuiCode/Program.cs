@@ -11,6 +11,7 @@ var services = new ServiceCollection();
 services.AddSingleton<IFileSystem>(_ => new FileSystem());
 services.AddSingleton<ICommandService, CommandService>();
 services.AddSingleton<IKeybindingService, KeybindingService>();
+services.AddSingleton<IThemeService, ThemeService>();
 
 services.AddTransient<FileExplorerView>();
 services.AddTransient<SidebarPart>();

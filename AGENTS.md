@@ -19,6 +19,38 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx   # alternative test invocati
 
 The DOTNET_ROOT export is only needed for `dotnet test` on macOS — the test project uses Microsoft.Testing.Platform, which launches the test exe directly and needs DOTNET_ROOT to find the runtime. `dotnet run` works without it.
 
+## Worktrees
+
+This repo uses git worktrees for parallel work. **Never modify files in the main checkout (`/Users/justice/code/TuiCode`) directly** — that path may belong to another agent's in-flight work, and uncommitted changes there would collide. One worktree per task.
+
+Layout: worktrees are **siblings** of the main checkout, named `<repo>-<branch-slug>`. Branch name and directory suffix match. (Worktrees cannot live inside the main checkout — git rejects that.)
+
+```
+/Users/justice/code/
+├── TuiCode/                              # main checkout
+├── TuiCode-milestone-7-settings/         # worktree on milestone-7-settings
+└── TuiCode-fix-explorer-resize/          # worktree on fix/explorer-resize
+```
+
+Create a new worktree off `origin/main` (always start from a fresh remote main, not whatever HEAD happens to be):
+
+```bash
+git fetch origin
+git worktree add ../TuiCode-<slug> -b <branch-name> origin/main
+cd ../TuiCode-<slug>
+```
+
+For chore branches with a `/` in the name (e.g. `chore/foo`), use a flat directory suffix: `../TuiCode-chore-foo` with `-b chore/foo`. Don't put slashes in the directory name.
+
+Lifecycle:
+- **Work** in your worktree. No stashing, no branch switching — each worktree is its own checkout.
+- **Open the PR as draft** from your worktree: `gh pr create --draft`. The user marks it ready for review.
+- **After merge**, remove the worktree: `git worktree remove ../TuiCode-<slug>` (add `-f` if there are submodules or untracked files you've already saved elsewhere).
+
+If you discover you accidentally started work in the main checkout, stop, stash, create a worktree, pop the stash there, and continue. Don't keep going in the main checkout.
+
+Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
+
 ## Solution map
 
 - `src/TuiCode/` — entry point + composition root. `Program.cs` registers services in MS.DI and wires the host.
@@ -65,6 +97,13 @@ The DOTNET_ROOT export is only needed for `dotnet test` on macOS — the test pr
 - **`TerminalFlowControl`** (in `TuiCode.Workbench`) snapshots `stty -g` and runs `stty -ixon -ixoff` on Unix so `Ctrl+S` reaches the app instead of being eaten as XOFF flow control. Restored on `Dispose`. macOS Terminal.app and most Unix ttys swallow `Ctrl+S` by default; this fix is mandatory.
 - **Three-modifier combos require a capable terminal.** TuiCode assumes the terminal passes full modifier combinations to the application. macOS Terminal.app silently strips most three-modifier combos (`Ctrl+Alt+Shift+letter`) and collapses `Ctrl+Shift+letter` onto `Ctrl+letter`. iTerm2 / Ghostty / WezTerm / Alacritty are recommended on macOS; modern Linux terminals (kitty, foot, GNOME Terminal with `modifyOtherKeys`) are fine.
 
+## Theming
+
+- **Themes ship as flat token JSON** in `src/TuiCode.Workbench/Themes/*.json`, embedded as resources. VS Code-style names (`editor.background`, `sideBar.foreground`, …) — see `ThemeTokens` for the canonical list.
+- **Views are theme-aware via `View.SchemeName`** only. They never read colours directly. Set the name to one of the `SchemeNames` constants (`tuicode.editor`, `tuicode.sidebar`, …) once at construction; `ThemeService` (re)registers the scheme under that name with TG's `SchemeManager` whenever a theme loads, and TG redraws automatically.
+- **Add a new themed view**: pick (or add) a `SchemeNames` constant; map it inside `ThemeService.RegisterSchemes` to the relevant tokens; make sure every shipped theme JSON defines those tokens (`GetColor` throws on missing tokens, by design — unmapped tokens are bugs, not silent fallbacks).
+- **`Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`.** Fully qualify it (`Terminal.Gui.Drawing.Attribute(...)`) when constructing one.
+
 ## Composition and wiring
 
 - `Program.cs` is the only place that talks to MS.DI directly. Resolve the entry-point `App`, ask the host for the workbench, plug in the working-directory root, then run.
@@ -78,4 +117,4 @@ The DOTNET_ROOT export is only needed for `dotnet test` on macOS — the test pr
 - **Commit messages**: short imperative subject, body explaining *why*. Look at `git log` for tone.
 - **Don't add comments that restate what the code does.** Only add a comment when the WHY is non-obvious — a hidden constraint, a TG quirk, a workaround. The codebase deliberately runs comment-light; respect that.
 - **Don't introduce abstractions ahead of need.** YAGNI applies — `TextBuffer` (mentioned in DESIGN.md) doesn't exist yet because `TextView.Text` is sufficient at v1. Add the wrapper when you actually need to swap implementations.
-- **Don't add settings/config plumbing yet.** All defaults are hardcoded in code. JSON configuration (themes, keybindings, editor settings) lands in milestone 7. Resist the urge to add a half-finished settings layer earlier.
+- **Don't add settings/config plumbing yet.** Themes ship as embedded JSON resources in `TuiCode.Workbench/Themes/` (milestone 6). Keybindings and general settings stay hardcoded in `WorkbenchHost` until milestone 7 introduces `~/.tuicode/settings.json` with user-override merging. Resist the urge to land a half-finished settings layer earlier.
