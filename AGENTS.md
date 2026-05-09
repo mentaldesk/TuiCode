@@ -83,7 +83,7 @@ Chore branches with `/` use a flat dir suffix (`../TuiCode-chore-foo` with `-b c
 ## Wiring
 
 - `Program.cs` is the only DI consumer.
-- `Workbench` (the root `Window`) wires cross-part events in its ctor: `explorer.FileActivated → editor.Open + statusBar.SetMessage`, `editor.FileSaved → statusBar.SetMessage`. Add new cross-part wiring here.
+- `Workbench` (the root `Window`) wires cross-part events in its ctor: `explorer.FileActivated → editor.Open + tab.FocusContent + statusBar.SetMessage`, `editor.FileSaved → statusBar.SetMessage`. Add new cross-part wiring here.
 - `WorkbenchHost` owns `IApplication`, the key intercept, and workbench-scoped command/keybinding registrations.
 - Parts (`SidebarPart` / `EditorPart` / `StatusBarPart`) are thin layout slots over feature views.
 
