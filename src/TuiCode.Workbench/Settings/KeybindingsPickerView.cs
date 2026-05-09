@@ -1,3 +1,4 @@
+using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Settings;
@@ -113,6 +114,8 @@ public sealed class KeybindingsPickerView : View
         _displayRows = rows;
         var lines = rows.Select(FormatRow).ToList();
         _list.Source = new ListWrapper<string>(new(lines));
+        if (rows.Count > 0 && (_list.SelectedItem is null || _list.SelectedItem >= rows.Count))
+            _list.SelectedItem = 0;
     }
 
     private static bool Matches(Row r, string needle) =>
@@ -178,8 +181,19 @@ public sealed class KeybindingsPickerView : View
             return;
         }
 
+        // TG fires a KeyDown for each modifier press (Ctrl alone, then Ctrl+Shift, then
+        // Ctrl+Alt+Shift, …) before the real letter arrives. Skip those — only record
+        // a key once a non-modifier component is present.
+        if (IsModifierOnly(key)) return;
+
         _capturedKeys.Add(key);
         UpdateCaptureFooter();
+    }
+
+    private static bool IsModifierOnly(Key key)
+    {
+        var bare = key.KeyCode & ~(KeyCode.CtrlMask | KeyCode.AltMask | KeyCode.ShiftMask);
+        return bare == KeyCode.Null;
     }
 
     private void EndCapture(bool commit)

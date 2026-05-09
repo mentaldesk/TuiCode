@@ -66,6 +66,7 @@ Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
 - The test csproj has `<UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>` and `<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>`. Don't change those.
 - Test names use `Method_describes_what_should_happen` style (snake_case after the method name). Browse existing tests for the pattern.
 - Use `MockFileSystem` from `System.IO.Abstractions.TestingHelpers` for any test touching files. Don't create temp directories.
+- **UI tests use TG's input injection** (`host.App.InjectKey(...)` driven from the `Iteration` event), not manual unit-style focus/keypress assertions. See `WorkbenchHostTests.CtrlQ_quits_the_workbench` and `SettingsFocusTransitionTests` for the pattern, and TG's own [drivers / testing docs](https://gui-cs.github.io/Terminal.Gui/docs/drivers.html#testing-and-input-injection). Reach for this whenever a bug involves focus routing, key dispatch, or scope-stack interaction — much faster than asking a human to re-run manual steps.
 
 ## Terminal.Gui v2 conventions
 
