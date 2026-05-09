@@ -1,13 +1,17 @@
 using System.Text.Json;
+using Terminal.Gui.Configuration;
 using TuiCode.Workbench.Configuration;
 
 namespace TuiCode.Tests;
 
+// Touches ThemeManager.Theme (TG static state). Serialise via the shared collection.
+[Collection("StaticConfiguration")]
 public class DefaultSettingsServiceTests
 {
     [Fact]
-    public void Save_writes_empty_object_when_nothing_differs_from_defaults()
+    public void Save_writes_empty_object_when_theme_is_default()
     {
+        using var _ = new ThemeFixture("Default");
         var fs = new MockFileSystem();
         var svc = new DefaultSettingsService(fs);
 
@@ -21,11 +25,10 @@ public class DefaultSettingsServiceTests
     }
 
     [Fact]
-    public void Save_writes_only_the_theme_when_it_differs_from_default()
+    public void Save_writes_theme_in_TG_native_format_when_non_default()
     {
+        using var _ = new ThemeFixture("Dark");
         var fs = new MockFileSystem();
-        // Pre-populate config in TG's native format so LoadTheme picks it up at construction.
-        WriteConfig(fs, """{"Theme":"Dark"}""");
         var svc = new DefaultSettingsService(fs);
 
         svc.Save();
@@ -38,8 +41,8 @@ public class DefaultSettingsServiceTests
     [Fact]
     public void Save_creates_parent_directory_if_missing()
     {
+        using var _ = new ThemeFixture("Dark");
         var fs = new MockFileSystem();
-        WriteConfig(fs, """{"Theme":"Dark"}""");
         var svc = new DefaultSettingsService(fs);
 
         svc.Save();
@@ -48,45 +51,25 @@ public class DefaultSettingsServiceTests
         Assert.True(fs.Directory.Exists(dir));
     }
 
-    [Fact]
-    public void LoadTheme_reads_TG_native_format_from_config_file()
-    {
-        var fs = new MockFileSystem();
-        WriteConfig(fs, """{"Theme":"Light"}""");
-        var svc = new DefaultSettingsService(fs);
-
-        Assert.Equal("Light", svc.Theme);
-    }
-
-    [Fact]
-    public void LoadTheme_returns_default_when_config_file_is_absent()
-    {
-        var fs = new MockFileSystem();
-        var svc = new DefaultSettingsService(fs);
-
-        Assert.Equal("Default", svc.Theme);
-    }
-
-    [Fact]
-    public void LoadTheme_returns_default_when_config_file_is_malformed()
-    {
-        var fs = new MockFileSystem();
-        WriteConfig(fs, "not valid json {{");
-        var svc = new DefaultSettingsService(fs);
-
-        Assert.Equal("Default", svc.Theme);
-    }
-
-    private static void WriteConfig(MockFileSystem fs, string content)
-    {
-        var path = ConfigPath(fs);
-        fs.AddDirectory(fs.Path.GetDirectoryName(path)!);
-        fs.AddFile(path, new MockFileData(content));
-    }
-
     private static string ConfigPath(MockFileSystem fs)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return fs.Path.Combine(home, ".tui", "TuiCode.config.json");
+    }
+
+    /// <summary>
+    /// Snapshot+restore <see cref="ThemeManager.Theme"/> for test isolation. The setter
+    /// also calls <c>ConfigurationManager.Apply()</c>, so any side effects of activating
+    /// the theme are exercised the same way they would be in production.
+    /// </summary>
+    private sealed class ThemeFixture : IDisposable
+    {
+        private readonly string _previous;
+        public ThemeFixture(string theme)
+        {
+            _previous = ThemeManager.Theme;
+            ThemeManager.Theme = theme;
+        }
+        public void Dispose() => ThemeManager.Theme = _previous;
     }
 }

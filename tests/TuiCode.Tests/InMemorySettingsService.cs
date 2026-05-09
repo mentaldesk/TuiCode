@@ -15,4 +15,7 @@ internal sealed class InMemorySettingsService : ISettingsService
 
     public int SaveCount { get; private set; }
     public void Save() => SaveCount++;
+
+    public int LoadCount { get; private set; }
+    public void Load() => LoadCount++;
 }
