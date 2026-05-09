@@ -64,7 +64,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 ## Settings & persistence
 
-- `Program.cs` calls `ConfigurationManager.Enable(ConfigLocations.All)` *before* DI builds. Theme is a `[ConfigurationProperty] string` on `TuiCodeSettings` → `~/.tui/TuiCode.config.json`. Picker exposes only `Default` / `Dark` / `Light` (other TG built-ins look bad).
+- `Program.cs` calls `ConfigurationManager.Enable(ConfigLocations.All)` *before* DI builds. Theme is a `[ConfigurationProperty] string` on `TuiCodeSettings` → `~/.tui/TuiCode.config.json`. `Enable()` populates `TuiCodeSettings.Theme` from the file; `WorkbenchHost` then maps it to `ThemeManager.Theme` after `Application.Init()`, because TG's `Apply()` sets them independently and `Init()` leaves `ThemeManager` at its default. Picker exposes only `Default` / `Dark` / `Light` (other TG built-ins look bad).
 - Keybindings persist to a dedicated file `~/.tui/TuiCode.keybindings.json` (read at `DefaultSettingsService` construction, written on `Save()`) — TG's serializer can't round-trip them. Diff style: `{ Key, Command }`, prefix `Command` with `-` to remove. Boot: `BindDefaults` then `ApplyKeybindings(settings.KeybindingOverrides)`. Picker calls `WorkbenchHost.ApplyEditedBindings` on save (recomputes diff from defaults so the file stays minimal).
 - Don't read/write `TuiCodeSettings.*` from feature code — go through `ISettingsService`. Tests use `InMemorySettingsService`.
 - Static `TuiCodeSettings.Theme` leaks between tests; mutators use `[Collection("StaticConfiguration")]` and a `ThemeFixture`. Keybindings live on the service instance — no fixture needed.
