@@ -11,6 +11,11 @@ public static class CommandIds
     public const string ToggleSidebar = "workbench.action.toggleSidebar";
     public const string FocusEditorBody = "workbench.action.focusEditorBody";
     public const string FocusEditorTabStrip = "workbench.action.focusEditorTabStrip";
+    public const string OpenSettings = "workbench.action.openSettings";
+
+    public const string SettingsSave = "settings.action.save";
+    public const string SettingsCancel = "settings.action.cancel";
+    public const string SettingsFocusCategories = "settings.action.focusCategories";
 
     public static string FocusEditorByIndex(int oneBasedIndex) =>
         $"workbench.action.focusEditor{oneBasedIndex}";

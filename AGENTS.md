@@ -85,6 +85,7 @@ Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
 - **Chord trie**: bindings are stored as a trie keyed on `Key`, so `"Ctrl+W X"` is a single first-class binding with arbitrary depth. Esc cancels in-flight chords. A stray key during a chord aborts and is consumed silently (matches VS Code).
 - **Letter normalization**: bare letters (no Ctrl/Alt) drop the Shift flag and lowercase. So `"x"`, `"X"`, and `"shift+x"` all resolve to the same trie node. Modifier-stacked letters (e.g. `Ctrl+S`) are already canonicalized by TG itself. See `KeybindingService.Normalize`.
 - **Chord wins over view bindings.** When a view (e.g. `TextView`) has a default binding for a key that is also a chord prefix at the workbench level (e.g. `Ctrl+W` is `TextView.Cut`), our handler intercepts and starts the chord. Use the unshadowed alternative (e.g. `Ctrl+X` for cut). This is intentional — matches VS Code.
+- **Input scopes are a stack.** `IInputScopeStack` (singleton) holds a stack of `IKeybindingService` frames. Workbench keybindings are pushed at startup and never popped. A modal (e.g. `SettingsView`) pushes its own scope on open and pops on close — its `IKeybindingService` is the *only* one that handles keys until popped. Workbench shortcuts (`Ctrl+Q`, `Ctrl+1..9`, …) deliberately do not fire while a modal is up. To add a new modal, instantiate your own `KeybindingService`, push it on the stack, register your bindings against it, and pop it when the modal closes.
 
 ## Filesystem and I/O
 
@@ -97,11 +98,14 @@ Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
 - **`TerminalFlowControl`** (in `TuiCode.Workbench`) snapshots `stty -g` and runs `stty -ixon -ixoff` on Unix so `Ctrl+S` reaches the app instead of being eaten as XOFF flow control. Restored on `Dispose`. macOS Terminal.app and most Unix ttys swallow `Ctrl+S` by default; this fix is mandatory.
 - **Three-modifier combos require a capable terminal.** TuiCode assumes the terminal passes full modifier combinations to the application. macOS Terminal.app silently strips most three-modifier combos (`Ctrl+Alt+Shift+letter`) and collapses `Ctrl+Shift+letter` onto `Ctrl+letter`. iTerm2 / Ghostty / WezTerm / Alacritty are recommended on macOS; modern Linux terminals (kitty, foot, GNOME Terminal with `modifyOtherKeys`) are fine.
 
-## Theming
+## Theming and configuration
 
-- **Themes ship as flat token JSON** in `src/TuiCode.Workbench/Themes/*.json`, embedded as resources. VS Code-style names (`editor.background`, `sideBar.foreground`, …) — see `ThemeTokens` for the canonical list.
-- **Views are theme-aware via `View.SchemeName`** only. They never read colours directly. Set the name to one of the `SchemeNames` constants (`tuicode.editor`, `tuicode.sidebar`, …) once at construction; `ThemeService` (re)registers the scheme under that name with TG's `SchemeManager` whenever a theme loads, and TG redraws automatically.
-- **Add a new themed view**: pick (or add) a `SchemeNames` constant; map it inside `ThemeService.RegisterSchemes` to the relevant tokens; make sure every shipped theme JSON defines those tokens (`GetColor` throws on missing tokens, by design — unmapped tokens are bugs, not silent fallbacks).
+- **TG's `ThemeManager` owns themes.** v1 exposes TG's built-ins (`Default`, `Dark`, `Light`, `TurboPascal 5`); we don't ship our own theme JSONs. Switch via `ThemeManager.Theme = "Dark"; ConfigurationManager.Apply();` or — in app code — through `ISettingsService.Theme`.
+- **TG's `ConfigurationManager` owns persistence.** `Program.cs` calls `ConfigurationManager.Enable(ConfigLocations.All)` *before* DI builds, so the layered JSON hierarchy (library → app → `~/.tui/TuiCode.config.json` → cwd → env → runtime) is already loaded by the time services come up.
+- **Persisted settings live as static `[ConfigurationProperty]` properties** on `TuiCodeSettings` (in `src/TuiCode.Workbench/Configuration/`). TG auto-prefixes the JSON key with the class name, so `Theme` appears as `TuiCodeSettings.Theme` under `AppSettings`.
+- **Don't read or write `TuiCodeSettings.*` directly** from feature code. Go through `ISettingsService` — `DefaultSettingsService` wraps the static surface so DI-driven code stays uniform and tests can sub in `InMemorySettingsService`.
+- **`ISettingsService.Save()` is bespoke.** TG has no public API for "write current state to disk", so `DefaultSettingsService` serializes only the diff from declared defaults to `~/.tui/TuiCode.config.json` itself.
+- **Static state leaks between tests.** `TuiCodeSettings.Theme` is process-global. Tests that mutate it use the `[Collection("StaticConfiguration")]` attribute so they serialize, and a `ThemeFixture` snapshots/restores per test.
 - **`Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`.** Fully qualify it (`Terminal.Gui.Drawing.Attribute(...)`) when constructing one.
 
 ## Composition and wiring
@@ -117,4 +121,4 @@ Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
 - **Commit messages**: short imperative subject, body explaining *why*. Look at `git log` for tone.
 - **Don't add comments that restate what the code does.** Only add a comment when the WHY is non-obvious — a hidden constraint, a TG quirk, a workaround. The codebase deliberately runs comment-light; respect that.
 - **Don't introduce abstractions ahead of need.** YAGNI applies — `TextBuffer` (mentioned in DESIGN.md) doesn't exist yet because `TextView.Text` is sufficient at v1. Add the wrapper when you actually need to swap implementations.
-- **Don't add settings/config plumbing yet.** Themes ship as embedded JSON resources in `TuiCode.Workbench/Themes/` (milestone 6). Keybindings and general settings stay hardcoded in `WorkbenchHost` until milestone 7 introduces `~/.tuicode/settings.json` with user-override merging. Resist the urge to land a half-finished settings layer earlier.
+- **Settings layer scope (milestone 7).** Theme is the only persisted setting today; the picker UI (`Ctrl+,` → `SettingsView`) only renders categories that are wired. Keybinding overrides via `Application.DefaultKeyBindings` and editor settings can layer on top once they have UI to drive them — don't add settings entries that have no picker.
