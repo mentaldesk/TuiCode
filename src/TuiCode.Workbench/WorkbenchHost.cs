@@ -235,7 +235,9 @@ public sealed class WorkbenchHost : IDisposable
         _activeSettings = view;
         _workbench.Add(view);
         _scopes.Push(view.Scope);
-        view.SetFocus();
+        // Focus categories explicitly post-mount; pre-mount SetFocus calls in the SettingsView
+        // constructor are no-ops because the view isn't yet in the focus tree.
+        view.FocusCategories();
     }
 
     private void CloseSettings(SettingsView view)

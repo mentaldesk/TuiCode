@@ -66,7 +66,11 @@ public sealed class SettingsView : Window
         };
         _categoriesList.SelectedItem = 0;
         _categoriesList.ValueChanged += (_, _) => SwapPanel();
-        _categoriesList.KeyDown += OnCategoriesKey;
+        // KeyDown on the categories ListView itself doesn't fire reliably in this layout —
+        // TG seems to route keys to the focused Window (us) rather than the inner ListView,
+        // even though the list visibly responds to Up/Down. So intercept at the Window level
+        // (KeyDown below) and gate on HasFocus to avoid trampling search-field typing.
+        KeyDown += OnSettingsKey;
 
         _separator = new Label
         {
@@ -119,13 +123,29 @@ public sealed class SettingsView : Window
         _keybindingsPicker.Visible = showKb;
     }
 
-    private void OnCategoriesKey(object? sender, Key key)
+    private void OnSettingsKey(object? sender, Key key)
     {
-        if (key == Key.CursorRight || key == Key.Enter || key == Key.Space)
+        // Drill from categories into the active panel. Only fires while categories has focus
+        // (or while the modal Window itself does, which is the post-open state) — so search
+        // field typing in the picker isn't trampled.
+        var categoriesActive = _categoriesList.HasFocus || (HasFocus && !PanelHasFocus());
+        if (categoriesActive && (key == Key.CursorRight || key == Key.Enter || key == Key.Space))
         {
             FocusActivePanel();
             key.Handled = true;
         }
+    }
+
+    private bool PanelHasFocus() =>
+        (_themePicker.Visible && HasFocusDescendant(_themePicker))
+        || (_keybindingsPicker.Visible && HasFocusDescendant(_keybindingsPicker));
+
+    private static bool HasFocusDescendant(View v)
+    {
+        if (v.HasFocus) return true;
+        foreach (var child in v.SubViews)
+            if (HasFocusDescendant(child)) return true;
+        return false;
     }
 
     /// <summary>Public so panels can call back to return focus to the categories list (e.g. on Left arrow).</summary>
