@@ -24,6 +24,7 @@ Needs a real terminal — the app uses TG and won't render through a non-TTY pip
   - **Theme** — picker with live preview.
   - **Keyboard Shortcuts** — Rider/VS-Code-style picker. Type to filter, Enter on a row to capture a key combination, Delete to remove. Conflicts (exact match or chord prefix collision) are flagged before the binding is accepted. Diff-style overrides land in the same config file.
 - **Three TG themes** — Default, Dark, Light. (TG's other built-ins are filtered; see [#11](https://github.com/mentaldesk/TuiCode/issues/11) for shipping our own.)
+- **Actions overlay** (`F1`) — VS Code-style command palette listing every registered command with its current keybinding(s). Type to filter, Enter to run.
 
 ## What's next
 
@@ -31,7 +32,6 @@ Concrete v1 follow-ups have issues:
 
 - [#13](https://github.com/mentaldesk/TuiCode/issues/13) — persist last-opened folder + open tabs.
 - [#14](https://github.com/mentaldesk/TuiCode/issues/14) — editor settings (indent, line endings, …).
-- [#15](https://github.com/mentaldesk/TuiCode/issues/15) — `Ctrl+?` help dialog showing live keybindings.
 - [#11](https://github.com/mentaldesk/TuiCode/issues/11) — ship custom themes (incl. a faithful Turbo Pascal).
 
 Post-v1 directions (editor splits, syntax highlighting, vim mode, git worktrees, LLM coding, plugins, terminal panel, async I/O) are tracked in [#16](https://github.com/mentaldesk/TuiCode/issues/16).

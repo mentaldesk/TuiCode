@@ -17,6 +17,13 @@ public static class CommandIds
     public const string SettingsCancel = "settings.action.cancel";
     public const string SettingsFocusCategories = "settings.action.focusCategories";
 
+    public const string ShowActions = "workbench.action.showActions";
+
+    public const string ActionsExecute = "actions.action.execute";
+    public const string ActionsCancel = "actions.action.cancel";
+    public const string ActionsFocusList = "actions.action.focusList";
+    public const string ActionsFocusSearch = "actions.action.focusSearch";
+
     public static string FocusEditorByIndex(int oneBasedIndex) =>
         $"workbench.action.focusEditor{oneBasedIndex}";
 }
