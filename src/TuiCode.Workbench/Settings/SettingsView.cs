@@ -66,6 +66,7 @@ public sealed class SettingsView : Window
         };
         _categoriesList.SelectedItem = 0;
         _categoriesList.ValueChanged += (_, _) => SwapPanel();
+        _categoriesList.KeyDown += OnCategoriesKey;
 
         _separator = new Label
         {
@@ -116,6 +117,24 @@ public sealed class SettingsView : Window
         var showKb = i == 1;
         _themePicker.Visible = !showKb;
         _keybindingsPicker.Visible = showKb;
+    }
+
+    private void OnCategoriesKey(object? sender, Key key)
+    {
+        if (key == Key.CursorRight || key == Key.Enter || key == Key.Space)
+        {
+            FocusActivePanel();
+            key.Handled = true;
+        }
+    }
+
+    /// <summary>Public so panels can call back to return focus to the categories list (e.g. on Left arrow).</summary>
+    public void FocusCategories() => _categoriesList.SetFocus();
+
+    private void FocusActivePanel()
+    {
+        if (_keybindingsPicker.Visible) _keybindingsPicker.FocusContent();
+        else _themePicker.FocusContent();
     }
 
     private void RegisterScopeBindings()

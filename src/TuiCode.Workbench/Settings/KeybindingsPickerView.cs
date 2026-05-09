@@ -65,6 +65,9 @@ public sealed class KeybindingsPickerView : View
             Height = Dim.Fill(2)
         };
         _list.KeyDown += OnListKey;
+        // TG doesn't auto-transfer focus on mouse click in this layout. Force it on any mouse event.
+        _list.MouseEvent += (_, _) => _list.SetFocus();
+        _search.MouseEvent += (_, _) => _search.SetFocus();
 
         _footer = new Label
         {
@@ -132,6 +135,11 @@ public sealed class KeybindingsPickerView : View
         else if (key == Key.Delete || key == Key.Backspace)
         {
             RemoveSelected();
+            key.Handled = true;
+        }
+        else if (key == Key.CursorLeft && SuperView is SettingsView settings)
+        {
+            settings.FocusCategories();
             key.Handled = true;
         }
     }

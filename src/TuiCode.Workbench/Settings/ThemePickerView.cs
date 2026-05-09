@@ -36,8 +36,21 @@ public sealed class ThemePickerView : View
             settings.Theme = themes[i];
         };
 
+        _list.KeyDown += OnListKey;
+        // TG doesn't auto-transfer focus on mouse click in this layout. Force it on any mouse event.
+        _list.MouseEvent += (_, _) => _list.SetFocus();
+
         Add(_list);
     }
 
     public bool FocusContent() => _list.SetFocus();
+
+    private void OnListKey(object? sender, Key key)
+    {
+        if (key == Key.CursorLeft && SuperView is SettingsView settings)
+        {
+            settings.FocusCategories();
+            key.Handled = true;
+        }
+    }
 }
