@@ -38,6 +38,93 @@ public sealed class KeybindingService : IKeybindingService
         node.CommandId = commandId;
     }
 
+    public bool Unbind(string keySequence)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(keySequence);
+
+        var keys = ParseSequence(keySequence);
+        var path = new List<(ChordNode parent, Key key, ChordNode child)>(keys.Count);
+        var node = _root;
+        foreach (var key in keys)
+        {
+            var normalized = Normalize(key);
+            if (!node.Children.TryGetValue(normalized, out var child))
+                return false;
+            path.Add((node, normalized, child));
+            node = child;
+        }
+
+        if (node.CommandId is null) return false;
+        node.CommandId = null;
+
+        // Prune empty subtrees from the leaf upwards.
+        for (var i = path.Count - 1; i >= 0; i--)
+        {
+            var (parent, key, child) = path[i];
+            if (child.CommandId is not null || child.Children.Count > 0) break;
+            parent.Children.Remove(key);
+        }
+        return true;
+    }
+
+    public void Reset()
+    {
+        _root.Children.Clear();
+        _root.CommandId = null;
+        ResetChord();
+    }
+
+    public KeybindingConflict? CheckConflict(string keySequence)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(keySequence);
+
+        var keys = ParseSequence(keySequence);
+        var node = _root;
+        for (var i = 0; i < keys.Count; i++)
+        {
+            var normalized = Normalize(keys[i]);
+            if (!node.Children.TryGetValue(normalized, out var child))
+                return null; // path doesn't exist; no conflict
+
+            // A shorter binding fires before this chord could complete.
+            if (child.CommandId is not null && i < keys.Count - 1)
+                return KeybindingConflict.ExtensionOfExisting;
+
+            node = child;
+        }
+
+        // We reached the proposed terminal node.
+        if (node.Children.Count > 0)
+            return KeybindingConflict.PrefixOfExisting; // would shadow existing chords beneath it
+        if (node.CommandId is not null)
+            return KeybindingConflict.ExactMatch;
+        return null;
+    }
+
+    public IEnumerable<KeyBinding> Bindings
+    {
+        get
+        {
+            var stack = new List<Key>();
+            foreach (var binding in Walk(_root, stack))
+                yield return binding;
+        }
+    }
+
+    private static IEnumerable<KeyBinding> Walk(ChordNode node, List<Key> stack)
+    {
+        if (node.CommandId is not null)
+            yield return new KeyBinding(string.Join(" ", stack.Select(FormatKey)), node.CommandId);
+
+        foreach (var (key, child) in node.Children)
+        {
+            stack.Add(key);
+            foreach (var b in Walk(child, stack))
+                yield return b;
+            stack.RemoveAt(stack.Count - 1);
+        }
+    }
+
     public KeyHandlingResult Handle(Key key)
     {
         var normalized = Normalize(key);
@@ -73,7 +160,7 @@ public sealed class KeybindingService : IKeybindingService
 
         // Prefix match — descend and wait for the next key.
         _current = next;
-        SetChordDisplay(string.Join(" ", _chordSoFar.Select(k => k.ToString())));
+        SetChordDisplay(string.Join(" ", _chordSoFar.Select(FormatKey)));
         return KeyHandlingResult.ChordInProgress;
     }
 
@@ -95,6 +182,8 @@ public sealed class KeybindingService : IKeybindingService
         }
         return key;
     }
+
+    private static string FormatKey(Key key) => key.ToString();
 
     private void ResetChord()
     {

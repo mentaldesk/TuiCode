@@ -13,6 +13,15 @@ public interface ISettingsService
     /// <summary>Names of all themes the user can pick from (TG built-ins for v1).</summary>
     IReadOnlyCollection<string> AvailableThemes { get; }
 
+    /// <summary>
+    /// Current keybinding overrides — additions and removals layered on top of the workbench
+    /// defaults. The list is ordered: later entries shadow earlier ones.
+    /// </summary>
+    IReadOnlyList<KeybindingOverride> KeybindingOverrides { get; }
+
+    /// <summary>Replace the override list. Stages the change in memory; <see cref="Save"/> persists it.</summary>
+    void SetKeybindingOverrides(IEnumerable<KeybindingOverride> overrides);
+
     /// <summary>Persist the current settings to disk, writing only values that differ from defaults.</summary>
     void Save();
 }

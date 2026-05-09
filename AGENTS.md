@@ -66,6 +66,7 @@ Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
 - The test csproj has `<UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>` and `<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>`. Don't change those.
 - Test names use `Method_describes_what_should_happen` style (snake_case after the method name). Browse existing tests for the pattern.
 - Use `MockFileSystem` from `System.IO.Abstractions.TestingHelpers` for any test touching files. Don't create temp directories.
+- **UI tests use TG's input injection** (`host.App.InjectKey(...)` driven from the `Iteration` event), not manual unit-style focus/keypress assertions. See `WorkbenchHostTests.CtrlQ_quits_the_workbench` and `SettingsFocusTransitionTests` for the pattern, and TG's own [drivers / testing docs](https://gui-cs.github.io/Terminal.Gui/docs/drivers.html#testing-and-input-injection). Reach for this whenever a bug involves focus routing, key dispatch, or scope-stack interaction — much faster than asking a human to re-run manual steps.
 
 ## Terminal.Gui v2 conventions
 
@@ -80,12 +81,15 @@ Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
 - **App-level intercept**: `IApplication.Keyboard.KeyDown` fires before view dispatch. Set `Key.Handled = true` to consume. `WorkbenchHost.OnAppKeyDown` is the single subscription point for the whole app.
 - **All keybindings go through `IKeybindingService`.** Don't add `KeyDown` handlers to individual views. To add a binding:
   1. Add a constant to `TuiCode.Abstractions.CommandIds`.
-  2. Register the handler in `WorkbenchHost.RegisterDefaultCommands`.
-  3. Bind the key sequence in `WorkbenchHost.RegisterDefaultKeybindings`.
+  2. Register the handler in `WorkbenchHost.RegisterDefaultCommands` — use the labelled overload (`Register(id, label, handler)`) so the keybindings picker and help dialog have a human-readable label.
+  3. Bind the key sequence in `WorkbenchHost.BindDefaults` (the static helper called by `ApplyKeybindings`).
 - **Chord trie**: bindings are stored as a trie keyed on `Key`, so `"Ctrl+W X"` is a single first-class binding with arbitrary depth. Esc cancels in-flight chords. A stray key during a chord aborts and is consumed silently (matches VS Code).
 - **Letter normalization**: bare letters (no Ctrl/Alt) drop the Shift flag and lowercase. So `"x"`, `"X"`, and `"shift+x"` all resolve to the same trie node. Modifier-stacked letters (e.g. `Ctrl+S`) are already canonicalized by TG itself. See `KeybindingService.Normalize`.
 - **Chord wins over view bindings.** When a view (e.g. `TextView`) has a default binding for a key that is also a chord prefix at the workbench level (e.g. `Ctrl+W` is `TextView.Cut`), our handler intercepts and starts the chord. Use the unshadowed alternative (e.g. `Ctrl+X` for cut). This is intentional — matches VS Code.
 - **Input scopes are a stack.** `IInputScopeStack` (singleton) holds a stack of `IKeybindingService` frames. Workbench keybindings are pushed at startup and never popped. A modal (e.g. `SettingsView`) pushes its own scope on open and pops on close — its `IKeybindingService` is the *only* one that handles keys until popped. Workbench shortcuts (`Ctrl+Q`, `Ctrl+1..9`, …) deliberately do not fire while a modal is up. To add a new modal, instantiate your own `KeybindingService`, push it on the stack, register your bindings against it, and pop it when the modal closes.
+- **Workbench-scope only for user keybinding overrides.** The settings keybindings picker reads/writes the *workbench* scope's bindings — modal-scope bindings (settings overlay's `Esc` / `Ctrl+Enter` / etc.) are not editable in v1. Don't add a path that lets users rebind those without thinking through the trap-the-user case (rebinding the only escape from a modal).
+- **`KeyCaptureScope`** is a third kind of scope: it doesn't bind anything, it just absorbs every keystroke and routes it to a callback. Used by the keybindings picker while the user is recording a chord. Push it on top of the modal scope; pop on commit/cancel. Never leave one pushed.
+- **Bare-letter chord steps store as lowercase.** `KeybindingService.Bindings` emits e.g. `"Ctrl+W x"` (the letter is lowercased by `Normalize`), even if the user originally bound `"Ctrl+W X"`. Both forms hit the same trie node. UI rendering can casefold for display.
 
 ## Filesystem and I/O
 
@@ -102,10 +106,11 @@ Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
 
 - **TG's `ThemeManager` owns themes.** v1 exposes TG's built-ins (`Default`, `Dark`, `Light`, `TurboPascal 5`); we don't ship our own theme JSONs. Switch via `ThemeManager.Theme = "Dark"; ConfigurationManager.Apply();` or — in app code — through `ISettingsService.Theme`.
 - **TG's `ConfigurationManager` owns persistence.** `Program.cs` calls `ConfigurationManager.Enable(ConfigLocations.All)` *before* DI builds, so the layered JSON hierarchy (library → app → `~/.tui/TuiCode.config.json` → cwd → env → runtime) is already loaded by the time services come up.
-- **Persisted settings live as static `[ConfigurationProperty]` properties** on `TuiCodeSettings` (in `src/TuiCode.Workbench/Configuration/`). TG auto-prefixes the JSON key with the class name, so `Theme` appears as `TuiCodeSettings.Theme` under `AppSettings`.
+- **Persisted settings live as static `[ConfigurationProperty]` properties** on `TuiCodeSettings` (in `src/TuiCode.Workbench/Configuration/`). TG auto-prefixes the JSON key with the class name, so `Theme` appears as `TuiCodeSettings.Theme` under `AppSettings`. Collection-typed settings (e.g. `Keybindings: KeybindingOverride[]`) round-trip too.
+- **Keybinding overrides are diff-style.** `TuiCodeSettings.Keybindings` is an array of `{ Key, Command }` pairs; commands prefixed with `-` mean "remove the binding for this key". Boot order: `WorkbenchHost.BindDefaults` registers the hardcoded defaults, then `WorkbenchHost.ApplyKeybindings(settings.KeybindingOverrides)` layers the user's diff on top. The settings picker mutates a local copy and calls `WorkbenchHost.ApplyEditedBindings(picker.CurrentBindings)` on save — that recomputes the diff against defaults so the persisted file stays minimal.
 - **Don't read or write `TuiCodeSettings.*` directly** from feature code. Go through `ISettingsService` — `DefaultSettingsService` wraps the static surface so DI-driven code stays uniform and tests can sub in `InMemorySettingsService`.
 - **`ISettingsService.Save()` is bespoke.** TG has no public API for "write current state to disk", so `DefaultSettingsService` serializes only the diff from declared defaults to `~/.tui/TuiCode.config.json` itself.
-- **Static state leaks between tests.** `TuiCodeSettings.Theme` is process-global. Tests that mutate it use the `[Collection("StaticConfiguration")]` attribute so they serialize, and a `ThemeFixture` snapshots/restores per test.
+- **Static state leaks between tests.** `TuiCodeSettings.*` is process-global. Tests that mutate it use the `[Collection("StaticConfiguration")]` attribute so they serialize, and a fixture (e.g. `SettingsFixture` in `KeybindingOverrideTests`) snapshots/restores per test.
 - **`Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`.** Fully qualify it (`Terminal.Gui.Drawing.Attribute(...)`) when constructing one.
 
 ## Composition and wiring

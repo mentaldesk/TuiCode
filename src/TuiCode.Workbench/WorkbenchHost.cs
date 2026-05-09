@@ -1,5 +1,6 @@
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 
 namespace TuiCode.Workbench;
@@ -42,7 +43,7 @@ public sealed class WorkbenchHost : IDisposable
         _settings = settings;
 
         RegisterDefaultCommands();
-        RegisterDefaultKeybindings();
+        ApplyKeybindings(_settings.KeybindingOverrides);
 
         // Workbench scope is the bottom of the input stack; never popped.
         _scopes.Push(_keybindings);
@@ -96,39 +97,91 @@ public sealed class WorkbenchHost : IDisposable
 
     private void RegisterDefaultCommands()
     {
-        _commands.Register(CommandIds.Quit, () => _app.RequestStop());
-        _commands.Register(CommandIds.SaveActiveEditor, () => _workbench.Editor.Save());
-        _commands.Register(CommandIds.CloseActiveEditor, () => _workbench.Editor.CloseActive());
-        _commands.Register(CommandIds.NextEditor, () => _workbench.Editor.NextTab());
-        _commands.Register(CommandIds.PreviousEditor, () => _workbench.Editor.PreviousTab());
+        _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
+        _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", () => _workbench.Editor.Save());
+        _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", () => _workbench.Editor.CloseActive());
+        _commands.Register(CommandIds.NextEditor, "Next editor", () => _workbench.Editor.NextTab());
+        _commands.Register(CommandIds.PreviousEditor, "Previous editor", () => _workbench.Editor.PreviousTab());
 
-        _commands.Register(CommandIds.ToggleSidebar, ToggleSidebar);
-        _commands.Register(CommandIds.FocusEditorBody, FocusEditorBody);
-        _commands.Register(CommandIds.FocusEditorTabStrip, FocusEditorTabStrip);
-        _commands.Register(CommandIds.OpenSettings, OpenSettings);
+        _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
+        _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
+        _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
+        _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
             var index = i;
-            _commands.Register(CommandIds.FocusEditorByIndex(index), () => FocusEditorAt(index - 1));
+            _commands.Register(CommandIds.FocusEditorByIndex(index), $"Focus editor tab {index}", () => FocusEditorAt(index - 1));
         }
     }
 
-    private void RegisterDefaultKeybindings()
+    /// <summary>
+    /// Replace the entire workbench-scope binding set: clear, re-apply defaults, then layer on
+    /// the user's overrides. Called at startup and again when the settings UI commits a change.
+    /// </summary>
+    public void ApplyKeybindings(IEnumerable<KeybindingOverride> overrides)
     {
-        _keybindings.Bind("Ctrl+Q", CommandIds.Quit);
-        _keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
-        _keybindings.Bind("Ctrl+W", CommandIds.CloseActiveEditor);
-        _keybindings.Bind("Ctrl+Tab", CommandIds.NextEditor);
-        _keybindings.Bind("Ctrl+Shift+Tab", CommandIds.PreviousEditor);
+        _keybindings.Reset();
+        BindDefaults(_keybindings);
+        foreach (var o in overrides)
+        {
+            if (o.IsRemoval) _keybindings.Unbind(o.Key);
+            else _keybindings.Bind(o.Key, o.EffectiveCommand);
+        }
+    }
 
-        _keybindings.Bind("Ctrl+D0", CommandIds.ToggleSidebar);
-        _keybindings.Bind("Esc", CommandIds.FocusEditorBody);
-        _keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
-        _keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
+    /// <summary>
+    /// Take the picker's edited binding set, compute the diff against defaults, persist as the
+    /// new override list, and apply it to the live keybinding service.
+    /// </summary>
+    public void ApplyEditedBindings(IEnumerable<KeyBinding> editedBindings)
+    {
+        var defaults = GetDefaultBindings().ToDictionary(b => b.Sequence, b => b.CommandId, StringComparer.Ordinal);
+        var edited = editedBindings.ToDictionary(b => b.Sequence, b => b.CommandId, StringComparer.Ordinal);
+
+        var overrides = new List<KeybindingOverride>();
+        foreach (var seq in defaults.Keys.Union(edited.Keys, StringComparer.Ordinal))
+        {
+            var hasDefault = defaults.TryGetValue(seq, out var defaultCmd);
+            var hasEdited = edited.TryGetValue(seq, out var editedCmd);
+
+            if (hasDefault && !hasEdited)
+                overrides.Add(new KeybindingOverride(seq, "-" + defaultCmd));
+            else if (hasEdited && (!hasDefault || !string.Equals(defaultCmd, editedCmd, StringComparison.Ordinal)))
+                overrides.Add(new KeybindingOverride(seq, editedCmd!));
+        }
+
+        _settings.SetKeybindingOverrides(overrides);
+        ApplyKeybindings(overrides);
+    }
+
+    /// <summary>
+    /// The workbench's hard-coded default bindings, materialised against a throwaway service
+    /// so the picker can compute diffs without touching the live trie.
+    /// </summary>
+    public IEnumerable<KeyBinding> GetDefaultBindings()
+    {
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        BindDefaults(keybindings);
+        return keybindings.Bindings.ToArray();
+    }
+
+    private static void BindDefaults(IKeybindingService keybindings)
+    {
+        keybindings.Bind("Ctrl+Q", CommandIds.Quit);
+        keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
+        keybindings.Bind("Ctrl+W", CommandIds.CloseActiveEditor);
+        keybindings.Bind("Ctrl+Tab", CommandIds.NextEditor);
+        keybindings.Bind("Ctrl+Shift+Tab", CommandIds.PreviousEditor);
+
+        keybindings.Bind("Ctrl+D0", CommandIds.ToggleSidebar);
+        keybindings.Bind("Esc", CommandIds.FocusEditorBody);
+        keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
+        keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
-            _keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
+            keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
     }
 
     private void ToggleSidebar()
@@ -177,12 +230,14 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeSettings is not null) return;
 
-        var view = new SettingsView(_settings);
+        var view = new SettingsView(_settings, _keybindings, _commands, _scopes, ApplyEditedBindings);
         view.Closed += (_, _) => CloseSettings(view);
         _activeSettings = view;
         _workbench.Add(view);
         _scopes.Push(view.Scope);
-        view.SetFocus();
+        // Focus categories explicitly post-mount; pre-mount SetFocus calls in the SettingsView
+        // constructor are no-ops because the view isn't yet in the focus tree.
+        view.FocusCategories();
     }
 
     private void CloseSettings(SettingsView view)

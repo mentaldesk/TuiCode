@@ -12,6 +12,20 @@ public enum KeyHandlingResult
     ChordInProgress
 }
 
+public sealed record KeyBinding(string Sequence, string CommandId);
+
+public enum KeybindingConflict
+{
+    /// <summary>Same key sequence already binds a different command. Replaceable.</summary>
+    ExactMatch,
+
+    /// <summary>Proposed sequence is a prefix of an existing chord (e.g. "Ctrl+W" while "Ctrl+W X" exists).</summary>
+    PrefixOfExisting,
+
+    /// <summary>Proposed sequence extends an existing binding (e.g. "Ctrl+W X" while "Ctrl+W" exists).</summary>
+    ExtensionOfExisting
+}
+
 public interface IKeybindingService
 {
     /// <summary>
@@ -19,6 +33,22 @@ public interface IKeybindingService
     /// "Ctrl+S" for a single key, "Ctrl+W X" for a chord.
     /// </summary>
     void Bind(string keySequence, string commandId);
+
+    /// <summary>Remove the binding at <paramref name="keySequence"/>. Returns true if a binding was removed.</summary>
+    bool Unbind(string keySequence);
+
+    /// <summary>Clear all bindings.</summary>
+    void Reset();
+
+    /// <summary>
+    /// Report whether <paramref name="keySequence"/> would conflict with any existing binding,
+    /// or null if it would not. Use before <see cref="Bind"/> to decide whether to surface a
+    /// confirm/refuse dialog.
+    /// </summary>
+    KeybindingConflict? CheckConflict(string keySequence);
+
+    /// <summary>All currently-registered bindings as (sequence, commandId) pairs.</summary>
+    IEnumerable<KeyBinding> Bindings { get; }
 
     /// <summary>
     /// Process a key. Returns whether the key was consumed by the binding system,
