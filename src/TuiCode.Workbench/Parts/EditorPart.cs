@@ -29,13 +29,15 @@ public sealed class EditorPart : FrameView
     {
         Title = "Editor";
         BorderStyle = LineStyle.Single;
+        SchemeName = Services.SchemeNames.Editor;
 
         Group = new EditorGroup
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(),
-            Height = Dim.Fill()
+            Height = Dim.Fill(),
+            SchemeName = Services.SchemeNames.Tabs
         };
         Add(Group);
     }

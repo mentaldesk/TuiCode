@@ -10,12 +10,14 @@ public sealed class WorkbenchHost : IDisposable
     private readonly Workbench _workbench;
     private readonly ICommandService _commands;
     private readonly IKeybindingService _keybindings;
+    private readonly IThemeService _theme;
     private bool _disposed;
 
     public WorkbenchHost(
         Workbench workbench,
         ICommandService commands,
         IKeybindingService keybindings,
+        IThemeService theme,
         ITimeProvider? timeProvider = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
@@ -29,6 +31,11 @@ public sealed class WorkbenchHost : IDisposable
         _workbench = workbench;
         _commands = commands;
         _keybindings = keybindings;
+        _theme = theme;
+        // No theme is loaded by default — the views' SchemeNames reference
+        // schemes that aren't registered, and TG falls back to its built-in
+        // Base scheme. A user-selected theme via settings.json will land in
+        // milestone 7 and call IThemeService.LoadTheme from here.
 
         RegisterDefaultCommands();
         RegisterDefaultKeybindings();
