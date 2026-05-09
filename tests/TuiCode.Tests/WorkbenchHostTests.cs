@@ -187,7 +187,7 @@ public class WorkbenchHostTests
     }
 
     [Fact]
-    public async Task F1_opens_the_action_overlay()
+    public async Task CtrlE_opens_the_action_overlay()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -203,13 +203,13 @@ public class WorkbenchHostTests
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(actionViewWasMounted, "ActionView did not appear in the workbench after F1");
+        Assert.True(actionViewWasMounted, "ActionView did not appear in the workbench after Ctrl+E");
 
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnFirstIteration;
-            if (Key.TryParse("F1", out var f1))
-                host.App.InjectKey(f1);
+            if (Key.TryParse("Ctrl+E", out var key))
+                host.App.InjectKey(key);
             host.App.Iteration += OnSecondIteration;
         }
 
@@ -244,8 +244,8 @@ public class WorkbenchHostTests
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnFirstIteration;
-            if (Key.TryParse("F1", out var f1))
-                host.App.InjectKey(f1);
+            if (Key.TryParse("Ctrl+E", out var key))
+                host.App.InjectKey(key);
             host.App.Iteration += OnSecondIteration;
         }
 
@@ -267,7 +267,7 @@ public class WorkbenchHostTests
     }
 
     [Fact]
-    public async Task CtrlQuestion_opens_the_help_dialog()
+    public async Task F1_opens_the_help_dialog()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -283,12 +283,12 @@ public class WorkbenchHostTests
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(helpViewWasMounted, "HelpView did not appear in the workbench after Ctrl+?");
+        Assert.True(helpViewWasMounted, "HelpView did not appear in the workbench after F1");
 
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnFirstIteration;
-            if (Key.TryParse("Ctrl+?", out var key))
+            if (Key.TryParse("F1", out var key))
                 host.App.InjectKey(key);
             host.App.Iteration += OnSecondIteration;
         }
@@ -324,7 +324,7 @@ public class WorkbenchHostTests
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnFirstIteration;
-            if (Key.TryParse("Ctrl+?", out var key))
+            if (Key.TryParse("F1", out var key))
                 host.App.InjectKey(key);
             host.App.Iteration += OnSecondIteration;
         }

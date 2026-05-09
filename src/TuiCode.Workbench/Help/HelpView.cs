@@ -68,9 +68,9 @@ public sealed class HelpView : Window
             Row("Ctrl+W", "Close active tab"),
             "",
             "Tools",
-            Row("F1", "Command palette"),
+            Row("Ctrl+E", "Command palette"),
             Row("Ctrl+,", "Settings"),
-            Row("Ctrl+?", "Help (this dialog)"),
+            Row("F1", "Help (this dialog)"),
             Row("Ctrl+Q", "Quit"));
     }
 }

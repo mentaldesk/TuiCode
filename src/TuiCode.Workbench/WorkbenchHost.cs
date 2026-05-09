@@ -185,8 +185,8 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Esc", CommandIds.FocusEditorBody);
         keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
-        keybindings.Bind("F1", CommandIds.ShowActions);
-        keybindings.Bind("Ctrl+?", CommandIds.ShowHelp);
+        keybindings.Bind("Ctrl+E", CommandIds.ShowActions);
+        keybindings.Bind("F1", CommandIds.ShowHelp);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
