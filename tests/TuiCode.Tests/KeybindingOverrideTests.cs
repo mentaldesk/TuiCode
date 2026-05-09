@@ -4,13 +4,11 @@ using TuiCode.Workbench.Configuration;
 
 namespace TuiCode.Tests;
 
-[Collection("StaticConfiguration")]
 public class KeybindingOverrideTests
 {
     [Fact]
     public void Save_writes_keybindings_to_a_dedicated_json_file()
     {
-        using var _ = new ThemeFixture("Default");
         var fs = new MockFileSystem();
         var svc = new DefaultSettingsService(fs);
         svc.SetKeybindingOverrides([
@@ -32,7 +30,6 @@ public class KeybindingOverrideTests
     [Fact]
     public void Save_removes_the_keybindings_file_when_there_are_no_overrides()
     {
-        using var _ = new ThemeFixture("Default");
         var fs = new MockFileSystem();
         // Pre-existing file with one entry — Save with empty overrides should delete it.
         fs.AddFile(KeybindingsPath(fs), new MockFileData("""[{"Key":"Ctrl+K","Command":"x"}]"""));
@@ -47,7 +44,6 @@ public class KeybindingOverrideTests
     [Fact]
     public void SetKeybindingOverrides_replaces_the_in_memory_list()
     {
-        using var _ = new ThemeFixture("Default");
         var svc = new DefaultSettingsService(new MockFileSystem());
         svc.SetKeybindingOverrides([new KeybindingOverride("Ctrl+K", "save")]);
 
@@ -62,7 +58,6 @@ public class KeybindingOverrideTests
         // overrides lived inside TG's ConfigurationManager (as a typed array OR string[]),
         // TG's source-generated JsonTypeInfo silently failed to deserialize them on boot.
         // Persisting to a dedicated file lets us round-trip a clean JSON shape.
-        using var _ = new ThemeFixture("Default");
         var fs = new MockFileSystem();
         fs.AddFile(KeybindingsPath(fs), new MockFileData("""
         [
@@ -82,7 +77,6 @@ public class KeybindingOverrideTests
     [Fact]
     public void Constructor_falls_back_to_empty_list_when_keybindings_file_is_malformed()
     {
-        using var _ = new ThemeFixture("Default");
         var fs = new MockFileSystem();
         fs.AddFile(KeybindingsPath(fs), new MockFileData("not json at all"));
 
@@ -107,21 +101,5 @@ public class KeybindingOverrideTests
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return fs.Path.Combine(home, ".tui", "TuiCode.keybindings.json");
-    }
-
-    /// <summary>
-    /// Snapshot+restore the static <see cref="TuiCodeSettings.Theme"/> for test isolation.
-    /// Keybindings are no longer static (they live on the service instance), so they don't
-    /// need fixturing here.
-    /// </summary>
-    private sealed class ThemeFixture : IDisposable
-    {
-        private readonly string _previousTheme;
-        public ThemeFixture(string theme)
-        {
-            _previousTheme = TuiCodeSettings.Theme;
-            TuiCodeSettings.Theme = theme;
-        }
-        public void Dispose() => TuiCodeSettings.Theme = _previousTheme;
     }
 }

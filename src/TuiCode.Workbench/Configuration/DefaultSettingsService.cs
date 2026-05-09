@@ -8,21 +8,28 @@ namespace TuiCode.Workbench.Configuration;
 
 /// <summary>
 /// DI-friendly adapter over TG's static <see cref="ConfigurationManager"/> /
-/// <see cref="ThemeManager"/> + <see cref="TuiCodeSettings"/>. Tests substitute
-/// an in-memory implementation; production code never touches the static surface directly.
+/// <see cref="ThemeManager"/>. Tests substitute an in-memory implementation;
+/// production code never touches the static surface directly.
 ///
-/// <para>Theme persists via TG's <c>ConfigurationManager</c> in <c>~/.tui/TuiCode.config.json</c>.
-/// Keybindings persist to a sibling file <c>~/.tui/TuiCode.keybindings.json</c> that we read and
-/// write directly — TG's source-generated <c>JsonTypeInfo</c> only knows the types its built-in
-/// scopes use, so any complex type we tried to put through it (records, arrays, even plain
-/// <c>string[]</c>) silently failed to deserialize. A dedicated file dodges that and gives us a
-/// clean, hand-readable JSON shape.</para>
+/// <para>Theme persists via TG's native <c>ThemeManager.Theme</c>
+/// (<c>[ConfigurationProperty(Scope = typeof(SettingsScope))]</c>) written as
+/// <c>{"Theme": "Dark"}</c> in <c>~/.tui/TuiCode.config.json</c>.
+/// <c>ConfigurationManager.Enable()</c> reads this on startup and sets
+/// <c>ThemeManager.Theme</c> automatically; no custom static wrapper is needed.</para>
+///
+/// <para>Keybindings persist to a sibling file <c>~/.tui/TuiCode.keybindings.json</c>
+/// that we read and write directly — TG's source-generated <c>JsonTypeInfo</c> only
+/// knows the types its built-in scopes use, so complex types silently fail to deserialize.
+/// A dedicated file dodges that and gives us a clean, hand-readable JSON shape.</para>
 /// </summary>
 public sealed class DefaultSettingsService : ISettingsService
 {
+    private const string DefaultTheme = "Default";
+
     private readonly IFileSystem _fs;
     private readonly string _themeConfigPath;
     private readonly string _keybindingsPath;
+    private string _theme;
     private List<KeybindingOverride> _keybindings;
 
     public DefaultSettingsService(IFileSystem fs)
@@ -32,16 +39,17 @@ public sealed class DefaultSettingsService : ISettingsService
         var dir = _fs.Path.Combine(home, ".tui");
         _themeConfigPath = _fs.Path.Combine(dir, "TuiCode.config.json");
         _keybindingsPath = _fs.Path.Combine(dir, "TuiCode.keybindings.json");
+        _theme = LoadTheme();
         _keybindings = LoadKeybindings();
     }
 
     public string Theme
     {
-        get => TuiCodeSettings.Theme;
+        get => _theme;
         set
         {
-            if (string.Equals(TuiCodeSettings.Theme, value, StringComparison.Ordinal)) return;
-            TuiCodeSettings.Theme = value;
+            if (string.Equals(_theme, value, StringComparison.Ordinal)) return;
+            _theme = value;
             ThemeManager.Theme = value;
             ConfigurationManager.Apply();
         }
@@ -50,8 +58,7 @@ public sealed class DefaultSettingsService : ISettingsService
     // Allowlist of TG built-in themes we expose to the picker. The other built-ins
     // (TurboPascal 5, Green Phosphor, 8 bit, …) are demo themes that look poor in a
     // code editor; intersecting filters them out without crashing if a future TG
-    // version renames or drops one. See issue #11 — we plan to ship our own themes
-    // (including a faithful Turbo Pascal homage) rather than wrap TG's.
+    // version renames or drops one. See issue #11.
     private static readonly string[] AllowedThemes = ["Default", "Dark", "Light"];
 
     public IReadOnlyCollection<string> AvailableThemes =>
@@ -73,15 +80,27 @@ public sealed class DefaultSettingsService : ISettingsService
         SaveKeybindings();
     }
 
+    private string LoadTheme()
+    {
+        if (!_fs.File.Exists(_themeConfigPath)) return DefaultTheme;
+        try
+        {
+            var json = _fs.File.ReadAllText(_themeConfigPath);
+            var node = JsonNode.Parse(json);
+            var theme = node?["Theme"]?.GetValue<string>();
+            return !string.IsNullOrEmpty(theme) ? theme : DefaultTheme;
+        }
+        catch
+        {
+            return DefaultTheme;
+        }
+    }
+
     private void SaveTheme()
     {
-        var diff = new JsonObject();
-        if (!string.Equals(TuiCodeSettings.Theme, TuiCodeSettings.DefaultTheme, StringComparison.Ordinal))
-            diff[$"{nameof(TuiCodeSettings)}.{nameof(TuiCodeSettings.Theme)}"] = TuiCodeSettings.Theme;
-
         var root = new JsonObject();
-        if (diff.Count > 0)
-            root["AppSettings"] = diff;
+        if (!string.Equals(_theme, DefaultTheme, StringComparison.Ordinal))
+            root["Theme"] = _theme;
 
         EnsureDirExists(_themeConfigPath);
         _fs.File.WriteAllText(_themeConfigPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
@@ -91,7 +110,6 @@ public sealed class DefaultSettingsService : ISettingsService
     {
         if (_keybindings.Count == 0)
         {
-            // No overrides — remove any stale file so a future load doesn't see deleted ones.
             if (_fs.File.Exists(_keybindingsPath))
                 _fs.File.Delete(_keybindingsPath);
             return;
@@ -128,7 +146,6 @@ public sealed class DefaultSettingsService : ISettingsService
         }
         catch
         {
-            // Malformed file: fall back to no overrides rather than crash on launch.
             return new List<KeybindingOverride>();
         }
     }

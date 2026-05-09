@@ -9,10 +9,9 @@ using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 
 // Load TG's configuration hierarchy (library defaults → app resources → ~/.tui/TuiCode.config.json
-// → cwd → env → runtime). This populates static [ConfigurationProperty]-decorated values such as
-// TuiCodeSettings.Theme so they are available when DI builds. WorkbenchHost then maps
-// TuiCodeSettings.Theme → ThemeManager.Theme after Application.Init(), because Apply() sets them
-// independently and Init() leaves ThemeManager at its default.
+// → cwd → env → runtime). Among other things, this reads {"Theme": "Dark"} and sets
+// ThemeManager.Theme before Application.Init() runs, so the workbench renders with the saved
+// theme on first paint.
 ConfigurationManager.Enable(ConfigLocations.All);
 
 var services = new ServiceCollection();

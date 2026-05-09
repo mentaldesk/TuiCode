@@ -1,8 +1,6 @@
-using Terminal.Gui.Configuration;
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
-using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 
@@ -40,10 +38,6 @@ public sealed class WorkbenchHost : IDisposable
         _flowControl = new TerminalFlowControl();
         _app = Application.Create(timeProvider ?? new SystemTimeProvider());
         _app.Init(driverName: null!);
-        // Application.Init() calls ConfigurationManager.Apply(), which populates TuiCodeSettings.Theme
-        // from our JSON but does not map it to ThemeManager.Theme (a separate TG-internal property).
-        // Re-apply now so the workbench renders with the saved theme.
-        ThemeManager.Theme = TuiCodeSettings.Theme;
         _workbench = workbench;
         _commands = commands;
         _keybindings = keybindings;
