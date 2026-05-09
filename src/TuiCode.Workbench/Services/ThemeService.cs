@@ -65,7 +65,8 @@ public sealed class ThemeService : IThemeService
     private void RegisterSchemes()
     {
         Register(SchemeNames.Editor, ThemeTokens.EditorForeground, ThemeTokens.EditorBackground);
-        Register(SchemeNames.Sidebar, ThemeTokens.SideBarForeground, ThemeTokens.SideBarBackground);
+        Register(SchemeNames.Sidebar, ThemeTokens.SideBarForeground, ThemeTokens.SideBarBackground,
+            focusFg: ThemeTokens.ListFocusForeground, focusBg: ThemeTokens.ListFocusBackground);
         Register(SchemeNames.StatusBar, ThemeTokens.StatusBarForeground, ThemeTokens.StatusBarBackground);
         Register(SchemeNames.Tabs, ThemeTokens.TabInactiveForeground, ThemeTokens.TabInactiveBackground,
             focusFg: ThemeTokens.TabActiveForeground, focusBg: ThemeTokens.TabActiveBackground);

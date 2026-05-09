@@ -13,5 +13,8 @@
   "tab.inactiveBackground": "#ececec",
   "tab.inactiveForeground": "#6c6c6c",
 
+  "list.focusBackground": "#0060c0",
+  "list.focusForeground": "#ffffff",
+
   "focusBorder": "#0090f1"
 }

@@ -20,6 +20,9 @@ public static class ThemeTokens
     public const string TabInactiveBackground = "tab.inactiveBackground";
     public const string TabInactiveForeground = "tab.inactiveForeground";
 
+    public const string ListFocusBackground = "list.focusBackground";
+    public const string ListFocusForeground = "list.focusForeground";
+
     public const string FocusBorder = "focusBorder";
 }
 

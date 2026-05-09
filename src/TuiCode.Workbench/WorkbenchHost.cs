@@ -32,7 +32,10 @@ public sealed class WorkbenchHost : IDisposable
         _commands = commands;
         _keybindings = keybindings;
         _theme = theme;
-        _theme.LoadTheme("dark");
+        // No theme is loaded by default — the views' SchemeNames reference
+        // schemes that aren't registered, and TG falls back to its built-in
+        // Base scheme. A user-selected theme via settings.json will land in
+        // milestone 7 and call IThemeService.LoadTheme from here.
 
         RegisterDefaultCommands();
         RegisterDefaultKeybindings();
