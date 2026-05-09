@@ -49,6 +49,29 @@ public class FileExplorerViewTests
     }
 
     [Fact]
+    public void Enter_key_activates_the_selected_file()
+    {
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work");
+        fs.AddFile("/work/readme.md", new MockFileData("# hi"));
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        var file = explorer
+            .GetChildren(explorer.Objects!.Single())
+            .OfType<IFileInfo>()
+            .Single(f => f.Name == "readme.md");
+        explorer.SelectedObject = file;
+
+        IFileInfo? activated = null;
+        explorer.FileActivated += (_, f) => activated = f;
+        explorer.NewKeyDownEvent(Key.Enter);
+
+        Assert.Same(file, activated);
+    }
+
+    [Fact]
     public void ActivateSelected_does_nothing_when_a_directory_is_selected()
     {
         var fs = new MockFileSystem();
