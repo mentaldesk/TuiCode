@@ -10,17 +10,6 @@ dotnet run --project src/TuiCode                       # needs a real terminal
 DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed for `dotnet test` on macOS
 ```
 
-## Worktrees
-
-One worktree per task; never modify the main checkout (`/Users/justice/code/TuiCode`). Worktrees are siblings, branch + dir names match:
-
-```bash
-git fetch origin
-git worktree add ../TuiCode-<slug> -b <branch-name> origin/main
-```
-
-Chore branches with `/` use a flat dir suffix (`../TuiCode-chore-foo` with `-b chore/foo`). PRs open as draft. After merge, remove proactively (`git worktree remove ../TuiCode-<slug>`) — don't wait to be asked. Between tasks, sweep `git worktree list` against `gh pr list --state merged`.
-
 ## Solution map
 
 - `src/TuiCode/` — entry point + composition root.
@@ -83,7 +72,7 @@ Chore branches with `/` use a flat dir suffix (`../TuiCode-chore-foo` with `-b c
 ## Wiring
 
 - `Program.cs` is the only DI consumer.
-- `Workbench` (the root `Window`) wires cross-part events in its ctor: `explorer.FileActivated → editor.Open + statusBar.SetMessage`, `editor.FileSaved → statusBar.SetMessage`. Add new cross-part wiring here.
+- `Workbench` (the root `Window`) wires cross-part events in its ctor: `explorer.FileActivated → editor.Open + tab.FocusContent + statusBar.SetMessage`, `editor.FileSaved → statusBar.SetMessage`. Add new cross-part wiring here.
 - `WorkbenchHost` owns `IApplication`, the key intercept, and workbench-scoped command/keybinding registrations.
 - Parts (`SidebarPart` / `EditorPart` / `StatusBarPart`) are thin layout slots over feature views.
 
