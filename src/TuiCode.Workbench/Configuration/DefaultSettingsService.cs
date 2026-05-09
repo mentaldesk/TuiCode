@@ -35,8 +35,17 @@ public sealed class DefaultSettingsService : ISettingsService
         }
     }
 
+    // Allowlist of TG built-in themes we expose to the picker. The other built-ins
+    // (TurboPascal 5, Green Phosphor, 8 bit, …) are demo themes that look poor in a
+    // code editor; intersecting filters them out without crashing if a future TG
+    // version renames or drops one. See issue #11 — we plan to ship our own themes
+    // (including a faithful Turbo Pascal homage) rather than wrap TG's.
+    private static readonly string[] AllowedThemes = ["Default", "Dark", "Light"];
+
     public IReadOnlyCollection<string> AvailableThemes =>
-        ThemeManager.Themes?.Keys.ToArray() ?? Array.Empty<string>();
+        (ThemeManager.Themes?.Keys ?? Enumerable.Empty<string>())
+            .Intersect(AllowedThemes, StringComparer.Ordinal)
+            .ToArray();
 
     public void Save()
     {
