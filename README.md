@@ -4,7 +4,7 @@ A minimalist terminal code editor for working over SSH. Borrows VS Code's user-f
 
 ## Status
 
-Pre-1.0. The v1 surface is up and usable: open files from a tree, edit and save, multi-tab editing, keyboard-only navigation, theme picker, persisted theme. The [open issues](https://github.com/mentaldesk/TuiCode/issues) track what's next.
+Pre-1.0. The v1 surface is up and usable: open files from a tree, edit and save, multi-tab editing, keyboard-only navigation, theme + keybinding pickers, persisted across launches. The [open issues](https://github.com/mentaldesk/TuiCode/issues) track what's next.
 
 ## Run
 
@@ -20,9 +20,9 @@ Needs a real terminal — the app uses TG and won't render through a non-TTY pip
 - **Tabbed editor** — multiple files open, dirty-state indicator (●), `Ctrl+S` to save.
 - **Three-level keyboard navigation** — Sidebar / EditorTabStrip / EditorBody. `Ctrl+0` toggles the sidebar; `Ctrl+1..9` jumps directly to the Nth tab and into the editor body; `Esc` returns focus to the active editor; `Ctrl+Esc` lifts focus to the tab strip.
 - **Chord-aware command/keybinding system** with a modal scope stack — settings overlay (and any future modal) gets its own input scope so workbench shortcuts don't leak through.
-- **Settings overlay** (`Ctrl+,`) — modal full-screen UI persisting to `~/.tui/TuiCode.config.json`. Two categories so far:
-  - **Theme** — picker with live preview.
-  - **Keyboard Shortcuts** — Rider/VS-Code-style picker. Type to filter, Enter on a row to capture a key combination, Delete to remove. Conflicts (exact match or chord prefix collision) are flagged before the binding is accepted. Diff-style overrides land in the same config file.
+- **Settings overlay** (`Ctrl+,`) — modal full-screen UI. Two categories so far:
+  - **Theme** — picker with live preview, persisted to `~/.tui/TuiCode.config.json`.
+  - **Keyboard Shortcuts** — Rider/VS-Code-style picker. Type to filter, Enter on a row to capture a key combination, Delete to remove. Conflicts (exact match or chord prefix collision) are flagged before the binding is accepted. Diff-style overrides persist to `~/.tui/TuiCode.keybindings.json`.
 - **Three TG themes** — Default, Dark, Light. (TG's other built-ins are filtered; see [#11](https://github.com/mentaldesk/TuiCode/issues/11) for shipping our own.)
 - **Actions overlay** (`F1`) — VS Code-style command palette listing every registered command with its current keybinding(s). Type to filter, Enter to run.
 
@@ -58,7 +58,7 @@ dotnet build TuiCode.slnx
 DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx
 ```
 
-The `DOTNET_ROOT` export is needed for `dotnet test` on macOS — see [AGENTS.md](AGENTS.md#test-framework) for why.
+The `DOTNET_ROOT` export is needed for `dotnet test` on macOS — see [AGENTS.md](AGENTS.md#tests) for why.
 
 ## Contributing
 
