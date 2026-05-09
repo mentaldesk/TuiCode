@@ -45,7 +45,8 @@ For chore branches with a `/` in the name (e.g. `chore/foo`), use a flat directo
 Lifecycle:
 - **Work** in your worktree. No stashing, no branch switching — each worktree is its own checkout.
 - **Open the PR as draft** from your worktree: `gh pr create --draft`. The user marks it ready for review.
-- **After merge**, remove the worktree: `git worktree remove ../TuiCode-<slug>` (add `-f` if there are submodules or untracked files you've already saved elsewhere).
+- **After merge, remove the worktree proactively** — don't wait to be asked. As soon as the user says "merged" (or `gh pr view <n>` shows `MERGED`), run `git worktree remove ../TuiCode-<slug>` and move on. Stale worktrees pile up fast across many PRs and the answer is always "yes, delete it." Add `-f` only if there's truly nothing to lose (uncommitted changes that are also pushed, etc.).
+- **Periodic sweep:** when you're between tasks, glance at `git worktree list`. For any worktree whose branch shows `MERGED` in `gh pr list --state merged`, remove it.
 
 If you discover you accidentally started work in the main checkout, stop, stash, create a worktree, pop the stash there, and continue. Don't keep going in the main checkout.
 
