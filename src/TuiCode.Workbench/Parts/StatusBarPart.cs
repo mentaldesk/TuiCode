@@ -2,7 +2,7 @@ namespace TuiCode.Workbench.Parts;
 
 public sealed class StatusBarPart : View
 {
-    private const string DefaultMessage = "TuiCode  •  Ctrl+/ help  •  Ctrl+Q quit";
+    private const string DefaultMessage = "TuiCode  •  Ctrl+? help  •  Ctrl+Q quit";
     private readonly Label _label;
     private string _message = DefaultMessage;
     private string? _chord;

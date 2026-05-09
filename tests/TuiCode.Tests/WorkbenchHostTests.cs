@@ -267,7 +267,7 @@ public class WorkbenchHostTests
     }
 
     [Fact]
-    public async Task CtrlForwardSlash_opens_the_help_dialog()
+    public async Task CtrlQuestion_opens_the_help_dialog()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -283,12 +283,12 @@ public class WorkbenchHostTests
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(helpViewWasMounted, "HelpView did not appear in the workbench after Ctrl+/");
+        Assert.True(helpViewWasMounted, "HelpView did not appear in the workbench after Ctrl+?");
 
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnFirstIteration;
-            if (Key.TryParse("Ctrl+/", out var key))
+            if (Key.TryParse("Ctrl+?", out var key))
                 host.App.InjectKey(key);
             host.App.Iteration += OnSecondIteration;
         }
@@ -324,7 +324,7 @@ public class WorkbenchHostTests
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnFirstIteration;
-            if (Key.TryParse("Ctrl+/", out var key))
+            if (Key.TryParse("Ctrl+?", out var key))
                 host.App.InjectKey(key);
             host.App.Iteration += OnSecondIteration;
         }

@@ -70,7 +70,7 @@ public sealed class HelpView : Window
             "Tools",
             Row("F1", "Command palette"),
             Row("Ctrl+,", "Settings"),
-            Row("Ctrl+/", "Help (this dialog)"),
+            Row("Ctrl+?", "Help (this dialog)"),
             Row("Ctrl+Q", "Quit"));
     }
 }
