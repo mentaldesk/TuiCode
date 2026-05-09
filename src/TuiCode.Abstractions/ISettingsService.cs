@@ -24,4 +24,10 @@ public interface ISettingsService
 
     /// <summary>Persist the current settings to disk, writing only values that differ from defaults.</summary>
     void Save();
+
+    /// <summary>
+    /// Load settings from disk and apply them to the underlying configuration system. Call once
+    /// at startup, before any UI is constructed, so views render with the saved values on first paint.
+    /// </summary>
+    void Load();
 }

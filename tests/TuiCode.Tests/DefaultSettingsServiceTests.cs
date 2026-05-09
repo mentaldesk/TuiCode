@@ -1,17 +1,17 @@
 using System.Text.Json;
+using Terminal.Gui.Configuration;
 using TuiCode.Workbench.Configuration;
 
 namespace TuiCode.Tests;
 
-// All tests touch the static TuiCodeSettings.Theme. xUnit runs distinct test classes
-// in parallel by default; mark this collection so its tests serialize.
+// Touches ThemeManager.Theme (TG static state). Serialise via the shared collection.
 [Collection("StaticConfiguration")]
 public class DefaultSettingsServiceTests
 {
     [Fact]
-    public void Save_writes_empty_object_when_nothing_differs_from_defaults()
+    public void Save_writes_empty_object_when_theme_is_default()
     {
-        using var _ = new ThemeFixture(TuiCodeSettings.DefaultTheme);
+        using var _ = new ThemeFixture("Default");
         var fs = new MockFileSystem();
         var svc = new DefaultSettingsService(fs);
 
@@ -25,7 +25,7 @@ public class DefaultSettingsServiceTests
     }
 
     [Fact]
-    public void Save_writes_only_the_theme_when_it_differs_from_default()
+    public void Save_writes_theme_in_TG_native_format_when_non_default()
     {
         using var _ = new ThemeFixture("Dark");
         var fs = new MockFileSystem();
@@ -35,8 +35,7 @@ public class DefaultSettingsServiceTests
 
         var json = fs.File.ReadAllText(ConfigPath(fs));
         using var doc = JsonDocument.Parse(json);
-        var appSettings = doc.RootElement.GetProperty("AppSettings");
-        Assert.Equal("Dark", appSettings.GetProperty("TuiCodeSettings.Theme").GetString());
+        Assert.Equal("Dark", doc.RootElement.GetProperty("Theme").GetString());
     }
 
     [Fact]
@@ -58,15 +57,19 @@ public class DefaultSettingsServiceTests
         return fs.Path.Combine(home, ".tui", "TuiCode.config.json");
     }
 
-    /// <summary>Snapshot+restore the static <see cref="TuiCodeSettings.Theme"/> for test isolation.</summary>
+    /// <summary>
+    /// Snapshot+restore <see cref="ThemeManager.Theme"/> for test isolation. The setter
+    /// also calls <c>ConfigurationManager.Apply()</c>, so any side effects of activating
+    /// the theme are exercised the same way they would be in production.
+    /// </summary>
     private sealed class ThemeFixture : IDisposable
     {
         private readonly string _previous;
         public ThemeFixture(string theme)
         {
-            _previous = TuiCodeSettings.Theme;
-            TuiCodeSettings.Theme = theme;
+            _previous = ThemeManager.Theme;
+            ThemeManager.Theme = theme;
         }
-        public void Dispose() => TuiCodeSettings.Theme = _previous;
+        public void Dispose() => ThemeManager.Theme = _previous;
     }
 }

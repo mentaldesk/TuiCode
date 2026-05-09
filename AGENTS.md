@@ -64,10 +64,10 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 ## Settings & persistence
 
-- `Program.cs` calls `ConfigurationManager.Enable(ConfigLocations.All)` *before* DI builds. Theme is a `[ConfigurationProperty] string` on `TuiCodeSettings` → `~/.tui/TuiCode.config.json`. Picker exposes only `Default` / `Dark` / `Light` (other TG built-ins look bad).
+- `DefaultSettingsService` is a thin wrapper around TG's static `ConfigurationManager` / `ThemeManager`. `Theme` getter/setter delegate straight to `ThemeManager.Theme`; no backing field. `Load()` calls `ConfigurationManager.Enable(ConfigLocations.All)`; `Program.cs` invokes it on the resolved service before constructing the App, so `ThemeManager.Theme` is in place when `Application.Init()` paints. `ThemeManager.Theme` is a TG-native `[ConfigurationProperty(Scope = typeof(SettingsScope))]` and persists as `{"Theme": "Dark"}` at the JSON root of `~/.tui/TuiCode.config.json`. `Save()` writes that format manually (TG exposes no save API). Picker exposes only `Default` / `Dark` / `Light` (other TG built-ins look bad).
 - Keybindings persist to a dedicated file `~/.tui/TuiCode.keybindings.json` (read at `DefaultSettingsService` construction, written on `Save()`) — TG's serializer can't round-trip them. Diff style: `{ Key, Command }`, prefix `Command` with `-` to remove. Boot: `BindDefaults` then `ApplyKeybindings(settings.KeybindingOverrides)`. Picker calls `WorkbenchHost.ApplyEditedBindings` on save (recomputes diff from defaults so the file stays minimal).
-- Don't read/write `TuiCodeSettings.*` from feature code — go through `ISettingsService`. Tests use `InMemorySettingsService`.
-- Static `TuiCodeSettings.Theme` leaks between tests; mutators use `[Collection("StaticConfiguration")]` and a `ThemeFixture`. Keybindings live on the service instance — no fixture needed.
+- Don't reach into `ConfigurationManager` / `ThemeManager` from feature code — go through `ISettingsService`. Tests use `InMemorySettingsService`.
+- Tests that mutate `ThemeManager.Theme` (e.g. `DefaultSettingsServiceTests`) must use `[Collection("StaticConfiguration")]` plus a local `ThemeFixture` to snapshot+restore the static. Keybindings are instance state on the service, so keybinding-only tests need neither.
 
 ## Wiring
 
