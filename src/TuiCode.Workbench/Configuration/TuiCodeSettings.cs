@@ -1,5 +1,4 @@
 using Terminal.Gui.Configuration;
-using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Configuration;
 
@@ -18,6 +17,9 @@ public static class TuiCodeSettings
     [ConfigurationProperty(Scope = typeof(AppSettingsScope))]
     public static string Theme { get; set; } = DefaultTheme;
 
-    [ConfigurationProperty(Scope = typeof(AppSettingsScope))]
-    public static KeybindingOverride[] Keybindings { get; set; } = Array.Empty<KeybindingOverride>();
+    // Keybindings used to live here as another [ConfigurationProperty], but TG's
+    // ConfigurationManager uses source-generated JsonTypeInfo and silently fails to
+    // deserialize types it doesn't know — including KeybindingOverride[] AND string[].
+    // Keybindings now persist to ~/.tui/TuiCode.keybindings.json via DefaultSettingsService,
+    // outside TG's config system, so we can use a clean human-readable JSON shape.
 }

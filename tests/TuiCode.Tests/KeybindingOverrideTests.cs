@@ -8,52 +8,87 @@ namespace TuiCode.Tests;
 public class KeybindingOverrideTests
 {
     [Fact]
-    public void Save_writes_the_override_array_when_the_list_is_non_empty()
+    public void Save_writes_keybindings_to_a_dedicated_json_file()
     {
-        using var _ = new SettingsFixture(theme: "Default", overrides:
-        [
+        using var _ = new ThemeFixture("Default");
+        var fs = new MockFileSystem();
+        var svc = new DefaultSettingsService(fs);
+        svc.SetKeybindingOverrides([
             new KeybindingOverride("Ctrl+Shift+K", "workbench.action.openSettings"),
             new KeybindingOverride("Ctrl+,", "-workbench.action.openSettings")
         ]);
 
-        var fs = new MockFileSystem();
-        var svc = new DefaultSettingsService(fs);
         svc.Save();
 
-        var json = fs.File.ReadAllText(ConfigPath(fs));
+        var json = fs.File.ReadAllText(KeybindingsPath(fs));
         using var doc = JsonDocument.Parse(json);
-        var arr = doc.RootElement.GetProperty("AppSettings").GetProperty("TuiCodeSettings.Keybindings");
-        Assert.Equal(2, arr.GetArrayLength());
-        Assert.Equal("Ctrl+Shift+K", arr[0].GetProperty("Key").GetString());
-        Assert.Equal("workbench.action.openSettings", arr[0].GetProperty("Command").GetString());
-        Assert.Equal("Ctrl+,", arr[1].GetProperty("Key").GetString());
-        Assert.Equal("-workbench.action.openSettings", arr[1].GetProperty("Command").GetString());
+        Assert.Equal(2, doc.RootElement.GetArrayLength());
+        Assert.Equal("Ctrl+Shift+K", doc.RootElement[0].GetProperty("Key").GetString());
+        Assert.Equal("workbench.action.openSettings", doc.RootElement[0].GetProperty("Command").GetString());
+        Assert.Equal("Ctrl+,", doc.RootElement[1].GetProperty("Key").GetString());
+        Assert.Equal("-workbench.action.openSettings", doc.RootElement[1].GetProperty("Command").GetString());
     }
 
     [Fact]
-    public void Save_omits_the_override_array_when_there_are_no_overrides()
+    public void Save_removes_the_keybindings_file_when_there_are_no_overrides()
     {
-        using var _ = new SettingsFixture(theme: "Default", overrides: []);
-
+        using var _ = new ThemeFixture("Default");
         var fs = new MockFileSystem();
+        // Pre-existing file with one entry — Save with empty overrides should delete it.
+        fs.AddFile(KeybindingsPath(fs), new MockFileData("""[{"Key":"Ctrl+K","Command":"x"}]"""));
+
         var svc = new DefaultSettingsService(fs);
+        svc.SetKeybindingOverrides([]);
         svc.Save();
 
-        var json = fs.File.ReadAllText(ConfigPath(fs));
-        using var doc = JsonDocument.Parse(json);
-        Assert.False(doc.RootElement.TryGetProperty("AppSettings", out var _appSettings));
+        Assert.False(fs.File.Exists(KeybindingsPath(fs)));
     }
 
     [Fact]
-    public void SetKeybindingOverrides_replaces_the_list()
+    public void SetKeybindingOverrides_replaces_the_in_memory_list()
     {
-        using var _ = new SettingsFixture(theme: "Default", overrides: []);
-
+        using var _ = new ThemeFixture("Default");
         var svc = new DefaultSettingsService(new MockFileSystem());
         svc.SetKeybindingOverrides([new KeybindingOverride("Ctrl+K", "save")]);
 
         Assert.Single(svc.KeybindingOverrides);
         Assert.Equal("Ctrl+K", svc.KeybindingOverrides[0].Key);
+    }
+
+    [Fact]
+    public void Constructor_loads_keybindings_from_disk()
+    {
+        // Regression test for "keybindings save but don't load on next launch": when the
+        // overrides lived inside TG's ConfigurationManager (as a typed array OR string[]),
+        // TG's source-generated JsonTypeInfo silently failed to deserialize them on boot.
+        // Persisting to a dedicated file lets us round-trip a clean JSON shape.
+        using var _ = new ThemeFixture("Default");
+        var fs = new MockFileSystem();
+        fs.AddFile(KeybindingsPath(fs), new MockFileData("""
+        [
+          { "Key": "Ctrl+Shift+K", "Command": "workbench.action.openSettings" },
+          { "Key": "Ctrl+,", "Command": "-workbench.action.openSettings" }
+        ]
+        """));
+
+        var svc = new DefaultSettingsService(fs);
+
+        Assert.Equal(2, svc.KeybindingOverrides.Count);
+        Assert.Equal(new KeybindingOverride("Ctrl+Shift+K", "workbench.action.openSettings"), svc.KeybindingOverrides[0]);
+        Assert.Equal(new KeybindingOverride("Ctrl+,", "-workbench.action.openSettings"), svc.KeybindingOverrides[1]);
+        Assert.True(svc.KeybindingOverrides[1].IsRemoval);
+    }
+
+    [Fact]
+    public void Constructor_falls_back_to_empty_list_when_keybindings_file_is_malformed()
+    {
+        using var _ = new ThemeFixture("Default");
+        var fs = new MockFileSystem();
+        fs.AddFile(KeybindingsPath(fs), new MockFileData("not json at all"));
+
+        var svc = new DefaultSettingsService(fs);
+
+        Assert.Empty(svc.KeybindingOverrides);
     }
 
     [Fact]
@@ -68,28 +103,25 @@ public class KeybindingOverrideTests
         Assert.Equal("save", remove.EffectiveCommand);
     }
 
-    private static string ConfigPath(MockFileSystem fs)
+    private static string KeybindingsPath(MockFileSystem fs)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return fs.Path.Combine(home, ".tui", "TuiCode.config.json");
+        return fs.Path.Combine(home, ".tui", "TuiCode.keybindings.json");
     }
 
-    /// <summary>Snapshot+restore the static <see cref="TuiCodeSettings"/> values for test isolation.</summary>
-    private sealed class SettingsFixture : IDisposable
+    /// <summary>
+    /// Snapshot+restore the static <see cref="TuiCodeSettings.Theme"/> for test isolation.
+    /// Keybindings are no longer static (they live on the service instance), so they don't
+    /// need fixturing here.
+    /// </summary>
+    private sealed class ThemeFixture : IDisposable
     {
         private readonly string _previousTheme;
-        private readonly KeybindingOverride[] _previousOverrides;
-        public SettingsFixture(string theme, KeybindingOverride[] overrides)
+        public ThemeFixture(string theme)
         {
             _previousTheme = TuiCodeSettings.Theme;
-            _previousOverrides = TuiCodeSettings.Keybindings;
             TuiCodeSettings.Theme = theme;
-            TuiCodeSettings.Keybindings = overrides;
         }
-        public void Dispose()
-        {
-            TuiCodeSettings.Theme = _previousTheme;
-            TuiCodeSettings.Keybindings = _previousOverrides;
-        }
+        public void Dispose() => TuiCodeSettings.Theme = _previousTheme;
     }
 }

@@ -9,4 +9,16 @@ public sealed record KeybindingOverride(string Key, string Command)
 {
     public bool IsRemoval => Command.Length > 0 && Command[0] == '-';
     public string EffectiveCommand => IsRemoval ? Command[1..] : Command;
+
+    /// <summary>Serialize as <c>"Key|Command"</c> for storage in TG's config.</summary>
+    public string Format() => $"{Key}|{Command}";
+
+    /// <summary>Parse a <c>"Key|Command"</c> string. Returns null for malformed entries.</summary>
+    public static KeybindingOverride? Parse(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return null;
+        var pipe = raw.IndexOf('|');
+        if (pipe <= 0 || pipe == raw.Length - 1) return null;
+        return new KeybindingOverride(raw[..pipe], raw[(pipe + 1)..]);
+    }
 }
