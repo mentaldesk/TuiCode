@@ -6,7 +6,7 @@ This file is for LLM coding assistants (Claude Code, Cursor, Aider, etc.). It ca
 
 **Keep this file in sync.** If you discover a new project convention, a TG quirk, a build/test setup detail, or a non-obvious pattern that future agents will need, add it here in the same PR as the change that motivated it. If a convention you read here is no longer accurate, fix it. Don't let this file rot — that's worse than not having it at all.
 
-For high-level architecture and the v1 milestone plan, read [DESIGN.md](DESIGN.md). Don't duplicate that here.
+**Also keep [README.md](README.md) in sync** when a PR changes user-visible behaviour, ships or closes one of the tracked gaps, or otherwise affects what the "What works today" / "What's next" sections claim. Same PR as the change.
 
 ## Quick start
 
