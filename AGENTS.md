@@ -19,6 +19,38 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx   # alternative test invocati
 
 The DOTNET_ROOT export is only needed for `dotnet test` on macOS — the test project uses Microsoft.Testing.Platform, which launches the test exe directly and needs DOTNET_ROOT to find the runtime. `dotnet run` works without it.
 
+## Worktrees
+
+This repo uses git worktrees for parallel work. **Never modify files in the main checkout (`/Users/justice/code/TuiCode`) directly** — that path may belong to another agent's in-flight work, and uncommitted changes there would collide. One worktree per task.
+
+Layout: worktrees are **siblings** of the main checkout, named `<repo>-<branch-slug>`. Branch name and directory suffix match. (Worktrees cannot live inside the main checkout — git rejects that.)
+
+```
+/Users/justice/code/
+├── TuiCode/                              # main checkout
+├── TuiCode-milestone-7-settings/         # worktree on milestone-7-settings
+└── TuiCode-fix-explorer-resize/          # worktree on fix/explorer-resize
+```
+
+Create a new worktree off `origin/main` (always start from a fresh remote main, not whatever HEAD happens to be):
+
+```bash
+git fetch origin
+git worktree add ../TuiCode-<slug> -b <branch-name> origin/main
+cd ../TuiCode-<slug>
+```
+
+For chore branches with a `/` in the name (e.g. `chore/foo`), use a flat directory suffix: `../TuiCode-chore-foo` with `-b chore/foo`. Don't put slashes in the directory name.
+
+Lifecycle:
+- **Work** in your worktree. No stashing, no branch switching — each worktree is its own checkout.
+- **Open the PR as draft** from your worktree: `gh pr create --draft`. The user marks it ready for review.
+- **After merge**, remove the worktree: `git worktree remove ../TuiCode-<slug>` (add `-f` if there are submodules or untracked files you've already saved elsewhere).
+
+If you discover you accidentally started work in the main checkout, stop, stash, create a worktree, pop the stash there, and continue. Don't keep going in the main checkout.
+
+Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
+
 ## Solution map
 
 - `src/TuiCode/` — entry point + composition root. `Program.cs` registers services in MS.DI and wires the host.
