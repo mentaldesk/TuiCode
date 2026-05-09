@@ -1,131 +1,96 @@
 # Agent guide
 
-This file is for LLM coding assistants (Claude Code, Cursor, Aider, etc.). It captures project-specific gotchas that aren't obvious from reading the source — the stuff that would otherwise be rediscovered through trial and error.
-
-`CLAUDE.md` at the repo root is a symlink to this file so the Claude Code CLI picks it up automatically.
-
-**Keep this file in sync.** If you discover a new project convention, a TG quirk, a build/test setup detail, or a non-obvious pattern that future agents will need, add it here in the same PR as the change that motivated it. If a convention you read here is no longer accurate, fix it. Don't let this file rot — that's worse than not having it at all.
-
-**Also keep [README.md](README.md) in sync** when a PR changes user-visible behaviour, ships or closes one of the tracked gaps, or otherwise affects what the "What works today" / "What's next" sections claim. Same PR as the change.
+Project-specific gotchas not obvious from the source. `CLAUDE.md` symlinks to this file. Update this and `README.md` in the same PR as the change that motivates it.
 
 ## Quick start
 
 ```bash
-dotnet build TuiCode.slnx                            # build everything
-dotnet run --project src/TuiCode                     # run the app (needs a real terminal)
-dotnet run --project tests/TuiCode.Tests             # run tests, no env setup needed
-DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx   # alternative test invocation
+dotnet build TuiCode.slnx
+dotnet run --project src/TuiCode                       # needs a real terminal
+DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed for `dotnet test` on macOS
 ```
-
-The DOTNET_ROOT export is only needed for `dotnet test` on macOS — the test project uses Microsoft.Testing.Platform, which launches the test exe directly and needs DOTNET_ROOT to find the runtime. `dotnet run` works without it.
 
 ## Worktrees
 
-This repo uses git worktrees for parallel work. **Never modify files in the main checkout (`/Users/justice/code/TuiCode`) directly** — that path may belong to another agent's in-flight work, and uncommitted changes there would collide. One worktree per task.
-
-Layout: worktrees are **siblings** of the main checkout, named `<repo>-<branch-slug>`. Branch name and directory suffix match. (Worktrees cannot live inside the main checkout — git rejects that.)
-
-```
-/Users/justice/code/
-├── TuiCode/                              # main checkout
-├── TuiCode-milestone-7-settings/         # worktree on milestone-7-settings
-└── TuiCode-fix-explorer-resize/          # worktree on fix/explorer-resize
-```
-
-Create a new worktree off `origin/main` (always start from a fresh remote main, not whatever HEAD happens to be):
+One worktree per task; never modify the main checkout (`/Users/justice/code/TuiCode`). Worktrees are siblings, branch + dir names match:
 
 ```bash
 git fetch origin
 git worktree add ../TuiCode-<slug> -b <branch-name> origin/main
-cd ../TuiCode-<slug>
 ```
 
-For chore branches with a `/` in the name (e.g. `chore/foo`), use a flat directory suffix: `../TuiCode-chore-foo` with `-b chore/foo`. Don't put slashes in the directory name.
-
-Lifecycle:
-- **Work** in your worktree. No stashing, no branch switching — each worktree is its own checkout.
-- **Open the PR as draft** from your worktree: `gh pr create --draft`. The user marks it ready for review.
-- **After merge, remove the worktree proactively** — don't wait to be asked. As soon as the user says "merged" (or `gh pr view <n>` shows `MERGED`), run `git worktree remove ../TuiCode-<slug>` and move on. Stale worktrees pile up fast across many PRs and the answer is always "yes, delete it." Add `-f` only if there's truly nothing to lose (uncommitted changes that are also pushed, etc.).
-- **Periodic sweep:** when you're between tasks, glance at `git worktree list`. For any worktree whose branch shows `MERGED` in `gh pr list --state merged`, remove it.
-
-If you discover you accidentally started work in the main checkout, stop, stash, create a worktree, pop the stash there, and continue. Don't keep going in the main checkout.
-
-Inspired by <https://www.jamescrosswell.dev/posts/switching-to-git-worktrees/>.
+Chore branches with `/` use a flat dir suffix (`../TuiCode-chore-foo` with `-b chore/foo`). PRs open as draft. After merge, remove proactively (`git worktree remove ../TuiCode-<slug>`) — don't wait to be asked. Between tasks, sweep `git worktree list` against `gh pr list --state merged`.
 
 ## Solution map
 
-- `src/TuiCode/` — entry point + composition root. `Program.cs` registers services in MS.DI and wires the host.
-- `src/TuiCode.Workbench/` — shell layout (`Workbench`, `WorkbenchHost`), parts (`SidebarPart`, `EditorPart`, `StatusBarPart`), service implementations (`CommandService`, `KeybindingService`), and `TerminalFlowControl`.
-- `src/TuiCode.Editor/` — `EditorTab`, `EditorGroup`. Tabbed editor implementation.
-- `src/TuiCode.Explorer/` — `FileExplorerView`. Tree-based file browser.
-- `src/TuiCode.Abstractions/` — interfaces and command-id constants shared between assemblies. Workbench/Editor/Explorer all reference this; nothing else should reference each other directly except through these contracts.
-- `tests/TuiCode.Tests/` — single test assembly covering everything.
+- `src/TuiCode/` — entry point + composition root.
+- `src/TuiCode.Workbench/` — shell, parts, services, settings UI.
+- `src/TuiCode.Editor/` — `EditorGroup`, `EditorTab`.
+- `src/TuiCode.Explorer/` — `FileExplorerView`.
+- `src/TuiCode.Abstractions/` — interfaces + DTOs. Features depend only on this.
+- `tests/TuiCode.Tests/` — single test assembly.
 
-## Test framework
+## Tests
 
-- **xUnit v3 on Microsoft.Testing.Platform.** Do not switch to xUnit v2 + `Microsoft.NET.Test.Sdk`. That combination pulls in `Microsoft.TestPlatform.CoreUtilities` (15.x), which Terminal.Gui's `ConfigurationManager` chokes on during its assembly-scanning startup, and tests fail to even load.
-- The test csproj has `<UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>` and `<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>`. Don't change those.
-- Test names use `Method_describes_what_should_happen` style (snake_case after the method name). Browse existing tests for the pattern.
-- Use `MockFileSystem` from `System.IO.Abstractions.TestingHelpers` for any test touching files. Don't create temp directories.
-- **UI tests use TG's input injection** (`host.App.InjectKey(...)` driven from the `Iteration` event), not manual unit-style focus/keypress assertions. See `WorkbenchHostTests.CtrlQ_quits_the_workbench` and `SettingsFocusTransitionTests` for the pattern, and TG's own [drivers / testing docs](https://gui-cs.github.io/Terminal.Gui/docs/drivers.html#testing-and-input-injection). Reach for this whenever a bug involves focus routing, key dispatch, or scope-stack interaction — much faster than asking a human to re-run manual steps.
+- xUnit v3 on Microsoft.Testing.Platform. Don't switch to v2 + `Microsoft.NET.Test.Sdk` — pulls in `Microsoft.TestPlatform.CoreUtilities` 15.x, which TG's `ConfigurationManager` chokes on at startup.
+- Test names: `Method_describes_what_should_happen` (snake_case after the method).
+- File-touching tests: `MockFileSystem` from `System.IO.Abstractions.TestingHelpers`. No temp dirs.
+- UI / focus / key bugs: drive via TG input injection (`host.App.InjectKey` from the `Iteration` event). See `WorkbenchHostTests.CtrlQ_quits_the_workbench` and TG's [testing docs](https://gui-cs.github.io/Terminal.Gui/docs/drivers.html#testing-and-input-injection). Faster than asking a human to retry manual steps.
 
-## Terminal.Gui v2 conventions
+## Terminal.Gui v2
 
-- **Namespaces are split** in v2: `Terminal.Gui.App` (Application, IApplication), `.Views` (Window, FrameView, TextView, TreeView, Tabs, Label), `.ViewBase` (View, Pos, Dim), `.Drawing` (LineStyle), `.Input` (Key, KeyBinding, Command). These are set as `global using` in each assembly's `GlobalUsings.cs`.
-- **The static `Application` class is `[Obsolete]`.** Use `Application.Create(timeProvider).Init(...).Run(runnable)` against an `IApplication` instance. `WorkbenchHost` owns the lifecycle.
-- **`Tabs` uses standard `Add(view)`** to register tabs. Tab header text comes from the child view's `Title` property. The active tab is `Tabs.Value`.
-- **`TextView.IsDirty` has no public setter.** Don't try to reset it. `EditorTab` keeps its own `_dirty` flag wired to `TextView.ContentsChanged` (subscribed *after* the initial load so the initial `Text =` doesn't mark it dirty).
-- **TG `Application.RemoveDefaultKeyBinding(Command.Quit)` crashes `TextView.PopoverMenu` initialization.** It looks like TG assumes Quit always has at least one key bound. To stop Esc-as-Quit, reassign Quit to `Ctrl+Q` instead — see `WorkbenchHost.NeutralizeBuiltinQuitKey`.
+- Namespaces split: `Terminal.Gui.App`, `.Views`, `.ViewBase`, `.Drawing`, `.Input`. `global using` per assembly.
+- Static `Application` is `[Obsolete]`. Use `Application.Create(timeProvider).Init(...).Run(runnable)` against `IApplication`. `WorkbenchHost` owns it.
+- `Tabs.Add(view)`; tab title = child's `Title`; active = `Tabs.Value`.
+- `TextView.IsDirty` has no setter. `EditorTab` tracks `_dirty` via `TextView.ContentsChanged` (subscribed *after* the initial `Text =` so load doesn't dirty it).
+- `Application.RemoveDefaultKeyBinding(Command.Quit)` crashes `TextView.PopoverMenu` init. To stop Esc-as-Quit, reassign Quit to `Ctrl+Q` — see `WorkbenchHost.NeutralizeBuiltinQuitKey`.
+- `View.SetFocus()` returns false when any ancestor has `CanFocus = false`. Set `CanFocus = true` on container `View`s that should host focusable children.
+- `ConfigurationManager` deserializes via source-generated `JsonTypeInfo` — only knows the types its built-in scopes use. Records, arrays, even `string[]` silently fail to load. Stick to primitives or persist to a dedicated file.
+- `Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`; fully qualify when constructing.
 
 ## Key handling
 
-- **App-level intercept**: `IApplication.Keyboard.KeyDown` fires before view dispatch. Set `Key.Handled = true` to consume. `WorkbenchHost.OnAppKeyDown` is the single subscription point for the whole app.
-- **All keybindings go through `IKeybindingService`.** Don't add `KeyDown` handlers to individual views. To add a binding:
-  1. Add a constant to `TuiCode.Abstractions.CommandIds`.
-  2. Register the handler in `WorkbenchHost.RegisterDefaultCommands` — use the labelled overload (`Register(id, label, handler)`) so the keybindings picker and help dialog have a human-readable label.
-  3. Bind the key sequence in `WorkbenchHost.BindDefaults` (the static helper called by `ApplyKeybindings`).
-- **Chord trie**: bindings are stored as a trie keyed on `Key`, so `"Ctrl+W X"` is a single first-class binding with arbitrary depth. Esc cancels in-flight chords. A stray key during a chord aborts and is consumed silently (matches VS Code).
-- **Letter normalization**: bare letters (no Ctrl/Alt) drop the Shift flag and lowercase. So `"x"`, `"X"`, and `"shift+x"` all resolve to the same trie node. Modifier-stacked letters (e.g. `Ctrl+S`) are already canonicalized by TG itself. See `KeybindingService.Normalize`.
-- **Chord wins over view bindings.** When a view (e.g. `TextView`) has a default binding for a key that is also a chord prefix at the workbench level (e.g. `Ctrl+W` is `TextView.Cut`), our handler intercepts and starts the chord. Use the unshadowed alternative (e.g. `Ctrl+X` for cut). This is intentional — matches VS Code.
-- **Input scopes are a stack.** `IInputScopeStack` (singleton) holds a stack of `IKeybindingService` frames. Workbench keybindings are pushed at startup and never popped. A modal (e.g. `SettingsView`) pushes its own scope on open and pops on close — its `IKeybindingService` is the *only* one that handles keys until popped. Workbench shortcuts (`Ctrl+Q`, `Ctrl+1..9`, …) deliberately do not fire while a modal is up. To add a new modal, instantiate your own `KeybindingService`, push it on the stack, register your bindings against it, and pop it when the modal closes.
-- **Workbench-scope only for user keybinding overrides.** The settings keybindings picker reads/writes the *workbench* scope's bindings — modal-scope bindings (settings overlay's `Esc` / `Ctrl+Enter` / etc.) are not editable in v1. Don't add a path that lets users rebind those without thinking through the trap-the-user case (rebinding the only escape from a modal).
-- **`KeyCaptureScope`** is a third kind of scope: it doesn't bind anything, it just absorbs every keystroke and routes it to a callback. Used by the keybindings picker while the user is recording a chord. Push it on top of the modal scope; pop on commit/cancel. Never leave one pushed.
-- **Bare-letter chord steps store as lowercase.** `KeybindingService.Bindings` emits e.g. `"Ctrl+W x"` (the letter is lowercased by `Normalize`), even if the user originally bound `"Ctrl+W X"`. Both forms hit the same trie node. UI rendering can casefold for display.
+- `IApplication.Keyboard.KeyDown` fires before view dispatch. Single subscription: `WorkbenchHost.OnAppKeyDown`. Set `Key.Handled = true` to consume.
+- All keybindings go through `IKeybindingService`; never wire `KeyDown` on individual views. To add a binding:
+  1. Constant in `TuiCode.Abstractions.CommandIds`.
+  2. Register handler in `WorkbenchHost.RegisterDefaultCommands` via the labelled `Register(id, label, handler)` overload.
+  3. Bind in `WorkbenchHost.BindDefaults` (called by `ApplyKeybindings`).
+- Chord trie keyed on `Key`; `"Ctrl+W X"` is a single binding. Esc cancels in-flight chords; stray keys abort and are consumed silently.
+- Bare letters drop Shift and lowercase: `"x"`, `"X"`, `"shift+x"` collide. `KeybindingService.Bindings` emits the lowercased form. Casefold in UI if needed.
+- Chord wins over view bindings: `Ctrl+W` shadows `TextView.Cut`. Use the unshadowed alternative (`Ctrl+X`).
+- Input scopes are a stack (`IInputScopeStack`). Workbench scope is bottom, never popped. Modals push their own `KeybindingService` on open / pop on close — workbench shortcuts don't fire while a modal is up. New modal: instantiate `KeybindingService`, push, register bindings against it, pop on close.
+- `KeyCaptureScope` is a third kind: absorbs every key, routes to a callback. Used while the picker records a chord. Always pop on commit/cancel.
+- Keybindings picker only edits the workbench scope; modal-scope bindings deliberately aren't editable (rebinding them could trap the user).
 
-## Filesystem and I/O
+## Filesystem
 
-- **Always go through `IFileSystem`** from `System.IO.Abstractions`. Never call `System.IO.File` / `System.IO.Directory` directly. `IFileInfo.FileSystem` is plumbed through `FileExplorerView` → `EditorTab` so the same code path works against the real disk in production and `MockFileSystem` in tests.
-- **`IFileSystem` is a singleton in DI.** `Program.cs` registers `new FileSystem()`; tests construct their own `MockFileSystem` per test.
-- **Save appends a trailing newline** if the buffer is non-empty and doesn't already end with `\n`. Matches VS Code's `files.insertFinalNewline: true` default. Empty files stay empty.
+- All I/O through `IFileSystem` from `System.IO.Abstractions`; never call `System.IO.File` / `Directory` directly. `IFileInfo.FileSystem` plumbs the same instance through to `EditorTab` etc.
+- DI registers `new FileSystem()` singleton; tests build their own `MockFileSystem`.
+- `EditorTab.Save` appends `\n` if non-empty and not already terminated (VS Code `files.insertFinalNewline`).
 
 ## Terminal compatibility
 
-- **`TerminalFlowControl`** (in `TuiCode.Workbench`) snapshots `stty -g` and runs `stty -ixon -ixoff` on Unix so `Ctrl+S` reaches the app instead of being eaten as XOFF flow control. Restored on `Dispose`. macOS Terminal.app and most Unix ttys swallow `Ctrl+S` by default; this fix is mandatory.
-- **Three-modifier combos require a capable terminal.** TuiCode assumes the terminal passes full modifier combinations to the application. macOS Terminal.app silently strips most three-modifier combos (`Ctrl+Alt+Shift+letter`) and collapses `Ctrl+Shift+letter` onto `Ctrl+letter`. iTerm2 / Ghostty / WezTerm / Alacritty are recommended on macOS; modern Linux terminals (kitty, foot, GNOME Terminal with `modifyOtherKeys`) are fine.
+- `TerminalFlowControl` runs `stty -ixon -ixoff` on Unix so `Ctrl+S` reaches the app. Restored on dispose. Mandatory.
+- Three-modifier combos require a capable terminal: iTerm2 / Ghostty / WezTerm / Alacritty on macOS; kitty / foot / GNOME Terminal with `modifyOtherKeys` on Linux. macOS Terminal.app strips them and collapses `Ctrl+Shift+letter` onto `Ctrl+letter`.
 
-## Theming and configuration
+## Settings & persistence
 
-- **TG's `ThemeManager` owns themes.** v1 exposes TG's built-ins (`Default`, `Dark`, `Light`, `TurboPascal 5`); we don't ship our own theme JSONs. Switch via `ThemeManager.Theme = "Dark"; ConfigurationManager.Apply();` or — in app code — through `ISettingsService.Theme`.
-- **TG's `ConfigurationManager` owns persistence.** `Program.cs` calls `ConfigurationManager.Enable(ConfigLocations.All)` *before* DI builds, so the layered JSON hierarchy (library → app → `~/.tui/TuiCode.config.json` → cwd → env → runtime) is already loaded by the time services come up.
-- **Theme persists via TG's `ConfigurationManager`** as a static `[ConfigurationProperty] string` on `TuiCodeSettings` — auto-prefixed JSON key `TuiCodeSettings.Theme` under `AppSettings` in `~/.tui/TuiCode.config.json`.
-- **Keybinding overrides do NOT use TG's `ConfigurationManager`.** TG deserializes via source-generated `JsonTypeInfo` and only knows the types its built-in scopes use; anything else (records, even `string[]`) silently fails to deserialize on load. So keybindings persist to a sibling file `~/.tui/TuiCode.keybindings.json` that `DefaultSettingsService` reads at construction time and writes on `Save()`. Don't try to add other complex/typed settings to `TuiCodeSettings` without confirming TG can round-trip them — default to a dedicated file when in doubt.
-- **Keybinding overrides are diff-style.** Each entry is `{ Key, Command }`; commands prefixed with `-` mean "remove the binding for this key". Boot order: `WorkbenchHost.BindDefaults` registers the hardcoded defaults, then `WorkbenchHost.ApplyKeybindings(settings.KeybindingOverrides)` layers the user's diff on top. The settings picker mutates a local copy and calls `WorkbenchHost.ApplyEditedBindings(picker.CurrentBindings)` on save — that recomputes the diff against defaults so the persisted file stays minimal.
-- **Don't read or write `TuiCodeSettings.*` directly** from feature code. Go through `ISettingsService` — `DefaultSettingsService` wraps the static surface so DI-driven code stays uniform and tests can sub in `InMemorySettingsService`.
-- **`ISettingsService.Save()` is bespoke.** TG has no public API for "write current state to disk", so `DefaultSettingsService` serializes the diff for theme to `~/.tui/TuiCode.config.json` and writes the keybindings array to `~/.tui/TuiCode.keybindings.json` itself.
-- **Static state leaks between tests.** `TuiCodeSettings.Theme` is process-global. Tests that mutate it use the `[Collection("StaticConfiguration")]` attribute so they serialize, and a fixture (e.g. `ThemeFixture` in `KeybindingOverrideTests`) snapshots/restores per test. Keybindings live on the service instance now, so they don't need fixturing.
-- **`Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`.** Fully qualify it (`Terminal.Gui.Drawing.Attribute(...)`) when constructing one.
+- `Program.cs` calls `ConfigurationManager.Enable(ConfigLocations.All)` *before* DI builds. Theme is a `[ConfigurationProperty] string` on `TuiCodeSettings` → `~/.tui/TuiCode.config.json`. Picker exposes only `Default` / `Dark` / `Light` (other TG built-ins look bad).
+- Keybindings persist to a dedicated file `~/.tui/TuiCode.keybindings.json` (read at `DefaultSettingsService` construction, written on `Save()`) — TG's serializer can't round-trip them. Diff style: `{ Key, Command }`, prefix `Command` with `-` to remove. Boot: `BindDefaults` then `ApplyKeybindings(settings.KeybindingOverrides)`. Picker calls `WorkbenchHost.ApplyEditedBindings` on save (recomputes diff from defaults so the file stays minimal).
+- Don't read/write `TuiCodeSettings.*` from feature code — go through `ISettingsService`. Tests use `InMemorySettingsService`.
+- Static `TuiCodeSettings.Theme` leaks between tests; mutators use `[Collection("StaticConfiguration")]` and a `ThemeFixture`. Keybindings live on the service instance — no fixture needed.
 
-## Composition and wiring
+## Wiring
 
-- `Program.cs` is the only place that talks to MS.DI directly. Resolve the entry-point `App`, ask the host for the workbench, plug in the working-directory root, then run.
-- `Workbench` (the `Window`) wires events between parts in its constructor: `explorer.FileActivated → editor.Open + statusBar.SetMessage`, `editor.FileSaved → statusBar.SetMessage`. New cross-part wiring goes here.
-- `WorkbenchHost` owns the `IApplication` lifecycle, the keybinding intercept, and the workbench-scoped command/keybinding registrations. New defaults go here.
-- Parts (`SidebarPart` / `EditorPart` / `StatusBarPart`) are thin layout slots. They host feature views (`FileExplorerView`, `EditorGroup`) and re-expose a small API surface to the workbench.
+- `Program.cs` is the only DI consumer.
+- `Workbench` (the root `Window`) wires cross-part events in its ctor: `explorer.FileActivated → editor.Open + statusBar.SetMessage`, `editor.FileSaved → statusBar.SetMessage`. Add new cross-part wiring here.
+- `WorkbenchHost` owns `IApplication`, the key intercept, and workbench-scoped command/keybinding registrations.
+- Parts (`SidebarPart` / `EditorPart` / `StatusBarPart`) are thin layout slots over feature views.
 
 ## Conventions
 
-- **Branch names**: `milestone-N-<slug>` for feature work, `chore/<slug>` for cleanup, `fix/<slug>` for bug fixes.
-- **Commit messages**: short imperative subject, body explaining *why*. Look at `git log` for tone.
-- **Don't add comments that restate what the code does.** Only add a comment when the WHY is non-obvious — a hidden constraint, a TG quirk, a workaround. The codebase deliberately runs comment-light; respect that.
-- **Don't introduce abstractions ahead of need.** YAGNI applies — `TextBuffer` (mentioned in DESIGN.md) doesn't exist yet because `TextView.Text` is sufficient at v1. Add the wrapper when you actually need to swap implementations.
-- **Settings layer scope (milestone 7).** Theme is the only persisted setting today; the picker UI (`Ctrl+,` → `SettingsView`) only renders categories that are wired. Keybinding overrides via `Application.DefaultKeyBindings` and editor settings can layer on top once they have UI to drive them — don't add settings entries that have no picker.
+- Branches: `milestone-N-<slug>` (features), `chore/<slug>` (cleanup), `fix/<slug>` (bugs).
+- Commit subject: short imperative; body explains *why*.
+- Comment only for non-obvious WHY (hidden constraint, TG quirk, workaround). Codebase runs comment-light.
+- No abstractions ahead of need.
+- Don't add settings without a picker UI to drive them.
