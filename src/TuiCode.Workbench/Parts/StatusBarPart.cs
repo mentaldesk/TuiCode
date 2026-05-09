@@ -11,7 +11,6 @@ public sealed class StatusBarPart : View
     {
         Height = 1;
         CanFocus = false;
-        SchemeName = Services.SchemeNames.StatusBar;
 
         _label = new Label
         {

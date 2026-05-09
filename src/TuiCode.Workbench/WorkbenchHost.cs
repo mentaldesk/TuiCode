@@ -1,5 +1,6 @@
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Settings;
 
 namespace TuiCode.Workbench;
 
@@ -12,15 +13,18 @@ public sealed class WorkbenchHost : IDisposable
     private readonly Workbench _workbench;
     private readonly ICommandService _commands;
     private readonly IKeybindingService _keybindings;
-    private readonly IThemeService _theme;
+    private readonly IInputScopeStack _scopes;
+    private readonly ISettingsService _settings;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
+    private SettingsView? _activeSettings;
     private bool _disposed;
 
     public WorkbenchHost(
         Workbench workbench,
         ICommandService commands,
         IKeybindingService keybindings,
-        IThemeService theme,
+        IInputScopeStack scopes,
+        ISettingsService settings,
         ITimeProvider? timeProvider = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
@@ -34,14 +38,14 @@ public sealed class WorkbenchHost : IDisposable
         _workbench = workbench;
         _commands = commands;
         _keybindings = keybindings;
-        _theme = theme;
-        // No theme is loaded by default — the views' SchemeNames reference
-        // schemes that aren't registered, and TG falls back to its built-in
-        // Base scheme. A user-selected theme via settings.json will land in
-        // milestone 7 and call IThemeService.LoadTheme from here.
+        _scopes = scopes;
+        _settings = settings;
 
         RegisterDefaultCommands();
         RegisterDefaultKeybindings();
+
+        // Workbench scope is the bottom of the input stack; never popped.
+        _scopes.Push(_keybindings);
 
         _app.Keyboard.KeyDown += OnAppKeyDown;
         _keybindings.ChordChanged += OnChordChanged;
@@ -57,7 +61,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OnAppKeyDown(object? sender, Key key)
     {
-        var result = _keybindings.Handle(key);
+        var result = _scopes.Handle(key);
         if (result != KeyHandlingResult.Pass)
         {
             key.Handled = true;
@@ -66,8 +70,11 @@ public sealed class WorkbenchHost : IDisposable
 
         // When the tab strip is the logical focus, the active TextView still
         // has TG focus underneath. Intercept tab-navigation keys before they
-        // reach the editor.
-        if (_focusLevel == FocusLevel.EditorTabStrip && TryHandleTabStripKey(key))
+        // reach the editor. (Only relevant in the workbench scope; modals
+        // don't reach this path because they consume keys above.)
+        if (_activeSettings is null
+            && _focusLevel == FocusLevel.EditorTabStrip
+            && TryHandleTabStripKey(key))
             key.Handled = true;
     }
 
@@ -98,6 +105,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleSidebar, ToggleSidebar);
         _commands.Register(CommandIds.FocusEditorBody, FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, FocusEditorTabStrip);
+        _commands.Register(CommandIds.OpenSettings, OpenSettings);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
@@ -117,6 +125,7 @@ public sealed class WorkbenchHost : IDisposable
         _keybindings.Bind("Ctrl+D0", CommandIds.ToggleSidebar);
         _keybindings.Bind("Esc", CommandIds.FocusEditorBody);
         _keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
+        _keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             _keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -161,6 +170,28 @@ public sealed class WorkbenchHost : IDisposable
     private void FocusEditorAt(int zeroBasedIndex)
     {
         if (!_workbench.Editor.Group.FocusByIndex(zeroBasedIndex)) return;
+        FocusEditorBody();
+    }
+
+    private void OpenSettings()
+    {
+        if (_activeSettings is not null) return;
+
+        var view = new SettingsView(_settings);
+        view.Closed += (_, _) => CloseSettings(view);
+        _activeSettings = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.SetFocus();
+    }
+
+    private void CloseSettings(SettingsView view)
+    {
+        if (!ReferenceEquals(_activeSettings, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeSettings = null;
         FocusEditorBody();
     }
 

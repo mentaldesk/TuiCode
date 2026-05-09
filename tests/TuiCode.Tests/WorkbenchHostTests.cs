@@ -14,8 +14,9 @@ public class WorkbenchHostTests
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
-        var theme = new ThemeService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -39,8 +40,9 @@ public class WorkbenchHostTests
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
-        var theme = new ThemeService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -72,8 +74,9 @@ public class WorkbenchHostTests
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
-        var theme = new ThemeService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
@@ -112,8 +115,9 @@ public class WorkbenchHostTests
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
-        var theme = new ThemeService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
@@ -141,6 +145,42 @@ public class WorkbenchHostTests
         void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnSecondIteration;
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
+    [Fact]
+    public async Task CtrlComma_opens_the_settings_overlay()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var settingsViewWasMounted = false;
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(settingsViewWasMounted, "SettingsView did not appear in the workbench after Ctrl+,");
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("Ctrl+,", out var ctrlComma))
+                host.App.InjectKey(ctrlComma);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            settingsViewWasMounted = workbench.SubViews.OfType<TuiCode.Workbench.Settings.SettingsView>().Any();
             if (Key.TryParse("Ctrl+Q", out var ctrlQ))
                 host.App.InjectKey(ctrlQ);
         }
