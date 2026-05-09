@@ -47,12 +47,28 @@ public sealed class DefaultSettingsService : ISettingsService
             .Intersect(AllowedThemes, StringComparer.Ordinal)
             .ToArray();
 
+    public IReadOnlyList<KeybindingOverride> KeybindingOverrides => TuiCodeSettings.Keybindings;
+
+    public void SetKeybindingOverrides(IEnumerable<KeybindingOverride> overrides)
+    {
+        ArgumentNullException.ThrowIfNull(overrides);
+        TuiCodeSettings.Keybindings = overrides.ToArray();
+    }
+
     public void Save()
     {
         var diff = new JsonObject();
 
         if (!string.Equals(TuiCodeSettings.Theme, TuiCodeSettings.DefaultTheme, StringComparison.Ordinal))
             diff[$"{nameof(TuiCodeSettings)}.{nameof(TuiCodeSettings.Theme)}"] = TuiCodeSettings.Theme;
+
+        if (TuiCodeSettings.Keybindings.Length > 0)
+        {
+            var arr = new JsonArray();
+            foreach (var o in TuiCodeSettings.Keybindings)
+                arr.Add(new JsonObject { ["Key"] = o.Key, ["Command"] = o.Command });
+            diff[$"{nameof(TuiCodeSettings)}.{nameof(TuiCodeSettings.Keybindings)}"] = arr;
+        }
 
         var root = new JsonObject();
         if (diff.Count > 0)

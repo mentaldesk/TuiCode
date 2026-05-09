@@ -1,4 +1,5 @@
 using Terminal.Gui.Configuration;
+using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Configuration;
 
@@ -16,4 +17,7 @@ public static class TuiCodeSettings
 
     [ConfigurationProperty(Scope = typeof(AppSettingsScope))]
     public static string Theme { get; set; } = DefaultTheme;
+
+    [ConfigurationProperty(Scope = typeof(AppSettingsScope))]
+    public static KeybindingOverride[] Keybindings { get; set; } = Array.Empty<KeybindingOverride>();
 }

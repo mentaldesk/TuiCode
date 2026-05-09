@@ -4,18 +4,26 @@ using TuiCode.Workbench.Services;
 namespace TuiCode.Workbench.Settings;
 
 /// <summary>
-/// Modal full-screen settings overlay. Owns its own command + keybinding services so
-/// it doesn't pollute the workbench scope. Push the <see cref="Scope"/> onto the input
-/// scope stack when showing; pop it on <see cref="Closed"/>.
+/// Modal full-screen settings overlay. Owns its own command + keybinding services so it doesn't
+/// pollute the workbench scope. The owning <see cref="WorkbenchHost"/> pushes <see cref="Scope"/>
+/// onto the input scope stack when showing and pops it on <see cref="Closed"/>.
+///
+/// Categories are listed on the left, the corresponding panel renders on the right.
 /// </summary>
 public sealed class SettingsView : Window
 {
-    private static readonly string[] Categories = ["Theme"];
+    private static readonly string[] CategoryNames = ["Theme", "Keyboard Shortcuts"];
 
     private readonly ISettingsService _settings;
+    private readonly Action<IEnumerable<KeyBinding>> _applyEditedBindings;
     private readonly string _originalTheme;
+
     private readonly ListView _categoriesList;
-    private readonly ListView _themesList;
+    private readonly View _separator;
+
+    private readonly ThemePickerView _themePicker;
+    private readonly KeybindingsPickerView _keybindingsPicker;
+
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
 
@@ -24,9 +32,21 @@ public sealed class SettingsView : Window
     /// <summary>Fired after the view has finished its save-or-cancel and wants to be removed.</summary>
     public event EventHandler? Closed;
 
-    public SettingsView(ISettingsService settings)
+    public SettingsView(
+        ISettingsService settings,
+        IKeybindingService workbenchKeybindings,
+        ICommandService workbenchCommands,
+        IInputScopeStack scopes,
+        Action<IEnumerable<KeyBinding>> applyEditedBindings)
     {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(workbenchKeybindings);
+        ArgumentNullException.ThrowIfNull(workbenchCommands);
+        ArgumentNullException.ThrowIfNull(scopes);
+        ArgumentNullException.ThrowIfNull(applyEditedBindings);
+
         _settings = settings;
+        _applyEditedBindings = applyEditedBindings;
         _originalTheme = settings.Theme;
 
         Title = "Settings";
@@ -40,12 +60,14 @@ public sealed class SettingsView : Window
         {
             X = 1,
             Y = 1,
-            Width = 20,
+            Width = 22,
             Height = Dim.Fill(2),
-            Source = new ListWrapper<string>(new(Categories))
+            Source = new ListWrapper<string>(new(CategoryNames))
         };
+        _categoriesList.SelectedItem = 0;
+        _categoriesList.ValueChanged += (_, _) => SwapPanel();
 
-        var separator = new Label
+        _separator = new Label
         {
             X = Pos.Right(_categoriesList) + 1,
             Y = 1,
@@ -54,22 +76,22 @@ public sealed class SettingsView : Window
             Text = "│"
         };
 
-        var themes = settings.AvailableThemes.ToArray();
-        _themesList = new ListView
+        _themePicker = new ThemePickerView(settings)
         {
-            X = Pos.Right(separator) + 1,
+            X = Pos.Right(_separator) + 1,
             Y = 1,
             Width = Dim.Fill(2),
             Height = Dim.Fill(2),
-            Source = new ListWrapper<string>(new(themes))
+            Visible = true
         };
-        var initialIndex = Array.IndexOf(themes, _originalTheme);
-        if (initialIndex >= 0) _themesList.SelectedItem = initialIndex;
-        _themesList.ValueChanged += (_, _) =>
+
+        _keybindingsPicker = new KeybindingsPickerView(workbenchCommands, workbenchKeybindings, scopes)
         {
-            var i = _themesList.SelectedItem ?? -1;
-            if (i < 0 || i >= themes.Length) return;
-            settings.Theme = themes[i];
+            X = Pos.Right(_separator) + 1,
+            Y = 1,
+            Width = Dim.Fill(2),
+            Height = Dim.Fill(2),
+            Visible = false
         };
 
         var footer = new Label
@@ -79,13 +101,21 @@ public sealed class SettingsView : Window
             Text = "Ctrl+Enter: Save   Esc: Cancel   Ctrl+0 / Ctrl+Esc: Categories"
         };
 
-        Add(_categoriesList, separator, _themesList, footer);
+        Add(_categoriesList, _separator, _themePicker, _keybindingsPicker, footer);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
         RegisterScopeBindings();
 
         _categoriesList.SetFocus();
+    }
+
+    private void SwapPanel()
+    {
+        var i = _categoriesList.SelectedItem ?? 0;
+        var showKb = i == 1;
+        _themePicker.Visible = !showKb;
+        _keybindingsPicker.Visible = showKb;
     }
 
     private void RegisterScopeBindings()
@@ -102,6 +132,7 @@ public sealed class SettingsView : Window
 
     private void Save()
     {
+        _applyEditedBindings(_keybindingsPicker.CurrentBindings);
         _settings.Save();
         Closed?.Invoke(this, EventArgs.Empty);
     }
@@ -110,6 +141,7 @@ public sealed class SettingsView : Window
     {
         if (!string.Equals(_settings.Theme, _originalTheme, StringComparison.Ordinal))
             _settings.Theme = _originalTheme;
+        // Pending keybinding edits are dropped — they were never applied to the live trie.
         Closed?.Invoke(this, EventArgs.Empty);
     }
 }
