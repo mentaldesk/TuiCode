@@ -33,6 +33,119 @@ public class WorkbenchHostTests
         }
     }
 
+    [Fact]
+    public async Task Ctrl0_toggles_sidebar_visibility()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var theme = new ThemeService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
+
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.False(workbench.IsSidebarVisible);
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("Ctrl+D0", out var ctrl0))
+                host.App.InjectKey(ctrl0);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
+    [Fact]
+    public async Task Ctrl1_focuses_first_open_editor_tab()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var theme = new ThemeService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
+
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        var firstTab = workbench.Editor.Group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+        workbench.Editor.Group.OpenOrFocus(fs.FileInfo.New("/work/b.txt"));
+        // Active is now b. Ctrl+1 should switch to a.
+
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.Same(firstTab, workbench.Editor.Group.ActiveTab);
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("Ctrl+D1", out var ctrl1))
+                host.App.InjectKey(ctrl1);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
+    [Fact]
+    public async Task Ctrl5_with_only_two_tabs_is_a_noop()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var theme = new ThemeService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, theme);
+
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        workbench.Editor.Group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+        var second = workbench.Editor.Group.OpenOrFocus(fs.FileInfo.New("/work/b.txt"));
+        // Active is now b.
+
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.Same(second, workbench.Editor.Group.ActiveTab);
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("Ctrl+D5", out var ctrl5))
+                host.App.InjectKey(ctrl5);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),

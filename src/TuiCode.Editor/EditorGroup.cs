@@ -58,6 +58,13 @@ public sealed class EditorGroup : Tabs
     public void NextTab() => CycleTab(forward: true);
     public void PreviousTab() => CycleTab(forward: false);
 
+    public bool FocusByIndex(int index)
+    {
+        if (index < 0 || index >= _byPath.Count) return false;
+        Value = _byPath.Values.ElementAt(index);
+        return true;
+    }
+
     private void CycleTab(bool forward)
     {
         if (_byPath.Count < 2 || ActiveTab is null) return;

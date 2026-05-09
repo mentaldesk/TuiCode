@@ -41,6 +41,9 @@ public sealed class EditorTab : FrameView
         UpdateTitle();
     }
 
+    public bool FocusContent() => _textView.SetFocus();
+    public bool ContentHasFocus => _textView.HasFocus;
+
     public void Save()
     {
         var content = _textView.Text;

@@ -7,8 +7,11 @@ public static class CommandIds
     public const string CloseActiveEditor = "workbench.action.closeActiveEditor";
     public const string NextEditor = "workbench.action.nextEditor";
     public const string PreviousEditor = "workbench.action.previousEditor";
-    public const string FocusNextPart = "workbench.action.focusNextPart";
-    public const string FocusPreviousPart = "workbench.action.focusPreviousPart";
-    public const string FocusExplorer = "workbench.action.focusExplorer";
-    public const string FocusEditor = "workbench.action.focusEditor";
+
+    public const string ToggleSidebar = "workbench.action.toggleSidebar";
+    public const string FocusEditorBody = "workbench.action.focusEditorBody";
+    public const string FocusEditorTabStrip = "workbench.action.focusEditorTabStrip";
+
+    public static string FocusEditorByIndex(int oneBasedIndex) =>
+        $"workbench.action.focusEditor{oneBasedIndex}";
 }

@@ -90,6 +90,37 @@ public class EditorGroupTests
     }
 
     [Fact]
+    public void FocusByIndex_activates_the_nth_tab()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        fs.AddFile("/work/c.txt", new MockFileData("c"));
+        using var group = new EditorGroup();
+        var a = group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+        group.OpenOrFocus(fs.FileInfo.New("/work/b.txt"));
+        var c = group.OpenOrFocus(fs.FileInfo.New("/work/c.txt"));
+
+        Assert.True(group.FocusByIndex(0));
+        Assert.Same(a, group.ActiveTab);
+        Assert.True(group.FocusByIndex(2));
+        Assert.Same(c, group.ActiveTab);
+    }
+
+    [Fact]
+    public void FocusByIndex_returns_false_when_index_out_of_range()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        using var group = new EditorGroup();
+        var a = group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+
+        Assert.False(group.FocusByIndex(5));
+        Assert.False(group.FocusByIndex(-1));
+        Assert.Same(a, group.ActiveTab);
+    }
+
+    [Fact]
     public void Editing_a_tab_marks_it_dirty_and_decorates_the_title()
     {
         var fs = new MockFileSystem();
