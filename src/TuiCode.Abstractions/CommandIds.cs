@@ -18,6 +18,9 @@ public static class CommandIds
     public const string SettingsFocusCategories = "settings.action.focusCategories";
 
     public const string ShowActions = "workbench.action.showActions";
+    public const string ShowHelp = "workbench.action.showHelp";
+
+    public const string HelpClose = "help.action.close";
 
     public const string ActionsExecute = "actions.action.execute";
     public const string ActionsCancel = "actions.action.cancel";

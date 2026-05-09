@@ -1,6 +1,7 @@
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
+using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 
@@ -20,6 +21,7 @@ public sealed class WorkbenchHost : IDisposable
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
     private SettingsView? _activeSettings;
     private ActionView? _activeActions;
+    private HelpView? _activeHelp;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -110,6 +112,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
+        _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
@@ -183,6 +186,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
         keybindings.Bind("F1", CommandIds.ShowActions);
+        keybindings.Bind("Ctrl+/", CommandIds.ShowHelp);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -273,6 +277,28 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeActions = null;
+        FocusEditorBody();
+    }
+
+    private void OpenHelp()
+    {
+        if (_activeHelp is not null) return;
+
+        var view = new HelpView();
+        view.Closed += (_, _) => CloseHelp(view);
+        _activeHelp = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.SetFocus();
+    }
+
+    private void CloseHelp(HelpView view)
+    {
+        if (!ReferenceEquals(_activeHelp, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeHelp = null;
         FocusEditorBody();
     }
 
