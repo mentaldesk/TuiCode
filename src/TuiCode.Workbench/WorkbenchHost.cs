@@ -1,5 +1,6 @@
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 
@@ -18,6 +19,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly ISettingsService _settings;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
     private SettingsView? _activeSettings;
+    private ActionView? _activeActions;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -107,6 +109,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
+        _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
@@ -179,6 +182,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Esc", CommandIds.FocusEditorBody);
         keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
+        keybindings.Bind("F1", CommandIds.ShowActions);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -247,6 +251,28 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeSettings = null;
+        FocusEditorBody();
+    }
+
+    private void OpenActions()
+    {
+        if (_activeActions is not null) return;
+
+        var view = new ActionView(_commands, _keybindings, commandId => _commands.TryExecute(commandId));
+        view.Closed += (_, _) => CloseActions(view);
+        _activeActions = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusSearch();
+    }
+
+    private void CloseActions(ActionView view)
+    {
+        if (!ReferenceEquals(_activeActions, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeActions = null;
         FocusEditorBody();
     }
 

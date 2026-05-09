@@ -186,6 +186,86 @@ public class WorkbenchHostTests
         }
     }
 
+    [Fact]
+    public async Task F1_opens_the_action_overlay()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var actionViewWasMounted = false;
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(actionViewWasMounted, "ActionView did not appear in the workbench after F1");
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("F1", out var f1))
+                host.App.InjectKey(f1);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            actionViewWasMounted = workbench.SubViews.OfType<TuiCode.Workbench.Actions.ActionView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
+    [Fact]
+    public async Task Esc_closes_the_action_overlay_without_executing()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var actionViewWasGone = false;
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(actionViewWasGone, "ActionView was still mounted after Esc");
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("F1", out var f1))
+                host.App.InjectKey(f1);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            if (Key.TryParse("Esc", out var esc))
+                host.App.InjectKey(esc);
+            host.App.Iteration += OnThirdIteration;
+        }
+
+        void OnThirdIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnThirdIteration;
+            actionViewWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Actions.ActionView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),
