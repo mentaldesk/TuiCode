@@ -19,7 +19,7 @@ public sealed class HelpView : Window
         X = Pos.Center();
         Y = Pos.Center();
         Width = 58;
-        Height = 21;
+        Height = 22;
         CanFocus = true;
 
         var content = new Label
@@ -71,6 +71,7 @@ public sealed class HelpView : Window
             Row("Ctrl+E", "Command palette"),
             Row("Ctrl+,", "Settings"),
             Row("F1", "Help (this dialog)"),
+            Row("F12", "Diagnostics"),
             Row("Ctrl+Q", "Quit"));
     }
 }

@@ -19,8 +19,10 @@ public static class CommandIds
 
     public const string ShowActions = "workbench.action.showActions";
     public const string ShowHelp = "workbench.action.showHelp";
+    public const string ShowDiagnostics = "workbench.action.showDiagnostics";
 
     public const string HelpClose = "help.action.close";
+    public const string DiagnosticsClose = "diagnostics.action.close";
 
     public const string ActionsExecute = "actions.action.execute";
     public const string ActionsCancel = "actions.action.cancel";

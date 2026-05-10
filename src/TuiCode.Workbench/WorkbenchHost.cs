@@ -1,6 +1,7 @@
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
+using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
@@ -22,6 +23,7 @@ public sealed class WorkbenchHost : IDisposable
     private SettingsView? _activeSettings;
     private ActionView? _activeActions;
     private HelpView? _activeHelp;
+    private DiagnosticsView? _activeDiagnostics;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -66,6 +68,8 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OnAppKeyDown(object? sender, Key key)
     {
+        _activeDiagnostics?.UpdateLastKey(key);
+
         var result = _scopes.Handle(key);
         if (result != KeyHandlingResult.Pass)
         {
@@ -113,6 +117,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
+        _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
@@ -187,6 +192,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
         keybindings.Bind("Ctrl+E", CommandIds.ShowActions);
         keybindings.Bind("F1", CommandIds.ShowHelp);
+        keybindings.Bind("F12", CommandIds.ShowDiagnostics);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -299,6 +305,29 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeHelp = null;
+        FocusEditorBody();
+    }
+
+    private void OpenDiagnostics()
+    {
+        if (_activeDiagnostics is not null) return;
+
+        var driverName = _app.Driver?.GetName() ?? "Unknown";
+        var view = new DiagnosticsView(driverName);
+        view.Closed += (_, _) => CloseDiagnostics(view);
+        _activeDiagnostics = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.SetFocus();
+    }
+
+    private void CloseDiagnostics(DiagnosticsView view)
+    {
+        if (!ReferenceEquals(_activeDiagnostics, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeDiagnostics = null;
         FocusEditorBody();
     }
 
