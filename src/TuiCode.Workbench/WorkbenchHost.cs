@@ -313,12 +313,39 @@ public sealed class WorkbenchHost : IDisposable
         if (_activeDiagnostics is not null) return;
 
         var driverName = _app.Driver?.GetName() ?? "Unknown";
-        var view = new DiagnosticsView(driverName);
+        var kittyNegotiationStatus = GetKittyNegotiationStatus();
+        var view = new DiagnosticsView(driverName, kittyNegotiationStatus);
         view.Closed += (_, _) => CloseDiagnostics(view);
         _activeDiagnostics = view;
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.SetFocus();
+    }
+
+    private string GetKittyNegotiationStatus()
+    {
+        var flags = _app.Driver?.KittyKeyboardCapabilities?.Flags;
+        if (flags is null)
+            return "Unavailable";
+
+        if (TryConvertToUInt64(flags, out var value))
+            return value == 0 ? $"No ({flags})" : $"Yes ({flags})";
+
+        return flags.ToString() ?? "Unavailable";
+    }
+
+    private static bool TryConvertToUInt64(object value, out ulong converted)
+    {
+        try
+        {
+            converted = Convert.ToUInt64(value);
+            return true;
+        }
+        catch
+        {
+            converted = 0;
+            return false;
+        }
     }
 
     private void CloseDiagnostics(DiagnosticsView view)
