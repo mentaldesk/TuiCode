@@ -1,6 +1,5 @@
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
-using TuiCode.Editor;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Navigation;
@@ -20,14 +19,11 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IKeybindingService _keybindings;
     private readonly IInputScopeStack _scopes;
     private readonly ISettingsService _settings;
-    private readonly INavigationHistoryService _history;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
     private SettingsView? _activeSettings;
     private ActionView? _activeActions;
     private HelpView? _activeHelp;
     private GoToLineView? _activeGoToLine;
-    private EditorTab? _previouslyActiveTab;
-    private bool _suppressNextActiveTabRecord;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -36,7 +32,6 @@ public sealed class WorkbenchHost : IDisposable
         IKeybindingService keybindings,
         IInputScopeStack scopes,
         ISettingsService settings,
-        INavigationHistoryService history,
         ITimeProvider? timeProvider = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
@@ -52,13 +47,6 @@ public sealed class WorkbenchHost : IDisposable
         _keybindings = keybindings;
         _scopes = scopes;
         _settings = settings;
-        _history = history;
-
-        // Track the previously-active tab so when ActiveTabChanged fires we can
-        // record the *leaving* position (the new active tab is already in place
-        // by the time the event reaches us).
-        _previouslyActiveTab = _workbench.Editor.Group.ActiveTab;
-        _workbench.Editor.Group.ActiveTabChanged += OnActiveTabChanged;
 
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
@@ -128,8 +116,6 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
-        _commands.Register(CommandIds.NavigateBack, "Navigate back", NavigateBack);
-        _commands.Register(CommandIds.NavigateForward, "Navigate forward", NavigateForward);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
@@ -205,8 +191,6 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+E", CommandIds.ShowActions);
         keybindings.Bind("F1", CommandIds.ShowHelp);
         keybindings.Bind("Ctrl+G", CommandIds.GoToLine);
-        keybindings.Bind("Alt+CursorLeft", CommandIds.NavigateBack);
-        keybindings.Bind("Alt+CursorRight", CommandIds.NavigateForward);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -310,8 +294,6 @@ public sealed class WorkbenchHost : IDisposable
         view.Cancelled += (_, _) => CloseGoToLine(view);
         view.Submitted += (_, target) =>
         {
-            // Capture the leaving location before navigating; the dialog itself isn't a location.
-            _history.Record(LocationOf(tab));
             CloseGoToLine(view);
             tab.MoveCursor(target.Row, target.Column);
         };
@@ -331,51 +313,6 @@ public sealed class WorkbenchHost : IDisposable
         _activeGoToLine = null;
         FocusEditorBody();
     }
-
-    private void NavigateBack()
-    {
-        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
-        var current = LocationOf(tab);
-        if (_history.GoBack(current) is not { } target) return;
-        ApplyHistoryTarget(target);
-    }
-
-    private void NavigateForward()
-    {
-        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
-        var current = LocationOf(tab);
-        if (_history.GoForward(current) is not { } target) return;
-        ApplyHistoryTarget(target);
-    }
-
-    private void ApplyHistoryTarget(NavigationLocation target)
-    {
-        var matchingTab = _workbench.Editor.Group.Tabs
-            .FirstOrDefault(t => string.Equals(t.File.FullName, target.FilePath, StringComparison.Ordinal));
-        if (matchingTab is null) return; // file no longer open — drop silently
-        // Avoid re-recording a history entry for this programmatic switch.
-        _suppressNextActiveTabRecord = true;
-        _workbench.Editor.Group.Value = matchingTab;
-        matchingTab.MoveCursor(target.Row, target.Column);
-        FocusEditorBody();
-    }
-
-    private void OnActiveTabChanged(object? sender, EditorTab? newActive)
-    {
-        if (_suppressNextActiveTabRecord)
-        {
-            _suppressNextActiveTabRecord = false;
-            _previouslyActiveTab = newActive;
-            return;
-        }
-
-        if (_previouslyActiveTab is { } prev && !ReferenceEquals(prev, newActive))
-            _history.Record(LocationOf(prev));
-        _previouslyActiveTab = newActive;
-    }
-
-    private static NavigationLocation LocationOf(EditorTab tab) =>
-        new(tab.File.FullName, tab.CursorRow, tab.CursorColumn);
 
     private static int CountLines(string text)
     {
@@ -429,7 +366,6 @@ public sealed class WorkbenchHost : IDisposable
         _disposed = true;
         _app.Keyboard.KeyDown -= OnAppKeyDown;
         _keybindings.ChordChanged -= OnChordChanged;
-        _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
         _workbench.Dispose();
         _app.Dispose();
         _flowControl.Dispose();

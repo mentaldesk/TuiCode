@@ -24,8 +24,7 @@ public class SettingsFocusTransitionTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         SettingsView? overlay = null;
         var step = 0;

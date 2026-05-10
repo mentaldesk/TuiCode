@@ -80,8 +80,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 - In-editor cursor navigation (Home/End/Ctrl+arrows + Shift selection variants) comes from TG's built-in `TextView` bindings — we don't bind these ourselves.
 - `Ctrl+G` opens `GoToLineView` (1-based `line[:col]` input). `EditorTab.MoveCursor(row, col)` writes through `TextView.InsertionPoint`, which is a `Point` (Column, Row) — not an int offset. Out-of-range row/col clamp.
-- `Alt+Left` / `Alt+Right` walk `INavigationHistoryService` (browser-style back/forward). The host calls `Record(leavingLocation)` automatically on `EditorGroup.ActiveTabChanged` and explicitly before a Go-to-line jump. Programmatic switches during back/forward navigation set `_suppressNextActiveTabRecord` so the hop doesn't get re-recorded.
-- Default binding is `Alt+CursorLeft`/`Alt+CursorRight` rather than the originally-requested `Ctrl+-` because terminals frequently don't transmit `Ctrl+Minus` cleanly. Rebindable via the keybindings picker.
+- macOS gotcha: by default Mission Control's "Move left/right a space" eats `Ctrl+Left`/`Ctrl+Right` before iTerm2 sees them. Disable in System Settings → Keyboard → Keyboard Shortcuts → Mission Control. Cursor location history (back/forward) is tracked separately in [#35](https://github.com/mentaldesk/TuiCode/issues/35).
 
 ## Conventions
 

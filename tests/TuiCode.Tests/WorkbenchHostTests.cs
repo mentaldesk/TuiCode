@@ -16,8 +16,7 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -43,8 +42,7 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -78,8 +76,7 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
@@ -120,8 +117,7 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
@@ -162,8 +158,7 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         var settingsViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -199,8 +194,7 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         var actionViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -236,8 +230,7 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         var actionViewWasGone = false;
         host.App.Iteration += OnFirstIteration;
@@ -281,8 +274,7 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         var helpViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -318,8 +310,7 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        var history = new NavigationHistoryService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
 
         var helpViewWasGone = false;
         host.App.Iteration += OnFirstIteration;
@@ -352,6 +343,44 @@ public class WorkbenchHostTests
             helpViewWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Help.HelpView>().Any();
             if (Key.TryParse("Ctrl+Q", out var ctrlQ))
                 host.App.InjectKey(ctrlQ);
+        }
+    }
+
+    [Fact]
+    public async Task CtrlG_opens_the_go_to_line_overlay()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("line1\nline2\nline3\n"));
+        workbench.Editor.Group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+
+        var modalAppeared = false;
+        host.App.Iteration += OnFirst;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested);
+
+        Assert.True(modalAppeared, "GoToLineView did not mount after Ctrl+G");
+
+        void OnFirst(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirst;
+            if (Key.TryParse("Ctrl+G", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnSecond;
+        }
+
+        void OnSecond(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecond;
+            modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Navigation.GoToLineView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
     }
 

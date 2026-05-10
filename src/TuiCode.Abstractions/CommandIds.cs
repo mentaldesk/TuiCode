@@ -31,9 +31,6 @@ public static class CommandIds
     public const string GoToLineConfirm = "goToLine.action.confirm";
     public const string GoToLineCancel = "goToLine.action.cancel";
 
-    public const string NavigateBack = "workbench.action.navigateBack";
-    public const string NavigateForward = "workbench.action.navigateForward";
-
     public static string FocusEditorByIndex(int oneBasedIndex) =>
         $"workbench.action.focusEditor{oneBasedIndex}";
 }
