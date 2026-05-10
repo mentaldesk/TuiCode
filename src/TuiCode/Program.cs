@@ -14,6 +14,7 @@ services.AddSingleton<ICommandService, CommandService>();
 services.AddSingleton<IKeybindingService, KeybindingService>();
 services.AddSingleton<IInputScopeStack, InputScopeStack>();
 services.AddSingleton<ISettingsService, DefaultSettingsService>();
+services.AddSingleton<INavigationHistoryService, NavigationHistoryService>();
 
 services.AddTransient<FileExplorerView>();
 services.AddTransient<SidebarPart>();

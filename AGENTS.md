@@ -76,6 +76,13 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `WorkbenchHost` owns `IApplication`, the key intercept, and workbench-scoped command/keybinding registrations.
 - Parts (`SidebarPart` / `EditorPart` / `StatusBarPart`) are thin layout slots over feature views.
 
+## Navigation
+
+- In-editor cursor navigation (Home/End/Ctrl+arrows + Shift selection variants) comes from TG's built-in `TextView` bindings — we don't bind these ourselves.
+- `Ctrl+G` opens `GoToLineView` (1-based `line[:col]` input). `EditorTab.MoveCursor(row, col)` writes through `TextView.InsertionPoint`, which is a `Point` (Column, Row) — not an int offset. Out-of-range row/col clamp.
+- `Alt+Left` / `Alt+Right` walk `INavigationHistoryService` (browser-style back/forward). The host calls `Record(leavingLocation)` automatically on `EditorGroup.ActiveTabChanged` and explicitly before a Go-to-line jump. Programmatic switches during back/forward navigation set `_suppressNextActiveTabRecord` so the hop doesn't get re-recorded.
+- Default binding is `Alt+CursorLeft`/`Alt+CursorRight` rather than the originally-requested `Ctrl+-` because terminals frequently don't transmit `Ctrl+Minus` cleanly. Rebindable via the keybindings picker.
+
 ## Conventions
 
 - Branches: `milestone-N-<slug>` (features), `chore/<slug>` (cleanup), `fix/<slug>` (bugs).

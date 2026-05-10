@@ -19,7 +19,8 @@ public class KeybindingsCaptureTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         KeybindingsPickerView? picker = null;
         var step = 0;

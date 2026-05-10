@@ -19,6 +19,7 @@ Needs a real terminal — the app uses TG and won't render through a non-TTY pip
 - **File explorer** in the sidebar — tree-style, navigates the working directory.
 - **Tabbed editor** — multiple files open, dirty-state indicator (●), `Ctrl+S` to save.
 - **Three-level keyboard navigation** — Sidebar / EditorTabStrip / EditorBody. `Ctrl+0` toggles the sidebar; `Ctrl+1..9` jumps directly to the Nth tab and into the editor body; `Esc` returns focus to the active editor; `Ctrl+Esc` lifts focus to the tab strip.
+- **In-editor navigation** — TG's built-in word/line/document navigation (`Home`/`End`/`Ctrl+Home`/`Ctrl+End`/`Ctrl+←`/`Ctrl+→` and the `Shift+` selection variants). `Ctrl+G` opens a "Go to line:column" prompt. `Alt+←` / `Alt+→` walk a browser-style history of cursor locations across tabs.
 - **Chord-aware command/keybinding system** with a modal scope stack — settings overlay (and any future modal) gets its own input scope so workbench shortcuts don't leak through.
 - **Settings overlay** (`Ctrl+,`) — modal full-screen UI. Two categories so far:
   - **Theme** — picker with live preview, persisted to `~/.tui/TuiCode.config.json`.

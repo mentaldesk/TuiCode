@@ -16,7 +16,8 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -42,7 +43,8 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -76,7 +78,8 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
@@ -117,7 +120,8 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
@@ -158,7 +162,8 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         var settingsViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -194,7 +199,8 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         var actionViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -230,7 +236,8 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         var actionViewWasGone = false;
         host.App.Iteration += OnFirstIteration;
@@ -274,7 +281,8 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         var helpViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -310,7 +318,8 @@ public class WorkbenchHostTests
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        var history = new NavigationHistoryService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, history);
 
         var helpViewWasGone = false;
         host.App.Iteration += OnFirstIteration;
