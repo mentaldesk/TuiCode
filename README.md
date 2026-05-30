@@ -61,6 +61,12 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx
 
 The `DOTNET_ROOT` export is needed for `dotnet test` on macOS — see [AGENTS.md](AGENTS.md#tests) for why.
 
+Release publishing is Native AOT — a single native binary, no .NET runtime dependency:
+
+```bash
+dotnet publish src/TuiCode -c Release -r osx-arm64    # or linux-x64, linux-arm64, win-x64, …
+```
+
 ## Contributing
 
 Read [AGENTS.md](AGENTS.md) before opening a PR. It covers the worktree workflow, key handling, theming/configuration, the test framework gotcha, and the rest of the project conventions. It's written for AI coding agents but is just as useful for humans.

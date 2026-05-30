@@ -37,6 +37,13 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `ConfigurationManager` deserializes via source-generated `JsonTypeInfo` — only knows the types its built-in scopes use. Records, arrays, even `string[]` silently fail to load. Stick to primitives or persist to a dedicated file.
 - `Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`; fully qualify when constructing.
 
+## AOT
+
+- Release builds are Native AOT (`PublishAot=true` on `src/TuiCode`). `dotnet publish -c Release -r <rid>` emits a single native binary; `dotnet build`/`dotnet run` still JIT.
+- All `src/` projects set `IsAotCompatible=true`, so trim/AOT analyzers run on every Debug build. Don't silence warnings — fix the call site.
+- `JsonArray.Add(JsonNode)` is AOT-safe; the generic `JsonArray.Add<T>(T)` overload is not. When appending a `JsonObject`/`JsonArray`, cast to `JsonNode` to pick the right overload (see `DefaultSettingsService.SaveKeybindings`).
+- Tests still run under JIT; investigating AOT-compatible test tooling is tracked separately.
+
 ## Key handling
 
 - `IApplication.Keyboard.KeyDown` fires before view dispatch. Single subscription: `WorkbenchHost.OnAppKeyDown`. Set `Key.Handled = true` to consume.
