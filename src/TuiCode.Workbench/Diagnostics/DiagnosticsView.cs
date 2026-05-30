@@ -116,6 +116,13 @@ public sealed class DiagnosticsView : Window
             while (remaining.Length > width)
             {
                 var breakAt = remaining.LastIndexOf(' ', width);
+                if (breakAt > 0)
+                {
+                    var nextSpace = remaining.IndexOf(' ', breakAt + 1);
+                    var runEnd = nextSpace < 0 ? remaining.Length : nextSpace;
+                    if (runEnd - breakAt - 1 > width)
+                        breakAt = width;
+                }
                 if (breakAt <= 0)
                     breakAt = width;
 
