@@ -3,6 +3,7 @@ using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Help;
+using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 
@@ -23,6 +24,7 @@ public sealed class WorkbenchHost : IDisposable
     private SettingsView? _activeSettings;
     private ActionView? _activeActions;
     private HelpView? _activeHelp;
+    private GoToLineView? _activeGoToLine;
     private DiagnosticsView? _activeDiagnostics;
     private bool _disposed;
 
@@ -117,6 +119,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
+        _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
@@ -192,6 +195,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
         keybindings.Bind("Ctrl+E", CommandIds.ShowActions);
         keybindings.Bind("F1", CommandIds.ShowHelp);
+        keybindings.Bind("Ctrl+G", CommandIds.GoToLine);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
@@ -284,6 +288,46 @@ public sealed class WorkbenchHost : IDisposable
         view.Dispose();
         _activeActions = null;
         FocusEditorBody();
+    }
+
+    private void OpenGoToLine()
+    {
+        if (_activeGoToLine is not null) return;
+        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
+
+        var totalLines = CountLines(tab.Content);
+        var view = new GoToLineView(totalLines, tab.CursorRow + 1);
+        view.Cancelled += (_, _) => CloseGoToLine(view);
+        view.Submitted += (_, target) =>
+        {
+            CloseGoToLine(view);
+            tab.MoveCursor(target.Row, target.Column);
+        };
+
+        _activeGoToLine = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusInput();
+    }
+
+    private void CloseGoToLine(GoToLineView view)
+    {
+        if (!ReferenceEquals(_activeGoToLine, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeGoToLine = null;
+        FocusEditorBody();
+    }
+
+    private static int CountLines(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 1;
+        var n = 1;
+        foreach (var ch in text) if (ch == '\n') n++;
+        // A trailing newline shouldn't add a phantom empty line for the user-facing range.
+        if (text.EndsWith('\n')) n--;
+        return Math.Max(1, n);
     }
 
     private void OpenHelp()

@@ -19,7 +19,7 @@ public sealed class HelpView : Window
         X = Pos.Center();
         Y = Pos.Center();
         Width = 58;
-        Height = 22;
+        Height = 23;
         CanFocus = true;
 
         var content = new Label
@@ -62,6 +62,7 @@ public sealed class HelpView : Window
             Row("Ctrl+0", "Toggle sidebar"),
             Row("Esc", "Return to editor"),
             Row("Ctrl+Esc", "Focus tab strip"),
+            Row("Ctrl+G", "Go to line:column"),
             "",
             "Files",
             Row("Ctrl+S", "Save active file"),

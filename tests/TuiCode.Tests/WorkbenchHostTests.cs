@@ -348,6 +348,44 @@ public class WorkbenchHostTests
     }
 
     [Fact]
+    public async Task CtrlG_opens_the_go_to_line_overlay()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("line1\nline2\nline3\n"));
+        workbench.Editor.Group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+
+        var modalAppeared = false;
+        host.App.Iteration += OnFirst;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested);
+
+        Assert.True(modalAppeared, "GoToLineView did not mount after Ctrl+G");
+
+        void OnFirst(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirst;
+            if (Key.TryParse("Ctrl+G", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnSecond;
+        }
+
+        void OnSecond(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecond;
+            modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Navigation.GoToLineView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
+    [Fact]
     public async Task F12_opens_the_diagnostics_dialog()
     {
         using var workbench = BuildWorkbench();

@@ -29,6 +29,10 @@ public static class CommandIds
     public const string ActionsFocusList = "actions.action.focusList";
     public const string ActionsFocusSearch = "actions.action.focusSearch";
 
+    public const string GoToLine = "workbench.action.goToLine";
+    public const string GoToLineConfirm = "goToLine.action.confirm";
+    public const string GoToLineCancel = "goToLine.action.cancel";
+
     public static string FocusEditorByIndex(int oneBasedIndex) =>
         $"workbench.action.focusEditor{oneBasedIndex}";
 }
