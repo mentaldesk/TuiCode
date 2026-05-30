@@ -1,6 +1,7 @@
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 
@@ -381,6 +382,86 @@ public class WorkbenchHostTests
             host.App.Iteration -= OnSecond;
             modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Navigation.GoToLineView>().Any();
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
+    [Fact]
+    public async Task F12_opens_the_diagnostics_dialog()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var diagnosticsViewWasMounted = false;
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(diagnosticsViewWasMounted, "DiagnosticsView did not appear in the workbench after F12");
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("F12", out var key))
+                host.App.InjectKey(key);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            diagnosticsViewWasMounted = workbench.SubViews.OfType<DiagnosticsView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
+    [Fact]
+    public async Task Esc_closes_the_diagnostics_dialog()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var diagnosticsViewWasGone = false;
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(diagnosticsViewWasGone, "DiagnosticsView was still mounted after Esc");
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("F12", out var key))
+                host.App.InjectKey(key);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            if (Key.TryParse("Esc", out var esc))
+                host.App.InjectKey(esc);
+            host.App.Iteration += OnThirdIteration;
+        }
+
+        void OnThirdIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnThirdIteration;
+            diagnosticsViewWasGone = !workbench.SubViews.OfType<DiagnosticsView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
         }
     }
 

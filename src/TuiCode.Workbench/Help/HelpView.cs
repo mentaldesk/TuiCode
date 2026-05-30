@@ -72,6 +72,7 @@ public sealed class HelpView : Window
             Row("Ctrl+E", "Command palette"),
             Row("Ctrl+,", "Settings"),
             Row("F1", "Help (this dialog)"),
+            Row("F12", "Diagnostics"),
             Row("Ctrl+Q", "Quit"));
     }
 }

@@ -1,6 +1,7 @@
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
+using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Services;
@@ -24,6 +25,7 @@ public sealed class WorkbenchHost : IDisposable
     private ActionView? _activeActions;
     private HelpView? _activeHelp;
     private GoToLineView? _activeGoToLine;
+    private DiagnosticsView? _activeDiagnostics;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -68,6 +70,8 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OnAppKeyDown(object? sender, Key key)
     {
+        _activeDiagnostics?.UpdateLastKey(key);
+
         var result = _scopes.Handle(key);
         if (result != KeyHandlingResult.Pass)
         {
@@ -116,6 +120,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
+        _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
@@ -191,6 +196,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+E", CommandIds.ShowActions);
         keybindings.Bind("F1", CommandIds.ShowHelp);
         keybindings.Bind("Ctrl+G", CommandIds.GoToLine);
+        keybindings.Bind("F12", CommandIds.ShowDiagnostics);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -343,6 +349,56 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeHelp = null;
+        FocusEditorBody();
+    }
+
+    private void OpenDiagnostics()
+    {
+        if (_activeDiagnostics is not null) return;
+
+        var driverName = _app.Driver?.GetName() ?? "Unknown";
+        var kittyNegotiationStatus = GetKittyNegotiationStatus();
+        var view = new DiagnosticsView(driverName, kittyNegotiationStatus);
+        view.Closed += (_, _) => CloseDiagnostics(view);
+        _activeDiagnostics = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.SetFocus();
+    }
+
+    private string GetKittyNegotiationStatus()
+    {
+        var flags = _app.Driver?.KittyKeyboardCapabilities?.Flags;
+        if (flags is null)
+            return "Unavailable";
+
+        if (TryConvertToUInt64(flags, out var value))
+            return value == 0 ? $"No ({flags})" : $"Yes ({flags})";
+
+        return flags.ToString() ?? "Unavailable";
+    }
+
+    private static bool TryConvertToUInt64(object value, out ulong converted)
+    {
+        try
+        {
+            converted = Convert.ToUInt64(value);
+            return true;
+        }
+        catch
+        {
+            converted = 0;
+            return false;
+        }
+    }
+
+    private void CloseDiagnostics(DiagnosticsView view)
+    {
+        if (!ReferenceEquals(_activeDiagnostics, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeDiagnostics = null;
         FocusEditorBody();
     }
 
