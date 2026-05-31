@@ -21,7 +21,7 @@ namespace TuiCode.Workbench.TerminalIntegration;
 /// </remarks>
 public sealed class WezTermIntegration : ITerminalIntegration
 {
-    internal const int CurrentVersion = 1;
+    internal const int CurrentVersion = 2;
     internal const string ModuleFileName = "tuicode.lua";
     internal const string VersionMarker = "-- TuiCodeIntegrationVersion:";
 
@@ -104,11 +104,18 @@ public sealed class WezTermIntegration : ITerminalIntegration
     // TuiCode signals startup (TUICODE_ACTIVE=1) and pops it on shutdown (=0) so the user's normal
     // WezTerm bindings (Cmd+C for selection copy, etc.) remain untouched in their shell.
     internal const string ModuleLua = """
-        -- TuiCodeIntegrationVersion: 1
+        -- TuiCodeIntegrationVersion: 2
         local M = {}
 
         function M.apply(config)
           local wezterm = require 'wezterm'
+
+          -- WezTerm gates the kitty keyboard protocol behind this flag — without it, TG's
+          -- CSI > 1 u push request is ignored and Ctrl+non-letter chords (Ctrl+, Ctrl+E, …)
+          -- arrive as bare bytes. Other terminals (iTerm2, Ghostty, kitty) respond to the
+          -- push request unconditionally. Safe to set globally: it only opts WezTerm in to
+          -- *responding* to per-app requests; apps that don't ask see no behavior change.
+          config.enable_kitty_keyboard = true
 
           config.key_tables = config.key_tables or {}
           config.key_tables.tuicode = {
