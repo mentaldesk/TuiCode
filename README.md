@@ -21,10 +21,9 @@ Needs a real terminal — the app uses TG and won't render through a non-TTY pip
 - **Three-level keyboard navigation** — Sidebar / EditorTabStrip / EditorBody. `Ctrl+0` toggles the sidebar; `Ctrl+1..9` jumps directly to the Nth tab and into the editor body; `Esc` returns focus to the active editor; `Ctrl+Esc` lifts focus to the tab strip.
 - **In-editor navigation** — TG's built-in word/line/document navigation (`Home`/`End`/`Ctrl+Home`/`Ctrl+End`/`Ctrl+←`/`Ctrl+→` and the `Shift+` selection variants). `Ctrl+G` opens a "Go to line:column" prompt.
 - **Chord-aware command/keybinding system** with a modal scope stack — settings overlay (and any future modal) gets its own input scope so workbench shortcuts don't leak through.
-- **Settings overlay** (`Ctrl+,`) — modal full-screen UI. Three categories so far:
+- **Settings overlay** (`Ctrl+,`) — modal full-screen UI. Two categories so far:
   - **Theme** — picker with live preview, persisted to `~/.tui/TuiCode.config.json`.
   - **Keyboard Shortcuts** — Rider/VS-Code-style picker. Type to filter, Enter on a row to capture a key combination, Delete to remove. Conflicts (exact match or chord prefix collision) are flagged before the binding is accepted. Diff-style overrides persist to `~/.tui/TuiCode.keybindings.json`.
-  - **Terminal Integration** — detects the host terminal and offers a one-click install for native macOS shortcuts (currently iTerm2 only; more terminals tracked in [#40](https://github.com/mentaldesk/TuiCode/issues/40)). Same actions are available from the shell via `tuicode --install-terminal-integration` / `--uninstall…` / `--list…` / `--check…`.
 - **Three TG themes** — Default, Dark, Light. (TG's other built-ins are filtered; see [#11](https://github.com/mentaldesk/TuiCode/issues/11) for shipping our own.)
 - **Actions overlay** (`F1`) — VS Code-style command palette listing every registered command with its current keybinding(s). Type to filter, Enter to run.
 
