@@ -8,11 +8,6 @@ on:
       tag:
         description: 'Tag to release as (e.g. v0.1.0). Tag must already exist.'
         required: true
-  # Temporary dry-run gate so we can validate this workflow on the milestone-45
-  # branch before merging. Remove once we're happy.
-  pull_request:
-    paths:
-      - '.github/workflows/release.yml'
 
 permissions:
   contents: write
@@ -47,9 +42,9 @@ jobs:
             archive: zip
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
@@ -155,7 +150,7 @@ jobs:
             shasum -a 256 "${{ steps.archive.outputs.name }}" > "${{ steps.archive.outputs.name }}.sha256"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tuicode-${{ matrix.rid }}
           path: dist/*
@@ -167,7 +162,7 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
