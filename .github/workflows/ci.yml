@@ -20,3 +20,12 @@ jobs:
 
       - name: Test
         run: dotnet test TuiCode.slnx --configuration Release --no-build
+
+      - name: AOT publish
+        run: dotnet publish src/TuiCode/TuiCode.csproj -c Release -r linux-x64 -o publish
+
+      - name: AOT smoke
+        # `dotnet test` runs JIT, so AOT-only failures (missing metadata,
+        # trim-stripped paths) only surface against the published native
+        # binary. `script` allocates a pty so TG's driver initializes.
+        run: timeout 20s script -qfec './publish/TuiCode --smoke' /dev/null

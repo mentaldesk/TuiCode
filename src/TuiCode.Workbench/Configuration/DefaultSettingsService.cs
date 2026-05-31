@@ -101,7 +101,7 @@ public sealed class DefaultSettingsService : ISettingsService
 
         var arr = new JsonArray();
         foreach (var o in _keybindings)
-            arr.Add(new JsonObject { ["Key"] = o.Key, ["Command"] = o.Command });
+            arr.Add((JsonNode)new JsonObject { ["Key"] = o.Key, ["Command"] = o.Command });
 
         EnsureDirExists(_keybindingsPath);
         _fs.File.WriteAllText(_keybindingsPath, arr.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));

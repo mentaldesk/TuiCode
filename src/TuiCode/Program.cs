@@ -1,5 +1,6 @@
 using System.IO.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Terminal.Gui.App;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -33,4 +34,18 @@ using var app = provider.GetRequiredService<App>();
 var fileSystem = provider.GetRequiredService<IFileSystem>();
 app.Host.Workbench.Sidebar.Explorer.Open(
     fileSystem.DirectoryInfo.New(Environment.CurrentDirectory));
+
+// --smoke: boot through Application.Init + one render iteration, then quit.
+// CI runs this against the AOT-published binary to catch runtime failures
+// (missing metadata, trim-stripped paths) that publish-time analyzers don't.
+if (args.Contains("--smoke"))
+{
+    void QuitOnFirstIteration(object? sender, EventArgs<IApplication?> e)
+    {
+        app.Host.App.Iteration -= QuitOnFirstIteration;
+        app.Host.App.RequestStop();
+    }
+    app.Host.App.Iteration += QuitOnFirstIteration;
+}
+
 app.Run();
