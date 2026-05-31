@@ -8,6 +8,11 @@ on:
       tag:
         description: 'Tag to release as (e.g. v0.1.0). Tag must already exist.'
         required: true
+  # Temporary dry-run gate so we can validate this workflow on the milestone-45
+  # branch before merging. Remove once we're happy.
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
 
 permissions:
   contents: write
@@ -55,10 +60,16 @@ jobs:
         id: version
         shell: bash
         run: |
-          ref="${{ github.event.inputs.tag || github.ref_name }}"
-          version="${ref#v}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            version="0.0.0-pr${{ github.event.pull_request.number }}"
+            tag="dry-run"
+          else
+            ref="${{ github.event.inputs.tag || github.ref_name }}"
+            version="${ref#v}"
+            tag="$ref"
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$ref" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Publish
         shell: bash
@@ -70,7 +81,7 @@ jobs:
             -o publish
 
       - name: Import macOS signing cert
-        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes'
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -91,7 +102,7 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12"
 
       - name: Codesign macOS binary
-        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes'
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
@@ -118,7 +129,7 @@ jobs:
           echo "name=$(basename "$archive")" >> "$GITHUB_OUTPUT"
 
       - name: Notarize macOS archive
-        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && env.HAVE_NOTARY == 'yes'
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request' && env.HAVE_NOTARY == 'yes'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -136,7 +147,7 @@ jobs:
       - name: Gatekeeper smoke
         # spctl only assesses the runner's native architecture, so skip x64 on
         # arm64 hosts and vice versa.
-        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && ((matrix.rid == 'osx-arm64' && runner.arch == 'ARM64') || (matrix.rid == 'osx-x64' && runner.arch == 'X64'))
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request' && ((matrix.rid == 'osx-arm64' && runner.arch == 'ARM64') || (matrix.rid == 'osx-x64' && runner.arch == 'X64'))
         run: spctl --assess --type execute --verbose publish/TuiCode
 
       - name: Checksum
@@ -158,6 +169,7 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
