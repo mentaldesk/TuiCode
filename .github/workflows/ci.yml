@@ -19,7 +19,16 @@ jobs:
         run: dotnet build TuiCode.slnx --configuration Release
 
       - name: Test
-        run: dotnet test TuiCode.slnx --configuration Release --no-build
+        # MTP args go after `--`. xunit.v3 ships the TRX report extension.
+        run: dotnet test TuiCode.slnx --configuration Release --no-build -- --report-trx --report-trx-filename test-results.trx --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/**'
+          if-no-files-found: warn
 
       - name: AOT publish
         run: dotnet publish src/TuiCode/TuiCode.csproj -c Release -r linux-x64 -o publish
