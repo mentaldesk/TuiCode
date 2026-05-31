@@ -67,6 +67,17 @@ Release publishing is Native AOT — a single native binary, no .NET runtime dep
 dotnet publish src/TuiCode -c Release -r osx-arm64    # or linux-x64, linux-arm64, win-x64, …
 ```
 
+## Releases
+
+Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds a native single-file binary for each supported RID (`osx-arm64`, `osx-x64`, `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`), archives + checksums each, and attaches them to a draft GitHub Release. Bump the version, tag, and push:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+macOS builds are codesigned + notarized when the `APPLE_*` secrets are present (see [AGENTS.md](AGENTS.md#release-workflow)); without them the macOS tarballs ship unsigned and Gatekeeper will quarantine them on download.
+
 ## Contributing
 
 Read [AGENTS.md](AGENTS.md) before opening a PR. It covers the worktree workflow, key handling, theming/configuration, the test framework gotcha, and the rest of the project conventions. It's written for AI coding agents but is just as useful for humans.

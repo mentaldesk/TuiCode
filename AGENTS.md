@@ -89,6 +89,17 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `Ctrl+G` opens `GoToLineView` (1-based `line[:col]` input). `EditorTab.MoveCursor(row, col)` writes through `TextView.InsertionPoint`, which is a `Point` (Column, Row) — not an int offset. Out-of-range row/col clamp.
 - macOS gotcha: by default Mission Control's "Move left/right a space" eats `Ctrl+Left`/`Ctrl+Right` before iTerm2 sees them. Disable in System Settings → Keyboard → Keyboard Shortcuts → Mission Control. Cursor location history (back/forward) is tracked separately in [#35](https://github.com/mentaldesk/TuiCode/issues/35).
 
+## Release workflow
+
+- `.github/workflows/release.yml` fires on `v*` tag push (or `workflow_dispatch` with an existing tag). Matrix builds AOT single-file binaries on native runners for each RID, archives them (`.tar.gz` on Unix, `.zip` on Windows) with a `.sha256` sidecar, and uploads to a *draft* GitHub Release — review/publish manually.
+- macOS signing + notarization auto-enables when these secrets exist; without them the macOS tarballs ship unsigned (Gatekeeper quarantines on download):
+  - `APPLE_CERT_BASE64` — Developer ID Application `.p12`, base64-encoded.
+  - `APPLE_CERT_PASSWORD` — password for the `.p12`.
+  - `APPLE_SIGNING_IDENTITY` — identity string, e.g. `Developer ID Application: Name (TEAMID)`.
+  - `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` — for `notarytool submit`. App-specific password from appleid.apple.com.
+- A bare Mach-O can't carry a stapled notarization ticket, so we notarize the tarball; users pick up the ticket via the Gatekeeper cache on first launch.
+- Linux/Windows arm64 use the public `ubuntu-24.04-arm` / `windows-11-arm` runners — native, no cross-compile.
+
 ## Conventions
 
 - Branches: `milestone-N-<slug>` (features), `chore/<slug>` (cleanup), `fix/<slug>` (bugs).
