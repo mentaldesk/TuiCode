@@ -74,16 +74,18 @@ public sealed class WezTermIntegration : ITerminalIntegration
 
     public string? PostInstallInstructions =>
         $"""
-        Add this line to your wezterm.lua (anywhere after `local config = …`):
+        TuiCode deliberately doesn't edit wezterm.lua for you.
+
+        To complete the integration, add this line to your wezterm.lua (anywhere after `local config = …`):
 
             {ActivationSnippet}
 
-        TuiCode deliberately doesn't edit wezterm.lua for you.
         Then:
-          1. Reload WezTerm's config (default: Cmd+Shift+R).
+          1. Reload WezTerm's config (default: Cmd+R).
           2. Quit and relaunch TuiCode — kitty keyboard negotiation only
              happens at startup, so a config reload alone won't activate
-             the new bindings.
+             the new bindings unless you already have kitty enabled in 
+             your wezterm.lua.
         """;
 
     internal string GetConfigDirectory() =>
