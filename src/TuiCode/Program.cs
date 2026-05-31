@@ -29,6 +29,15 @@ services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();
 
+// Terminal-integration CLI: handles --install/--uninstall/--list/--check flags
+// and exits without booting the TUI. Returns null when no flag matched.
+var cli = new TerminalIntegrationCli(
+    provider.GetRequiredService<IEnumerable<ITerminalIntegration>>(),
+    Console.Out);
+var cliExit = cli.TryHandle(args);
+if (cliExit is int code)
+    return code;
+
 // Load persisted settings before resolving App — App's construction triggers
 // Application.Init() which reads ThemeManager.Theme for the first paint.
 provider.GetRequiredService<ISettingsService>().Load();
@@ -52,3 +61,4 @@ if (args.Contains("--smoke"))
 }
 
 app.Run();
+return 0;
