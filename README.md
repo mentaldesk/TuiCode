@@ -1,6 +1,6 @@
 # TuiCode
 
-A minimalist terminal code editor for working over SSH. Borrows VS Code's user-facing model (file explorer + tabbed editors + commands + keybindings + themes) without the Electron weight — runs as a single .NET process on top of [Terminal.Gui v2](https://gui-cs.github.io/Terminal.Gui/).
+A minimalist terminal code editor inspired by VS Code.
 
 ## Installing
 
