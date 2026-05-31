@@ -6,6 +6,7 @@ internal sealed class FakeEnvironment : IEnvironment
 {
     private readonly Dictionary<string, string?> _vars = new(StringComparer.Ordinal);
     private readonly Dictionary<Environment.SpecialFolder, string> _folders = new();
+    private bool _isMacOS = true;
 
     public FakeEnvironment Set(string name, string? value)
     {
@@ -19,9 +20,17 @@ internal sealed class FakeEnvironment : IEnvironment
         return this;
     }
 
+    public FakeEnvironment SetIsMacOS(bool isMacOS)
+    {
+        _isMacOS = isMacOS;
+        return this;
+    }
+
     public string? GetEnvironmentVariable(string name) =>
         _vars.TryGetValue(name, out var v) ? v : null;
 
     public string GetFolderPath(Environment.SpecialFolder folder) =>
         _folders.TryGetValue(folder, out var p) ? p : string.Empty;
+
+    public bool IsMacOS => _isMacOS;
 }

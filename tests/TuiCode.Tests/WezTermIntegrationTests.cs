@@ -48,6 +48,16 @@ public class WezTermIntegrationTests
     }
 
     [Fact]
+    public void IsAvailable_returns_false_on_non_macOS_even_under_WezTerm()
+    {
+        // Module's bindings (Cmd+letter, Opt+arrow word movement) are macOS-specific. WezTerm
+        // runs on Linux/Windows too — we don't want to install macOS shortcuts there.
+        var (integration, _, env) = Build(termProgram: "WezTerm");
+        env.SetIsMacOS(false);
+        Assert.False(integration.IsAvailable());
+    }
+
+    [Fact]
     public void GetStatus_returns_NotInstalled_when_module_missing()
     {
         var (integration, _, _) = Build();

@@ -42,6 +42,7 @@ public sealed class WezTermIntegration : ITerminalIntegration
     public string DisplayName => "WezTerm";
 
     public bool IsAvailable() =>
+        _environment.IsMacOS &&
         string.Equals(
             _environment.GetEnvironmentVariable("TERM_PROGRAM"),
             "WezTerm",
