@@ -7,6 +7,7 @@ using TuiCode.Workbench;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
+using TuiCode.Workbench.TerminalIntegration;
 
 var services = new ServiceCollection();
 
@@ -15,6 +16,8 @@ services.AddSingleton<ICommandService, CommandService>();
 services.AddSingleton<IKeybindingService, KeybindingService>();
 services.AddSingleton<IInputScopeStack, InputScopeStack>();
 services.AddSingleton<ISettingsService, DefaultSettingsService>();
+services.AddSingleton<IEnvironment, SystemEnvironment>();
+services.AddSingleton<ITerminalIntegration, Iterm2Integration>();
 
 services.AddTransient<FileExplorerView>();
 services.AddTransient<SidebarPart>();
@@ -25,6 +28,15 @@ services.AddTransient<WorkbenchHost>();
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();
+
+// Terminal-integration CLI: handles --install/--uninstall/--list/--check flags
+// and exits without booting the TUI. Returns null when no flag matched.
+var cli = new TerminalIntegrationCli(
+    provider.GetRequiredService<IEnumerable<ITerminalIntegration>>(),
+    Console.Out);
+var cliExit = cli.TryHandle(args);
+if (cliExit is int code)
+    return code;
 
 // Load persisted settings before resolving App — App's construction triggers
 // Application.Init() which reads ThemeManager.Theme for the first paint.
@@ -49,3 +61,4 @@ if (args.Contains("--smoke"))
 }
 
 app.Run();
+return 0;
