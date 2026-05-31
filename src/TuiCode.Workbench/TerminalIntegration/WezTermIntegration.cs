@@ -79,7 +79,11 @@ public sealed class WezTermIntegration : ITerminalIntegration
             {ActivationSnippet}
 
         TuiCode deliberately doesn't edit wezterm.lua for you.
-        Reload WezTerm's config (default: Cmd+Shift+R) once added.
+        Then:
+          1. Reload WezTerm's config (default: Cmd+Shift+R).
+          2. Quit and relaunch TuiCode — kitty keyboard negotiation only
+             happens at startup, so a config reload alone won't activate
+             the new bindings.
         """;
 
     internal string GetConfigDirectory() =>
