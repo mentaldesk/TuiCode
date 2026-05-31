@@ -48,6 +48,12 @@ public sealed class WorkbenchHost : IDisposable
         _flowControl = new TerminalFlowControl();
         _app = Application.Create(timeProvider ?? new SystemTimeProvider());
         _app.Init(driverName: null!);
+
+        // OSC 1337 SetUserVar TUICODE_ACTIVE=1 (base64 "MQ=="). WezTerm's tuicode.lua keys off
+        // this user-var to activate its key table only while TuiCode runs; other terminals
+        // strip the unknown OSC silently. Unconditional — no detection needed.
+        Console.Out.Write("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MQ==\x07");
+        Console.Out.Flush();
         _workbench = workbench;
         _commands = commands;
         _keybindings = keybindings;
@@ -432,6 +438,10 @@ public sealed class WorkbenchHost : IDisposable
         _keybindings.ChordChanged -= OnChordChanged;
         _workbench.Dispose();
         _app.Dispose();
+        // Tell WezTerm the tuicode key table should be popped; matches the startup activation.
+        // Emitted post-Dispose so it reaches the live terminal after TG restores it.
+        Console.Out.Write("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MA==\x07");
+        Console.Out.Flush();
         _flowControl.Dispose();
     }
 

@@ -18,6 +18,7 @@ services.AddSingleton<IInputScopeStack, InputScopeStack>();
 services.AddSingleton<ISettingsService, DefaultSettingsService>();
 services.AddSingleton<IEnvironment, SystemEnvironment>();
 services.AddSingleton<ITerminalIntegration, Iterm2Integration>();
+services.AddSingleton<ITerminalIntegration, WezTermIntegration>();
 
 services.AddTransient<FileExplorerView>();
 services.AddTransient<SidebarPart>();

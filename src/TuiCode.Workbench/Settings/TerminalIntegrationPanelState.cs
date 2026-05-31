@@ -65,7 +65,7 @@ internal sealed record TerminalIntegrationPanelState(
         {
             $"Detected terminal: {detected.DisplayName}",
             "",
-            "Installs a dynamic profile that maps macOS shortcuts",
+            "Installs terminal config that maps macOS shortcuts",
             "(Cmd+C/V/X/Z/A, Cmd+arrows, …) onto the key sequences",
             "TuiCode understands.",
             "",
@@ -78,6 +78,15 @@ internal sealed record TerminalIntegrationPanelState(
                 "Status: Installed (older version) — update to pick up the latest shortcuts.",
             _ => $"Status: {status}",
         });
+
+        if (status != TerminalIntegrationStatus.NotInstalled &&
+            detected.PostInstallInstructions is { } notes)
+        {
+            lines.Add("");
+            foreach (var line in notes.Split('\n'))
+                lines.Add(line.TrimEnd('\r'));
+        }
+
         return lines;
     }
 

@@ -73,6 +73,11 @@ public sealed class TerminalIntegrationCli
 
         integration.Install();
         _out.WriteLine($"Installed {integration.DisplayName} integration.");
+        if (integration.PostInstallInstructions is { } notes)
+        {
+            _out.WriteLine();
+            _out.WriteLine(notes);
+        }
         return 0;
     }
 
