@@ -7,6 +7,7 @@ using TuiCode.Workbench;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
+using TuiCode.Workbench.TerminalIntegration;
 
 var services = new ServiceCollection();
 
@@ -15,6 +16,8 @@ services.AddSingleton<ICommandService, CommandService>();
 services.AddSingleton<IKeybindingService, KeybindingService>();
 services.AddSingleton<IInputScopeStack, InputScopeStack>();
 services.AddSingleton<ISettingsService, DefaultSettingsService>();
+services.AddSingleton<IEnvironment, SystemEnvironment>();
+services.AddSingleton<ITerminalIntegration, Iterm2Integration>();
 
 services.AddTransient<FileExplorerView>();
 services.AddTransient<SidebarPart>();
