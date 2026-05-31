@@ -12,7 +12,7 @@ namespace TuiCode.Workbench.Settings;
 /// </summary>
 public sealed class SettingsView : Window
 {
-    private static readonly string[] CategoryNames = ["Theme", "Keyboard Shortcuts"];
+    private static readonly string[] CategoryNames = ["Theme", "Keyboard Shortcuts", "Terminal Integration"];
 
     private readonly ISettingsService _settings;
     private readonly Action<IEnumerable<KeyBinding>> _applyEditedBindings;
@@ -23,6 +23,7 @@ public sealed class SettingsView : Window
 
     private readonly ThemePickerView _themePicker;
     private readonly KeybindingsPickerView _keybindingsPicker;
+    private readonly TerminalIntegrationPickerView _terminalIntegrationPicker;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
@@ -37,13 +38,17 @@ public sealed class SettingsView : Window
         IKeybindingService workbenchKeybindings,
         ICommandService workbenchCommands,
         IInputScopeStack scopes,
-        Action<IEnumerable<KeyBinding>> applyEditedBindings)
+        Action<IEnumerable<KeyBinding>> applyEditedBindings,
+        IEnumerable<ITerminalIntegration> terminalIntegrations,
+        IEnvironment environment)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(workbenchKeybindings);
         ArgumentNullException.ThrowIfNull(workbenchCommands);
         ArgumentNullException.ThrowIfNull(scopes);
         ArgumentNullException.ThrowIfNull(applyEditedBindings);
+        ArgumentNullException.ThrowIfNull(terminalIntegrations);
+        ArgumentNullException.ThrowIfNull(environment);
 
         _settings = settings;
         _applyEditedBindings = applyEditedBindings;
@@ -99,6 +104,15 @@ public sealed class SettingsView : Window
             Visible = false
         };
 
+        _terminalIntegrationPicker = new TerminalIntegrationPickerView(terminalIntegrations, environment)
+        {
+            X = Pos.Right(_separator) + 1,
+            Y = 1,
+            Width = Dim.Fill(2),
+            Height = Dim.Fill(2),
+            Visible = false
+        };
+
         var footer = new Label
         {
             X = 1,
@@ -106,7 +120,7 @@ public sealed class SettingsView : Window
             Text = "Ctrl+Enter: Save   Esc: Cancel   Ctrl+0 / Ctrl+Esc: Categories"
         };
 
-        Add(_categoriesList, _separator, _themePicker, _keybindingsPicker, footer);
+        Add(_categoriesList, _separator, _themePicker, _keybindingsPicker, _terminalIntegrationPicker, footer);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -118,9 +132,9 @@ public sealed class SettingsView : Window
     private void SwapPanel()
     {
         var i = _categoriesList.SelectedItem ?? 0;
-        var showKb = i == 1;
-        _themePicker.Visible = !showKb;
-        _keybindingsPicker.Visible = showKb;
+        _themePicker.Visible = i == 0;
+        _keybindingsPicker.Visible = i == 1;
+        _terminalIntegrationPicker.Visible = i == 2;
     }
 
     private void OnSettingsKey(object? sender, Key key)
@@ -138,7 +152,8 @@ public sealed class SettingsView : Window
 
     private bool PanelHasFocus() =>
         (_themePicker.Visible && HasFocusDescendant(_themePicker))
-        || (_keybindingsPicker.Visible && HasFocusDescendant(_keybindingsPicker));
+        || (_keybindingsPicker.Visible && HasFocusDescendant(_keybindingsPicker))
+        || (_terminalIntegrationPicker.Visible && HasFocusDescendant(_terminalIntegrationPicker));
 
     private static bool HasFocusDescendant(View v)
     {
@@ -154,6 +169,7 @@ public sealed class SettingsView : Window
     private bool FocusActivePanel()
     {
         if (_keybindingsPicker.Visible) return _keybindingsPicker.FocusContent();
+        if (_terminalIntegrationPicker.Visible) return _terminalIntegrationPicker.FocusContent();
         return _themePicker.FocusContent();
     }
 

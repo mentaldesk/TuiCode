@@ -69,6 +69,13 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `TerminalFlowControl` runs `stty -ixon -ixoff` on Unix so `Ctrl+S` reaches the app. Restored on dispose. Mandatory.
 - Three-modifier combos require a capable terminal: iTerm2 / Ghostty / WezTerm / Alacritty on macOS; kitty / foot / GNOME Terminal with `modifyOtherKeys` on Linux. macOS Terminal.app strips them and collapses `Ctrl+Shift+letter` onto `Ctrl+letter`.
 
+## Terminal integration
+
+- Each supported emulator (currently just iTerm2) implements `ITerminalIntegration` and is registered as a singleton in `Program.cs`. Consumers (Settings UI + CLI) inject `IEnumerable<ITerminalIntegration>` straight from DI — no separate registry.
+- `Iterm2Integration` writes `~/Library/Application Support/iTerm2/DynamicProfiles/tuicode.json` via `IFileSystem`; tests pass `MockFileSystem` + `FakeEnvironment`. Stable GUID; staleness detection via a `TuiCodeIntegrationVersion` marker inside the JSON. `Bound Hosts` lists both `&TuiCode*` and `&tuicode*` so the brew-renamed binary still matches (iTerm2's matcher is case-sensitive).
+- CLI surface in `TerminalIntegrationCli` — `--install-/--uninstall-/--list-/--check-terminal-integration[=id]`. `Program.cs` runs it before TG init and exits on hit; the `--check` flag returns 0/1/2 for installed/stale/not-installed.
+- Settings UI: `TerminalIntegrationPickerView` shows only the *detected* terminal (per #59). Buttons act on `ITerminalIntegration` directly — no staging via `ISettingsService.Save`, because the write is to an external app's config, not a TuiCode setting. Rendering decisions are split into the pure `TerminalIntegrationPanelState.Build` so unit tests don't need TG.
+
 ## Settings & persistence
 
 - `DefaultSettingsService` is a thin wrapper around TG's static `ConfigurationManager` / `ThemeManager`. `Theme` getter/setter delegate straight to `ThemeManager.Theme`; no backing field. `Load()` calls `ConfigurationManager.Enable(ConfigLocations.All)`; `Program.cs` invokes it on the resolved service before constructing the App, so `ThemeManager.Theme` is in place when `Application.Init()` paints. `ThemeManager.Theme` is a TG-native `[ConfigurationProperty(Scope = typeof(SettingsScope))]` and persists as `{"Theme": "Dark"}` at the JSON root of `~/.tui/TuiCode.config.json`. `Save()` writes that format manually (TG exposes no save API). Picker exposes only `Default` / `Dark` / `Light` (other TG built-ins look bad).

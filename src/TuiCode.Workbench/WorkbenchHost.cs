@@ -20,6 +20,8 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IKeybindingService _keybindings;
     private readonly IInputScopeStack _scopes;
     private readonly ISettingsService _settings;
+    private readonly IReadOnlyList<ITerminalIntegration> _terminalIntegrations;
+    private readonly IEnvironment _environment;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
     private SettingsView? _activeSettings;
     private ActionView? _activeActions;
@@ -34,6 +36,8 @@ public sealed class WorkbenchHost : IDisposable
         IKeybindingService keybindings,
         IInputScopeStack scopes,
         ISettingsService settings,
+        IEnumerable<ITerminalIntegration>? terminalIntegrations = null,
+        IEnvironment? environment = null,
         ITimeProvider? timeProvider = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
@@ -49,6 +53,8 @@ public sealed class WorkbenchHost : IDisposable
         _keybindings = keybindings;
         _scopes = scopes;
         _settings = settings;
+        _terminalIntegrations = (terminalIntegrations ?? Array.Empty<ITerminalIntegration>()).ToArray();
+        _environment = environment ?? new SystemEnvironment();
 
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
@@ -248,7 +254,9 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeSettings is not null) return;
 
-        var view = new SettingsView(_settings, _keybindings, _commands, _scopes, ApplyEditedBindings);
+        var view = new SettingsView(
+            _settings, _keybindings, _commands, _scopes, ApplyEditedBindings,
+            _terminalIntegrations, _environment);
         view.Closed += (_, _) => CloseSettings(view);
         _activeSettings = view;
         _workbench.Add(view);
