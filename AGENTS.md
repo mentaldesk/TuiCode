@@ -42,7 +42,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Release builds are Native AOT (`PublishAot=true` on `src/TuiCode`). `dotnet publish -c Release -r <rid>` emits a single native binary; `dotnet build`/`dotnet run` still JIT.
 - All `src/` projects set `IsAotCompatible=true`, so trim/AOT analyzers run on every Debug build. Don't silence warnings — fix the call site.
 - `JsonArray.Add(JsonNode)` is AOT-safe; the generic `JsonArray.Add<T>(T)` overload is not. When appending a `JsonObject`/`JsonArray`, cast to `JsonNode` to pick the right overload (see `DefaultSettingsService.SaveKeybindings`).
-- Tests still run under JIT; investigating AOT-compatible test tooling is tracked separately.
+- `dotnet test` runs JIT, so AOT-only failures (missing metadata, trim-stripped paths) won't surface there. CI's `AOT smoke` step publishes the binary and runs `./TuiCode --smoke` under a pty — boots through `Application.Init`, renders one iteration, exits 0. Add anything reflection-heavy with that smoke in mind; an AOT-compatible test framework is tracked separately.
 
 ## Key handling
 
