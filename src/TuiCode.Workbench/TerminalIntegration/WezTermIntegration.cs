@@ -5,30 +5,28 @@ using TuiCode.Abstractions;
 namespace TuiCode.Workbench.TerminalIntegration;
 
 /// <summary>
-/// WezTerm integration via a Lua module dropped at <c>~/.config/wezterm/tuicode.lua</c> plus a
-/// fenced <c>-- TuiCode begin / -- TuiCode end</c> block appended to the user's
-/// <c>wezterm.lua</c> that requires it.
+/// WezTerm integration via a Lua module dropped at <c>~/.config/wezterm/tuicode.lua</c>. We
+/// deliberately do not touch the user's <c>wezterm.lua</c> — WezTerm users tend to treat that
+/// file as personal config, so the user wires the module in themselves with a one-liner. The
+/// snippet is surfaced in the Settings panel and printed by the CLI installer.
 /// </summary>
 /// <remarks>
-/// <para>WezTerm has no auto-watched profiles directory like iTerm2's, so we edit the user's
-/// config directly. The fenced block makes the edit reversible and visible; the
-/// <c>--install-terminal-integration</c> CLI flag and Settings UI button are the explicit consent
-/// points. Idempotent: re-running replaces the block in place.</para>
 /// <para>The Lua module defines a <c>tuicode</c> key table that sends the same byte sequences as
 /// the iTerm2 dynamic profile (Cmd+letter → control bytes, Cmd/Opt+arrows → CSI sequences) and
 /// listens for the <c>TUICODE_ACTIVE</c> user-var to push/pop the table per pane. TuiCode emits
 /// the user-var via OSC 1337 from <see cref="WorkbenchHost"/> on startup and shutdown.</para>
-/// <para>Status is determined by a <c>TuiCodeIntegrationVersion</c> marker comment in both the
-/// module and the fenced block; mismatch or missing marker is <see cref="TerminalIntegrationStatus.Stale"/>.</para>
+/// <para>Status reflects the module file only — we can't reliably detect whether the user has
+/// required it from <c>wezterm.lua</c> (they might do it conditionally or via another module).
+/// A <c>TuiCodeIntegrationVersion</c> marker comment drives staleness detection.</para>
 /// </remarks>
 public sealed class WezTermIntegration : ITerminalIntegration
 {
     internal const int CurrentVersion = 1;
     internal const string ModuleFileName = "tuicode.lua";
-    internal const string ConfigFileName = "wezterm.lua";
-    internal const string BeginMarker = "-- TuiCode begin";
-    internal const string EndMarker = "-- TuiCode end";
     internal const string VersionMarker = "-- TuiCodeIntegrationVersion:";
+
+    /// <summary>The one-liner the user pastes into their <c>wezterm.lua</c> to activate the module.</summary>
+    public const string ActivationSnippet = "require 'tuicode'.apply(config)";
 
     private readonly IFileSystem _fileSystem;
     private readonly IEnvironment _environment;
@@ -52,35 +50,19 @@ public sealed class WezTermIntegration : ITerminalIntegration
     public TerminalIntegrationStatus GetStatus()
     {
         var modulePath = GetModulePath();
-        var configPath = GetConfigPath();
-
-        if (!_fileSystem.File.Exists(modulePath) || !_fileSystem.File.Exists(configPath))
-            return TerminalIntegrationStatus.NotInstalled;
-
-        var configText = _fileSystem.File.ReadAllText(configPath);
-        var block = ExtractBlock(configText);
-        if (block is null)
+        if (!_fileSystem.File.Exists(modulePath))
             return TerminalIntegrationStatus.NotInstalled;
 
         var moduleText = _fileSystem.File.ReadAllText(modulePath);
-        if (TryReadVersion(moduleText) == CurrentVersion && TryReadVersion(block) == CurrentVersion)
-            return TerminalIntegrationStatus.Installed;
-
-        return TerminalIntegrationStatus.Stale;
+        return TryReadVersion(moduleText) == CurrentVersion
+            ? TerminalIntegrationStatus.Installed
+            : TerminalIntegrationStatus.Stale;
     }
 
     public void Install()
     {
-        var dir = GetConfigDirectory();
-        _fileSystem.Directory.CreateDirectory(dir);
+        _fileSystem.Directory.CreateDirectory(GetConfigDirectory());
         _fileSystem.File.WriteAllText(GetModulePath(), ModuleLua, Encoding.UTF8);
-
-        var configPath = GetConfigPath();
-        var existing = _fileSystem.File.Exists(configPath)
-            ? _fileSystem.File.ReadAllText(configPath)
-            : string.Empty;
-
-        _fileSystem.File.WriteAllText(configPath, ReplaceOrAppendBlock(existing), Encoding.UTF8);
     }
 
     public void Uninstall()
@@ -88,16 +70,17 @@ public sealed class WezTermIntegration : ITerminalIntegration
         var modulePath = GetModulePath();
         if (_fileSystem.File.Exists(modulePath))
             _fileSystem.File.Delete(modulePath);
-
-        var configPath = GetConfigPath();
-        if (!_fileSystem.File.Exists(configPath)) return;
-
-        var stripped = StripBlock(_fileSystem.File.ReadAllText(configPath));
-        if (string.IsNullOrWhiteSpace(stripped))
-            _fileSystem.File.Delete(configPath);
-        else
-            _fileSystem.File.WriteAllText(configPath, stripped, Encoding.UTF8);
     }
+
+    public string? PostInstallInstructions =>
+        $"""
+        Add this line to your wezterm.lua (anywhere after `local config = …`):
+
+            {ActivationSnippet}
+
+        TuiCode deliberately doesn't edit wezterm.lua for you.
+        Reload WezTerm's config (default: Cmd+Shift+R) once added.
+        """;
 
     internal string GetConfigDirectory() =>
         _fileSystem.Path.Combine(
@@ -105,8 +88,6 @@ public sealed class WezTermIntegration : ITerminalIntegration
             ".config", "wezterm");
 
     internal string GetModulePath() => _fileSystem.Path.Combine(GetConfigDirectory(), ModuleFileName);
-
-    internal string GetConfigPath() => _fileSystem.Path.Combine(GetConfigDirectory(), ConfigFileName);
 
     private static int? TryReadVersion(string text)
     {
@@ -117,53 +98,6 @@ public sealed class WezTermIntegration : ITerminalIntegration
         var rest = text[(idx + VersionMarker.Length)..lineEnd].Trim();
         return int.TryParse(rest, out var v) ? v : null;
     }
-
-    private static string? ExtractBlock(string text)
-    {
-        var start = text.IndexOf(BeginMarker, StringComparison.Ordinal);
-        if (start < 0) return null;
-        var end = text.IndexOf(EndMarker, start, StringComparison.Ordinal);
-        if (end < 0) return null;
-        return text[start..(end + EndMarker.Length)];
-    }
-
-    private static string ReplaceOrAppendBlock(string existing)
-    {
-        var start = existing.IndexOf(BeginMarker, StringComparison.Ordinal);
-        if (start >= 0)
-        {
-            var end = existing.IndexOf(EndMarker, start, StringComparison.Ordinal);
-            if (end >= 0)
-                return existing[..start] + FencedBlock + existing[(end + EndMarker.Length)..];
-        }
-
-        if (existing.Length == 0) return FencedBlock + "\n";
-        var sep = existing.EndsWith('\n') ? "\n" : "\n\n";
-        return existing + sep + FencedBlock + "\n";
-    }
-
-    private static string StripBlock(string existing)
-    {
-        var start = existing.IndexOf(BeginMarker, StringComparison.Ordinal);
-        if (start < 0) return existing;
-        var end = existing.IndexOf(EndMarker, start, StringComparison.Ordinal);
-        if (end < 0) return existing;
-        var after = end + EndMarker.Length;
-        if (after < existing.Length && existing[after] == '\n') after++;
-        var before = start;
-        if (before > 0 && existing[before - 1] == '\n') before--;
-        return existing[..before] + existing[after..];
-    }
-
-    // The block requires the embedded module by name. WezTerm auto-adds `~/.config/wezterm` to
-    // the Lua path, so `require 'tuicode'` resolves to tuicode.lua next to wezterm.lua.
-    internal const string FencedBlock = """
-        -- TuiCode begin
-        -- TuiCodeIntegrationVersion: 1
-        local ok_tuicode, tuicode = pcall(require, 'tuicode')
-        if ok_tuicode then tuicode.apply(config) end
-        -- TuiCode end
-        """;
 
     // Mirrors the iTerm2 Keyboard Map: Cmd+letter → control bytes, Cmd/Opt+arrows + Shift variants
     // → CSI sequences TextView understands. The user-var-changed handler activates the table when

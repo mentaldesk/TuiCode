@@ -78,6 +78,15 @@ internal sealed record TerminalIntegrationPanelState(
                 "Status: Installed (older version) — update to pick up the latest shortcuts.",
             _ => $"Status: {status}",
         });
+
+        if (status != TerminalIntegrationStatus.NotInstalled &&
+            detected.PostInstallInstructions is { } notes)
+        {
+            lines.Add("");
+            foreach (var line in notes.Split('\n'))
+                lines.Add(line.TrimEnd('\r'));
+        }
+
         return lines;
     }
 

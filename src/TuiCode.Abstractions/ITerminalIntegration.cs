@@ -48,4 +48,11 @@ public interface ITerminalIntegration
 
     /// <summary>Remove the integration from the user's terminal config. No-op if not installed.</summary>
     void Uninstall();
+
+    /// <summary>
+    /// Optional per-integration follow-up the user has to do after <see cref="Install"/> — typically
+    /// a one-liner to paste into a config file we deliberately don't edit. Surfaced verbatim in the
+    /// Settings panel and printed by the CLI installer. Null when no manual step is required.
+    /// </summary>
+    string? PostInstallInstructions => null;
 }

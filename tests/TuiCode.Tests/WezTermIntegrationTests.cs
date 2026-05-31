@@ -8,7 +8,6 @@ public class WezTermIntegrationTests
     private const string Home = "/Users/test";
     private static readonly string ConfigDir = Path.Combine(Home, ".config", "wezterm");
     private static readonly string ModulePath = Path.Combine(ConfigDir, "tuicode.lua");
-    private static readonly string ConfigPath = Path.Combine(ConfigDir, "wezterm.lua");
 
     private static (WezTermIntegration integration, MockFileSystem fs, FakeEnvironment env) Build(
         string? termProgram = "WezTerm")
@@ -49,25 +48,20 @@ public class WezTermIntegrationTests
     }
 
     [Fact]
-    public void GetStatus_returns_NotInstalled_when_nothing_present()
+    public void GetStatus_returns_NotInstalled_when_module_missing()
     {
         var (integration, _, _) = Build();
         Assert.Equal(TerminalIntegrationStatus.NotInstalled, integration.GetStatus());
     }
 
     [Fact]
-    public void Install_writes_module_and_creates_wezterm_lua_when_absent()
+    public void Install_writes_module_into_wezterm_config_dir()
     {
         var (integration, fs, _) = Build();
 
         integration.Install();
 
         Assert.True(fs.File.Exists(ModulePath));
-        Assert.True(fs.File.Exists(ConfigPath));
-        var config = fs.File.ReadAllText(ConfigPath);
-        Assert.Contains("-- TuiCode begin", config);
-        Assert.Contains("-- TuiCode end", config);
-        Assert.Contains("require", config);
     }
 
     [Fact]
@@ -81,38 +75,18 @@ public class WezTermIntegrationTests
     }
 
     [Fact]
-    public void Install_appends_block_when_wezterm_lua_exists_without_it()
+    public void Install_does_not_touch_wezterm_lua()
     {
+        // The user's wezterm.lua is treated as personal config. The activation snippet is
+        // surfaced via PostInstallInstructions for the user to paste themselves.
         var (integration, fs, _) = Build();
+        var existingConfig = "local wezterm = require 'wezterm'\nreturn {}\n";
         fs.Directory.CreateDirectory(ConfigDir);
-        var preexisting = "local wezterm = require 'wezterm'\nlocal config = wezterm.config_builder()\nreturn config\n";
-        fs.File.WriteAllText(ConfigPath, preexisting);
+        fs.File.WriteAllText(Path.Combine(ConfigDir, "wezterm.lua"), existingConfig);
 
         integration.Install();
 
-        var after = fs.File.ReadAllText(ConfigPath);
-        Assert.StartsWith(preexisting, after);
-        Assert.Contains("-- TuiCode begin", after);
-        Assert.Contains("-- TuiCode end", after);
-    }
-
-    [Fact]
-    public void Install_replaces_existing_block_in_place_without_duplicating()
-    {
-        var (integration, fs, _) = Build();
-        fs.Directory.CreateDirectory(ConfigDir);
-        fs.File.WriteAllText(
-            ConfigPath,
-            "local config = {}\n-- TuiCode begin\n-- old contents\n-- TuiCode end\nreturn config\n");
-
-        integration.Install();
-
-        var after = fs.File.ReadAllText(ConfigPath);
-        Assert.Equal(1, CountOccurrences(after, "-- TuiCode begin"));
-        Assert.Equal(1, CountOccurrences(after, "-- TuiCode end"));
-        Assert.DoesNotContain("-- old contents", after);
-        Assert.Contains("local config = {}", after);
-        Assert.Contains("return config", after);
+        Assert.Equal(existingConfig, fs.File.ReadAllText(Path.Combine(ConfigDir, "wezterm.lua")));
     }
 
     [Fact]
@@ -121,14 +95,11 @@ public class WezTermIntegrationTests
         var (integration, fs, _) = Build();
 
         integration.Install();
-        var firstModule = fs.File.ReadAllText(ModulePath);
-        var firstConfig = fs.File.ReadAllText(ConfigPath);
+        var first = fs.File.ReadAllText(ModulePath);
         integration.Install();
-        var secondModule = fs.File.ReadAllText(ModulePath);
-        var secondConfig = fs.File.ReadAllText(ConfigPath);
+        var second = fs.File.ReadAllText(ModulePath);
 
-        Assert.Equal(firstModule, secondModule);
-        Assert.Equal(firstConfig, secondConfig);
+        Assert.Equal(first, second);
     }
 
     [Fact]
@@ -142,68 +113,48 @@ public class WezTermIntegrationTests
     }
 
     [Fact]
-    public void GetStatus_returns_Stale_when_block_version_marker_is_older()
+    public void GetStatus_returns_Stale_when_version_marker_is_older()
     {
         var (integration, fs, _) = Build();
         fs.Directory.CreateDirectory(ConfigDir);
-        fs.File.WriteAllText(ModulePath, "-- TuiCodeIntegrationVersion: 1\n");
-        fs.File.WriteAllText(
-            ConfigPath,
-            "-- TuiCode begin\n-- TuiCodeIntegrationVersion: 0\n-- TuiCode end\n");
+        fs.File.WriteAllText(ModulePath, "-- TuiCodeIntegrationVersion: 0\nreturn {}\n");
 
         Assert.Equal(TerminalIntegrationStatus.Stale, integration.GetStatus());
     }
 
     [Fact]
-    public void GetStatus_returns_Stale_when_version_marker_missing()
+    public void GetStatus_returns_Stale_when_version_marker_is_missing()
     {
         var (integration, fs, _) = Build();
         fs.Directory.CreateDirectory(ConfigDir);
-        fs.File.WriteAllText(ModulePath, "-- module without version\n");
-        fs.File.WriteAllText(ConfigPath, "-- TuiCode begin\n-- TuiCode end\n");
+        fs.File.WriteAllText(ModulePath, "-- no marker here\nreturn {}\n");
 
         Assert.Equal(TerminalIntegrationStatus.Stale, integration.GetStatus());
     }
 
     [Fact]
-    public void GetStatus_returns_NotInstalled_when_block_missing_from_config()
-    {
-        var (integration, fs, _) = Build();
-        fs.Directory.CreateDirectory(ConfigDir);
-        fs.File.WriteAllText(ModulePath, "-- TuiCodeIntegrationVersion: 1\n");
-        fs.File.WriteAllText(ConfigPath, "local config = {}\nreturn config\n");
-
-        Assert.Equal(TerminalIntegrationStatus.NotInstalled, integration.GetStatus());
-    }
-
-    [Fact]
-    public void Uninstall_removes_module_file_and_strips_block_leaving_rest_intact()
-    {
-        var (integration, fs, _) = Build();
-        fs.Directory.CreateDirectory(ConfigDir);
-        var preexisting = "local wezterm = require 'wezterm'\nlocal config = wezterm.config_builder()\nreturn config\n";
-        fs.File.WriteAllText(ConfigPath, preexisting);
-        integration.Install();
-
-        integration.Uninstall();
-
-        Assert.False(fs.File.Exists(ModulePath));
-        var after = fs.File.ReadAllText(ConfigPath);
-        Assert.DoesNotContain("-- TuiCode begin", after);
-        Assert.DoesNotContain("-- TuiCode end", after);
-        Assert.Contains("wezterm.config_builder()", after);
-        Assert.Contains("return config", after);
-    }
-
-    [Fact]
-    public void Uninstall_deletes_wezterm_lua_when_only_block_was_present()
+    public void Uninstall_removes_module_file()
     {
         var (integration, fs, _) = Build();
         integration.Install();
 
         integration.Uninstall();
 
-        Assert.False(fs.File.Exists(ConfigPath));
+        Assert.False(fs.File.Exists(ModulePath));
+    }
+
+    [Fact]
+    public void Uninstall_does_not_touch_wezterm_lua()
+    {
+        var (integration, fs, _) = Build();
+        var existingConfig = "local wezterm = require 'wezterm'\nreturn {}\n";
+        fs.Directory.CreateDirectory(ConfigDir);
+        fs.File.WriteAllText(Path.Combine(ConfigDir, "wezterm.lua"), existingConfig);
+        integration.Install();
+
+        integration.Uninstall();
+
+        Assert.Equal(existingConfig, fs.File.ReadAllText(Path.Combine(ConfigDir, "wezterm.lua")));
     }
 
     [Fact]
@@ -216,15 +167,12 @@ public class WezTermIntegrationTests
         Assert.Null(ex);
     }
 
-    private static int CountOccurrences(string haystack, string needle)
+    [Fact]
+    public void PostInstallInstructions_contains_activation_snippet()
     {
-        var count = 0;
-        var idx = 0;
-        while ((idx = haystack.IndexOf(needle, idx, StringComparison.Ordinal)) >= 0)
-        {
-            count++;
-            idx += needle.Length;
-        }
-        return count;
+        var (integration, _, _) = Build();
+        Assert.NotNull(integration.PostInstallInstructions);
+        Assert.Contains(WezTermIntegration.ActivationSnippet, integration.PostInstallInstructions);
+        Assert.Contains("wezterm.lua", integration.PostInstallInstructions);
     }
 }
