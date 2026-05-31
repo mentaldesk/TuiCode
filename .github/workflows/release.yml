@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release as (e.g. v0.1.0). Tag must already exist.'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ${{ matrix.runner }}
+    # Surface secret presence (not value) for `if:` gating; signing/notarization
+    # auto-enable once these are configured. Empty string when unset.
+    env:
+      HAVE_SIGNING_CERT: ${{ secrets.APPLE_CERT_BASE64 != '' && 'yes' || '' }}
+      HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' && 'yes' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: osx-arm64
+            runner: macos-14
+            archive: tar.gz
+          - rid: linux-x64
+            runner: ubuntu-latest
+            archive: tar.gz
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            archive: tar.gz
+          - rid: win-x64
+            runner: windows-latest
+            archive: zip
+          - rid: win-arm64
+            runner: windows-11-arm
+            archive: zip
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            version="0.0.0-pr${{ github.event.pull_request.number }}"
+            tag="dry-run"
+          else
+            ref="${{ github.event.inputs.tag || github.ref_name }}"
+            version="${ref#v}"
+            tag="$ref"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish src/TuiCode/TuiCode.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            -p:Version=${{ steps.version.outputs.version }} \
+            -o publish
+
+      - name: Import macOS signing cert
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
+        env:
+          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          # Throwaway keychain so the cert is gone when the runner is recycled.
+          KEYCHAIN_PATH="$RUNNER_TEMP/sign.keychain-db"
+          KEYCHAIN_PW=$(uuidgen)
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          echo "$APPLE_CERT_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Codesign macOS binary
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          # `--options runtime` is required for notarization.
+          codesign --force --timestamp --options runtime \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            publish/TuiCode
+          codesign --verify --strict --verbose=2 publish/TuiCode
+
+      - name: Archive
+        id: archive
+        shell: bash
+        run: |
+          name="tuicode-${{ steps.version.outputs.version }}-${{ matrix.rid }}"
+          mkdir -p dist
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            archive="dist/${name}.zip"
+            (cd publish && 7z a -tzip "../${archive}" TuiCode.exe)
+          else
+            archive="dist/${name}.tar.gz"
+            tar -czf "$archive" -C publish TuiCode
+          fi
+          echo "path=$archive" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$archive")" >> "$GITHUB_OUTPUT"
+
+      - name: Notarize macOS archive
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request' && env.HAVE_NOTARY == 'yes'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          # notarytool accepts zip/tar of a signed binary. A bare Mach-O can't
+          # carry a stapled ticket, so users get it via the Gatekeeper cache on
+          # first launch instead.
+          xcrun notarytool submit "${{ steps.archive.outputs.path }}" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+
+      - name: Gatekeeper smoke
+        if: matrix.rid == 'osx-arm64' && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
+        run: spctl --assess --type execute --verbose publish/TuiCode
+
+      - name: Checksum
+        shell: bash
+        run: |
+          cd dist
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${{ steps.archive.outputs.name }}" > "${{ steps.archive.outputs.name }}.sha256"
+          else
+            shasum -a 256 "${{ steps.archive.outputs.name }}" > "${{ steps.archive.outputs.name }}.sha256"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tuicode-${{ matrix.rid }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" \
+              --generate-notes \
+              --draft
+          fi
