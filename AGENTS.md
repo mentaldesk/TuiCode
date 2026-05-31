@@ -99,6 +99,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
   - `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` — for `notarytool submit`. App-specific password from appleid.apple.com.
 - A bare Mach-O can't carry a stapled notarization ticket, so we notarize the tarball; users pick up the ticket via the Gatekeeper cache on first launch.
 - Linux/Windows arm64 use the public `ubuntu-24.04-arm` / `windows-11-arm` runners — native, no cross-compile.
+- `.github/workflows/bump-tap.yml` listens for `release: published` and opens a PR against [mentaldesk/homebrew-tap](https://github.com/mentaldesk/homebrew-tap) bumping `version` + the three `sha256` lines in `Formula/tuicode.rb`. Uses `HOMEBREW_TAP_TOKEN` (a fine-grained PAT scoped to the tap with Contents + Pull requests write). Prereleases skipped. Re-runs idempotently force-push the same `bump-tuicode-X.Y.Z` branch.
 
 ## Conventions
 

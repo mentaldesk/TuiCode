@@ -42,20 +42,18 @@ flowchart TD
     Upload --> Release["Release job:<br/>gh release create v0.1.0 dist/* --draft"]
     Release --> Draft[("Draft release<br/>on GitHub")]
 
-    Draft -.->|human review| Publish2["gh release edit v0.1.0<br/>--draft=false"]
-    Publish2 --> Public[("Published release<br/>(assets downloadable)")]
+    Draft -->|human review:<br/>gh release edit --draft=false| Public[("Published release<br/>assets downloadable")]
 
-    Public -.->|auto-bump| TapPR["PR to homebrew-tap<br/>updating url + sha256"]
-    TapPR -.->|merge| Brew[("brew install<br/>mentaldesk/tap/tuicode")]
+    Public -->|release: published event| Bump["bump-tap workflow<br/>.github/workflows/bump-tap.yml"]
+    Bump -->|opens PR| TapPR["PR to homebrew-tap<br/>bumps version + 3× sha256"]
+    TapPR -->|human merges| Brew[("brew install<br/>mentaldesk/tap/tuicode")]
 
     style Draft fill:#fffae0
     style Public fill:#e0ffe0
     style Brew fill:#e0ffe0
-    style TapPR stroke-dasharray: 5 5
-    style Publish2 stroke-dasharray: 5 5
 ```
 
-Dashed boxes are manual / pending automation (see [#41](https://github.com/mentaldesk/TuiCode/issues/41) for the formula bump step).
+The release pipeline gates on two human decisions: pushing the tag (shipping intent) and publishing the draft (assets-look-good check). Everything else is automated.
 
 ### Two ways to fire the workflow
 
@@ -83,6 +81,22 @@ Use the dispatch path when a tag is already pushed but a build step failed (e.g.
 
 Once you publish (`gh release edit <tag> --draft=false` or "Publish release" in the GitHub UI), the asset URLs become unauthenticated-downloadable. **This is what unblocks `brew install`** — draft assets 404 for unauthenticated clients.
 
+### Auto-bumping the Homebrew formula
+
+A second workflow, `.github/workflows/bump-tap.yml`, listens for `release: published` events. When you flip a draft to published (or create a non-draft release), it:
+
+```mermaid
+flowchart LR
+    Pub[("release:published event")] --> Fetch["Fetch 3× .sha256 sidecars<br/>from the release"]
+    Fetch --> Edit["Rewrite Formula/tuicode.rb<br/>version + 3× sha256<br/>(structure-aware regex)"]
+    Edit --> Push["Push branch<br/>bump-tuicode-X.Y.Z<br/>(force-with-lease)"]
+    Push --> PR["Open / update PR<br/>against mentaldesk/homebrew-tap"]
+```
+
+The PR is opened with a fine-grained PAT (`HOMEBREW_TAP_TOKEN`) scoped only to `mentaldesk/homebrew-tap` with Contents + Pull requests write. Tap CI runs `brew style`, `brew audit --strict --online`, and a full install/test/uninstall cycle on macOS arm64, Linux x64, and Linux arm64. Merge once it goes green.
+
+Prereleases (e.g. `v0.1.0-rc1`) are skipped — the `prerelease` flag on the release event short-circuits the job.
+
 ### Cutting a release
 
 ```bash
@@ -98,6 +112,8 @@ gh release view v0.1.0 --web
 
 # publish
 gh release edit v0.1.0 --draft=false
+
+# (auto) bump-tap fires; review + merge the resulting PR on mentaldesk/homebrew-tap
 ```
 
 ### Distribution
@@ -112,6 +128,6 @@ flowchart LR
     Release -.->|future: #44| Linux["apt / AUR / Flatpak"]
 ```
 
-The Homebrew formula points at the release tarball URL with a pinned SHA256. When a new release lands, the formula needs to be bumped (today: manually; planned: an auto-bump PR job in this workflow — see [#41](https://github.com/mentaldesk/TuiCode/issues/41)).
+The Homebrew formula points at the release tarball URL with a pinned SHA256. The bump-tap workflow (above) opens the PR; you just review and merge.
 
 For the iTerm2 dynamic profile that ships alongside `tuicode` on macOS, see the formula's `caveats` block and [#40](https://github.com/mentaldesk/TuiCode/issues/40) for the umbrella story across other terminal emulators.
