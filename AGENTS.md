@@ -1,6 +1,14 @@
 # Agent guide
 
-Project-specific gotchas not obvious from the source. `CLAUDE.md` symlinks to this file. Update this and `README.md` in the same PR as the change that motivates it.
+Project-specific gotchas not obvious from the source. `CLAUDE.md` symlinks to this file.
+
+## Audience and scope
+
+This file is for **contributors** (human or AI). `README.md` is for **users**. Keep them disjoint:
+
+> When a PR adds a user-visible feature (a CLI flag, a new Settings section, a keybinding), update `README.md` only if it changes one of: what the app is, how to install it, how to run it, or where to get help. Otherwise the change belongs in `AGENTS.md`.
+
+Per-feature catalogues ("what works today") don't go in the README — they belong in the issue tracker and release notes. Workflow-level docs (branches, PRs, releases) live in `CONTRIBUTING.md`.
 
 ## Quick start
 
