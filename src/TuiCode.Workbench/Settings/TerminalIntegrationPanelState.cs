@@ -65,7 +65,7 @@ internal sealed record TerminalIntegrationPanelState(
         {
             $"Detected terminal: {detected.DisplayName}",
             "",
-            "Installs a dynamic profile that maps macOS shortcuts",
+            "Installs terminal config that maps macOS shortcuts",
             "(Cmd+C/V/X/Z/A, Cmd+arrows, …) onto the key sequences",
             "TuiCode understands.",
             "",
