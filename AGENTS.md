@@ -91,7 +91,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 ## Release workflow
 
-- `.github/workflows/release.yml` fires on `v*` tag push (or `workflow_dispatch` with an existing tag). Matrix builds AOT single-file binaries on native runners for each RID, archives them (`.tar.gz` on Unix, `.zip` on Windows) with a `.sha256` sidecar, and uploads to a *draft* GitHub Release — review/publish manually.
+- `.github/workflows/release.yml` fires on `v*` tag push (or `workflow_dispatch` with an existing tag). Matrix builds AOT single-file binaries on native runners for each RID (Apple Silicon only on macOS — Intel Macs are EOL), archives them (`.tar.gz` on Unix, `.zip` on Windows) with a `.sha256` sidecar, and uploads to a *draft* GitHub Release — review/publish manually.
 - macOS signing + notarization auto-enables when these secrets exist; without them the macOS tarballs ship unsigned (Gatekeeper quarantines on download):
   - `APPLE_CERT_BASE64` — Developer ID Application `.p12`, base64-encoded.
   - `APPLE_CERT_PASSWORD` — password for the `.p12`.

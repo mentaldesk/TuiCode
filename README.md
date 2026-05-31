@@ -69,7 +69,7 @@ dotnet publish src/TuiCode -c Release -r osx-arm64    # or linux-x64, linux-arm6
 
 ## Releases
 
-Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds a native single-file binary for each supported RID (`osx-arm64`, `osx-x64`, `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`), archives + checksums each, and attaches them to a draft GitHub Release. Bump the version, tag, and push:
+Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds a native single-file binary for each supported RID (`osx-arm64`, `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`), archives + checksums each, and attaches them to a draft GitHub Release. Bump the version, tag, and push:
 
 ```bash
 git tag v0.1.0
