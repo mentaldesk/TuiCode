@@ -21,7 +21,7 @@ jobs:
     env:
       HAVE_SIGNING_CERT: ${{ secrets.APPLE_CERT_BASE64 != '' && 'yes' || '' }}
       HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' && 'yes' || '' }}
-      HAVE_WINDOWS_SIGNING: ${{ secrets.WINDOWS_PFX_BASE64 != '' && secrets.WINDOWS_PFX_PASSWORD != '' && 'yes' || '' }}
+      HAVE_WINDOWS_SIGNING: ${{ secrets.SIGNPATH_API_TOKEN != '' && 'yes' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -73,42 +73,36 @@ jobs:
             -p:Version=${{ steps.version.outputs.version }} \
             -o publish
 
-      - name: Sign Windows binary
+      # SignPath signs in the cloud: upload the unsigned binary as a GitHub
+      # artifact, then the action below submits a signing request that pulls
+      # that artifact, signs it, and returns the signed binary. No key material
+      # ever touches the runner. The unsigned artifact is named `unsigned-*` so
+      # the release job's `tuicode-*` download filter never ships it.
+      - name: Upload unsigned Windows binary
+        id: unsigned
         if: startsWith(matrix.rid, 'win-') && env.HAVE_WINDOWS_SIGNING == 'yes' && github.event_name != 'pull_request'
-        shell: pwsh
-        env:
-          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
-          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
-        run: |
-          # Materialize the .pfx from the base64 secret into the runner temp dir
-          # (deleted at the end; the runner is recycled regardless).
-          $pfx = Join-Path $env:RUNNER_TEMP 'sign.pfx'
-          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64))
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-${{ matrix.rid }}
+          path: publish/TuiCode.exe
+          if-no-files-found: error
+          retention-days: 1
 
-          # signtool ships with the Windows SDK but isn't on PATH. Pick the
-          # newest one available; signtool's own architecture is irrelevant —
-          # it can sign any PE, so the same lookup works on windows-11-arm.
-          $signtool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
-              -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match '\\(x64|arm64|x86)\\signtool\.exe$' } |
-            Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $signtool) { throw 'signtool.exe not found in Windows Kits' }
-          Write-Host "Using $($signtool.FullName)"
-
-          # Always RFC3161-timestamp so signatures stay valid past cert expiry.
-          & $signtool.FullName sign `
-            /f $pfx `
-            /p $env:WINDOWS_PFX_PASSWORD `
-            /fd SHA256 `
-            /tr http://timestamp.digicert.com `
-            /td SHA256 `
-            publish/TuiCode.exe
-          if ($LASTEXITCODE -ne 0) { throw "signtool sign failed ($LASTEXITCODE)" }
-
-          & $signtool.FullName verify /pa publish/TuiCode.exe
-          if ($LASTEXITCODE -ne 0) { throw "signtool verify failed ($LASTEXITCODE)" }
-
-          Remove-Item $pfx -Force
+      - name: Sign Windows binary via SignPath
+        if: startsWith(matrix.rid, 'win-') && env.HAVE_WINDOWS_SIGNING == 'yes' && github.event_name != 'pull_request'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # SignPath returns the signed binary; drop it back over the unsigned
+          # one so Archive (next) zips the signed TuiCode.exe.
+          output-artifact-directory: publish
+          wait-for-completion-timeout-in-seconds: 1800
 
       - name: Import macOS signing cert
         if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
@@ -203,6 +197,8 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
+          # Only the release zips — never the `unsigned-*` signing inputs.
+          pattern: tuicode-*
           merge-multiple: true
 
       - name: Resolve tag
