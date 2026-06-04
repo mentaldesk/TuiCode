@@ -386,6 +386,90 @@ public class WorkbenchHostTests
     }
 
     [Fact]
+    public async Task CtrlO_opens_the_open_dialog()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work/src");
+        fs.AddFile("/work/readme.md", new MockFileData("# hi"));
+        workbench.Sidebar.Explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        var modalAppeared = false;
+        host.App.Iteration += OnFirst;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(modalAppeared, "OpenView did not mount after Ctrl+O");
+
+        void OnFirst(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirst;
+            if (Key.TryParse("Ctrl+O", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnSecond;
+        }
+
+        void OnSecond(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecond;
+            modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Navigation.OpenView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
+    [Fact]
+    public async Task Esc_closes_the_open_dialog()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/readme.md", new MockFileData("# hi"));
+        workbench.Sidebar.Explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        var modalWasGone = false;
+        host.App.Iteration += OnFirst;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(modalWasGone, "OpenView was still mounted after Esc");
+
+        void OnFirst(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirst;
+            if (Key.TryParse("Ctrl+O", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnSecond;
+        }
+
+        void OnSecond(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecond;
+            if (Key.TryParse("Esc", out var esc)) host.App.InjectKey(esc);
+            host.App.Iteration += OnThird;
+        }
+
+        void OnThird(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnThird;
+            modalWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Navigation.OpenView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
+    [Fact]
     public async Task F12_opens_the_diagnostics_dialog()
     {
         using var workbench = BuildWorkbench();

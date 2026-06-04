@@ -28,6 +28,7 @@ public sealed class WorkbenchHost : IDisposable
     private HelpView? _activeHelp;
     private GoToLineView? _activeGoToLine;
     private DiagnosticsView? _activeDiagnostics;
+    private OpenView? _activeOpen;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -129,6 +130,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
+        _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
@@ -205,6 +207,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Esc", CommandIds.FocusEditorBody);
         keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
+        keybindings.Bind("Ctrl+O", CommandIds.Open);
         keybindings.Bind("Ctrl+E", CommandIds.ShowActions);
         keybindings.Bind("F1", CommandIds.ShowHelp);
         keybindings.Bind("Ctrl+G", CommandIds.GoToLine);
@@ -331,6 +334,41 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeGoToLine = null;
+        FocusEditorBody();
+    }
+
+    private void OpenFileOrFolder()
+    {
+        if (_activeOpen is not null) return;
+        // Start browsing from the current workspace root; no root means nothing's open yet.
+        if (_workbench.Sidebar.Explorer.Root is not { } root) return;
+
+        var view = new OpenView(root);
+        view.Cancelled += (_, _) => CloseOpen(view);
+        view.FileSelected += (_, file) =>
+        {
+            CloseOpen(view);
+            _workbench.OpenFile(file);
+        };
+        view.FolderSelected += (_, dir) =>
+        {
+            CloseOpen(view);
+            _workbench.OpenFolder(dir);
+        };
+
+        _activeOpen = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusList();
+    }
+
+    private void CloseOpen(OpenView view)
+    {
+        if (!ReferenceEquals(_activeOpen, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeOpen = null;
         FocusEditorBody();
     }
 

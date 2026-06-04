@@ -53,6 +53,18 @@ public sealed class EditorGroup : Tabs
         Value = tabs.Where(t => t != tab).ElementAt(nextIndex);
     }
 
+    /// <summary>Close every open tab — used when switching workspace folders.</summary>
+    public void CloseAll()
+    {
+        foreach (var tab in _byPath.Values.ToList())
+        {
+            Remove(tab);
+            tab.Dispose();
+        }
+        _byPath.Clear();
+        Value = null;
+    }
+
     public void SaveActive() => ActiveTab?.Save();
 
     public void NextTab() => CycleTab(forward: true);

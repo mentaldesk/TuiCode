@@ -67,6 +67,22 @@ public class EditorGroupTests
     }
 
     [Fact]
+    public void CloseAll_removes_every_tab_and_clears_the_active_tab()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        using var group = new EditorGroup();
+        group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+        group.OpenOrFocus(fs.FileInfo.New("/work/b.txt"));
+
+        group.CloseAll();
+
+        Assert.Empty(group.Tabs);
+        Assert.Null(group.ActiveTab);
+    }
+
+    [Fact]
     public void NextTab_and_PreviousTab_cycle_through_open_tabs()
     {
         var fs = new MockFileSystem();

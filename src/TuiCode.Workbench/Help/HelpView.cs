@@ -65,6 +65,7 @@ public sealed class HelpView : Window
             Row("Ctrl+G", "Go to line:column"),
             "",
             "Files",
+            Row("Ctrl+O", "Open file or folder"),
             Row("Ctrl+S", "Save active file"),
             Row("Ctrl+W", "Close active tab"),
             "",
