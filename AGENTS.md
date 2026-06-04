@@ -119,6 +119,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 ## Conventions
 
+- **Work in a dedicated worktree, never on `main` or the primary checkout directly** — `git worktree add ../TuiCode-<slug> -b <branch> origin/main`, one branch per change. This is mandatory for agents: it's what lets multiple sessions/agents work the repo concurrently without colliding. (Human contributors are free to use their own workflow.)
 - Branches: `milestone-N-<slug>` (features), `chore/<slug>` (cleanup), `fix/<slug>` (bugs).
 - Commit subject: short imperative; body explains *why*.
 - Comment only for non-obvious WHY (hidden constraint, TG quirk, workaround). Codebase runs comment-light.
