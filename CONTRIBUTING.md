@@ -7,7 +7,7 @@ For code-level conventions (branch names, key handling, AOT gotchas, test framew
 - Features: `milestone-N-<slug>` (where `N` matches the milestone issue).
 - Cleanup: `chore/<slug>`.
 - Bug fixes: `fix/<slug>`.
-- One branch per change, one worktree per branch (`git worktree add ../TuiCode-<slug> -b <branch> origin/main`).
+- One branch per change. (Agents must additionally use a dedicated worktree per branch — see [AGENTS.md § Conventions](AGENTS.md#conventions).)
 - Open PRs as **drafts** until you've verified them locally; mark ready when you're confident.
 - Commit subjects: short imperative ("Add X", not "Added X"). Body explains *why*, not *what*.
 
