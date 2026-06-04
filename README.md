@@ -10,6 +10,13 @@ macOS / Linux via [Homebrew](https://brew.sh):
 brew install mentaldesk/tap/tuicode
 ```
 
+Windows via [Scoop](https://scoop.sh):
+
+```powershell
+scoop bucket add mentaldesk https://github.com/mentaldesk/scoop-bucket
+scoop install tuicode
+```
+
 Other channels (winget, Linux packagers) are tracked in [#43](https://github.com/mentaldesk/TuiCode/issues/43) and [#44](https://github.com/mentaldesk/TuiCode/issues/44). In the meantime, pre-built single-file binaries for every supported RID are attached to each [GitHub Release](https://github.com/mentaldesk/TuiCode/releases).
 
 ## Running
