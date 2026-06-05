@@ -4,6 +4,9 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 {
     public event EventHandler<IFileInfo>? FileActivated;
 
+    /// <summary>The directory the tree is currently rooted at, or null before the first <see cref="Open"/>.</summary>
+    public IDirectoryInfo? Root { get; private set; }
+
     public FileExplorerView()
     {
         TreeBuilder = new FileSystemTreeBuilder { IncludeFiles = true };
@@ -25,6 +28,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 
     public void Open(IDirectoryInfo root)
     {
+        Root = root;
         ClearObjects();
         AddObject(root);
         Expand(root);

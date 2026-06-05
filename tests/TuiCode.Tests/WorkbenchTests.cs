@@ -40,6 +40,38 @@ public class WorkbenchTests
         Assert.True(workbench.IsSidebarVisible);
     }
 
+    [Fact]
+    public void OpenFile_opens_the_file_in_the_editor_and_makes_it_active()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("hello"));
+        using var workbench = Build();
+        var file = fs.FileInfo.New("/work/a.txt");
+
+        workbench.OpenFile(file);
+
+        Assert.Equal(file.FullName, workbench.Editor.Group.ActiveTab!.File.FullName);
+    }
+
+    [Fact]
+    public void OpenFolder_closes_open_editors_and_re_roots_the_explorer()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/old/a.txt", new MockFileData("a"));
+        fs.AddDirectory("/new");
+        using var workbench = Build();
+        var newDir = fs.DirectoryInfo.New("/new");
+        workbench.Sidebar.Explorer.Open(fs.DirectoryInfo.New("/old"));
+        workbench.OpenFile(fs.FileInfo.New("/old/a.txt"));
+        Assert.NotEmpty(workbench.Editor.Group.Tabs);
+
+        workbench.OpenFolder(newDir);
+
+        Assert.Empty(workbench.Editor.Group.Tabs);
+        Assert.Null(workbench.Editor.Group.ActiveTab);
+        Assert.Equal(newDir.FullName, workbench.Sidebar.Explorer.Root!.FullName);
+    }
+
     private static Workbench.Workbench Build() =>
         new(
             new SidebarPart(new FileExplorerView()),

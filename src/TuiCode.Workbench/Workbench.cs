@@ -36,15 +36,29 @@ public sealed class Workbench : Window
 
         Add(sidebar, editor, statusBar);
 
-        sidebar.Explorer.FileActivated += (_, file) =>
-        {
-            var tab = editor.Open(file);
-            tab.FocusContent();
-            statusBar.SetMessage(file.FullName);
-        };
+        sidebar.Explorer.FileActivated += (_, file) => OpenFile(file);
 
         editor.FileSaved += (_, file) =>
             statusBar.SetMessage($"Saved: {file.FullName}");
+    }
+
+    /// <summary>Open a file in the editor and focus it. Shared by the explorer and the Open dialog.</summary>
+    public void OpenFile(IFileInfo file)
+    {
+        var tab = Editor.Open(file);
+        tab.FocusContent();
+        StatusBar.SetMessage(file.FullName);
+    }
+
+    /// <summary>
+    /// Switch the workspace to <paramref name="directory"/>: close every open editor and re-root
+    /// the explorer. Mirrors VS Code's "Open Folder" — the previous workspace is discarded.
+    /// </summary>
+    public void OpenFolder(IDirectoryInfo directory)
+    {
+        Editor.Group.CloseAll();
+        Sidebar.Explorer.Open(directory);
+        StatusBar.SetMessage($"Opened folder: {directory.FullName}");
     }
 
     public void SetSidebarVisible(bool visible)

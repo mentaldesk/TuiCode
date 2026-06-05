@@ -12,6 +12,7 @@ public static class CommandIds
     public const string FocusEditorBody = "workbench.action.focusEditorBody";
     public const string FocusEditorTabStrip = "workbench.action.focusEditorTabStrip";
     public const string OpenSettings = "workbench.action.openSettings";
+    public const string Open = "workbench.action.open";
 
     public const string SettingsSave = "settings.action.save";
     public const string SettingsCancel = "settings.action.cancel";
@@ -32,6 +33,9 @@ public static class CommandIds
     public const string GoToLine = "workbench.action.goToLine";
     public const string GoToLineConfirm = "goToLine.action.confirm";
     public const string GoToLineCancel = "goToLine.action.cancel";
+
+    public const string OpenConfirm = "open.action.confirm";
+    public const string OpenCancel = "open.action.cancel";
 
     public static string FocusEditorByIndex(int oneBasedIndex) =>
         $"workbench.action.focusEditor{oneBasedIndex}";
