@@ -7,7 +7,8 @@ using TuiCode.Workbench.Services;
 
 namespace TuiCode.Tests;
 
-public class WorkbenchHostTests
+// Boots a TG Application via WorkbenchHost — process-global TG state, must be serialised (issue #77).
+public class WorkbenchHostTests : StaticConfigurationTest
 {
     [Fact]
     public async Task CtrlQ_quits_the_workbench()

@@ -33,6 +33,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Test names: `Method_describes_what_should_happen` (snake_case after the method).
 - File-touching tests: `MockFileSystem` from `System.IO.Abstractions.TestingHelpers`. No temp dirs.
 - UI / focus / key bugs: drive via TG input injection (`host.App.InjectKey` from the `Iteration` event). See `WorkbenchHostTests.CtrlQ_quits_the_workbench` and TG's [testing docs](https://gui-cs.github.io/Terminal.Gui/docs/drivers.html#testing-and-input-injection). Faster than asking a human to retry manual steps.
+- Any test that boots a TG `Application` (news up a `WorkbenchHost`, renders a View) or mutates `ThemeManager`/`ConfigurationManager` must derive from `StaticConfigurationTest` (issue #77). Those TG statics are process-global; under xUnit's default parallelism a theme mutation in one test makes TG's render path throw `KeyNotFoundException` in another. The base joins the serialised `StaticConfiguration` collection and snapshot/restores the theme. Most tests don't touch TG statics and stay parallel — only opt the ones that do into the base. A reentrancy guard in the base throws if the serialisation ever breaks, so a forgotten `[CollectionDefinition]` rename fails loudly instead of flaking.
 
 ## Terminal.Gui v2
 

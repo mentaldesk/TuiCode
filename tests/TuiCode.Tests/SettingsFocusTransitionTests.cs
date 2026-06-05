@@ -14,7 +14,8 @@ namespace TuiCode.Tests;
 /// drives the workbench via key injection and asserts on the focus tree at each step, so we
 /// can iterate locally instead of asking the user to re-run the app.
 /// </summary>
-public class SettingsFocusTransitionTests
+// Boots a TG Application via WorkbenchHost — process-global TG state, must be serialised (issue #77).
+public class SettingsFocusTransitionTests : StaticConfigurationTest
 {
     [Fact]
     public async Task CursorRight_on_categories_list_focuses_the_active_panel()
