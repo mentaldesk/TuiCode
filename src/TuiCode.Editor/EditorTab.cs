@@ -3,6 +3,7 @@ namespace TuiCode.Editor;
 public sealed class EditorTab : FrameView
 {
     private readonly TextView _textView;
+    private readonly string _eol;
     private bool _dirty;
 
     public IFileInfo File { get; }
@@ -29,13 +30,16 @@ public sealed class EditorTab : FrameView
         File = file;
         BorderStyle = LineStyle.None;
 
+        var initial = file.FileSystem.File.ReadAllText(file.FullName);
+        _eol = DetectEol(initial);
+
         _textView = new TextView
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(),
             Height = Dim.Fill(),
-            Text = file.FileSystem.File.ReadAllText(file.FullName)
+            Text = initial
         };
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
         _textView.ContentsChanged += (_, _) => MarkDirty();
@@ -80,9 +84,13 @@ public sealed class EditorTab : FrameView
 
     public void Save()
     {
-        var content = _textView.Text;
-        if (content.Length > 0 && !content.EndsWith('\n'))
-            content += '\n';
+        // TextView.Text joins its lines with Environment.NewLine, so on Windows the
+        // buffer comes back CRLF regardless of the file's real endings. Re-emit using
+        // the EOL we detected on load so a file's line-ending style round-trips
+        // unchanged on every OS (matches VS Code's preserve-on-save behaviour).
+        var content = Normalize(_textView.Text, _eol);
+        if (content.Length > 0 && !content.EndsWith(_eol, StringComparison.Ordinal))
+            content += _eol;
         File.FileSystem.File.WriteAllText(File.FullName, content);
         if (_dirty)
         {
@@ -91,6 +99,24 @@ public sealed class EditorTab : FrameView
             DirtyChanged?.Invoke(this, EventArgs.Empty);
         }
         Saved?.Invoke(this, EventArgs.Empty);
+    }
+
+    // The file's line-ending style, taken from the first line break on load. A file with
+    // no line break (single-line or empty) has no detectable style; we default to LF for
+    // deterministic, OS-independent output rather than VS Code's new-file OS default,
+    // since TuiCode only ever opens existing files.
+    private static string DetectEol(string text)
+    {
+        var i = text.IndexOf('\n');
+        if (i < 0) return "\n";
+        return i > 0 && text[i - 1] == '\r' ? "\r\n" : "\n";
+    }
+
+    // Collapse whatever endings TextView produced to LF, then re-emit with the target EOL.
+    private static string Normalize(string text, string eol)
+    {
+        text = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        return eol == "\n" ? text : text.Replace("\n", eol);
     }
 
     private void MarkDirty()

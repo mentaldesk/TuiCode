@@ -71,7 +71,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 - All I/O through `IFileSystem` from `System.IO.Abstractions`; never call `System.IO.File` / `Directory` directly. `IFileInfo.FileSystem` plumbs the same instance through to `EditorTab` etc.
 - DI registers `new FileSystem()` singleton; tests build their own `MockFileSystem`.
-- `EditorTab.Save` appends `\n` if non-empty and not already terminated (VS Code `files.insertFinalNewline`).
+- `EditorTab.Save` appends a final line break if non-empty and not already terminated (VS Code `files.insertFinalNewline`). It preserves the file's line-ending style: the EOL is detected from the first line break on load (`DetectEol`) and re-applied on save, defaulting to LF for files with no detectable break. This matters because `TextView.Text` re-joins lines with `Environment.NewLine`, so without `Normalize` a file would silently become CRLF on Windows / LF on Linux. Keep on-disk output OS-independent — assert exact bytes (`\n` / `\r\n`) in tests, never `Environment.NewLine`.
 
 ## Terminal compatibility
 
