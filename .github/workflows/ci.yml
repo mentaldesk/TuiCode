@@ -12,6 +12,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # Safety net: the whole suite runs in seconds. If a UI test ever blocks on a real
+    # console driver again (see WorkbenchHost driverName), fail fast instead of letting
+    # the default 6h job timeout burn runner minutes.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 

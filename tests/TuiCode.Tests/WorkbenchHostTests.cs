@@ -18,7 +18,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -44,7 +44,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         host.App.Iteration += OnFirstIteration;
 
@@ -78,7 +78,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
@@ -119,7 +119,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
@@ -160,7 +160,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var settingsViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -196,7 +196,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var actionViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -232,7 +232,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var actionViewWasGone = false;
         host.App.Iteration += OnFirstIteration;
@@ -276,7 +276,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var helpViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -312,7 +312,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var helpViewWasGone = false;
         host.App.Iteration += OnFirstIteration;
@@ -356,7 +356,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("line1\nline2\nline3\n"));
@@ -394,7 +394,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var fs = new MockFileSystem();
         fs.AddDirectory("/work/src");
@@ -433,7 +433,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var fs = new MockFileSystem();
         fs.AddFile("/work/readme.md", new MockFileData("# hi"));
@@ -478,7 +478,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var diagnosticsViewWasMounted = false;
         host.App.Iteration += OnFirstIteration;
@@ -514,7 +514,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         var diagnosticsViewWasGone = false;
         host.App.Iteration += OnFirstIteration;

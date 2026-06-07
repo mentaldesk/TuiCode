@@ -20,7 +20,7 @@ public class KeybindingsCaptureTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         KeybindingsPickerView? picker = null;
         var step = 0;
