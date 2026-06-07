@@ -4,14 +4,14 @@ using TuiCode.Workbench.Configuration;
 
 namespace TuiCode.Tests;
 
-// Touches ThemeManager.Theme (TG static state). Serialise via the shared collection.
-[Collection("StaticConfiguration")]
-public class DefaultSettingsServiceTests
+// Mutates ThemeManager.Theme (TG static state). The base joins the serialised
+// "StaticConfiguration" collection and snapshot/restores the theme (issue #77).
+public class DefaultSettingsServiceTests : StaticConfigurationTest
 {
     [Fact]
     public void Save_writes_empty_object_when_theme_is_default()
     {
-        using var _ = new ThemeFixture("Default");
+        ThemeManager.Theme = "Default";
         var fs = new MockFileSystem();
         var svc = new DefaultSettingsService(fs);
 
@@ -27,7 +27,7 @@ public class DefaultSettingsServiceTests
     [Fact]
     public void Save_writes_theme_in_TG_native_format_when_non_default()
     {
-        using var _ = new ThemeFixture("Dark");
+        ThemeManager.Theme = "Dark";
         var fs = new MockFileSystem();
         var svc = new DefaultSettingsService(fs);
 
@@ -41,7 +41,7 @@ public class DefaultSettingsServiceTests
     [Fact]
     public void Save_creates_parent_directory_if_missing()
     {
-        using var _ = new ThemeFixture("Dark");
+        ThemeManager.Theme = "Dark";
         var fs = new MockFileSystem();
         var svc = new DefaultSettingsService(fs);
 
@@ -55,21 +55,5 @@ public class DefaultSettingsServiceTests
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return fs.Path.Combine(home, ".tui", "TuiCode.config.json");
-    }
-
-    /// <summary>
-    /// Snapshot+restore <see cref="ThemeManager.Theme"/> for test isolation. The setter
-    /// also calls <c>ConfigurationManager.Apply()</c>, so any side effects of activating
-    /// the theme are exercised the same way they would be in production.
-    /// </summary>
-    private sealed class ThemeFixture : IDisposable
-    {
-        private readonly string _previous;
-        public ThemeFixture(string theme)
-        {
-            _previous = ThemeManager.Theme;
-            ThemeManager.Theme = theme;
-        }
-        public void Dispose() => ThemeManager.Theme = _previous;
     }
 }
