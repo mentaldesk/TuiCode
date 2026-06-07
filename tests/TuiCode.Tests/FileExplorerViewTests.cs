@@ -87,4 +87,115 @@ public class FileExplorerViewTests
 
         Assert.False(fired);
     }
+
+    [Fact]
+    public void NewEntryTarget_is_the_selected_folder()
+    {
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work/src");
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+        var src = explorer.GetChildren(explorer.Objects!.Single())
+            .OfType<IDirectoryInfo>().Single(d => d.Name == "src");
+        explorer.SelectedObject = src;
+
+        Assert.Equal("src", explorer.NewEntryTarget()!.Name);
+    }
+
+    [Fact]
+    public void NewEntryTarget_is_the_parent_of_the_selected_file()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/src/main.cs", new MockFileData("// code"));
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+        var src = explorer.GetChildren(explorer.Objects!.Single())
+            .OfType<IDirectoryInfo>().Single(d => d.Name == "src");
+        var file = explorer.GetChildren(src).OfType<IFileInfo>().Single();
+        explorer.SelectedObject = file;
+
+        Assert.Equal("src", explorer.NewEntryTarget()!.Name);
+    }
+
+    [Fact]
+    public void NewEntryTarget_is_the_root_when_nothing_is_selected()
+    {
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work");
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+        explorer.SelectedObject = null;
+
+        Assert.Equal("work", explorer.NewEntryTarget()!.Name);
+    }
+
+    [Fact]
+    public void Create_makes_a_file_and_selects_it()
+    {
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work/src");
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+        var src = explorer.GetChildren(explorer.Objects!.Single())
+            .OfType<IDirectoryInfo>().Single(d => d.Name == "src");
+        explorer.SelectedObject = src;
+
+        var node = explorer.Create("widget.cs", directory: false);
+
+        Assert.IsAssignableFrom<IFileInfo>(node);
+        Assert.Equal("widget.cs", node.Name);
+        Assert.True(fs.File.Exists(node.FullName), "file should exist on disk");
+        Assert.Equal("src", ((IFileInfo)node).Directory!.Name);
+        Assert.Same(node, explorer.SelectedObject);
+    }
+
+    [Fact]
+    public void Create_makes_a_folder_and_selects_it()
+    {
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work");
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        var node = explorer.Create("components", directory: true);
+
+        Assert.IsAssignableFrom<IDirectoryInfo>(node);
+        Assert.Equal("components", node.Name);
+        Assert.True(fs.Directory.Exists(node.FullName), "folder should exist on disk");
+        Assert.Same(node, explorer.SelectedObject);
+    }
+
+    [Fact]
+    public void Create_makes_intermediate_directories_for_a_nested_path()
+    {
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work");
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        var node = explorer.Create("a/b/c.txt", directory: false);
+
+        Assert.Equal("c.txt", node.Name);
+        Assert.True(fs.File.Exists(node.FullName));
+        Assert.True(fs.Directory.Exists(fs.Path.GetDirectoryName(node.FullName)!));
+        Assert.Same(node, explorer.SelectedObject);
+    }
+
+    [Fact]
+    public void Create_throws_when_the_path_already_exists()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/readme.md", new MockFileData("# hi"));
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        Assert.Throws<IOException>(() => explorer.Create("readme.md", directory: false));
+    }
 }
