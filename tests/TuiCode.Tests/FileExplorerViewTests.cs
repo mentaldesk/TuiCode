@@ -113,10 +113,26 @@ public class FileExplorerViewTests
         explorer.Open(fs.DirectoryInfo.New("/work"));
         var src = explorer.GetChildren(explorer.Objects!.Single())
             .OfType<IDirectoryInfo>().Single(d => d.Name == "src");
+        explorer.Expand(src);
         var file = explorer.GetChildren(src).OfType<IFileInfo>().Single();
         explorer.SelectedObject = file;
 
         Assert.Equal("src", explorer.NewEntryTarget()!.Name);
+    }
+
+    [Fact]
+    public void NewEntryPrefill_is_the_selected_folder_relative_to_root()
+    {
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work/src");
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+        var src = explorer.GetChildren(explorer.Objects!.Single())
+            .OfType<IDirectoryInfo>().Single(d => d.Name == "src");
+        explorer.SelectedObject = src;
+
+        Assert.Equal("src/", explorer.NewEntryPrefill());
     }
 
     [Fact]
@@ -133,7 +149,7 @@ public class FileExplorerViewTests
     }
 
     [Fact]
-    public void Create_makes_a_file_and_selects_it()
+    public void Create_makes_a_file_under_the_selected_folder_and_selects_it()
     {
         var fs = new MockFileSystem();
         fs.AddDirectory("/work/src");
@@ -144,7 +160,9 @@ public class FileExplorerViewTests
             .OfType<IDirectoryInfo>().Single(d => d.Name == "src");
         explorer.SelectedObject = src;
 
-        var node = explorer.Create("widget.cs", directory: false);
+        // Mirror the host flow: the dialog seeds its field with the prefill, so the
+        // confirmed path is root-relative (e.g. "src/widget.cs").
+        var node = explorer.Create(explorer.NewEntryPrefill() + "widget.cs", directory: false);
 
         Assert.IsAssignableFrom<IFileInfo>(node);
         Assert.Equal("widget.cs", node.Name);
