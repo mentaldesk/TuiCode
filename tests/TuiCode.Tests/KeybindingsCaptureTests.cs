@@ -9,7 +9,8 @@ using TuiCode.Workbench.Settings;
 
 namespace TuiCode.Tests;
 
-public class KeybindingsCaptureTests
+// Boots a TG Application via WorkbenchHost — process-global TG state, must be serialised (issue #77).
+public class KeybindingsCaptureTests : StaticConfigurationTest
 {
     [Fact]
     public async Task Capture_ignores_modifier_only_keypresses()
