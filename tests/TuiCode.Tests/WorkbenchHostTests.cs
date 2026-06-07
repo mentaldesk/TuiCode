@@ -551,7 +551,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task CtrlN_then_F_opens_the_new_file_dialog()
+    public async Task CtrlN_opens_the_new_file_or_folder_dialog()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -571,7 +571,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(modalAppeared, "NewPathView did not mount after Ctrl+N F");
+        Assert.True(modalAppeared, "NewPathView did not mount after Ctrl+N");
 
         void OnFirst(object? s, EventArgs<IApplication?> e)
         {
@@ -583,20 +583,13 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnSecond(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnSecond;
-            if (Key.TryParse("F", out var f)) host.App.InjectKey(f);
-            host.App.Iteration += OnThird;
-        }
-
-        void OnThird(object? s, EventArgs<IApplication?> e)
-        {
-            host.App.Iteration -= OnThird;
             modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Navigation.NewPathView>().Any();
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
     }
 
     [Fact]
-    public async Task Esc_closes_the_new_file_dialog()
+    public async Task Esc_closes_the_new_file_or_folder_dialog()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -628,20 +621,13 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnSecond(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnSecond;
-            if (Key.TryParse("F", out var f)) host.App.InjectKey(f);
+            if (Key.TryParse("Esc", out var esc)) host.App.InjectKey(esc);
             host.App.Iteration += OnThird;
         }
 
         void OnThird(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnThird;
-            if (Key.TryParse("Esc", out var esc)) host.App.InjectKey(esc);
-            host.App.Iteration += OnFourth;
-        }
-
-        void OnFourth(object? s, EventArgs<IApplication?> e)
-        {
-            host.App.Iteration -= OnFourth;
             modalWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Navigation.NewPathView>().Any();
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }

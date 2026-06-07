@@ -162,7 +162,7 @@ public class FileExplorerViewTests
 
         // Mirror the host flow: the dialog seeds its field with the prefill, so the
         // confirmed path is root-relative (e.g. "src/widget.cs").
-        var node = explorer.Create(explorer.NewEntryPrefill() + "widget.cs", directory: false);
+        var node = explorer.Create(explorer.NewEntryPrefill() + "widget.cs");
 
         Assert.IsAssignableFrom<IFileInfo>(node);
         Assert.Equal("widget.cs", node.Name);
@@ -172,7 +172,7 @@ public class FileExplorerViewTests
     }
 
     [Fact]
-    public void Create_makes_a_folder_and_selects_it()
+    public void Create_makes_an_extensionless_file()
     {
         var fs = new MockFileSystem();
         fs.AddDirectory("/work");
@@ -180,7 +180,23 @@ public class FileExplorerViewTests
         using var explorer = new FileExplorerView();
         explorer.Open(fs.DirectoryInfo.New("/work"));
 
-        var node = explorer.Create("components", directory: true);
+        // No extension and no trailing slash -> still a file (e.g. Makefile, LICENSE).
+        var node = explorer.Create("Makefile");
+
+        Assert.IsAssignableFrom<IFileInfo>(node);
+        Assert.True(fs.File.Exists(node.FullName), "extensionless file should exist on disk");
+    }
+
+    [Fact]
+    public void Create_makes_a_folder_when_the_path_ends_in_a_slash()
+    {
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work");
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        var node = explorer.Create("components/");
 
         Assert.IsAssignableFrom<IDirectoryInfo>(node);
         Assert.Equal("components", node.Name);
@@ -197,7 +213,7 @@ public class FileExplorerViewTests
         using var explorer = new FileExplorerView();
         explorer.Open(fs.DirectoryInfo.New("/work"));
 
-        var node = explorer.Create("a/b/c.txt", directory: false);
+        var node = explorer.Create("a/b/c.txt");
 
         Assert.Equal("c.txt", node.Name);
         Assert.True(fs.File.Exists(node.FullName));
@@ -214,6 +230,6 @@ public class FileExplorerViewTests
         using var explorer = new FileExplorerView();
         explorer.Open(fs.DirectoryInfo.New("/work"));
 
-        Assert.Throws<IOException>(() => explorer.Create("readme.md", directory: false));
+        Assert.Throws<IOException>(() => explorer.Create("readme.md"));
     }
 }

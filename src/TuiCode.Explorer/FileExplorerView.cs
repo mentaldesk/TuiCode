@@ -65,13 +65,16 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
     /// <summary>
     /// Create a file or directory at <paramref name="relativePath"/> (relative to <see cref="Root"/>),
     /// creating intermediate directories as needed, then refresh the tree and select the new node.
-    /// Returns the created node. Throws <see cref="IOException"/> if the path already exists.
+    /// A trailing slash means a directory; anything else is a file (so extensionless files like
+    /// <c>Makefile</c> work). Returns the created node. Throws <see cref="IOException"/> if the path
+    /// already exists.
     /// </summary>
-    public IFileSystemInfo Create(string relativePath, bool directory)
+    public IFileSystemInfo Create(string relativePath)
     {
         if (Root is not { } root)
             throw new InvalidOperationException("Cannot create entries before the tree is rooted.");
 
+        var directory = NewEntryPaths.IsDirectoryPath(relativePath);
         var fs = root.FileSystem;
         var fullPath = NewEntryPaths.Resolve(fs, root, relativePath);
 
@@ -129,6 +132,13 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 /// </summary>
 internal static class NewEntryPaths
 {
+    /// <summary>A trailing slash (either style) marks the path as a directory.</summary>
+    public static bool IsDirectoryPath(string relativePath)
+    {
+        var trimmed = relativePath.TrimEnd();
+        return trimmed.EndsWith('/') || trimmed.EndsWith('\\');
+    }
+
     public static string Prefill(IDirectoryInfo root, IDirectoryInfo target)
     {
         var relative = root.FileSystem.Path.GetRelativePath(root.FullName, target.FullName);

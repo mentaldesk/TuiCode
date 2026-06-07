@@ -5,9 +5,9 @@ namespace TuiCode.Workbench.Navigation;
 
 /// <summary>
 /// Modal prompt for creating a new file or folder. A single text field, pre-filled with the
-/// target directory (relative to the workspace root) so the user only types the leaf name —
-/// though a deeper path like <c>src/utils/io.cs</c> creates the intermediate directories too.
-/// Enter confirms, Esc cancels.
+/// target directory (relative to the workspace root) so the user only types the leaf name. A
+/// trailing slash creates a folder; anything else creates a file — and a deeper path like
+/// <c>src/utils/io.cs</c> creates the intermediate directories too. Enter confirms, Esc cancels.
 ///
 /// Owns its own <see cref="ICommandService"/> + <see cref="IKeybindingService"/>; the
 /// <see cref="WorkbenchHost"/> pushes <see cref="Scope"/> on open and pops it on close.
@@ -25,11 +25,11 @@ public sealed class NewPathView : Window
     public event EventHandler? Cancelled;
     public event EventHandler<string>? Submitted;
 
-    public NewPathView(bool directory, string prefill)
+    public NewPathView(string prefill)
     {
         prefill ??= string.Empty;
 
-        Title = directory ? "New Folder" : "New File";
+        Title = "New File or Folder";
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
         Y = Pos.Center();
@@ -43,9 +43,7 @@ public sealed class NewPathView : Window
             X = 1,
             Y = 0,
             Width = Dim.Fill(1),
-            Text = directory
-                ? "Folder path (relative to workspace root)"
-                : "File path (relative to workspace root)",
+            Text = "Path (relative to root; end with / for a folder)",
         };
 
         _input = new TextField

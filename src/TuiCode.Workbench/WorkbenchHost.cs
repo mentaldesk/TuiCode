@@ -132,8 +132,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
-        _commands.Register(CommandIds.NewFile, "New file", () => OpenNewPath(directory: false));
-        _commands.Register(CommandIds.NewFolder, "New folder", () => OpenNewPath(directory: true));
+        _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
@@ -211,8 +210,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
         keybindings.Bind("Ctrl+O", CommandIds.Open);
-        keybindings.Bind("Ctrl+N F", CommandIds.NewFile);
-        keybindings.Bind("Ctrl+N D", CommandIds.NewFolder);
+        keybindings.Bind("Ctrl+N", CommandIds.New);
         keybindings.Bind("Ctrl+E", CommandIds.ShowActions);
         keybindings.Bind("F1", CommandIds.ShowHelp);
         keybindings.Bind("Ctrl+G", CommandIds.GoToLine);
@@ -377,20 +375,20 @@ public sealed class WorkbenchHost : IDisposable
         FocusEditorBody();
     }
 
-    private void OpenNewPath(bool directory)
+    private void OpenNewPath()
     {
         if (_activeNewPath is not null) return;
         var explorer = _workbench.Sidebar.Explorer;
         // No workspace root means there's nowhere to create the entry.
         if (explorer.Root is null) return;
 
-        var view = new NewPathView(directory, explorer.NewEntryPrefill());
+        var view = new NewPathView(explorer.NewEntryPrefill());
         view.Cancelled += (_, _) => CloseNewPath(view);
         view.Submitted += (_, relativePath) =>
         {
             try
             {
-                var created = explorer.Create(relativePath, directory);
+                var created = explorer.Create(relativePath);
                 CloseNewPath(view);
                 // A new file opens in the editor (VS Code behaviour); a new folder just gets
                 // selected in the explorer so the user can keep building it out.

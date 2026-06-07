@@ -13,8 +13,7 @@ public static class CommandIds
     public const string FocusEditorTabStrip = "workbench.action.focusEditorTabStrip";
     public const string OpenSettings = "workbench.action.openSettings";
     public const string Open = "workbench.action.open";
-    public const string NewFile = "workbench.action.newFile";
-    public const string NewFolder = "workbench.action.newFolder";
+    public const string New = "workbench.action.new";
 
     public const string SettingsSave = "settings.action.save";
     public const string SettingsCancel = "settings.action.cancel";
