@@ -72,7 +72,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 - All I/O through `IFileSystem` from `System.IO.Abstractions`; never call `System.IO.File` / `Directory` directly. `IFileInfo.FileSystem` plumbs the same instance through to `EditorTab` etc.
 - DI registers `new FileSystem()` singleton; tests build their own `MockFileSystem`.
-- `EditorTab.Save` appends a final line break if non-empty and not already terminated (VS Code `files.insertFinalNewline`). It preserves the file's line-ending style: the EOL is detected from the first line break on load (`DetectEol`) and re-applied on save, defaulting to LF for files with no detectable break. This matters because `TextView.Text` re-joins lines with `Environment.NewLine`, so without `Normalize` a file would silently become CRLF on Windows / LF on Linux. Keep on-disk output OS-independent — assert exact bytes (`\n` / `\r\n`) in tests, never `Environment.NewLine`.
+- `EditorTab.Save` appends a final line break if non-empty and not already terminated (VS Code `files.insertFinalNewline`). It preserves the file's line-ending style, mirroring VS Code: `DetectEol` fixes the EOL on load and `Save` re-applies it. A non-empty file keeps its own style (first line break wins; LF if it has none); an **empty buffer is treated as a new/blank file and takes the OS default** (`Environment.NewLine` — CRLF on Windows), which is what a `Ctrl+N` file gets. `Normalize` is needed because `TextView.Text` re-joins lines with `Environment.NewLine`, so a CRLF file would otherwise become LF on Linux. In tests: assert exact bytes (`\n` / `\r\n`) for *existing-file* preservation, but assert `Environment.NewLine` for *new/empty-file* output (it's intentionally OS-dependent).
 
 ## Terminal compatibility
 

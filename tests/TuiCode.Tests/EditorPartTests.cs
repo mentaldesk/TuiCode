@@ -96,6 +96,23 @@ public class EditorPartTests
     }
 
     [Fact]
+    public void Save_uses_the_OS_default_newline_for_a_new_empty_file()
+    {
+        // A freshly created file (e.g. via the New File command) is empty on open, so it has
+        // no line-ending style to preserve and takes the OS default — CRLF on Windows, LF
+        // elsewhere — matching VS Code's files.eol=auto for new files.
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/new.txt", new MockFileData(""));
+
+        using var editor = new EditorPart();
+        editor.Open(fs.FileInfo.New("/work/new.txt"));
+        editor.Content = "hello";
+        editor.Save();
+
+        Assert.Equal("hello" + Environment.NewLine, fs.File.ReadAllText("/work/new.txt"));
+    }
+
+    [Fact]
     public void Save_is_a_no_op_when_no_file_is_open()
     {
         using var editor = new EditorPart();

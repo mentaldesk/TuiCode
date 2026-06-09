@@ -101,13 +101,13 @@ public sealed class EditorTab : FrameView
         Saved?.Invoke(this, EventArgs.Empty);
     }
 
-    // The file's line-ending style, detected from the first line break on load. When there's
-    // no break to go on — an empty or single-line file, including a freshly created one — we
-    // deliberately default to LF: deterministic, OS-independent output on every platform.
-    // (VS Code instead uses the OS default for brand-new files; we don't, to keep on-disk
-    // bytes identical across OSes.) Existing CRLF files still round-trip as CRLF.
+    // The file's line-ending style, fixed on load. An empty buffer is a new/blank file: there's
+    // nothing to preserve, so it takes the OS default (CRLF on Windows, LF elsewhere) — what VS
+    // Code does for new files, and what Windows users expect. A non-empty file keeps its own
+    // style instead: the first line break wins (CRLF vs LF), or LF if it has none (single line).
     private static string DetectEol(string text)
     {
+        if (text.Length == 0) return Environment.NewLine;
         var i = text.IndexOf('\n');
         if (i < 0) return "\n";
         return i > 0 && text[i - 1] == '\r' ? "\r\n" : "\n";
