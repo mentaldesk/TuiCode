@@ -34,6 +34,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - File-touching tests: `MockFileSystem` from `System.IO.Abstractions.TestingHelpers`. No temp dirs.
 - UI / focus / key bugs: drive via TG input injection (`host.App.InjectKey` from the `Iteration` event). See `WorkbenchHostTests.CtrlQ_quits_the_workbench` and TG's [testing docs](https://gui-cs.github.io/Terminal.Gui/docs/drivers.html#testing-and-input-injection). Faster than asking a human to retry manual steps.
 - Any test that boots a TG `Application` (news up a `WorkbenchHost`, renders a View) or mutates `ThemeManager`/`ConfigurationManager` must derive from `StaticConfigurationTest` (issue #77). Those TG statics are process-global; under xUnit's default parallelism a theme mutation in one test makes TG's render path throw `KeyNotFoundException` in another. The base joins the serialised `StaticConfiguration` collection and snapshot/restores the theme. Most tests don't touch TG statics and stay parallel — only opt the ones that do into the base. A reentrancy guard in the base throws if the serialisation ever breaks, so a forgotten `[CollectionDefinition]` rename fails loudly instead of flaking.
+- Tests that boot a `WorkbenchHost` must also pass `driverName: DriverRegistry.Names.ANSI` (the headless, deterministic CI driver). With the default (`null`) TG auto-selects the platform driver; on a headless **Windows** runner that's `WindowsDriver`, which blocks on console input and hangs the run forever — `RunAsync` doesn't observe the cancellation token while blocked. Linux auto-selects ANSI already, which is why this only bit the Windows CI leg. Production passes `null` so a real terminal still gets the best driver.
 
 ## Terminal.Gui v2
 
@@ -71,7 +72,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 - All I/O through `IFileSystem` from `System.IO.Abstractions`; never call `System.IO.File` / `Directory` directly. `IFileInfo.FileSystem` plumbs the same instance through to `EditorTab` etc.
 - DI registers `new FileSystem()` singleton; tests build their own `MockFileSystem`.
-- `EditorTab.Save` appends `\n` if non-empty and not already terminated (VS Code `files.insertFinalNewline`).
+- `EditorTab.Save` appends a final line break if non-empty and not already terminated (VS Code `files.insertFinalNewline`). It preserves the file's line-ending style, mirroring VS Code: `DetectEol` fixes the EOL on load and `Save` re-applies it. A non-empty file keeps its own style (first line break wins; LF if it has none); an **empty buffer is treated as a new/blank file and takes the OS default** (`Environment.NewLine` — CRLF on Windows), which is what a `Ctrl+N` file gets. `Normalize` is needed because `TextView.Text` re-joins lines with `Environment.NewLine`, so a CRLF file would otherwise become LF on Linux. In tests: assert exact bytes (`\n` / `\r\n`) for *existing-file* preservation, but assert `Environment.NewLine` for *new/empty-file* output (it's intentionally OS-dependent).
 
 ## Terminal compatibility
 

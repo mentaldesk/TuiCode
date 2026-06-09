@@ -40,7 +40,8 @@ public sealed class WorkbenchHost : IDisposable
         ISettingsService settings,
         IEnumerable<ITerminalIntegration>? terminalIntegrations = null,
         IEnvironment? environment = null,
-        ITimeProvider? timeProvider = null)
+        ITimeProvider? timeProvider = null,
+        string? driverName = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -49,7 +50,11 @@ public sealed class WorkbenchHost : IDisposable
 
         _flowControl = new TerminalFlowControl();
         _app = Application.Create(timeProvider ?? new SystemTimeProvider());
-        _app.Init(driverName: null!);
+        // Production passes null so TG auto-selects the best platform driver. Tests pass
+        // DriverRegistry.Names.ANSI to force the headless ANSI driver: the real WindowsDriver
+        // blocks on console input when no console is attached, hanging headless CI/test runs
+        // (and RunAsync never observes the cancellation token while blocked there).
+        _app.Init(driverName: driverName!);
 
         // OSC 1337 SetUserVar TUICODE_ACTIVE=1 (base64 "MQ=="). WezTerm's tuicode.lua keys off
         // this user-var to activate its key table only while TuiCode runs; other terminals

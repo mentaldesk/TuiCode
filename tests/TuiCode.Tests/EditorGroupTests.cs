@@ -174,14 +174,15 @@ public class EditorGroupTests
     {
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("hi"));
+        var file = fs.FileInfo.New("/work/a.txt");
         using var group = new EditorGroup();
-        group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+        group.OpenOrFocus(file);
 
         IFileInfo? saved = null;
-        group.FileSaved += (_, file) => saved = file;
+        group.FileSaved += (_, f) => saved = f;
         group.SaveActive();
 
         Assert.NotNull(saved);
-        Assert.Equal("/work/a.txt", saved!.FullName);
+        Assert.Equal(file.FullName, saved!.FullName);
     }
 }

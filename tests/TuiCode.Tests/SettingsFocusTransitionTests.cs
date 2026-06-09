@@ -25,7 +25,7 @@ public class SettingsFocusTransitionTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
         SettingsView? overlay = null;
         var step = 0;

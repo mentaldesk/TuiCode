@@ -7,7 +7,15 @@ on:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # Safety net: the whole suite runs in seconds. If a UI test ever blocks on a real
+    # console driver again (see WorkbenchHost driverName), fail fast instead of letting
+    # the default 6h job timeout burn runner minutes.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
@@ -26,15 +34,20 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.os }}
           path: '**/TestResults/**'
           if-no-files-found: warn
 
+      # AOT publish + pty smoke stay Linux-only: the smoke harness uses `script`/`timeout`
+      # (Unix) and we only verify the linux-x64 native binary here. The Windows leg exists
+      # for the JIT test run, which is where OS-specific bugs (path separators, CRLF) surface.
       - name: AOT publish
+        if: matrix.os == 'ubuntu-latest'
         run: dotnet publish src/TuiCode/TuiCode.csproj -c Release -r linux-x64 -o publish
 
       - name: AOT smoke
         # `dotnet test` runs JIT, so AOT-only failures (missing metadata,
         # trim-stripped paths) only surface against the published native
         # binary. `script` allocates a pty so TG's driver initializes.
+        if: matrix.os == 'ubuntu-latest'
         run: timeout 20s script -qfec './publish/TuiCode --smoke' /dev/null
