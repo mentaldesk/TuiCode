@@ -550,6 +550,89 @@ public class WorkbenchHostTests : StaticConfigurationTest
         }
     }
 
+    [Fact]
+    public async Task CtrlN_opens_the_new_file_or_folder_dialog()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work/src");
+        workbench.Sidebar.Explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        var modalAppeared = false;
+        host.App.Iteration += OnFirst;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(modalAppeared, "NewPathView did not mount after Ctrl+N");
+
+        void OnFirst(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirst;
+            if (Key.TryParse("Ctrl+N", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnSecond;
+        }
+
+        void OnSecond(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecond;
+            modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Navigation.NewPathView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
+    [Fact]
+    public async Task Esc_closes_the_new_file_or_folder_dialog()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings);
+
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work");
+        workbench.Sidebar.Explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        var modalWasGone = false;
+        host.App.Iteration += OnFirst;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(modalWasGone, "NewPathView was still mounted after Esc");
+
+        void OnFirst(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirst;
+            if (Key.TryParse("Ctrl+N", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnSecond;
+        }
+
+        void OnSecond(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecond;
+            if (Key.TryParse("Esc", out var esc)) host.App.InjectKey(esc);
+            host.App.Iteration += OnThird;
+        }
+
+        void OnThird(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnThird;
+            modalWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Navigation.NewPathView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),
