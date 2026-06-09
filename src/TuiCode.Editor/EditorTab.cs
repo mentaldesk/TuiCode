@@ -101,10 +101,11 @@ public sealed class EditorTab : FrameView
         Saved?.Invoke(this, EventArgs.Empty);
     }
 
-    // The file's line-ending style, taken from the first line break on load. A file with
-    // no line break (single-line or empty) has no detectable style; we default to LF for
-    // deterministic, OS-independent output rather than VS Code's new-file OS default,
-    // since TuiCode only ever opens existing files.
+    // The file's line-ending style, detected from the first line break on load. When there's
+    // no break to go on — an empty or single-line file, including a freshly created one — we
+    // deliberately default to LF: deterministic, OS-independent output on every platform.
+    // (VS Code instead uses the OS default for brand-new files; we don't, to keep on-disk
+    // bytes identical across OSes.) Existing CRLF files still round-trip as CRLF.
     private static string DetectEol(string text)
     {
         var i = text.IndexOf('\n');
