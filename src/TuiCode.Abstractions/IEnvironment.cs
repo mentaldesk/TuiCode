@@ -17,4 +17,11 @@ public interface IEnvironment
     /// don't get Cmd+letter bindings forced onto them.
     /// </summary>
     bool IsMacOS => OperatingSystem.IsMacOS();
+
+    /// <summary>
+    /// True when the current process is running on Windows. Drives the default Terminal.Gui driver
+    /// choice: the auto-selected <c>ansi</c> driver mis-decodes kitty key events on Windows
+    /// (issue #82), so we default to the native <c>windows</c> driver there.
+    /// </summary>
+    bool IsWindows => OperatingSystem.IsWindows();
 }
