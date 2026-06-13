@@ -25,7 +25,19 @@ services.AddTransient<SidebarPart>();
 services.AddTransient<EditorPart>();
 services.AddTransient<StatusBarPart>();
 services.AddTransient<Workbench>();
-services.AddTransient<WorkbenchHost>();
+// Driver override (--driver <name> / TUICODE_DRIVER) lets us A/B the TG driver on Windows,
+// where the auto-selected `ansi` driver mis-decodes kitty key events (issue #82). Resolved
+// per-construction so it picks up the same IEnvironment the rest of the app uses.
+services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
+    sp.GetRequiredService<Workbench>(),
+    sp.GetRequiredService<ICommandService>(),
+    sp.GetRequiredService<IKeybindingService>(),
+    sp.GetRequiredService<IInputScopeStack>(),
+    sp.GetRequiredService<ISettingsService>(),
+    sp.GetRequiredService<IEnumerable<ITerminalIntegration>>(),
+    sp.GetRequiredService<IEnvironment>(),
+    timeProvider: null,
+    driverName: DriverSelection.Resolve(args, sp.GetRequiredService<IEnvironment>())));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();
