@@ -1,5 +1,6 @@
 using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Settings;
 

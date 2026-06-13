@@ -3,6 +3,7 @@ using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Help;
+using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
@@ -28,6 +29,7 @@ public sealed class WorkbenchHost : IDisposable
     private HelpView? _activeHelp;
     private GoToLineView? _activeGoToLine;
     private DiagnosticsView? _activeDiagnostics;
+    private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
     private NewPathView? _activeNewPath;
     private bool _disposed;
@@ -139,6 +141,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
+        _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
@@ -210,13 +213,17 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Tab", CommandIds.NextEditor);
         keybindings.Bind("Ctrl+Shift+Tab", CommandIds.PreviousEditor);
 
-        keybindings.Bind("Ctrl+D0", CommandIds.ToggleSidebar);
+        // No default key for ToggleSidebar — Ctrl+0 is eaten by the terminal's own zoom-reset
+        // in many emulators (#81), so it was unreliable. Reach it via the `ts` mnemonic instead.
         keybindings.Bind("Esc", CommandIds.FocusEditorBody);
         keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
         keybindings.Bind("Ctrl+O", CommandIds.Open);
         keybindings.Bind("Ctrl+N", CommandIds.New);
         keybindings.Bind("Ctrl+E", CommandIds.ShowActions);
+        // Leader key for the mnemonic launcher (issue #50). Rebindable like any shortcut;
+        // the mnemonics it dispatches are fixed (CommandMnemonics).
+        keybindings.Bind("Ctrl+Space", CommandIds.ShowMnemonics);
         keybindings.Bind("F1", CommandIds.ShowHelp);
         keybindings.Bind("Ctrl+G", CommandIds.GoToLine);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
@@ -312,6 +319,36 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeActions = null;
+        FocusEditorBody();
+    }
+
+    private void OpenMnemonics()
+    {
+        if (_activeMnemonics is not null) return;
+
+        // Build the dialog from the live command set joined with the hard-coded mnemonic table,
+        // so it stays in step with whatever's registered (e.g. focus-tab-N) and skips commands
+        // with no mnemonic (Show all commands, Show mnemonics itself).
+        var entries = _commands.Registered
+            .Select(c => (Command: c, Mnemonic: CommandMnemonics.For(c.Id)))
+            .Where(x => x.Mnemonic is not null)
+            .Select(x => new MnemonicEntry(x.Command.Id, x.Mnemonic!, x.Command.Label));
+
+        var view = new MnemonicView(entries, commandId => _commands.TryExecute(commandId));
+        view.Closed += (_, _) => CloseMnemonics(view);
+        _activeMnemonics = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.SetFocus();
+    }
+
+    private void CloseMnemonics(MnemonicView view)
+    {
+        if (!ReferenceEquals(_activeMnemonics, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeMnemonics = null;
         FocusEditorBody();
     }
 
