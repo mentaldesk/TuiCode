@@ -41,6 +41,7 @@ public class CommandMnemonicsTests
         Assert.Equal("sf", CommandMnemonics.For(CommandIds.SaveActiveEditor));
         Assert.Equal("cf", CommandMnemonics.For(CommandIds.CloseActiveEditor));
         Assert.Equal("ts", CommandMnemonics.For(CommandIds.ToggleSidebar));
+        Assert.Equal("fs", CommandMnemonics.For(CommandIds.FocusSidebar));
         Assert.Equal("tn", CommandMnemonics.For(CommandIds.NextEditor));
         Assert.Equal("tp", CommandMnemonics.For(CommandIds.PreviousEditor));
         Assert.Equal("gl", CommandMnemonics.For(CommandIds.GoToLine));

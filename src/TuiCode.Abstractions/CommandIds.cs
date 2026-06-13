@@ -9,6 +9,7 @@ public static class CommandIds
     public const string PreviousEditor = "workbench.action.previousEditor";
 
     public const string ToggleSidebar = "workbench.action.toggleSidebar";
+    public const string FocusSidebar = "workbench.action.focusSidebar";
     public const string FocusEditorBody = "workbench.action.focusEditorBody";
     public const string FocusEditorTabStrip = "workbench.action.focusEditorTabStrip";
     public const string OpenSettings = "workbench.action.openSettings";

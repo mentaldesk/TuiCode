@@ -134,7 +134,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.NextEditor, "Next editor", () => _workbench.Editor.NextTab());
         _commands.Register(CommandIds.PreviousEditor, "Previous editor", () => _workbench.Editor.PreviousTab());
 
-        _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
+        _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", _workbench.ToggleSidebar);
+        _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusExplorer);
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
@@ -230,27 +231,6 @@ public sealed class WorkbenchHost : IDisposable
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
-    }
-
-    private void ToggleSidebar()
-    {
-        if (!_workbench.IsSidebarVisible)
-        {
-            _workbench.SetSidebarVisible(true);
-            _workbench.Sidebar.Explorer.SetFocus();
-            _focusLevel = FocusLevel.Sidebar;
-            return;
-        }
-
-        if (_workbench.Sidebar.Explorer.HasFocus || _focusLevel == FocusLevel.Sidebar)
-        {
-            _workbench.SetSidebarVisible(false);
-            FocusEditorBody();
-            return;
-        }
-
-        _workbench.Sidebar.Explorer.SetFocus();
-        _focusLevel = FocusLevel.Sidebar;
     }
 
     private void FocusEditorBody()
