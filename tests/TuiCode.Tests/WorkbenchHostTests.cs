@@ -37,40 +37,6 @@ public class WorkbenchHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Ctrl0_toggles_sidebar_visibility()
-    {
-        using var workbench = BuildWorkbench();
-        var commands = new CommandService();
-        var keybindings = new KeybindingService(commands);
-        var scopes = new InputScopeStack();
-        var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
-
-        host.App.Iteration += OnFirstIteration;
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await host.RunAsync(cts.Token);
-        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
-
-        Assert.False(workbench.IsSidebarVisible);
-
-        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
-        {
-            host.App.Iteration -= OnFirstIteration;
-            if (Key.TryParse("Ctrl+D0", out var ctrl0))
-                host.App.InjectKey(ctrl0);
-            host.App.Iteration += OnSecondIteration;
-        }
-
-        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
-        {
-            host.App.Iteration -= OnSecondIteration;
-            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
-                host.App.InjectKey(ctrlQ);
-        }
-    }
-
-    [Fact]
     public async Task Ctrl1_focuses_first_open_editor_tab()
     {
         using var workbench = BuildWorkbench();

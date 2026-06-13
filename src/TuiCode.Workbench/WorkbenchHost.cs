@@ -213,7 +213,8 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Tab", CommandIds.NextEditor);
         keybindings.Bind("Ctrl+Shift+Tab", CommandIds.PreviousEditor);
 
-        keybindings.Bind("Ctrl+D0", CommandIds.ToggleSidebar);
+        // No default key for ToggleSidebar — Ctrl+0 is eaten by the terminal's own zoom-reset
+        // in many emulators (#81), so it was unreliable. Reach it via the `ts` mnemonic instead.
         keybindings.Bind("Esc", CommandIds.FocusEditorBody);
         keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
