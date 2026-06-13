@@ -20,6 +20,7 @@ public static class CommandIds
     public const string SettingsFocusCategories = "settings.action.focusCategories";
 
     public const string ShowActions = "workbench.action.showActions";
+    public const string ShowMnemonics = "workbench.action.showMnemonics";
     public const string ShowHelp = "workbench.action.showHelp";
     public const string ShowDiagnostics = "workbench.action.showDiagnostics";
 

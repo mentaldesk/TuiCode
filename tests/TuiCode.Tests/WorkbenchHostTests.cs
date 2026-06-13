@@ -633,6 +633,147 @@ public class WorkbenchHostTests : StaticConfigurationTest
         }
     }
 
+    [Fact]
+    public async Task CtrlSpace_opens_the_mnemonic_overlay()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
+
+        var mnemonicViewWasMounted = false;
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(mnemonicViewWasMounted, "MnemonicView did not appear in the workbench after Ctrl+Space");
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("Ctrl+Space", out var key))
+                host.App.InjectKey(key);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            mnemonicViewWasMounted = workbench.SubViews.OfType<TuiCode.Workbench.Mnemonics.MnemonicView>().Any();
+            // The overlay's capture scope swallows every key, so Esc it shut before Ctrl+Q —
+            // otherwise Quit never reaches the workbench and RunAsync times out.
+            if (Key.TryParse("Esc", out var esc))
+                host.App.InjectKey(esc);
+            host.App.Iteration += OnThirdIteration;
+        }
+
+        void OnThirdIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnThirdIteration;
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
+    [Fact]
+    public async Task Esc_closes_the_mnemonic_overlay()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
+
+        var mnemonicViewWasGone = false;
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(mnemonicViewWasGone, "MnemonicView was still mounted after Esc");
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("Ctrl+Space", out var key))
+                host.App.InjectKey(key);
+            host.App.Iteration += OnSecondIteration;
+        }
+
+        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecondIteration;
+            if (Key.TryParse("Esc", out var esc))
+                host.App.InjectKey(esc);
+            host.App.Iteration += OnThirdIteration;
+        }
+
+        void OnThirdIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnThirdIteration;
+            mnemonicViewWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Mnemonics.MnemonicView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
+    [Fact]
+    public async Task Typing_ts_in_the_mnemonic_overlay_toggles_the_sidebar_and_closes()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
+
+        var sidebarBefore = workbench.IsSidebarVisible;
+        var overlayWasGone = false;
+        host.App.Iteration += OnOpen;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.NotEqual(sidebarBefore, workbench.IsSidebarVisible);
+        Assert.True(overlayWasGone, "MnemonicView did not close after auto-executing");
+
+        void OnOpen(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnOpen;
+            if (Key.TryParse("Ctrl+Space", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnTypeT;
+        }
+
+        void OnTypeT(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnTypeT;
+            if (Key.TryParse("t", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnTypeS;
+        }
+
+        void OnTypeS(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnTypeS;
+            // After 't' the overlay is still open (ts/tn/tp ambiguous); 's' completes 'ts'.
+            if (Key.TryParse("s", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnAssert;
+        }
+
+        void OnAssert(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnAssert;
+            overlayWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Mnemonics.MnemonicView>().Any();
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),

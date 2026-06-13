@@ -65,8 +65,15 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Bare letters drop Shift and lowercase: `"x"`, `"X"`, `"shift+x"` collide. `KeybindingService.Bindings` emits the lowercased form. Casefold in UI if needed.
 - Chord wins over view bindings: `Ctrl+W` shadows `TextView.Cut`. Use the unshadowed alternative (`Ctrl+X`).
 - Input scopes are a stack (`IInputScopeStack`). Workbench scope is bottom, never popped. Modals push their own `KeybindingService` on open / pop on close — workbench shortcuts don't fire while a modal is up. New modal: instantiate `KeybindingService`, push, register bindings against it, pop on close.
-- `KeyCaptureScope` is a third kind: absorbs every key, routes to a callback. Used while the picker records a chord. Always pop on commit/cancel.
+- `KeyCaptureScope` (`Services/`) is a third kind: absorbs every key, routes to a callback. Used by the keybindings picker (recording a chord) and the mnemonic dialog (reading the typed mnemonic). Always pop on commit/cancel. Note it consumes *everything* — while it's the top scope even `Ctrl+Q` won't quit, so a host test that opens such a modal must Esc it shut (or let it auto-execute and close) before injecting `Ctrl+Q`, else `RunAsync` times out.
 - Keybindings picker only edits the workbench scope; modal-scope bindings deliberately aren't editable (rebinding them could trap the user).
+
+## Mnemonics (leader key, #50)
+
+- A leader key (`Ctrl+Space` by default, rebindable like any shortcut → `CommandIds.ShowMnemonics`) opens `MnemonicView`: a modal launcher that lists every command's mnemonic and fires the command the instant the typed prefix is unambiguous — no Enter. Esc cancels, Backspace edits.
+- Mnemonics are **hard-coded design decisions, not user-configurable** — only the leader key is rebindable. The table lives in `CommandMnemonics` (Abstractions), keyed by command id, next to `CommandIds`. Commands with no entry (`ShowActions`, `ShowMnemonics` itself) simply don't appear.
+- **Invariant: no complete mnemonic is a prefix of another** (guarded by `CommandMnemonicsTests.No_mnemonic_is_a_prefix_of_another`). That's what lets the auto-execute rule work without a terminating key. Mnemonics come in families under a shared first key with room to grow (`cf` close-file reserves `co`/`ca`/`cs`; `tn`/`tp`/`ts` tab/toggle; `fe`/`ft`/`f1`…`f9` focus). `q`/`?` are the only single-key ones.
+- The matching logic is the pure, TG-free `MnemonicResolver` (`Matching` for the hint list, `ResolveExact` for the fire-now decision) so it's unit-tested directly. `MnemonicView` is a thin capture-scope shell over it — it reads keys via `KeyCaptureScope` rather than a focused TextField precisely so a command that disposes the view executes on the app key-dispatch path, not inside a TextChanged callback.
 
 ## Filesystem
 
