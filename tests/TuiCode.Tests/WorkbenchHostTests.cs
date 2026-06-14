@@ -858,10 +858,12 @@ public class WorkbenchHostTests : StaticConfigurationTest
     }
 
     // The Win32 console delivers Ctrl+Enter as Ctrl + LineFeed (0x4000000A) rather than Ctrl + Enter
-    // (0x4000000D); the native WindowsDriver passes that control char through verbatim. WorkbenchHost
-    // rewrites it back to Ctrl+Enter on Windows so a Ctrl+Enter binding actually fires.
+    // (0x4000000D); the native WindowsDriver passes that control char through verbatim, so the
+    // settings dialog's "Ctrl+Enter: Save" binding was dead on Windows. WorkbenchHost rewrites the
+    // chord back to Ctrl+Enter — and because it does so before dispatching to the scope stack, the
+    // rewrite reaches the dialog's pushed modal scope, not just the workbench scope.
     [Fact]
-    public async Task Windows_ctrl_enter_arriving_as_ctrl_linefeed_fires_the_ctrl_enter_binding()
+    public async Task Windows_ctrl_linefeed_saves_and_closes_the_settings_dialog()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -873,28 +875,35 @@ public class WorkbenchHostTests : StaticConfigurationTest
             environment: new FakeEnvironment().SetIsWindows(true),
             driverName: DriverRegistry.Names.ANSI);
 
-        var fired = false;
-        commands.Register("test.ctrlEnter", () => fired = true);
-        keybindings.Bind("Ctrl+Enter", "test.ctrlEnter");
-
-        host.App.Iteration += OnFirst;
+        var settingsClosed = false;
+        host.App.Iteration += OnOpen;
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(fired, "Ctrl+LineFeed was not normalized to Ctrl+Enter on Windows");
+        Assert.True(settingsClosed, "Ctrl+LineFeed did not save+close the settings dialog on Windows");
 
-        void OnFirst(object? s, EventArgs<IApplication?> e)
+        void OnOpen(object? s, EventArgs<IApplication?> e)
         {
-            host.App.Iteration -= OnFirst;
-            host.App.InjectKey(new Key(KeyCode.CtrlMask | (KeyCode)0x0A));
-            host.App.Iteration += OnSecond;
+            host.App.Iteration -= OnOpen;
+            if (Key.TryParse("Ctrl+,", out var k)) host.App.InjectKey(k);
+            host.App.Iteration += OnSave;
         }
 
-        void OnSecond(object? s, EventArgs<IApplication?> e)
+        void OnSave(object? s, EventArgs<IApplication?> e)
         {
-            host.App.Iteration -= OnSecond;
+            host.App.Iteration -= OnSave;
+            // Settings is up; the dialog's modal scope owns Ctrl+Enter. Deliver it the way the
+            // Win32 driver would — as Ctrl + LineFeed — and the normalization should still reach it.
+            host.App.InjectKey(new Key(KeyCode.CtrlMask | (KeyCode)0x0A));
+            host.App.Iteration += OnAssert;
+        }
+
+        void OnAssert(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnAssert;
+            settingsClosed = !workbench.SubViews.OfType<TuiCode.Workbench.Settings.SettingsView>().Any();
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
     }
