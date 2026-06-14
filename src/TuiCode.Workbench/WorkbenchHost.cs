@@ -198,20 +198,19 @@ public sealed class WorkbenchHost : IDisposable
 
         foreach (var o in overrides)
         {
-            // A hand-edited keybindings file can carry a malformed entry — an unparseable key
-            // string ("Ctrl+Frobnicate") or an empty command. Bind/Unbind throw ArgumentException
-            // on those; skip the offending entry so one bad line can't crash startup (#90), and
-            // log it rather than failing silently. Defaults stay strict (they're hardcoded — a
-            // parse failure there is our bug, not the user's), so only user-supplied overrides
-            // get this tolerance. Where these logs surface to the user is a follow-up (#92).
+            // A hand-edited keybindings file can carry a malformed entry — an empty chord or command.
+            // Bind/Unbind throw ArgumentException on those; skip the offending entry so one bad line
+            // can't crash startup (#90), and log it rather than failing silently. Defaults stay strict
+            // (they're hardcoded — a parse failure there is our bug, not the user's), so only
+            // user-supplied overrides get this tolerance. Where these logs surface is a follow-up (#92).
             try
             {
-                if (o.IsRemoval) _keybindings.Unbind(o.Key);
-                else _keybindings.Bind(o.Key, o.EffectiveCommand);
+                if (o.IsRemoval) _keybindings.Unbind(o.Keys);
+                else _keybindings.Bind(o.Keys, o.EffectiveCommand);
             }
             catch (ArgumentException ex)
             {
-                _logger.LogWarning(ex, "Ignored invalid keybinding override {Key} for command {Command}", o.Key, o.Command);
+                _logger.LogWarning(ex, "Ignored invalid keybinding override {Chord} for command {Command}", KeyChord.Display(o.Keys), o.Command);
             }
         }
     }
@@ -222,19 +221,21 @@ public sealed class WorkbenchHost : IDisposable
     /// </summary>
     public void ApplyEditedBindings(IEnumerable<KeyBinding> editedBindings)
     {
-        var defaults = GetDefaultBindings().ToDictionary(b => b.Sequence, b => b.CommandId, StringComparer.Ordinal);
-        var edited = editedBindings.ToDictionary(b => b.Sequence, b => b.CommandId, StringComparer.Ordinal);
+        // Diff defaults against the edited set by canonical (keycode) identity, not display string —
+        // a chord whose ToString() can't round-trip (e.g. Ctrl+Alt+Shift++) must still diff cleanly (#89).
+        var defaults = GetDefaultBindings().ToDictionary(b => b.CanonicalId, b => b, StringComparer.Ordinal);
+        var edited = editedBindings.ToDictionary(b => b.CanonicalId, b => b, StringComparer.Ordinal);
 
         var overrides = new List<KeybindingOverride>();
-        foreach (var seq in defaults.Keys.Union(edited.Keys, StringComparer.Ordinal))
+        foreach (var id in defaults.Keys.Union(edited.Keys, StringComparer.Ordinal))
         {
-            var hasDefault = defaults.TryGetValue(seq, out var defaultCmd);
-            var hasEdited = edited.TryGetValue(seq, out var editedCmd);
+            var hasDefault = defaults.TryGetValue(id, out var def);
+            var hasEdited = edited.TryGetValue(id, out var ed);
 
             if (hasDefault && !hasEdited)
-                overrides.Add(new KeybindingOverride(seq, "-" + defaultCmd));
-            else if (hasEdited && (!hasDefault || !string.Equals(defaultCmd, editedCmd, StringComparison.Ordinal)))
-                overrides.Add(new KeybindingOverride(seq, editedCmd!));
+                overrides.Add(new KeybindingOverride(def!.Chord, "-" + def.CommandId));
+            else if (hasEdited && (!hasDefault || !string.Equals(def!.CommandId, ed!.CommandId, StringComparison.Ordinal)))
+                overrides.Add(new KeybindingOverride(ed!.Chord, ed.CommandId));
         }
 
         _settings.SetKeybindingOverrides(overrides);

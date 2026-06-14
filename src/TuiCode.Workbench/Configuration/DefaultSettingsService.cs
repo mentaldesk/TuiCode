@@ -2,6 +2,7 @@ using System.IO.Abstractions;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Terminal.Gui.Configuration;
+using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Configuration;
@@ -99,9 +100,22 @@ public sealed class DefaultSettingsService : ISettingsService
             return;
         }
 
+        // Persist the chord by raw keycode (#89): identity must not depend on a display string whose
+        // ToString()/TryParse can be lossy. "Label" is decorative — written for a human reading the
+        // file, ignored on load.
         var arr = new JsonArray();
         foreach (var o in _keybindings)
-            arr.Add((JsonNode)new JsonObject { ["Key"] = o.Key, ["Command"] = o.Command });
+        {
+            var keys = new JsonArray();
+            foreach (var k in o.Keys)
+                keys.Add((JsonNode)(uint)k.KeyCode);
+            arr.Add((JsonNode)new JsonObject
+            {
+                ["Keys"] = keys,
+                ["Label"] = KeyChord.Display(o.Keys),
+                ["Command"] = o.Command
+            });
+        }
 
         EnsureDirExists(_keybindingsPath);
         _fs.File.WriteAllText(_keybindingsPath, arr.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
@@ -127,21 +141,40 @@ public sealed class DefaultSettingsService : ISettingsService
         foreach (var item in arr)
         {
             if (item is not JsonObject obj) continue;
-            // A hand-edited entry can hold a non-string Key/Command (e.g. a bare number), which
-            // makes GetValue<string> throw. Skip just that entry rather than discarding every
-            // valid binding alongside it (#90).
+            // Per-entry resilience (#90): a hand-edited entry can hold the wrong JSON type, which makes
+            // GetValue throw. Skip just that entry rather than discarding every valid binding with it.
+            // Entries from the pre-#89 format (a "Key" display string, no "Keys" array) have no keycode
+            // chord, so they fall through to skip here — old custom bindings are dropped on upgrade and
+            // re-saved in the new format on the next edit. See #89's notes.
             try
             {
-                var key = obj["Key"]?.GetValue<string>();
+                var keys = ReadChord(obj["Keys"] as JsonArray);
                 var command = obj["Command"]?.GetValue<string>();
-                if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(command)) continue;
-                result.Add(new KeybindingOverride(key, command));
+                if (keys is null || string.IsNullOrEmpty(command)) continue;
+                result.Add(new KeybindingOverride(keys, command));
             }
             catch (InvalidOperationException)
             {
             }
         }
         return result;
+    }
+
+    /// <summary>
+    /// Read a chord from its persisted keycode array, reconstructing each <see cref="Key"/> from its
+    /// raw <see cref="KeyCode"/> — a lossless inverse of the keycode we wrote (unlike parsing a display
+    /// string). Returns null for a missing/empty array so the caller skips the entry.
+    /// </summary>
+    private static IReadOnlyList<Key>? ReadChord(JsonArray? keys)
+    {
+        if (keys is null || keys.Count == 0) return null;
+        var chord = new List<Key>(keys.Count);
+        foreach (var node in keys)
+        {
+            if (node is null) return null;
+            chord.Add(new Key((KeyCode)node.GetValue<uint>()));
+        }
+        return chord;
     }
 
     private void EnsureDirExists(string filePath)

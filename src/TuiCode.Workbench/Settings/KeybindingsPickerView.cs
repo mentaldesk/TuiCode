@@ -105,7 +105,7 @@ public sealed class KeybindingsPickerView : View
             else
             {
                 foreach (var b in bindings)
-                    rows.Add(new Row(id, label, b.Sequence));
+                    rows.Add(new Row(id, label, b));
             }
         }
 
@@ -121,10 +121,10 @@ public sealed class KeybindingsPickerView : View
 
     private static bool Matches(Row r, string needle) =>
         r.Label.Contains(needle, StringComparison.OrdinalIgnoreCase)
-        || (r.Binding?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false);
+        || (r.Binding?.Display.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false);
 
     private static string FormatRow(Row r) =>
-        $"{Truncate(r.Label, 40).PadRight(42)}{r.Binding ?? Unbound}";
+        $"{Truncate(r.Label, 40).PadRight(42)}{r.Binding?.Display ?? Unbound}";
 
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : s[..(max - 1)] + "…";
@@ -211,13 +211,14 @@ public sealed class KeybindingsPickerView : View
             return;
         }
 
-        var sequence = string.Join(" ", _capturedKeys.Select(k => k.ToString()));
-        var commandId = _capturingForCommand;
+        // The captured keys ARE the canonical chord — we never round-trip them through a display
+        // string, so an un-parseable chord (e.g. Ctrl+Alt+Shift++) survives the picker intact (#89).
+        var candidate = new KeyBinding(_capturedKeys.ToArray(), _capturingForCommand);
         _capturingForCommand = null;
         _capturedKeys = new();
         _footer.Text = "Enter: add binding   Delete: remove   Type to filter";
 
-        TryAddBinding(sequence, commandId);
+        TryAddBinding(candidate);
     }
 
     private void UpdateCaptureFooter()
@@ -228,53 +229,56 @@ public sealed class KeybindingsPickerView : View
         _footer.Text = $"Press desired keys: {captured}   Enter: confirm   Esc: cancel";
     }
 
-    private void TryAddBinding(string sequence, string commandId)
+    private void TryAddBinding(KeyBinding candidate)
     {
-        var conflict = CheckConflictAgainstCurrent(sequence);
+        var conflict = CheckConflictAgainstCurrent(candidate.Chord);
         if (conflict is KeybindingConflict.PrefixOfExisting or KeybindingConflict.ExtensionOfExisting)
         {
-            KeybindingConflictDialog.ShowChord(this, _scopes, sequence);
+            KeybindingConflictDialog.ShowChord(this, _scopes, candidate.Display);
             return;
         }
         if (conflict is KeybindingConflict.ExactMatch)
         {
-            var existingCommand = _currentBindings.First(b => string.Equals(b.Sequence, sequence, StringComparison.Ordinal)).CommandId;
+            var existingCommand = _currentBindings.First(b => string.Equals(b.CanonicalId, candidate.CanonicalId, StringComparison.Ordinal)).CommandId;
             var existingLabel = _commandLabels.GetValueOrDefault(existingCommand, existingCommand);
-            KeybindingConflictDialog.ShowReplace(this, _scopes, sequence, existingLabel, replace =>
+            KeybindingConflictDialog.ShowReplace(this, _scopes, candidate.Display, existingLabel, replace =>
             {
                 if (!replace) return;
-                _currentBindings.RemoveAll(b => string.Equals(b.Sequence, sequence, StringComparison.Ordinal));
-                _currentBindings.Add(new KeyBinding(sequence, commandId));
+                _currentBindings.RemoveAll(b => string.Equals(b.CanonicalId, candidate.CanonicalId, StringComparison.Ordinal));
+                _currentBindings.Add(candidate);
                 RebuildRows();
             });
             return;
         }
 
-        _currentBindings.Add(new KeyBinding(sequence, commandId));
+        _currentBindings.Add(candidate);
         RebuildRows();
     }
 
     /// <summary>
-    /// Conflict check against the picker's pending state, not the live keybinding service.
-    /// Mirrors <see cref="IKeybindingService.CheckConflict"/> but operates on <see cref="_currentBindings"/>.
+    /// Conflict check against the picker's pending state, not the live keybinding service. Mirrors
+    /// <see cref="IKeybindingService.CheckConflict(IReadOnlyList{Key})"/> but operates on
+    /// <see cref="_currentBindings"/>, comparing on canonical keycodes rather than display strings (#89).
     /// </summary>
-    private KeybindingConflict? CheckConflictAgainstCurrent(string sequence)
+    private KeybindingConflict? CheckConflictAgainstCurrent(IReadOnlyList<Key> chord)
     {
-        var sequenceParts = sequence.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var candidate = Keycodes(chord);
 
         foreach (var b in _currentBindings)
         {
-            if (string.Equals(b.Sequence, sequence, StringComparison.Ordinal))
+            var existing = Keycodes(b.Chord);
+            if (existing.SequenceEqual(candidate))
                 return KeybindingConflict.ExactMatch;
-
-            var bParts = b.Sequence.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (bParts.Length > sequenceParts.Length && bParts.Take(sequenceParts.Length).SequenceEqual(sequenceParts))
+            if (existing.Length > candidate.Length && existing.Take(candidate.Length).SequenceEqual(candidate))
                 return KeybindingConflict.PrefixOfExisting;
-            if (bParts.Length < sequenceParts.Length && sequenceParts.Take(bParts.Length).SequenceEqual(bParts))
+            if (existing.Length < candidate.Length && candidate.Take(existing.Length).SequenceEqual(existing))
                 return KeybindingConflict.ExtensionOfExisting;
         }
         return null;
     }
+
+    private static uint[] Keycodes(IReadOnlyList<Key> chord) =>
+        chord.Select(k => (uint)k.KeyCode).ToArray();
 
     private void RemoveSelected()
     {
@@ -282,11 +286,9 @@ public sealed class KeybindingsPickerView : View
         if (i < 0 || i >= _displayRows.Count) return;
         var row = _displayRows[i];
         if (row.Binding is null) return;
-        _currentBindings.RemoveAll(b =>
-            string.Equals(b.CommandId, row.CommandId, StringComparison.Ordinal)
-            && string.Equals(b.Sequence, row.Binding, StringComparison.Ordinal));
+        _currentBindings.RemoveAll(b => b.Equals(row.Binding));
         RebuildRows();
     }
 
-    private sealed record Row(string CommandId, string Label, string? Binding);
+    private sealed record Row(string CommandId, string Label, KeyBinding? Binding);
 }

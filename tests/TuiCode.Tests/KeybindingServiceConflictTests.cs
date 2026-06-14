@@ -35,8 +35,8 @@ public class KeybindingServiceConflictTests
         // Bare-letter chord steps are normalized to lower-case in the trie, so the enumerator
         // emits "Ctrl+W x" not "Ctrl+W X". UI rendering can casefold for display.
         Assert.Collection(bindings,
-            b => { Assert.Equal("Ctrl+W x", b.Sequence); Assert.Equal("close.editor", b.CommandId); },
-            b => { Assert.Equal("Ctrl+S", b.Sequence); Assert.Equal("save", b.CommandId); });
+            b => { Assert.Equal("Ctrl+W x", b.Display); Assert.Equal("close.editor", b.CommandId); },
+            b => { Assert.Equal("Ctrl+S", b.Display); Assert.Equal("save", b.CommandId); });
     }
 
     [Fact]

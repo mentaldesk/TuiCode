@@ -37,11 +37,11 @@ public class KeybindingsCaptureTests : StaticConfigurationTest
 
         // The injected sequence was: Ctrl-only, Ctrl+Shift-only, Ctrl+Alt+Shift-only, Ctrl+Alt+Shift+G, e, Enter.
         // Modifier-only events should be filtered, leaving "Ctrl+Alt+Shift+G e" (or similar).
-        var defaults = keybindings.Bindings.Select(b => b.Sequence).ToHashSet(StringComparer.Ordinal);
-        var added = picker!.CurrentBindings.Where(b => !defaults.Contains(b.Sequence)).ToList();
-        var dump = string.Join("\n  ", picker.CurrentBindings.Select(b => $"{b.Sequence} -> {b.CommandId}"));
+        var defaults = keybindings.Bindings.Select(b => b.CanonicalId).ToHashSet(StringComparer.Ordinal);
+        var added = picker!.CurrentBindings.Where(b => !defaults.Contains(b.CanonicalId)).ToList();
+        var dump = string.Join("\n  ", picker.CurrentBindings.Select(b => $"{b.Display} -> {b.CommandId}"));
         Assert.True(added.Count == 1, $"expected exactly 1 new binding, got {added.Count}. All bindings:\n  {dump}");
-        Assert.Contains("G", added[0].Sequence, StringComparison.Ordinal);
+        Assert.Contains("G", added[0].Display, StringComparison.Ordinal);
 
         void OnIteration(object? sender, EventArgs<IApplication?> e)
         {
