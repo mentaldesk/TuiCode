@@ -36,6 +36,34 @@ public class WorkbenchHostTests : StaticConfigurationTest
         }
     }
 
+    // #90: a hand-edited keybindings file can carry an entry whose key string doesn't parse
+    // ("Ctrl+Frobnicate"). Applying it at startup must skip the bad entry rather than throw out of
+    // the constructor — the app boots and the surviving (default) bindings still work.
+    [Fact]
+    public async Task Malformed_keybinding_override_does_not_crash_startup()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        settings.SetKeybindingOverrides(new[] { new KeybindingOverride("Ctrl+Frobnicate", CommandIds.Quit) });
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
+
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out — startup choked on the malformed override");
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
     [Fact]
     public async Task Ctrl1_focuses_first_open_editor_tab()
     {

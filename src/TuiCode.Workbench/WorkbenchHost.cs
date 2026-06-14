@@ -192,8 +192,18 @@ public sealed class WorkbenchHost : IDisposable
         BindDefaults(_keybindings);
         foreach (var o in overrides)
         {
-            if (o.IsRemoval) _keybindings.Unbind(o.Key);
-            else _keybindings.Bind(o.Key, o.EffectiveCommand);
+            // A hand-edited keybindings file can carry a malformed entry — an unparseable key
+            // string ("Ctrl+Frobnicate") or an empty command. Bind/Unbind throw ArgumentException
+            // on those; skip the offending entry so one bad line can't crash startup (#90). The
+            // rest of the overrides still apply.
+            try
+            {
+                if (o.IsRemoval) _keybindings.Unbind(o.Key);
+                else _keybindings.Bind(o.Key, o.EffectiveCommand);
+            }
+            catch (ArgumentException)
+            {
+            }
         }
     }
 

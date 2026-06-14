@@ -51,9 +51,49 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         Assert.True(fs.Directory.Exists(dir));
     }
 
+    // #90: hand-editing the keybindings file into broken JSON must not throw at construction —
+    // the service just loads no overrides and the app boots on defaults.
+    [Fact]
+    public void Malformed_keybindings_json_loads_as_empty_without_throwing()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(KeybindingsPath(fs), new MockFileData("[ { \"Key\": \"Ctrl+K\", "));
+
+        var svc = new DefaultSettingsService(fs);
+
+        Assert.Empty(svc.KeybindingOverrides);
+    }
+
+    // #90: one bad entry (here a non-string Key) shouldn't take the whole file down with it — the
+    // valid bindings around it still load.
+    [Fact]
+    public void A_single_malformed_entry_does_not_discard_the_valid_bindings()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(KeybindingsPath(fs), new MockFileData(
+            """
+            [
+              { "Key": "Ctrl+K", "Command": "workbench.action.saveActiveEditor" },
+              { "Key": 123, "Command": "workbench.action.quit" }
+            ]
+            """));
+
+        var svc = new DefaultSettingsService(fs);
+
+        var only = Assert.Single(svc.KeybindingOverrides);
+        Assert.Equal("Ctrl+K", only.Key);
+        Assert.Equal("workbench.action.saveActiveEditor", only.Command);
+    }
+
     private static string ConfigPath(MockFileSystem fs)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return fs.Path.Combine(home, ".tui", "TuiCode.config.json");
+    }
+
+    private static string KeybindingsPath(MockFileSystem fs)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return fs.Path.Combine(home, ".tui", "TuiCode.keybindings.json");
     }
 }
