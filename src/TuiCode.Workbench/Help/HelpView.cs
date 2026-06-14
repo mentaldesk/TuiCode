@@ -60,7 +60,7 @@ public sealed class HelpView : Window
             "Navigation",
             Row("Ctrl+1-9", "Focus editor tab 1-9"),
             Row("Ctrl+G L", "Go to line:column"),
-            Row("Ctrl+G P/N", "Previous / next cursor location"),
+            Row("Ctrl+G P/N", "Previous / next cursor position"),
             "",
             "Files",
             Row("Ctrl+O", "Open file or folder"),

@@ -155,8 +155,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
-        _commands.Register(CommandIds.NavigateBack, "Navigate back", NavigateBack);
-        _commands.Register(CommandIds.NavigateForward, "Navigate forward", NavigateForward);
+        _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack);
+        _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
