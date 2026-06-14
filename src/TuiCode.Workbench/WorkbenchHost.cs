@@ -135,6 +135,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.PreviousEditor, "Previous editor", () => _workbench.Editor.PreviousTab());
 
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
+        _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusExplorer);
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
@@ -232,25 +233,19 @@ public sealed class WorkbenchHost : IDisposable
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
     }
 
+    // Flip visibility unconditionally (works from every entry point — see #85), then settle focus
+    // against the NEW state: a freshly shown sidebar takes focus so it can be used; a freshly
+    // hidden one that held focus hands it back to the editor so focus never sits on an invisible
+    // view. We read the focus state *before* the flip — TG doesn't clear HasFocus on hide.
     private void ToggleSidebar()
     {
-        if (!_workbench.IsSidebarVisible)
-        {
-            _workbench.SetSidebarVisible(true);
-            _workbench.Sidebar.Explorer.SetFocus();
-            _focusLevel = FocusLevel.Sidebar;
-            return;
-        }
+        var sidebarWasFocused = _workbench.Sidebar.Explorer.HasFocus || _focusLevel == FocusLevel.Sidebar;
+        _workbench.ToggleSidebar();
 
-        if (_workbench.Sidebar.Explorer.HasFocus || _focusLevel == FocusLevel.Sidebar)
-        {
-            _workbench.SetSidebarVisible(false);
+        if (_workbench.IsSidebarVisible)
+            FocusExplorer();
+        else if (sidebarWasFocused)
             FocusEditorBody();
-            return;
-        }
-
-        _workbench.Sidebar.Explorer.SetFocus();
-        _focusLevel = FocusLevel.Sidebar;
     }
 
     private void FocusEditorBody()
