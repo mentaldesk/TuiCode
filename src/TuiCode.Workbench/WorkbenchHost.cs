@@ -190,12 +190,16 @@ public sealed class WorkbenchHost : IDisposable
     {
         _keybindings.Reset();
         BindDefaults(_keybindings);
+
+        var skipped = 0;
         foreach (var o in overrides)
         {
             // A hand-edited keybindings file can carry a malformed entry — an unparseable key
             // string ("Ctrl+Frobnicate") or an empty command. Bind/Unbind throw ArgumentException
-            // on those; skip the offending entry so one bad line can't crash startup (#90). The
-            // rest of the overrides still apply.
+            // on those; skip the offending entry so one bad line can't crash startup (#90), and
+            // report the count below rather than failing silently. Defaults stay strict (they're
+            // hardcoded — a parse failure there is our bug, not the user's), so only user-supplied
+            // overrides get this tolerance.
             try
             {
                 if (o.IsRemoval) _keybindings.Unbind(o.Key);
@@ -203,8 +207,13 @@ public sealed class WorkbenchHost : IDisposable
             }
             catch (ArgumentException)
             {
+                skipped++;
             }
         }
+
+        if (skipped > 0)
+            _workbench.StatusBar.SetMessage(
+                $"Ignored {skipped} invalid keybinding{(skipped == 1 ? "" : "s")} in your keybindings file");
     }
 
     /// <summary>

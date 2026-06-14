@@ -38,9 +38,10 @@ public class WorkbenchHostTests : StaticConfigurationTest
 
     // #90: a hand-edited keybindings file can carry an entry whose key string doesn't parse
     // ("Ctrl+Frobnicate"). Applying it at startup must skip the bad entry rather than throw out of
-    // the constructor — the app boots and the surviving (default) bindings still work.
+    // the constructor — the app boots, the bad entry is reported on the status bar, and the
+    // surviving default bindings (Ctrl+Q here) still work.
     [Fact]
-    public async Task Malformed_keybinding_override_does_not_crash_startup()
+    public async Task Malformed_keybinding_override_is_skipped_reported_and_does_not_crash_startup()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -50,11 +51,14 @@ public class WorkbenchHostTests : StaticConfigurationTest
         settings.SetKeybindingOverrides(new[] { new KeybindingOverride("Ctrl+Frobnicate", CommandIds.Quit) });
         using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
 
+        // Reported the moment ApplyKeybindings runs in the ctor — no need to wait for the run loop.
+        Assert.Contains("invalid keybinding", workbench.StatusBar.Message);
+
         host.App.Iteration += OnFirstIteration;
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await host.RunAsync(cts.Token);
-        Assert.False(cts.IsCancellationRequested, "RunAsync timed out — startup choked on the malformed override");
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out — startup choked on the malformed override or Ctrl+Q was lost");
 
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {
