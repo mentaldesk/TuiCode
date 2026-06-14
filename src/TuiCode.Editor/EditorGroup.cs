@@ -7,6 +7,9 @@ public sealed class EditorGroup : Tabs
     public event EventHandler<IFileInfo>? FileSaved;
     public event EventHandler<EditorTab?>? ActiveTabChanged;
 
+    /// <summary>Raised when the cursor moves in any tab, tagged with the owning file (#35).</summary>
+    public event EventHandler<(IFileInfo File, int Row, int Column)>? CursorMoved;
+
     public EditorTab? ActiveTab => Value as EditorTab;
 
     public IReadOnlyList<EditorTab> Tabs => _byPath.Values.ToArray();
@@ -26,6 +29,7 @@ public sealed class EditorGroup : Tabs
 
         var tab = new EditorTab(file);
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
+        tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         Add(tab);
         _byPath[file.FullName] = tab;
         Value = tab;

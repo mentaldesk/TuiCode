@@ -25,6 +25,12 @@ public sealed class EditorTab : FrameView
     public event EventHandler? DirtyChanged;
     public event EventHandler? Saved;
 
+    /// <summary>
+    /// Raised whenever the insertion point moves, carrying the position in the file's own
+    /// (unwrapped) model coordinates — the raw source for cursor-location history (#35).
+    /// </summary>
+    public event EventHandler<(int Row, int Column)>? CursorMoved;
+
     public EditorTab(IFileInfo file)
     {
         File = file;
@@ -43,6 +49,9 @@ public sealed class EditorTab : FrameView
         };
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
         _textView.ContentsChanged += (_, _) => MarkDirty();
+        // Point is (X=column, Y=row). Re-expose in (row, column) order to match the rest of the editor API.
+        _textView.UnwrappedCursorPositionChanged += (_, point) =>
+            CursorMoved?.Invoke(this, (point.Y, point.X));
         Add(_textView);
 
         UpdateTitle();

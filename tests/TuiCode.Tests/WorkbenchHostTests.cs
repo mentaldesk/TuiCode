@@ -315,7 +315,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task CtrlG_opens_the_go_to_line_overlay()
+    public async Task CtrlG_L_opens_the_go_to_line_overlay()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -335,8 +335,9 @@ public class WorkbenchHostTests : StaticConfigurationTest
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested);
 
-        Assert.True(modalAppeared, "GoToLineView did not mount after Ctrl+G");
+        Assert.True(modalAppeared, "GoToLineView did not mount after the Ctrl+G L chord");
 
+        // Ctrl+G is now a chord prefix; the go-to-line modal only opens once L completes it.
         void OnFirst(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnFirst;
@@ -347,6 +348,13 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnSecond(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnSecond;
+            if (Key.TryParse("L", out var l)) host.App.InjectKey(l);
+            host.App.Iteration += OnThird;
+        }
+
+        void OnThird(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnThird;
             modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Navigation.GoToLineView>().Any();
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
