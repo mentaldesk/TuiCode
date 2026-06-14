@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -27,6 +28,39 @@ public class WorkbenchHostTests : StaticConfigurationTest
 
         await runTask;
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out — Ctrl+Q did not stop the loop");
+
+        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirstIteration;
+            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
+                host.App.InjectKey(ctrlQ);
+        }
+    }
+
+    // #90: a hand-edited keybindings file can carry an entry whose key string doesn't parse
+    // ("Ctrl+Frobnicate"). Applying it at startup must skip the bad entry rather than throw out of
+    // the constructor — the app boots, the bad entry is logged as a warning, and the surviving
+    // default bindings (Ctrl+Q here) still work.
+    [Fact]
+    public async Task Malformed_keybinding_override_is_skipped_logged_and_does_not_crash_startup()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        settings.SetKeybindingOverrides(new[] { new KeybindingOverride("Ctrl+Frobnicate", CommandIds.Quit) });
+        var logger = new ListLogger<WorkbenchHost>();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI, logger: logger);
+
+        // Logged the moment ApplyKeybindings runs in the ctor — no need to wait for the run loop.
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("Ctrl+Frobnicate"));
+
+        host.App.Iteration += OnFirstIteration;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out — startup choked on the malformed override or Ctrl+Q was lost");
 
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {

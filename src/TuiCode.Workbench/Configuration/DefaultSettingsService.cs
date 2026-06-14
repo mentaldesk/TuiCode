@@ -111,27 +111,37 @@ public sealed class DefaultSettingsService : ISettingsService
     {
         if (!_fs.File.Exists(_keybindingsPath)) return new List<KeybindingOverride>();
 
+        JsonArray? arr;
         try
         {
-            var json = _fs.File.ReadAllText(_keybindingsPath);
-            var node = JsonNode.Parse(json);
-            if (node is not JsonArray arr) return new List<KeybindingOverride>();
+            arr = JsonNode.Parse(_fs.File.ReadAllText(_keybindingsPath)) as JsonArray;
+        }
+        catch (JsonException)
+        {
+            // The whole file is not valid JSON (hand-edited into a broken state) — ignore it.
+            return new List<KeybindingOverride>();
+        }
+        if (arr is null) return new List<KeybindingOverride>();
 
-            var result = new List<KeybindingOverride>(arr.Count);
-            foreach (var item in arr)
+        var result = new List<KeybindingOverride>(arr.Count);
+        foreach (var item in arr)
+        {
+            if (item is not JsonObject obj) continue;
+            // A hand-edited entry can hold a non-string Key/Command (e.g. a bare number), which
+            // makes GetValue<string> throw. Skip just that entry rather than discarding every
+            // valid binding alongside it (#90).
+            try
             {
-                if (item is not JsonObject obj) continue;
                 var key = obj["Key"]?.GetValue<string>();
                 var command = obj["Command"]?.GetValue<string>();
                 if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(command)) continue;
                 result.Add(new KeybindingOverride(key, command));
             }
-            return result;
+            catch (InvalidOperationException)
+            {
+            }
         }
-        catch
-        {
-            return new List<KeybindingOverride>();
-        }
+        return result;
     }
 
     private void EnsureDirExists(string filePath)

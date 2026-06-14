@@ -1,5 +1,6 @@
 using System.IO.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Terminal.Gui.App;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
@@ -10,6 +11,10 @@ using TuiCode.Workbench.Services;
 using TuiCode.Workbench.TerminalIntegration;
 
 var services = new ServiceCollection();
+
+// No provider is registered yet — ILogger output is captured through the abstraction but not
+// surfaced anywhere. Deciding the sink (file / status bar / diagnostics view) is tracked in #92.
+services.AddLogging();
 
 services.AddSingleton<IFileSystem>(_ => new FileSystem());
 services.AddSingleton<ICommandService, CommandService>();
@@ -37,7 +42,8 @@ services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
     sp.GetRequiredService<IEnumerable<ITerminalIntegration>>(),
     sp.GetRequiredService<IEnvironment>(),
     timeProvider: null,
-    driverName: DriverSelection.Resolve(args, sp.GetRequiredService<IEnvironment>())));
+    driverName: DriverSelection.Resolve(args, sp.GetRequiredService<IEnvironment>()),
+    logger: sp.GetRequiredService<ILogger<WorkbenchHost>>()));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();

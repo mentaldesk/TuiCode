@@ -109,6 +109,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `Workbench` (the root `Window`) wires cross-part events in its ctor: `explorer.FileActivated → editor.Open + tab.FocusContent + statusBar.SetMessage`, `editor.FileSaved → statusBar.SetMessage`. Add new cross-part wiring here.
 - `WorkbenchHost` owns `IApplication`, the key intercept, and workbench-scoped command/keybinding registrations.
 - Parts (`SidebarPart` / `EditorPart` / `StatusBarPart`) are thin layout slots over feature views.
+- Logging is `Microsoft.Extensions.Logging`. `Program.cs` calls `services.AddLogging()` with **no provider**, so `ILogger` messages are captured through the abstraction but don't surface anywhere yet — picking the sink (file / status bar / diagnostics view) is tracked in [#92](https://github.com/mentaldesk/TuiCode/issues/92). Inject `ILogger<T>` to record events (first use: `WorkbenchHost` logging skipped malformed keybinding overrides, #90); don't reach for the status bar to report background/diagnostic conditions.
 
 ## Navigation
 
