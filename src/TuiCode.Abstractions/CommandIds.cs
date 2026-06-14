@@ -37,6 +37,9 @@ public static class CommandIds
     public const string GoToLineConfirm = "goToLine.action.confirm";
     public const string GoToLineCancel = "goToLine.action.cancel";
 
+    public const string NavigateBack = "workbench.action.navigateBack";
+    public const string NavigateForward = "workbench.action.navigateForward";
+
     public const string OpenConfirm = "open.action.confirm";
     public const string OpenCancel = "open.action.cancel";
 

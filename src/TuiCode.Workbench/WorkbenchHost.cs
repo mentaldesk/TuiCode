@@ -24,6 +24,10 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IReadOnlyList<ITerminalIntegration> _terminalIntegrations;
     private readonly IEnvironment _environment;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
+    private readonly CursorLocationHistory _history = new();
+    // Set while we drive the cursor ourselves (Back/Forward, Go-to-line) so those moves
+    // don't get re-recorded as fresh jumps.
+    private bool _suppressHistory;
     private SettingsView? _activeSettings;
     private ActionView? _activeActions;
     private HelpView? _activeHelp;
@@ -79,6 +83,12 @@ public sealed class WorkbenchHost : IDisposable
 
         _app.Keyboard.KeyDown += OnAppKeyDown;
         _keybindings.ChordChanged += OnChordChanged;
+
+        // Feed the cursor-location history (#35): within-file moves come from CursorMoved,
+        // file switches (manual tab cycling, opening a file) from ActiveTabChanged. The
+        // history's own heuristic decides which of these count as navigable jumps.
+        _workbench.Editor.Group.CursorMoved += OnEditorCursorMoved;
+        _workbench.Editor.Group.ActiveTabChanged += OnActiveTabChanged;
     }
 
     public IApplication App => _app;
@@ -145,6 +155,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
+        _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack);
+        _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
@@ -226,7 +238,10 @@ public sealed class WorkbenchHost : IDisposable
         // the mnemonics it dispatches are fixed (CommandMnemonics).
         keybindings.Bind("Ctrl+Space", CommandIds.ShowMnemonics);
         keybindings.Bind("F1", CommandIds.ShowHelp);
-        keybindings.Bind("Ctrl+G", CommandIds.GoToLine);
+        // Ctrl+G is a chord family (#35): L = go-to-line, P/N = previous/next cursor location.
+        keybindings.Bind("Ctrl+G L", CommandIds.GoToLine);
+        keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
+        keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
@@ -358,7 +373,13 @@ public sealed class WorkbenchHost : IDisposable
         view.Submitted += (_, target) =>
         {
             CloseGoToLine(view);
-            tab.MoveCursor(target.Row, target.Column);
+            // Drive the move ourselves and record it as an explicit jump, so even a short
+            // hop lands in history (it's a deliberate navigation) without the move event
+            // overwriting the pre-jump origin we want Back to return to.
+            _suppressHistory = true;
+            try { tab.MoveCursor(target.Row, target.Column); }
+            finally { _suppressHistory = false; }
+            _history.Visit(new CursorLocation(tab.File.FullName, target.Row, target.Column), explicitJump: true);
         };
 
         _activeGoToLine = view;
@@ -375,6 +396,43 @@ public sealed class WorkbenchHost : IDisposable
         view.Dispose();
         _activeGoToLine = null;
         FocusEditorBody();
+    }
+
+    private void OnEditorCursorMoved(object? sender, (IFileInfo File, int Row, int Column) e)
+    {
+        if (_suppressHistory) return;
+        _history.Visit(new CursorLocation(e.File.FullName, e.Row, e.Column));
+    }
+
+    private void OnActiveTabChanged(object? sender, TuiCode.Editor.EditorTab? tab)
+    {
+        if (_suppressHistory || tab is null) return;
+        _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
+    }
+
+    private void NavigateBack() => GoToHistory(_history.GoBack());
+    private void NavigateForward() => GoToHistory(_history.GoForward());
+
+    private void GoToHistory(CursorLocation? target)
+    {
+        if (target is not { } loc) return;
+
+        // Reconstruct the file from any currently-open tab's filesystem; navigating back to a
+        // closed file reopens it (browser-style). A deleted file is silently skipped.
+        var fileSystem = _workbench.Editor.Group.ActiveTab?.File.FileSystem;
+        if (fileSystem is null) return;
+        var file = fileSystem.FileInfo.New(loc.FilePath);
+        if (!file.Exists) return;
+
+        _suppressHistory = true;
+        try
+        {
+            var tab = _workbench.Editor.Group.OpenOrFocus(file);
+            tab.MoveCursor(loc.Row, loc.Column);
+            tab.FocusContent();
+            _focusLevel = FocusLevel.EditorBody;
+        }
+        finally { _suppressHistory = false; }
     }
 
     private void OpenFileOrFolder()
@@ -567,6 +625,8 @@ public sealed class WorkbenchHost : IDisposable
         _disposed = true;
         _app.Keyboard.KeyDown -= OnAppKeyDown;
         _keybindings.ChordChanged -= OnChordChanged;
+        _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
+        _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
         _workbench.Dispose();
         _app.Dispose();
         // Tell WezTerm the tuicode key table should be popped; matches the startup activation.

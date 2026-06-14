@@ -44,6 +44,8 @@ public static class CommandMnemonics
             [CommandIds.FocusEditorBody] = "fe",
             [CommandIds.FocusEditorTabStrip] = "ft",
             [CommandIds.GoToLine] = "gl",
+            [CommandIds.NavigateBack] = "gp",
+            [CommandIds.NavigateForward] = "gn",
         };
 
         // f1..f9 mirror the Ctrl+D1..Ctrl+D9 "focus editor tab N" bindings. Digits don't
