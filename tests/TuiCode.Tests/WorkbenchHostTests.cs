@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -38,10 +39,10 @@ public class WorkbenchHostTests : StaticConfigurationTest
 
     // #90: a hand-edited keybindings file can carry an entry whose key string doesn't parse
     // ("Ctrl+Frobnicate"). Applying it at startup must skip the bad entry rather than throw out of
-    // the constructor — the app boots, the bad entry is reported on the status bar, and the
-    // surviving default bindings (Ctrl+Q here) still work.
+    // the constructor — the app boots, the bad entry is logged as a warning, and the surviving
+    // default bindings (Ctrl+Q here) still work.
     [Fact]
-    public async Task Malformed_keybinding_override_is_skipped_reported_and_does_not_crash_startup()
+    public async Task Malformed_keybinding_override_is_skipped_logged_and_does_not_crash_startup()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -49,10 +50,11 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
         settings.SetKeybindingOverrides(new[] { new KeybindingOverride("Ctrl+Frobnicate", CommandIds.Quit) });
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
+        var logger = new ListLogger<WorkbenchHost>();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI, logger: logger);
 
-        // Reported the moment ApplyKeybindings runs in the ctor — no need to wait for the run loop.
-        Assert.Contains("invalid keybinding", workbench.StatusBar.Message);
+        // Logged the moment ApplyKeybindings runs in the ctor — no need to wait for the run loop.
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("Ctrl+Frobnicate"));
 
         host.App.Iteration += OnFirstIteration;
 

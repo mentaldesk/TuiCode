@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
@@ -33,6 +35,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly ISettingsService _settings;
     private readonly IReadOnlyList<ITerminalIntegration> _terminalIntegrations;
     private readonly IEnvironment _environment;
+    private readonly ILogger<WorkbenchHost> _logger;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
     private readonly CursorLocationHistory _history = new();
     // Set while we drive the cursor ourselves (Back/Forward, Go-to-line) so those moves
@@ -57,7 +60,8 @@ public sealed class WorkbenchHost : IDisposable
         IEnumerable<ITerminalIntegration>? terminalIntegrations = null,
         IEnvironment? environment = null,
         ITimeProvider? timeProvider = null,
-        string? driverName = null)
+        string? driverName = null,
+        ILogger<WorkbenchHost>? logger = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -84,6 +88,7 @@ public sealed class WorkbenchHost : IDisposable
         _settings = settings;
         _terminalIntegrations = (terminalIntegrations ?? Array.Empty<ITerminalIntegration>()).ToArray();
         _environment = environment ?? new SystemEnvironment();
+        _logger = logger ?? NullLogger<WorkbenchHost>.Instance;
 
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
@@ -191,29 +196,24 @@ public sealed class WorkbenchHost : IDisposable
         _keybindings.Reset();
         BindDefaults(_keybindings);
 
-        var skipped = 0;
         foreach (var o in overrides)
         {
             // A hand-edited keybindings file can carry a malformed entry — an unparseable key
             // string ("Ctrl+Frobnicate") or an empty command. Bind/Unbind throw ArgumentException
             // on those; skip the offending entry so one bad line can't crash startup (#90), and
-            // report the count below rather than failing silently. Defaults stay strict (they're
-            // hardcoded — a parse failure there is our bug, not the user's), so only user-supplied
-            // overrides get this tolerance.
+            // log it rather than failing silently. Defaults stay strict (they're hardcoded — a
+            // parse failure there is our bug, not the user's), so only user-supplied overrides
+            // get this tolerance. Where these logs surface to the user is a follow-up (#92).
             try
             {
                 if (o.IsRemoval) _keybindings.Unbind(o.Key);
                 else _keybindings.Bind(o.Key, o.EffectiveCommand);
             }
-            catch (ArgumentException)
+            catch (ArgumentException ex)
             {
-                skipped++;
+                _logger.LogWarning(ex, "Ignored invalid keybinding override {Key} for command {Command}", o.Key, o.Command);
             }
         }
-
-        if (skipped > 0)
-            _workbench.StatusBar.SetMessage(
-                $"Ignored {skipped} invalid keybinding{(skipped == 1 ? "" : "s")} in your keybindings file");
     }
 
     /// <summary>

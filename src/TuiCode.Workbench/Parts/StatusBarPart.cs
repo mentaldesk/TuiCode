@@ -21,8 +21,6 @@ public sealed class StatusBarPart : View
         Add(_label);
     }
 
-    public string Message => _message;
-
     public void SetMessage(string message)
     {
         _message = message;
