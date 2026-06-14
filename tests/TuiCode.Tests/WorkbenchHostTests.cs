@@ -800,6 +800,55 @@ public class WorkbenchHostTests : StaticConfigurationTest
         }
     }
 
+    // #85 follow-up: the toggle settles focus against the new visibility — a freshly shown sidebar
+    // takes focus; a freshly hidden one that held focus hands it back to the editor so focus never
+    // sits on an invisible view.
+    [Fact]
+    public async Task Toggle_focuses_the_sidebar_when_shown_and_the_editor_when_hidden()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
+
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/readme.md", new MockFileData("# hi"));
+        workbench.Sidebar.Explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        var explorerFocusedWhileSidebarUp = false;
+        var explorerLostFocusOnHide = false;
+        var explorerRefocusedOnShow = false;
+        host.App.Iteration += OnStart;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(explorerFocusedWhileSidebarUp, "Test precondition: explorer must hold focus before the toggle");
+        Assert.True(explorerLostFocusOnHide, "Hiding a focused sidebar should hand focus to the editor");
+        Assert.True(explorerRefocusedOnShow, "Showing the sidebar should move focus to the explorer");
+
+        void OnStart(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnStart;
+
+            // An open tab gives focus somewhere to land when the sidebar is hidden.
+            workbench.OpenFile(fs.FileInfo.New("/work/readme.md"));
+            workbench.Sidebar.Explorer.SetFocus();
+            explorerFocusedWhileSidebarUp = workbench.Sidebar.Explorer.HasFocus;
+
+            commands.TryExecute(CommandIds.ToggleSidebar);   // visible -> hidden
+            explorerLostFocusOnHide = !workbench.IsSidebarVisible && !workbench.Sidebar.Explorer.HasFocus;
+
+            commands.TryExecute(CommandIds.ToggleSidebar);   // hidden -> visible
+            explorerRefocusedOnShow = workbench.IsSidebarVisible && workbench.Sidebar.Explorer.HasFocus;
+
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),
