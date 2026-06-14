@@ -1,3 +1,4 @@
+using Terminal.Gui.Drivers;
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
@@ -13,6 +14,15 @@ namespace TuiCode.Workbench;
 public sealed class WorkbenchHost : IDisposable
 {
     private const int MaxIndexedEditorBindings = 9;
+
+    // On Windows the Win32 console reports Ctrl+Enter as Ctrl + LineFeed (0x0A) instead of
+    // Ctrl + Enter (CR, 0x0D): plain Enter yields CR, but holding Ctrl swaps the produced char
+    // to LF, and TG's native WindowsDriver passes that control char straight through as the
+    // keycode. The result (0x4000000A) never matches a "Ctrl+Enter" binding (0x4000000D), so the
+    // chord is dead on Windows. We rewrite it back to Ctrl+Enter for binding lookup. Windows-only:
+    // the ansi/kitty path elsewhere already delivers Ctrl+Enter as CR. (See AGENTS.md key handling.)
+    private const KeyCode WindowsCtrlLineFeed = KeyCode.CtrlMask | (KeyCode)0x0A;
+    private const KeyCode CtrlEnter = KeyCode.CtrlMask | KeyCode.Enter;
 
     private readonly TerminalFlowControl _flowControl;
     private readonly IApplication _app;
@@ -91,9 +101,12 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OnAppKeyDown(object? sender, Key key)
     {
+        // Diagnostics shows the raw key as delivered by the driver, so feed it the unnormalized key.
         _activeDiagnostics?.UpdateLastKey(key);
 
-        var result = _scopes.Handle(key);
+        // Look the binding up under the normalized chord, but consume the original event object so
+        // the Win32 LF (0x0A) never falls through to the editor when a binding claimed it.
+        var result = _scopes.Handle(NormalizeWindowsCtrlEnter(key));
         if (result != KeyHandlingResult.Pass)
         {
             key.Handled = true;
@@ -109,6 +122,9 @@ public sealed class WorkbenchHost : IDisposable
             && TryHandleTabStripKey(key))
             key.Handled = true;
     }
+
+    private Key NormalizeWindowsCtrlEnter(Key key) =>
+        _environment.IsWindows && key.KeyCode == WindowsCtrlLineFeed ? new Key(CtrlEnter) : key;
 
     private bool TryHandleTabStripKey(Key key)
     {

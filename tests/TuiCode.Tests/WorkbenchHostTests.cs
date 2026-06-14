@@ -849,6 +849,89 @@ public class WorkbenchHostTests : StaticConfigurationTest
         }
     }
 
+    // The Win32 console delivers Ctrl+Enter as Ctrl + LineFeed (0x4000000A) rather than Ctrl + Enter
+    // (0x4000000D); the native WindowsDriver passes that control char through verbatim. WorkbenchHost
+    // rewrites it back to Ctrl+Enter on Windows so a Ctrl+Enter binding actually fires.
+    [Fact]
+    public async Task Windows_ctrl_enter_arriving_as_ctrl_linefeed_fires_the_ctrl_enter_binding()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(
+            workbench, commands, keybindings, scopes, settings,
+            environment: new FakeEnvironment().SetIsWindows(true),
+            driverName: DriverRegistry.Names.ANSI);
+
+        var fired = false;
+        commands.Register("test.ctrlEnter", () => fired = true);
+        keybindings.Bind("Ctrl+Enter", "test.ctrlEnter");
+
+        host.App.Iteration += OnFirst;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.True(fired, "Ctrl+LineFeed was not normalized to Ctrl+Enter on Windows");
+
+        void OnFirst(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirst;
+            host.App.InjectKey(new Key(KeyCode.CtrlMask | (KeyCode)0x0A));
+            host.App.Iteration += OnSecond;
+        }
+
+        void OnSecond(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecond;
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
+    // The rewrite is a Windows-driver workaround; off Windows Ctrl+Enter already arrives as CR, so a
+    // bare Ctrl+LineFeed must NOT be mistaken for it (it'd be a genuine Ctrl+J-family key there).
+    [Fact]
+    public async Task Non_windows_ctrl_linefeed_does_not_fire_the_ctrl_enter_binding()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        var scopes = new InputScopeStack();
+        var settings = new InMemorySettingsService();
+        using var host = new WorkbenchHost(
+            workbench, commands, keybindings, scopes, settings,
+            environment: new FakeEnvironment().SetIsWindows(false),
+            driverName: DriverRegistry.Names.ANSI);
+
+        var fired = false;
+        commands.Register("test.ctrlEnter", () => fired = true);
+        keybindings.Bind("Ctrl+Enter", "test.ctrlEnter");
+
+        host.App.Iteration += OnFirst;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await host.RunAsync(cts.Token);
+        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
+
+        Assert.False(fired, "Ctrl+LineFeed was wrongly normalized to Ctrl+Enter off Windows");
+
+        void OnFirst(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnFirst;
+            host.App.InjectKey(new Key(KeyCode.CtrlMask | (KeyCode)0x0A));
+            host.App.Iteration += OnSecond;
+        }
+
+        void OnSecond(object? s, EventArgs<IApplication?> e)
+        {
+            host.App.Iteration -= OnSecond;
+            if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
+        }
+    }
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),
