@@ -21,6 +21,7 @@ jobs:
     env:
       HAVE_SIGNING_CERT: ${{ secrets.APPLE_CERT_BASE64 != '' && 'yes' || '' }}
       HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' && 'yes' || '' }}
+      HAVE_WINDOWS_SIGNING: ${{ secrets.SIGNPATH_API_TOKEN != '' && 'yes' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -71,6 +72,37 @@ jobs:
             -r ${{ matrix.rid }} \
             -p:Version=${{ steps.version.outputs.version }} \
             -o publish
+
+      # SignPath signs in the cloud: upload the unsigned binary as a GitHub
+      # artifact, then the action below submits a signing request that pulls
+      # that artifact, signs it, and returns the signed binary. No key material
+      # ever touches the runner. The unsigned artifact is named `unsigned-*` so
+      # the release job's `tuicode-*` download filter never ships it.
+      - name: Upload unsigned Windows binary
+        id: unsigned
+        if: startsWith(matrix.rid, 'win-') && env.HAVE_WINDOWS_SIGNING == 'yes' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-${{ matrix.rid }}
+          path: publish/TuiCode.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign Windows binary via SignPath
+        if: startsWith(matrix.rid, 'win-') && env.HAVE_WINDOWS_SIGNING == 'yes' && github.event_name != 'pull_request'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # SignPath returns the signed binary; drop it back over the unsigned
+          # one so Archive (next) zips the signed TuiCode.exe.
+          output-artifact-directory: publish
+          wait-for-completion-timeout-in-seconds: 1800
 
       - name: Import macOS signing cert
         if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
@@ -165,6 +197,8 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
+          # Only the release zips — never the `unsigned-*` signing inputs.
+          pattern: tuicode-*
           merge-multiple: true
 
       - name: Resolve tag
