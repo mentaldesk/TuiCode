@@ -62,7 +62,7 @@ public sealed class HelpView : Window
             Row("Ctrl+G L", "Go to line:column"),
             Row("Ctrl+G P/N", "Previous / next cursor position"),
             Row("Ctrl+F / H", "Find / replace in file"),
-            Row("Ctrl+Shift+F/H", "Find / replace in files"),
+            Row("Ctrl+Shift+F/H", "Find / replace globally"),
             "",
             "Files",
             Row("Ctrl+O", "Open file or folder"),

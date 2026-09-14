@@ -40,8 +40,8 @@ public static class CommandIds
     public const string NavigateBack = "workbench.action.navigateBack";
     public const string NavigateForward = "workbench.action.navigateForward";
 
-    public const string Find = "workbench.action.find";
-    public const string Replace = "workbench.action.replace";
+    public const string FindInFile = "workbench.action.findInFile";
+    public const string ReplaceInFile = "workbench.action.replaceInFile";
     public const string FindNext = "find.action.next";
     public const string FindPrevious = "find.action.previous";
     public const string FindClose = "find.action.close";
@@ -49,8 +49,8 @@ public static class CommandIds
     public const string FindReplaceAll = "find.action.replaceAll";
 
     public const string ShowExplorer = "workbench.action.showExplorer";
-    public const string ShowSearch = "workbench.action.showSearch";
-    public const string ReplaceInFiles = "workbench.action.replaceInFiles";
+    public const string FindGlobally = "workbench.action.findGlobally";
+    public const string ReplaceGlobally = "workbench.action.replaceGlobally";
     public const string SearchFocusResults = "search.action.focusResults";
     public const string SearchSwitchField = "search.action.switchField";
     public const string SearchReplaceAll = "search.action.replaceAll";

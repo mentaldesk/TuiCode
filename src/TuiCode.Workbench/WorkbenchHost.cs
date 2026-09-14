@@ -179,10 +179,10 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
         _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
         _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ToggleSidebarTab(SidebarTab.Explorer));
-        _commands.Register(CommandIds.ShowSearch, "Search in files", () => ToggleSidebarTab(SidebarTab.Search));
-        _commands.Register(CommandIds.ReplaceInFiles, "Replace in files", ReplaceInFiles);
-        _commands.Register(CommandIds.Find, "Find", () => _find.Open(replace: false));
-        _commands.Register(CommandIds.Replace, "Replace", () => _find.Open(replace: true));
+        _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleSidebarTab(SidebarTab.Search));
+        _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", ReplaceGlobally);
+        _commands.Register(CommandIds.FindInFile, "Find in file", () => _find.Open(replace: false));
+        _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => _find.Open(replace: true));
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
@@ -295,11 +295,11 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
-        keybindings.Bind("Ctrl+F", CommandIds.Find);
-        keybindings.Bind("Ctrl+H", CommandIds.Replace);
+        keybindings.Bind("Ctrl+F", CommandIds.FindInFile);
+        keybindings.Bind("Ctrl+H", CommandIds.ReplaceInFile);
         // Ctrl+Shift+letter needs a terminal that doesn't collapse it onto Ctrl+letter (see AGENTS.md).
-        keybindings.Bind("Ctrl+Shift+F", CommandIds.ShowSearch);
-        keybindings.Bind("Ctrl+Shift+H", CommandIds.ReplaceInFiles);
+        keybindings.Bind("Ctrl+Shift+F", CommandIds.FindGlobally);
+        keybindings.Bind("Ctrl+Shift+H", CommandIds.ReplaceGlobally);
         keybindings.Bind("Ctrl+Shift+E", CommandIds.ShowExplorer);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
@@ -335,7 +335,7 @@ public sealed class WorkbenchHost : IDisposable
         FocusSidebar();
     }
 
-    private void ReplaceInFiles()
+    private void ReplaceGlobally()
     {
         _workbench.Sidebar.ShowTab(SidebarTab.Search);
         FocusSidebar();
