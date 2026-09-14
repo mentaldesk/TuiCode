@@ -185,4 +185,22 @@ public class EditorGroupTests
         Assert.NotNull(saved);
         Assert.Equal(file.FullName, saved!.FullName);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Closing_the_last_tab_raises_ActiveTabChanged_with_null(bool closeAll)
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        using var group = new EditorGroup();
+        group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+        var raised = new List<EditorTab?>();
+        group.ActiveTabChanged += (_, tab) => raised.Add(tab);
+
+        if (closeAll) group.CloseAll();
+        else group.CloseActive();
+
+        Assert.Equal([null], raised);
+    }
 }

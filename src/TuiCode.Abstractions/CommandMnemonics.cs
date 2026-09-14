@@ -46,6 +46,12 @@ public static class CommandMnemonics
             [CommandIds.GoToLine] = "gl",
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
+            [CommandIds.ShowExplorer] = "se",
+            [CommandIds.ShowSearch] = "ss",
+            [CommandIds.ReplaceInFiles] = "sr",
+            // `/` is the in-file find family (vim/less muscle memory): /f find, /r replace.
+            [CommandIds.Find] = "/f",
+            [CommandIds.Replace] = "/r",
         };
 
         // f1..f9 mirror the Ctrl+D1..Ctrl+D9 "focus editor tab N" bindings. Digits don't

@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TuiCode.Explorer\TuiCode.Explorer.csproj" />
+    <ProjectReference Include="..\TuiCode.Search\TuiCode.Search.csproj" />
     <ProjectReference Include="..\TuiCode.Abstractions\TuiCode.Abstractions.csproj" />
     <ProjectReference Include="..\TuiCode.Editor\TuiCode.Editor.csproj" />
   </ItemGroup>

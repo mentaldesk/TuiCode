@@ -1,3 +1,5 @@
+using TuiCode.Abstractions;
+using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Parts;
 
 namespace TuiCode.Workbench;
@@ -38,6 +40,11 @@ public sealed class Workbench : Window
 
         sidebar.Explorer.FileActivated += (_, file) => OpenFile(file);
 
+        sidebar.Search.RootProvider = () => sidebar.Explorer.Root;
+        sidebar.Search.OpenBuffers = new EditorBuffers(editor.Group);
+        sidebar.Search.MatchActivated += (_, hit) => OpenMatch(hit.File, hit.Match);
+        sidebar.Search.Message += (_, message) => statusBar.SetMessage(message);
+
         editor.FileSaved += (_, file) =>
             statusBar.SetMessage($"Saved: {file.FullName}");
     }
@@ -50,6 +57,15 @@ public sealed class Workbench : Window
         StatusBar.SetMessage(file.FullName);
     }
 
+    /// <summary>Open a file with <paramref name="match"/> selected — where a search result lands.</summary>
+    public void OpenMatch(IFileInfo file, TextMatch match)
+    {
+        var tab = Editor.Open(file);
+        tab.Select(match);
+        tab.FocusContent();
+        StatusBar.SetMessage($"{file.FullName}:{match.Row + 1}:{match.Column + 1}");
+    }
+
     /// <summary>
     /// Switch the workspace to <paramref name="directory"/>: close every open editor and re-root
     /// the explorer. Mirrors VS Code's "Open Folder" — the previous workspace is discarded.
@@ -58,6 +74,7 @@ public sealed class Workbench : Window
     {
         Editor.Group.CloseAll();
         Sidebar.Explorer.Open(directory);
+        Sidebar.Search.RunSearch();
         StatusBar.SetMessage($"Opened folder: {directory.FullName}");
     }
 
