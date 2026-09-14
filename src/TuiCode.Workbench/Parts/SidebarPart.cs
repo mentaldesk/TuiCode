@@ -3,18 +3,18 @@ using TuiCode.Search;
 
 namespace TuiCode.Workbench.Parts;
 
-public enum SidebarTab { Explorer, Search }
+public enum SidebarTab { Explorer, Find }
 
 public sealed class SidebarPart : FrameView
 {
     private readonly Tabs _tabs;
     private readonly View _explorerTab;
-    private readonly View _searchTab;
+    private readonly View _findTab;
 
     public FileExplorerView Explorer { get; }
     public SearchView Search { get; }
 
-    public SidebarTab ActiveTab => ReferenceEquals(_tabs.Value, _searchTab) ? SidebarTab.Search : SidebarTab.Explorer;
+    public SidebarTab ActiveTab => ReferenceEquals(_tabs.Value, _findTab) ? SidebarTab.Find : SidebarTab.Explorer;
 
     public SidebarPart(FileExplorerView explorer, SearchView? search = null)
     {
@@ -23,7 +23,8 @@ public sealed class SidebarPart : FrameView
         BorderStyle = LineStyle.Single;
 
         _explorerTab = WrapTab("Explorer", explorer);
-        _searchTab = WrapTab("Search", Search);
+        // Titled after the Find globally / Replace globally commands that open it (fg / rg).
+        _findTab = WrapTab("Find", Search);
 
         _tabs = new Tabs
         {
@@ -33,13 +34,13 @@ public sealed class SidebarPart : FrameView
             Height = Dim.Fill(),
             CanFocus = true,
         };
-        _tabs.Add(_explorerTab, _searchTab);
+        _tabs.Add(_explorerTab, _findTab);
         _tabs.Value = _explorerTab;
         Add(_tabs);
     }
 
     public void ShowTab(SidebarTab tab) =>
-        _tabs.Value = tab == SidebarTab.Search ? _searchTab : _explorerTab;
+        _tabs.Value = tab == SidebarTab.Find ? _findTab : _explorerTab;
 
     private static View WrapTab(string title, View content)
     {

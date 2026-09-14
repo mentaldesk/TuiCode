@@ -179,7 +179,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
         _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
         _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ToggleSidebarTab(SidebarTab.Explorer));
-        _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleSidebarTab(SidebarTab.Search));
+        _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleSidebarTab(SidebarTab.Find));
         _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", ReplaceGlobally);
         _commands.Register(CommandIds.FindInFile, "Find in file", () => _find.Open(replace: false));
         _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => _find.Open(replace: true));
@@ -337,7 +337,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private void ReplaceGlobally()
     {
-        _workbench.Sidebar.ShowTab(SidebarTab.Search);
+        _workbench.Sidebar.ShowTab(SidebarTab.Find);
         FocusSidebar();
         _workbench.Sidebar.Search.FocusReplacement();
     }
@@ -619,7 +619,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (!_workbench.IsSidebarVisible)
             _workbench.SetSidebarVisible(true);
-        if (_workbench.Sidebar.ActiveTab == SidebarTab.Search)
+        if (_workbench.Sidebar.ActiveTab == SidebarTab.Find)
             _workbench.Sidebar.Search.FocusQuery();
         else
             _workbench.Sidebar.Explorer.SetFocus();

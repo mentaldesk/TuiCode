@@ -1,7 +1,7 @@
 namespace TuiCode.Search;
 
 /// <summary>
-/// Workspace search panel (#33), hosted as a sidebar tab next to the explorer. Typing re-runs the
+/// Global find/replace panel (#33), hosted as the sidebar's Find tab next to the explorer. Typing re-runs the
 /// search (in the background once the view is running, cancelling any search still in flight);
 /// results show as a directory → file → match tree. Key handling for the inputs (Enter/Down to
 /// the results, Tab between fields, Ctrl+Enter replace-all) is bound by the workbench against this
@@ -143,7 +143,7 @@ public sealed class SearchView : View
         }
 
         var cts = _searchCts = new CancellationTokenSource();
-        _status.Text = "Searching…";
+        _status.Text = "Finding…";
         Task.Run(() => WorkspaceSearch.Search(root, query, buffers, cancellationToken: cts.Token), cts.Token)
             .ContinueWith(t =>
             {

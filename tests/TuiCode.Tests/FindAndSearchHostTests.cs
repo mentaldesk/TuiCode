@@ -154,7 +154,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
             () => states.Add((workbench.IsSidebarVisible, sidebar.ActiveTab)));
 
         Assert.Equal(
-            [(true, SidebarTab.Search), (false, SidebarTab.Search), (true, SidebarTab.Explorer), (false, SidebarTab.Explorer)],
+            [(true, SidebarTab.Find), (false, SidebarTab.Find), (true, SidebarTab.Explorer), (false, SidebarTab.Explorer)],
             states);
         Assert.True(searchQueryFocused, "Showing the search tab should focus its query input");
     }
