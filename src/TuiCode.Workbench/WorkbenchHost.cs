@@ -105,6 +105,7 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(_searchScope);
         _find = new FindController(_workbench.Editor.Group, _scopes, _searchScope);
         _find.Closed += (_, _) => FocusEditorBody();
+        _find.HintChanged += (_, hint) => _workbench.StatusBar.SetHint(hint);
 
         _app.Keyboard.KeyDown += OnAppKeyDown;
         _keybindings.ChordChanged += OnChordChanged;

@@ -77,6 +77,41 @@ public class FindControllerTests : IDisposable
     }
 
     [Fact]
+    public void Hint_explains_the_navigation_keys_only_while_there_are_matches()
+    {
+        Open("/work/a.txt", "foo\nfoo\n");
+        var raised = new List<string?>();
+        _find.HintChanged += (_, hint) => raised.Add(hint);
+        _find.Open(replace: false);
+        Assert.Null(_find.Hint);
+
+        _find.Bar.Query = "foo";
+        Assert.Equal("Enter next match · Shift+Enter previous match · Esc close", _find.Hint);
+
+        _find.Bar.Query = "zzz";
+        Assert.Null(_find.Hint);
+
+        _find.Bar.Query = "foo";
+        _find.Close();
+        Assert.Null(_find.Hint);
+        Assert.Equal([
+            "Enter next match · Shift+Enter previous match · Esc close", null,
+            "Enter next match · Shift+Enter previous match · Esc close", null,
+        ], raised);
+    }
+
+    [Fact]
+    public void Hint_mentions_replace_all_and_the_replace_field_when_the_replace_row_is_showing()
+    {
+        Open("/work/a.txt", "foo");
+        _find.Open(replace: true);
+
+        _find.Bar.Query = "foo";
+
+        Assert.Equal("Enter next · Shift+Enter previous · Ctrl+Enter replace all · Tab replace field", _find.Hint);
+    }
+
+    [Fact]
     public void Opening_seeds_the_query_from_a_single_line_selection()
     {
         var tab = Open("/work/a.txt", "one two two\n");

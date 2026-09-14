@@ -6,6 +6,7 @@ public sealed class StatusBarPart : View
     private readonly Label _label;
     private string _message = DefaultMessage;
     private string? _chord;
+    private string? _hint;
 
     public StatusBarPart()
     {
@@ -27,6 +28,18 @@ public sealed class StatusBarPart : View
         UpdateLabel();
     }
 
+    /// <summary>
+    /// Show a transient key hint (e.g. find's "Enter next match") in place of the message until cleared
+    /// with null, at which point the message shows again. An in-flight chord still takes precedence.
+    /// </summary>
+    public void SetHint(string? hint)
+    {
+        _hint = hint;
+        UpdateLabel();
+    }
+
+    internal string DisplayedText => _label.Text;
+
     public void SetChord(string? chord)
     {
         _chord = chord;
@@ -34,5 +47,5 @@ public sealed class StatusBarPart : View
     }
 
     private void UpdateLabel() =>
-        _label.Text = _chord is null ? _message : $"{_chord}…";
+        _label.Text = _chord is not null ? $"{_chord}…" : _hint ?? _message;
 }

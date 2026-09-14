@@ -23,10 +23,12 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         var findBarFocusedAfterCtrlF = false;
         var afterTyping = (Row: -1, Selected: "");
         var rowAfterEnter = -1;
+        var statusWhileFinding = "";
         var closedCleanly = false;
 
         await RunSteps(host,
-            () => { tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")); },
+            // OpenFile (not Editor.Open) so the status bar carries its normal message to revert to.
+            () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); tab = workbench.Editor.Group.ActiveTab; },
             () => { tab!.FocusContent(); host.App.InjectKey(Key.F.WithCtrl); },
             () =>
             {
@@ -36,6 +38,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
             () =>
             {
                 afterTyping = (tab!.CursorRow, tab.SelectedText);
+                statusWhileFinding = workbench.StatusBar.DisplayedText;
                 host.App.InjectKey(Key.Enter);
             },
             () =>
@@ -43,14 +46,19 @@ public class FindAndSearchHostTests : StaticConfigurationTest
                 rowAfterEnter = tab!.CursorRow;
                 host.App.InjectKey(Key.Esc);
             },
-            () => closedCleanly = !workbench.SubViewsDeep().OfType<FindBarView>().Any()
-                                  && tab!.ContentHasFocus
-                                  && tab.SelectedText.Length == 0);
+            () =>
+            {
+                closedCleanly = !workbench.SubViewsDeep().OfType<FindBarView>().Any()
+                                && tab!.ContentHasFocus
+                                && tab.SelectedText.Length == 0
+                                && workbench.StatusBar.DisplayedText == tab.File.FullName;
+            });
 
         Assert.True(findBarFocusedAfterCtrlF, "Ctrl+F should show and focus the find bar");
         Assert.Equal((0, "foo"), afterTyping);
         Assert.Equal(1, rowAfterEnter);
-        Assert.True(closedCleanly, "Esc should remove the bar, clear the selection and refocus the editor");
+        Assert.Equal("Enter next match · Shift+Enter previous match · Esc close", statusWhileFinding);
+        Assert.True(closedCleanly, "Esc should remove the bar, clear the selection, refocus the editor and restore the status bar");
     }
 
     // The find bar's scope is layered, not modal: workbench shortcuts keep working while it has focus.
@@ -78,16 +86,40 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         EditorTab? tab = null;
+        var statusInReplaceField = "";
 
         await RunSteps(host,
             () => { tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")); },
             () => { tab!.FocusContent(); host.App.InjectKey(Key.H.WithCtrl); },
             () => { foreach (var c in "cat") host.App.InjectKey(new Key(c)); },
             () => host.App.InjectKey(Key.Tab),
-            () => { foreach (var c in "dog") host.App.InjectKey(new Key(c)); },
+            () =>
+            {
+                statusInReplaceField = workbench.StatusBar.DisplayedText;
+                foreach (var c in "dog") host.App.InjectKey(new Key(c));
+            },
             () => host.App.InjectKey(Key.Enter));
 
         Assert.Equal("dog cat", tab!.Lines[0]);
+        Assert.Equal("Enter replace · Ctrl+Enter replace all · Tab find field · Esc close", statusInReplaceField);
+    }
+
+    [Fact]
+    public async Task CtrlEnter_replaces_all_matches_from_the_find_field()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("cat cat\ncat\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        EditorTab? tab = null;
+
+        await RunSteps(host,
+            () => { tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")); },
+            () => { tab!.FocusContent(); host.App.InjectKey(Key.H.WithCtrl); },
+            () => { foreach (var c in "cat") host.App.InjectKey(new Key(c)); },
+            () => { workbench.SubViewsDeep().OfType<FindBarView>().Single().Replacement = "dog"; },
+            () => host.App.InjectKey(Key.Enter.WithCtrl));
+
+        Assert.Equal(["dog dog", "dog", ""], tab!.Lines);
     }
 
     // #33: a sidebar item's shortcut shows its tab (revealing the sidebar), and pressed again while that

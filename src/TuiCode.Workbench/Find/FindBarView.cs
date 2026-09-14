@@ -7,16 +7,18 @@ namespace TuiCode.Workbench.Find;
 public sealed class FindBarView : View
 {
     private const int LabelWidth = 9;
-    // Right-hand column for "12 of 345" / the replace-all hint; the input fields take the rest.
+    // Right-hand column for "12 of 345"; the input fields take the rest.
     private const int SideWidth = 14;
 
     private readonly TextField _query;
     private readonly Label _replaceLabel;
     private readonly TextField _replacement;
     private readonly Label _status;
-    private readonly Label _replaceHint;
 
     public event EventHandler? QueryChanged;
+
+    /// <summary>Raised when focus moves into or out of either input, so key hints can follow the field.</summary>
+    public event EventHandler? FieldFocusChanged;
 
     public FindBarView()
     {
@@ -30,18 +32,12 @@ public sealed class FindBarView : View
         _status = new Label { X = Pos.AnchorEnd(SideWidth), Y = 0, Width = SideWidth, Text = string.Empty };
         _replaceLabel = new Label { X = 1, Y = 1, Text = "Replace", Visible = false };
         _replacement = new TextField { X = LabelWidth, Y = 1, Width = Dim.Fill(SideWidth + 1), Visible = false };
-        _replaceHint = new Label
-        {
-            X = Pos.AnchorEnd(SideWidth),
-            Y = 1,
-            Width = SideWidth,
-            Text = "Ctrl+Enter all",
-            Visible = false,
-        };
 
-        Add(queryLabel, _query, _status, _replaceLabel, _replacement, _replaceHint);
+        Add(queryLabel, _query, _status, _replaceLabel, _replacement);
 
         _query.TextChanged += (_, _) => QueryChanged?.Invoke(this, EventArgs.Empty);
+        _query.HasFocusChanged += (_, _) => FieldFocusChanged?.Invoke(this, EventArgs.Empty);
+        _replacement.HasFocusChanged += (_, _) => FieldFocusChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public string Query
@@ -69,7 +65,6 @@ public sealed class FindBarView : View
     {
         _replaceLabel.Visible = visible;
         _replacement.Visible = visible;
-        _replaceHint.Visible = visible;
         // Content rows plus the bottom rule.
         Height = visible ? 3 : 2;
         SetNeedsLayout();

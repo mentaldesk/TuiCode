@@ -29,6 +29,12 @@ internal sealed class FindController : IDisposable
     /// <summary>Raised after the bar closes, so the host can hand focus back to the editor.</summary>
     public event EventHandler? Closed;
 
+    /// <summary>
+    /// The keys that act right now (e.g. "Enter next match · Shift+Enter previous match"), or null when
+    /// there's nothing to act on. The host shows it in the status bar so the bar's keys aren't a secret.
+    /// </summary>
+    public event EventHandler<string?>? HintChanged;
+
     public FindController(EditorGroup group, IInputScopeStack scopes, IKeybindingService below)
     {
         _group = group;
@@ -42,10 +48,8 @@ internal sealed class FindController : IDisposable
         commands.Register(CommandIds.FindSwitchField, SwitchField);
         commands.Register(CommandIds.FindReplaceAll, ReplaceAll);
         bindings.Bind("Enter", CommandIds.FindNext);
-        bindings.Bind("F3", CommandIds.FindNext);
-        // Shift+Enter needs a terminal that reports it (kitty protocol); Shift+F3 always works.
+        // Needs a terminal that reports Shift+Enter distinctly (kitty keyboard protocol).
         bindings.Bind("Shift+Enter", CommandIds.FindPrevious);
-        bindings.Bind("Shift+F3", CommandIds.FindPrevious);
         bindings.Bind("Esc", CommandIds.FindClose);
         bindings.Bind("Tab", CommandIds.FindSwitchField);
         bindings.Bind("Shift+Tab", CommandIds.FindSwitchField);
@@ -55,9 +59,11 @@ internal sealed class FindController : IDisposable
             key => _bar.HasFocus || (key == Key.Esc && _tab?.ContentHasFocus == true));
 
         _bar.QueryChanged += (_, _) => Recompute(selectFromAnchor: true);
+        _bar.FieldFocusChanged += (_, _) => UpdateHint();
     }
 
     public bool IsOpen => _tab is not null;
+    internal string? Hint { get; private set; }
 
     internal FindBarView Bar => _bar;
     internal IReadOnlyList<TextMatch> Matches => _matches;
@@ -91,6 +97,7 @@ internal sealed class FindController : IDisposable
         _scopes.Pop(_scope);
         tab.ClearSelection();
         Detach();
+        UpdateHint();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -201,11 +208,33 @@ internal sealed class FindController : IDisposable
         UpdateStatus();
     }
 
-    private void UpdateStatus() =>
+    private void UpdateStatus()
+    {
         _bar.Status = _bar.Query.Length == 0 ? string.Empty
             : _matches.Count == 0 ? "No results"
             : _current >= 0 ? $"{_current + 1} of {_matches.Count}"
             : $"{_matches.Count} results";
+        UpdateHint();
+    }
+
+    private void UpdateHint()
+    {
+        string? hint = null;
+        if (_tab is not null && _matches.Count > 0)
+        {
+            // Ctrl+Enter (replace all) works from either field, so it's advertised whenever replace shows.
+            // Kept within 80 columns, hence the terser find-field wording once replace is visible.
+            hint = _bar.ReplacementHasFocus
+                ? "Enter replace · Ctrl+Enter replace all · Tab find field · Esc close"
+                : _bar.ReplaceVisible
+                    ? "Enter next · Shift+Enter previous · Ctrl+Enter replace all · Tab replace field"
+                    : "Enter next match · Shift+Enter previous match · Esc close";
+        }
+
+        if (hint == Hint) return;
+        Hint = hint;
+        HintChanged?.Invoke(this, hint);
+    }
 
     // Our own replacements fire ContentChanged per edit; recompute once afterwards instead.
     private void Edit(Action edit)
