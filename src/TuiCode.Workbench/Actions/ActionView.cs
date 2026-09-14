@@ -86,7 +86,7 @@ public sealed class ActionView : Window
     {
         var bindingsByCommand = keybindings.Bindings
             .GroupBy(b => b.CommandId, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Select(b => b.Sequence).ToArray(), StringComparer.Ordinal);
+            .ToDictionary(g => g.Key, g => g.Select(b => b.Display).ToArray(), StringComparer.Ordinal);
 
         return commands.Registered
             .Select(c => new ActionRow(

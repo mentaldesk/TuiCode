@@ -18,14 +18,17 @@ public sealed class KeybindingService : IKeybindingService
     public string? CurrentChord { get; private set; }
     public event EventHandler<string?>? ChordChanged;
 
-    public void Bind(string keySequence, string commandId)
+    public void Bind(string keySequence, string commandId) =>
+        Bind(ParseSequence(keySequence), commandId);
+
+    public void Bind(IReadOnlyList<Key> chord, string commandId)
     {
-        ArgumentException.ThrowIfNullOrEmpty(keySequence);
+        ArgumentNullException.ThrowIfNull(chord);
+        if (chord.Count == 0) throw new ArgumentException("A chord needs at least one key.", nameof(chord));
         ArgumentException.ThrowIfNullOrEmpty(commandId);
 
-        var keys = ParseSequence(keySequence);
         var node = _root;
-        foreach (var key in keys)
+        foreach (var key in chord)
         {
             var normalized = Normalize(key);
             if (!node.Children.TryGetValue(normalized, out var child))
@@ -38,11 +41,13 @@ public sealed class KeybindingService : IKeybindingService
         node.CommandId = commandId;
     }
 
-    public bool Unbind(string keySequence)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(keySequence);
+    public bool Unbind(string keySequence) => Unbind(ParseSequence(keySequence));
 
-        var keys = ParseSequence(keySequence);
+    public bool Unbind(IReadOnlyList<Key> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        if (keys.Count == 0) throw new ArgumentException("A chord needs at least one key.", nameof(keys));
+
         var path = new List<(ChordNode parent, Key key, ChordNode child)>(keys.Count);
         var node = _root;
         foreach (var key in keys)
@@ -74,11 +79,14 @@ public sealed class KeybindingService : IKeybindingService
         ResetChord();
     }
 
-    public KeybindingConflict? CheckConflict(string keySequence)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(keySequence);
+    public KeybindingConflict? CheckConflict(string keySequence) =>
+        CheckConflict(ParseSequence(keySequence));
 
-        var keys = ParseSequence(keySequence);
+    public KeybindingConflict? CheckConflict(IReadOnlyList<Key> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        if (keys.Count == 0) throw new ArgumentException("A chord needs at least one key.", nameof(keys));
+
         var node = _root;
         for (var i = 0; i < keys.Count; i++)
         {
@@ -114,7 +122,7 @@ public sealed class KeybindingService : IKeybindingService
     private static IEnumerable<KeyBinding> Walk(ChordNode node, List<Key> stack)
     {
         if (node.CommandId is not null)
-            yield return new KeyBinding(string.Join(" ", stack.Select(FormatKey)), node.CommandId);
+            yield return new KeyBinding(stack.ToArray(), node.CommandId);
 
         foreach (var (key, child) in node.Children)
         {

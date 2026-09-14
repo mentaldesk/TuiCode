@@ -26,9 +26,12 @@ internal sealed class KeyCaptureScope : IKeybindingService
     }
 
     public void Bind(string keySequence, string commandId) { }
+    public void Bind(IReadOnlyList<Key> chord, string commandId) { }
     public bool Unbind(string keySequence) => false;
+    public bool Unbind(IReadOnlyList<Key> chord) => false;
     public void Reset() { }
     public KeybindingConflict? CheckConflict(string keySequence) => null;
+    public KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord) => null;
     public IEnumerable<KeyBinding> Bindings => Array.Empty<KeyBinding>();
     public string? CurrentChord => null;
     public event EventHandler<string?>? ChordChanged { add { } remove { } }

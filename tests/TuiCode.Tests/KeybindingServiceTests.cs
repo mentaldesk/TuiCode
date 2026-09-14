@@ -132,6 +132,22 @@ public class KeybindingServiceTests
         Assert.Equal(["Ctrl+W", null], transitions);
     }
 
+    // #89 acceptance: a chord whose ToString() can't be parsed back (Ctrl+Alt+Shift++) is still
+    // bindable and matchable, because the keycode overload never round-trips through the display string.
+    [Fact]
+    public void A_chord_whose_display_string_cannot_be_parsed_binds_and_fires_via_the_keycode_overload()
+    {
+        var (commands, keys, fired) = SetUp();
+        var plus = new Key(KeyCode.CtrlMask | KeyCode.AltMask | KeyCode.ShiftMask | (KeyCode)'+');
+        keys.Bind(new[] { plus }, "next");
+        commands.Register("next", () => fired.Add("next"));
+
+        var result = keys.Handle(plus);
+
+        Assert.Equal(KeyHandlingResult.Consumed, result);
+        Assert.Equal(["next"], fired);
+    }
+
     private static (CommandService commands, KeybindingService keys, List<string> fired) SetUp()
     {
         var commands = new CommandService();

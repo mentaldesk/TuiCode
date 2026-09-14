@@ -64,25 +64,43 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         Assert.Empty(svc.KeybindingOverrides);
     }
 
-    // #90: one bad entry (here a non-string Key) shouldn't take the whole file down with it — the
-    // valid bindings around it still load.
+    // #90: one bad entry (here a keycode array holding a non-number) shouldn't take the whole file
+    // down with it — the valid bindings around it still load.
     [Fact]
     public void A_single_malformed_entry_does_not_discard_the_valid_bindings()
     {
         var fs = new MockFileSystem();
+        var ctrlK = TestKeys.Chord("Ctrl+K");
         fs.AddFile(KeybindingsPath(fs), new MockFileData(
-            """
+            $$"""
             [
-              { "Key": "Ctrl+K", "Command": "workbench.action.saveActiveEditor" },
-              { "Key": 123, "Command": "workbench.action.quit" }
+              { "Keys": [{{(uint)ctrlK[0].KeyCode}}], "Command": "workbench.action.saveActiveEditor" },
+              { "Keys": ["not-a-number"], "Command": "workbench.action.quit" }
             ]
             """));
 
         var svc = new DefaultSettingsService(fs);
 
         var only = Assert.Single(svc.KeybindingOverrides);
-        Assert.Equal("Ctrl+K", only.Key);
+        Assert.Equal(TuiCode.Abstractions.KeyChord.Canonical(ctrlK), only.CanonicalId);
         Assert.Equal("workbench.action.saveActiveEditor", only.Command);
+    }
+
+    // #89: persistence moved from a display "Key" string to a "Keys" keycode array. Pre-#89 files
+    // have no "Keys", so their entries are skipped — the app boots on defaults and a later edit
+    // re-saves any new bindings in the keycode format. (Old custom bindings are dropped, by design.)
+    [Fact]
+    public void Pre_keycode_format_entries_are_dropped_and_the_app_boots_on_defaults()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(KeybindingsPath(fs), new MockFileData(
+            """
+            [ { "Key": "Ctrl+Shift+K", "Command": "workbench.action.openSettings" } ]
+            """));
+
+        var svc = new DefaultSettingsService(fs);
+
+        Assert.Empty(svc.KeybindingOverrides);
     }
 
     private static string ConfigPath(MockFileSystem fs)

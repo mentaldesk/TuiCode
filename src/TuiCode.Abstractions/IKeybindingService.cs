@@ -12,7 +12,40 @@ public enum KeyHandlingResult
     ChordInProgress
 }
 
-public sealed record KeyBinding(string Sequence, string CommandId);
+/// <summary>
+/// A bound chord and the command it fires. The chord is the canonical identity — a sequence of
+/// <see cref="Key"/> compared by raw <see cref="KeyCode"/>, not by display string (issue #89).
+/// <see cref="Display"/> is the human-readable label and must never be parsed back into keys.
+/// </summary>
+public sealed class KeyBinding : IEquatable<KeyBinding>
+{
+    public KeyBinding(IReadOnlyList<Key> chord, string commandId)
+    {
+        ArgumentNullException.ThrowIfNull(chord);
+        if (chord.Count == 0) throw new ArgumentException("A chord needs at least one key.", nameof(chord));
+        ArgumentException.ThrowIfNullOrEmpty(commandId);
+        Chord = chord;
+        CommandId = commandId;
+    }
+
+    public IReadOnlyList<Key> Chord { get; }
+    public string CommandId { get; }
+
+    /// <summary>Parse-stable identity (keycode-based). Use for equality, dedup, and diffing.</summary>
+    public string CanonicalId => KeyChord.Canonical(Chord);
+
+    /// <summary>Human-readable label (e.g. <c>"Ctrl+W x"</c>) — UI only, never parsed back.</summary>
+    public string Display => KeyChord.Display(Chord);
+
+    public bool Equals(KeyBinding? other) =>
+        other is not null
+        && string.Equals(CommandId, other.CommandId, StringComparison.Ordinal)
+        && string.Equals(CanonicalId, other.CanonicalId, StringComparison.Ordinal);
+
+    public override bool Equals(object? obj) => Equals(obj as KeyBinding);
+
+    public override int GetHashCode() => HashCode.Combine(CanonicalId, CommandId);
+}
 
 public enum KeybindingConflict
 {
@@ -28,26 +61,37 @@ public enum KeybindingConflict
 
 public interface IKeybindingService
 {
+    /// <summary>Bind a chord (one key per step) to a command. This is the canonical entry point.</summary>
+    void Bind(IReadOnlyList<Key> chord, string commandId);
+
+    /// <summary>Remove the binding at <paramref name="chord"/>. Returns true if a binding was removed.</summary>
+    bool Unbind(IReadOnlyList<Key> chord);
+
     /// <summary>
-    /// Bind a key sequence to a command. Sequences are space-separated, e.g.
-    /// "Ctrl+S" for a single key, "Ctrl+W X" for a chord.
+    /// Report whether <paramref name="chord"/> would conflict with any existing binding, or null
+    /// if it would not. Use before <see cref="Bind(IReadOnlyList{Key}, string)"/> to decide whether
+    /// to surface a confirm/refuse dialog.
+    /// </summary>
+    KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord);
+
+    /// <summary>
+    /// String sugar for the hardcoded defaults: parses a space-separated sequence
+    /// ("Ctrl+S", "Ctrl+W X") and binds it. Throws on an unparseable sequence — callers binding
+    /// user-supplied input should use the <see cref="Key"/>-list overload, whose identity never
+    /// round-trips through the lossy display parser (issue #89).
     /// </summary>
     void Bind(string keySequence, string commandId);
 
-    /// <summary>Remove the binding at <paramref name="keySequence"/>. Returns true if a binding was removed.</summary>
+    /// <summary>String sugar for <see cref="Unbind(IReadOnlyList{Key})"/>; see <see cref="Bind(string, string)"/>.</summary>
     bool Unbind(string keySequence);
 
     /// <summary>Clear all bindings.</summary>
     void Reset();
 
-    /// <summary>
-    /// Report whether <paramref name="keySequence"/> would conflict with any existing binding,
-    /// or null if it would not. Use before <see cref="Bind"/> to decide whether to surface a
-    /// confirm/refuse dialog.
-    /// </summary>
+    /// <summary>String sugar for <see cref="CheckConflict(IReadOnlyList{Key})"/>; see <see cref="Bind(string, string)"/>.</summary>
     KeybindingConflict? CheckConflict(string keySequence);
 
-    /// <summary>All currently-registered bindings as (sequence, commandId) pairs.</summary>
+    /// <summary>All currently-registered bindings as (chord, commandId) pairs.</summary>
     IEnumerable<KeyBinding> Bindings { get; }
 
     /// <summary>

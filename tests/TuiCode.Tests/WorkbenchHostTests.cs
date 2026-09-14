@@ -37,9 +37,10 @@ public class WorkbenchHostTests : StaticConfigurationTest
         }
     }
 
-    // #90: a hand-edited keybindings file can carry an entry whose key string doesn't parse
-    // ("Ctrl+Frobnicate"). Applying it at startup must skip the bad entry rather than throw out of
-    // the constructor — the app boots, the bad entry is logged as a warning, and the surviving
+    // #90: a hand-edited keybindings file can carry a malformed entry. Since #89 the chord is stored
+    // by keycode (always a valid Key), so the bad part is now the *command* — here an empty string.
+    // Applying it at startup must skip the bad entry rather than throw out of the constructor — the
+    // app boots, the bad entry is logged as a warning (named by its display chord), and the surviving
     // default bindings (Ctrl+Q here) still work.
     [Fact]
     public async Task Malformed_keybinding_override_is_skipped_logged_and_does_not_crash_startup()
@@ -49,12 +50,12 @@ public class WorkbenchHostTests : StaticConfigurationTest
         var keybindings = new KeybindingService(commands);
         var scopes = new InputScopeStack();
         var settings = new InMemorySettingsService();
-        settings.SetKeybindingOverrides(new[] { new KeybindingOverride("Ctrl+Frobnicate", CommandIds.Quit) });
+        settings.SetKeybindingOverrides(new[] { new KeybindingOverride(TestKeys.Chord("Ctrl+Alt+J"), "") });
         var logger = new ListLogger<WorkbenchHost>();
         using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI, logger: logger);
 
         // Logged the moment ApplyKeybindings runs in the ctor — no need to wait for the run loop.
-        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("Ctrl+Frobnicate"));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("Ctrl+Alt+J"));
 
         host.App.Iteration += OnFirstIteration;
 
