@@ -14,6 +14,17 @@ public sealed class EditorGroup : Tabs
 
     public IReadOnlyList<EditorTab> Tabs => _byPath.Values.ToArray();
 
+    /// <summary>Whether tabs show the line-number gutter (#23); applies to open and future tabs alike.</summary>
+    public bool GutterVisible
+    {
+        get;
+        set
+        {
+            field = value;
+            foreach (var tab in _byPath.Values) tab.GutterVisible = value;
+        }
+    } = true;
+
     public EditorGroup()
     {
         ValueChanged += (_, _) => ActiveTabChanged?.Invoke(this, ActiveTab);
@@ -27,7 +38,7 @@ public sealed class EditorGroup : Tabs
             return existing;
         }
 
-        var tab = new EditorTab(file);
+        var tab = new EditorTab(file) { GutterVisible = GutterVisible };
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         Add(tab);

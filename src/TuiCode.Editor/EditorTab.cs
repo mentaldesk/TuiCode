@@ -5,6 +5,7 @@ namespace TuiCode.Editor;
 public sealed class EditorTab : FrameView
 {
     private readonly EditorTextView _textView;
+    private readonly EditorGutter _gutter;
     private View? _header;
     private readonly string _eol;
     private bool _dirty;
@@ -18,8 +19,7 @@ public sealed class EditorTab : FrameView
         set
         {
             _textView.Text = value;
-            MarkDirty();
-            ContentChanged?.Invoke(this, EventArgs.Empty);
+            OnEdited();
         }
     }
 
@@ -48,25 +48,35 @@ public sealed class EditorTab : FrameView
 
         _textView = new EditorTextView
         {
-            X = 0,
             Y = 0,
             Width = Dim.Fill(),
             Height = Dim.Fill(),
             Text = initial
         };
+        _gutter = new EditorGutter(_textView) { X = 0, Y = 0, Height = Dim.Fill() };
+        _textView.X = Pos.Right(_gutter);
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
-        _textView.ContentsChanged += (_, _) =>
-        {
-            MarkDirty();
-            ContentChanged?.Invoke(this, EventArgs.Empty);
-        };
+        _textView.ContentsChanged += (_, _) => OnEdited();
         // Point is (X=column, Y=row). Re-expose in (row, column) order to match the rest of the editor API.
         _textView.UnwrappedCursorPositionChanged += (_, point) =>
             CursorMoved?.Invoke(this, (point.Y, point.X));
-        Add(_textView);
+        Add(_gutter, _textView);
 
         UpdateTitle();
     }
+
+    public bool GutterVisible
+    {
+        get => _gutter.Visible;
+        set
+        {
+            _gutter.Visible = value;
+            _textView.X = value ? Pos.Right(_gutter) : 0;
+            SetNeedsLayout();
+        }
+    }
+
+    internal IReadOnlyList<LineChange> LineChanges => _gutter.Changes;
 
     public bool FocusContent() => _textView.SetFocus();
     public bool ContentHasFocus => _textView.HasFocus;
@@ -106,8 +116,7 @@ public sealed class EditorTab : FrameView
     /// The buffer's lines as the editor models them (terminators excluded). Columns in a
     /// <see cref="TextMatch"/> computed against these line up with <see cref="Select"/> / <see cref="Replace"/>.
     /// </summary>
-    public IReadOnlyList<string> Lines =>
-        _textView.GetAllLines().Select(Cell.ToString).ToArray();
+    public IReadOnlyList<string> Lines => _textView.LineStrings;
 
     public string SelectedText => _textView.SelectedText;
 
@@ -146,7 +155,7 @@ public sealed class EditorTab : FrameView
             header.Width = Dim.Fill();
             Add(header);
         }
-        _textView.Y = header is null ? 0 : Pos.Bottom(header);
+        _textView.Y = _gutter.Y = header is null ? 0 : Pos.Bottom(header);
         SetNeedsLayout();
     }
 
@@ -222,6 +231,7 @@ public sealed class EditorTab : FrameView
         if (content.Length > 0 && !content.EndsWith(_eol, StringComparison.Ordinal))
             content += _eol;
         File.FileSystem.File.WriteAllText(File.FullName, content);
+        _gutter.ResetBaseline();
         if (_dirty)
         {
             _dirty = false;
@@ -257,6 +267,13 @@ public sealed class EditorTab : FrameView
         base.Dispose(disposing);
     }
 
+    private void OnEdited()
+    {
+        MarkDirty();
+        _gutter.OnContentChanged();
+        ContentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     private void MarkDirty()
     {
         if (_dirty) return;
@@ -273,6 +290,8 @@ internal sealed class EditorTextView : TextView
 {
     /// <summary>Row → half-open [start, end) cell-column ranges to highlight.</summary>
     public Dictionary<int, List<(int Start, int End)>> Highlights { get; } = new();
+
+    public IReadOnlyList<string> LineStrings => GetAllLines().Select(Cell.ToString).ToArray();
 
     protected override void OnDrawNormalColor(List<Cell> line, int idxCol, int idxRow)
     {
