@@ -25,6 +25,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `src/TuiCode.Editor/` — `EditorGroup`, `EditorTab`.
 - `src/TuiCode.Explorer/` — `FileExplorerView`.
 - `src/TuiCode.Search/` — `TextSearch` / `WorkspaceSearch` (pure) and the sidebar `SearchView`.
+- `src/TuiCode.Syntax/` — TextMate grammar bundle for syntax highlighting (TG-free).
 - `src/TuiCode.Abstractions/` — interfaces + DTOs. Features depend only on this.
 - `tests/TuiCode.Tests/` — single test assembly.
 
@@ -55,7 +56,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Release builds are Native AOT (`PublishAot=true` on `src/TuiCode`). `dotnet publish -c Release -r <rid>` emits a single native binary; `dotnet build`/`dotnet run` still JIT.
 - All `src/` projects set `IsAotCompatible=true`, so trim/AOT analyzers run on every Debug build. Don't silence warnings — fix the call site.
 - `JsonArray.Add(JsonNode)` is AOT-safe; the generic `JsonArray.Add<T>(T)` overload is not. When appending a `JsonObject`/`JsonArray`, cast to `JsonNode` to pick the right overload (see `DefaultSettingsService.SaveKeybindings`).
-- `dotnet test` runs JIT, so AOT-only failures (missing metadata, trim-stripped paths) won't surface there. CI's `AOT smoke` step publishes the binary and runs `./TuiCode --smoke` under a pty — boots through `Application.Init`, renders one iteration, exits 0. Add anything reflection-heavy with that smoke in mind; an AOT-compatible test framework is tracked separately.
+- `dotnet test` runs JIT, so AOT-only failures (missing metadata, trim-stripped paths) won't surface there. CI's `aot` job publishes the binary on every release RID and runs `--smoke-syntax` (headless: loads every grammar and theme, tokenizes a line with each). On linux-x64 it also runs `./TuiCode --smoke` under a pty — boots through `Application.Init`, renders one iteration, exits 0. Add anything reflection-heavy with those smokes in mind; an AOT-compatible test framework is tracked separately.
 
 ## Key handling
 
@@ -99,6 +100,14 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Only set the gutter's `Width` when it actually changes — TG's `Width` setter schedules a full screen clear even for an equal value.
 - Visibility is `EditorGroup.GutterVisible` (on by default, applied to open and future tabs), toggled by `tg`. It isn't persisted: that waits for an editor section in Settings.
 - Marker colours are fixed RGB (green added, blue modified, red deleted) — TG schemes have no semantic roles for them. Line numbers use the scheme's Editable attribute, faint except on the cursor row.
+
+## Syntax highlighting (#21)
+
+- Engine is TextMateSharp (VS Code grammars; `TokenizeLine` carries per-line state, so re-lexing can start at the edited line). PrismSharp was rejected — the ports either crash under AOT or have no line state; see the exploration notes on #21.
+- Oniguruma is native. `StaticLink.libonigwrap` links it into the AOT binary so the release stays one file; without it publish drops `libonigwrap` beside the binary and the release archive (binary only) would ship broken. On macOS the static library prints ~14 `ld: warning: ... built for newer 'macOS' version (13.0) than being linked (12.0)` lines — expected, not an MSBuild warning.
+- Grammars and themes come from TextMateSharp.Grammars, re-packed into the embedded `src/TuiCode.Syntax/Grammars.zip` (~850 KB vs 6.7 MB uncompressed). Don't use that package's `RegistryOptions` at runtime — referencing it roots the whole uncompressed assembly into the binary. `GrammarBundle` is our `IRegistryOptions` over the zip.
+- Bumping TextMateSharp: update the version in `TuiCode.Syntax.csproj`, `TuiCode.Tests.csproj` and the `#:package` line of `scripts/update-grammar-bundle.cs`, then `dotnet run scripts/update-grammar-bundle.cs`. The output is reproducible, and `GrammarBundleTests.Bundle_matches_the_TextMateSharp_Grammars_package` fails if the zip and the package drift.
+- `GrammarBundle.LanguageForFile` matches exact file names (`Dockerfile`) first, then the longest known extension (`bundle.js.map` is JSON via `.js.map`). `filenamePatterns` globs and injection grammars aren't supported (TextMateSharp's own `RegistryOptions` doesn't do injections either).
 
 ## Filesystem
 
