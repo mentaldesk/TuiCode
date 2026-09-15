@@ -46,6 +46,13 @@ public static class CommandMnemonics
             [CommandIds.GoToLine] = "gl",
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
+            [CommandIds.ShowExplorer] = "se",
+            // Find is the `f` family and replace the `r` family: a trailing `f` is the active file (as in
+            // sf/cf/of/nf) and `g` is global. ff/fg share `f` with focus (fs/fe/ft/f1-9) without prefix clashes.
+            [CommandIds.FindInFile] = "ff",
+            [CommandIds.ReplaceInFile] = "rf",
+            [CommandIds.FindGlobally] = "fg",
+            [CommandIds.ReplaceGlobally] = "rg",
         };
 
         // f1..f9 mirror the Ctrl+D1..Ctrl+D9 "focus editor tab N" bindings. Digits don't

@@ -5,9 +5,11 @@ using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Diagnostics;
+using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
+using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 
@@ -36,6 +38,8 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IReadOnlyList<ITerminalIntegration> _terminalIntegrations;
     private readonly IEnvironment _environment;
     private readonly ILogger<WorkbenchHost> _logger;
+    private readonly LayeredScope _searchScope;
+    private readonly FindController _find;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
     private readonly CursorLocationHistory _history = new();
     // Set while we drive the cursor ourselves (Back/Forward, Go-to-line) so those moves
@@ -93,8 +97,15 @@ public sealed class WorkbenchHost : IDisposable
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
 
-        // Workbench scope is the bottom of the input stack; never popped.
+        // Workbench scope is the bottom of the input stack; never popped. The search sidebar's keys
+        // layer directly above it for the app's lifetime (they only engage while its inputs have focus);
+        // the find bar layers above that while it's open.
         _scopes.Push(_keybindings);
+        _searchScope = CreateSearchScope();
+        _scopes.Push(_searchScope);
+        _find = new FindController(_workbench.Editor.Group, _scopes, _searchScope);
+        _find.Closed += (_, _) => FocusEditorBody();
+        _find.HintChanged += (_, hint) => _workbench.StatusBar.SetHint(hint);
 
         _app.Keyboard.KeyDown += OnAppKeyDown;
         _keybindings.ChordChanged += OnChordChanged;
@@ -166,7 +177,12 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.PreviousEditor, "Previous editor", () => _workbench.Editor.PreviousTab());
 
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
-        _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusExplorer);
+        _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
+        _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ToggleSidebarTab(SidebarTab.Explorer));
+        _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleSidebarTab(SidebarTab.Find));
+        _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", ReplaceGlobally);
+        _commands.Register(CommandIds.FindInFile, "Find in file", () => _find.Open(replace: false));
+        _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => _find.Open(replace: true));
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
@@ -279,6 +295,12 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
+        keybindings.Bind("Ctrl+F", CommandIds.FindInFile);
+        keybindings.Bind("Ctrl+H", CommandIds.ReplaceInFile);
+        // Ctrl+Shift+letter needs a terminal that doesn't collapse it onto Ctrl+letter (see AGENTS.md).
+        keybindings.Bind("Ctrl+Shift+F", CommandIds.FindGlobally);
+        keybindings.Bind("Ctrl+Shift+H", CommandIds.ReplaceGlobally);
+        keybindings.Bind("Ctrl+Shift+E", CommandIds.ShowExplorer);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -290,13 +312,50 @@ public sealed class WorkbenchHost : IDisposable
     // view. We read the focus state *before* the flip — TG doesn't clear HasFocus on hide.
     private void ToggleSidebar()
     {
-        var sidebarWasFocused = _workbench.Sidebar.Explorer.HasFocus || _focusLevel == FocusLevel.Sidebar;
+        var sidebarWasFocused = _workbench.Sidebar.HasFocus || _focusLevel == FocusLevel.Sidebar;
         _workbench.ToggleSidebar();
 
         if (_workbench.IsSidebarVisible)
-            FocusExplorer();
+            FocusSidebar();
         else if (sidebarWasFocused)
             FocusEditorBody();
+    }
+
+    // A sidebar item's shortcut (#33) shows its tab — revealing the sidebar if needed — and, pressed
+    // again while that tab is already showing, hides the sidebar. Like ToggleSidebar this decides on
+    // visibility, not focus, so it behaves the same from the palette and leader (#85).
+    private void ToggleSidebarTab(SidebarTab tab)
+    {
+        if (_workbench.IsSidebarVisible && _workbench.Sidebar.ActiveTab == tab)
+        {
+            ToggleSidebar();
+            return;
+        }
+        _workbench.Sidebar.ShowTab(tab);
+        FocusSidebar();
+    }
+
+    private void ReplaceGlobally()
+    {
+        _workbench.Sidebar.ShowTab(SidebarTab.Find);
+        FocusSidebar();
+        _workbench.Sidebar.Search.FocusReplacement();
+    }
+
+    private LayeredScope CreateSearchScope()
+    {
+        var search = _workbench.Sidebar.Search;
+        var commands = new CommandService();
+        var bindings = new KeybindingService(commands);
+        commands.Register(CommandIds.SearchFocusResults, () => search.FocusResults());
+        commands.Register(CommandIds.SearchSwitchField, search.SwitchField);
+        commands.Register(CommandIds.SearchReplaceAll, () => { if (search.ReplaceVisible) search.RequestReplaceAll(); });
+        bindings.Bind("Enter", CommandIds.SearchFocusResults);
+        bindings.Bind("CursorDown", CommandIds.SearchFocusResults);
+        bindings.Bind("Tab", CommandIds.SearchSwitchField);
+        bindings.Bind("Shift+Tab", CommandIds.SearchSwitchField);
+        bindings.Bind("Ctrl+Enter", CommandIds.SearchReplaceAll);
+        return new LayeredScope(bindings, _keybindings, _ => search.InputsHaveFocus);
     }
 
     private void FocusEditorBody()
@@ -442,6 +501,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OnActiveTabChanged(object? sender, TuiCode.Editor.EditorTab? tab)
     {
+        _find.OnActiveTabChanged(tab);
         if (_suppressHistory || tab is null) return;
         _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
     }
@@ -526,7 +586,10 @@ public sealed class WorkbenchHost : IDisposable
                 if (created is IFileInfo file)
                     _workbench.OpenFile(file);
                 else
-                    FocusExplorer();
+                {
+                    _workbench.Sidebar.ShowTab(SidebarTab.Explorer);
+                    FocusSidebar();
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
@@ -551,11 +614,15 @@ public sealed class WorkbenchHost : IDisposable
         FocusEditorBody();
     }
 
-    private void FocusExplorer()
+    // Show the sidebar and focus its active tab: the explorer tree, or the search query input.
+    private void FocusSidebar()
     {
         if (!_workbench.IsSidebarVisible)
             _workbench.SetSidebarVisible(true);
-        _workbench.Sidebar.Explorer.SetFocus();
+        if (_workbench.Sidebar.ActiveTab == SidebarTab.Find)
+            _workbench.Sidebar.Search.FocusQuery();
+        else
+            _workbench.Sidebar.Explorer.SetFocus();
         _focusLevel = FocusLevel.Sidebar;
     }
 
@@ -663,6 +730,7 @@ public sealed class WorkbenchHost : IDisposable
         _keybindings.ChordChanged -= OnChordChanged;
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
+        _find.Dispose();
         _workbench.Dispose();
         _app.Dispose();
         // Tell WezTerm the tuicode key table should be popped; matches the startup activation.

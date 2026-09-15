@@ -47,6 +47,11 @@ public class CommandMnemonicsTests
         Assert.Equal("gl", CommandMnemonics.For(CommandIds.GoToLine));
         Assert.Equal("gp", CommandMnemonics.For(CommandIds.NavigateBack));
         Assert.Equal("gn", CommandMnemonics.For(CommandIds.NavigateForward));
+        Assert.Equal("ff", CommandMnemonics.For(CommandIds.FindInFile));
+        Assert.Equal("rf", CommandMnemonics.For(CommandIds.ReplaceInFile));
+        Assert.Equal("se", CommandMnemonics.For(CommandIds.ShowExplorer));
+        Assert.Equal("fg", CommandMnemonics.For(CommandIds.FindGlobally));
+        Assert.Equal("rg", CommandMnemonics.For(CommandIds.ReplaceGlobally));
     }
 
     [Fact]

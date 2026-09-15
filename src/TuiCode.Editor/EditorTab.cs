@@ -1,8 +1,11 @@
+using TuiCode.Abstractions;
+
 namespace TuiCode.Editor;
 
 public sealed class EditorTab : FrameView
 {
-    private readonly TextView _textView;
+    private readonly EditorTextView _textView;
+    private View? _header;
     private readonly string _eol;
     private bool _dirty;
 
@@ -16,6 +19,7 @@ public sealed class EditorTab : FrameView
         {
             _textView.Text = value;
             MarkDirty();
+            ContentChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -23,6 +27,9 @@ public sealed class EditorTab : FrameView
     public int CursorColumn => _textView.CurrentColumn;
 
     public event EventHandler? DirtyChanged;
+
+    /// <summary>Raised on every edit, whether typed, pasted, replaced or set via <see cref="Content"/>.</summary>
+    public event EventHandler? ContentChanged;
     public event EventHandler? Saved;
 
     /// <summary>
@@ -39,7 +46,7 @@ public sealed class EditorTab : FrameView
         var initial = file.FileSystem.File.ReadAllText(file.FullName);
         _eol = DetectEol(initial);
 
-        _textView = new TextView
+        _textView = new EditorTextView
         {
             X = 0,
             Y = 0,
@@ -48,7 +55,11 @@ public sealed class EditorTab : FrameView
             Text = initial
         };
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
-        _textView.ContentsChanged += (_, _) => MarkDirty();
+        _textView.ContentsChanged += (_, _) =>
+        {
+            MarkDirty();
+            ContentChanged?.Invoke(this, EventArgs.Empty);
+        };
         // Point is (X=column, Y=row). Re-expose in (row, column) order to match the rest of the editor API.
         _textView.UnwrappedCursorPositionChanged += (_, point) =>
             CursorMoved?.Invoke(this, (point.Y, point.X));
@@ -91,6 +102,116 @@ public sealed class EditorTab : FrameView
         _textView.InsertionPoint = new System.Drawing.Point(col, currentRow);
     }
 
+    /// <summary>
+    /// The buffer's lines as the editor models them (terminators excluded). Columns in a
+    /// <see cref="TextMatch"/> computed against these line up with <see cref="Select"/> / <see cref="Replace"/>.
+    /// </summary>
+    public IReadOnlyList<string> Lines =>
+        _textView.GetAllLines().Select(Cell.ToString).ToArray();
+
+    public string SelectedText => _textView.SelectedText;
+
+    /// <summary>
+    /// Start of the selection, or the cursor when nothing is selected — with the column in UTF-16 chars,
+    /// comparable with <see cref="TextMatch"/> positions.
+    /// </summary>
+    public (int Row, int Column) SelectionOrigin
+    {
+        get
+        {
+            var (row, col) = (_textView.CurrentRow, _textView.CurrentColumn);
+            if (_textView.IsSelecting)
+            {
+                var (startRow, startCol) = (_textView.SelectionStartRow, _textView.SelectionStartColumn);
+                if (startRow < row || (startRow == row && startCol < col))
+                    (row, col) = (startRow, startCol);
+            }
+            return (row, ToCharColumn(row, col));
+        }
+    }
+
+    /// <summary>
+    /// Dock <paramref name="header"/> (e.g. the find bar) above the text, pushing the text down; null removes it.
+    /// The header is not disposed on removal — its owner is.
+    /// </summary>
+    public void SetHeader(View? header)
+    {
+        if (ReferenceEquals(_header, header)) return;
+        if (_header is not null) Remove(_header);
+        _header = header;
+        if (header is not null)
+        {
+            header.X = 0;
+            header.Y = 0;
+            header.Width = Dim.Fill();
+            Add(header);
+        }
+        _textView.Y = header is null ? 0 : Pos.Bottom(header);
+        SetNeedsLayout();
+    }
+
+    /// <summary>Paint every match with the highlight colour (find-in-file). An empty set clears it.</summary>
+    public void SetHighlights(IEnumerable<TextMatch> matches)
+    {
+        _textView.Highlights.Clear();
+        foreach (var m in matches)
+        {
+            if (!_textView.Highlights.TryGetValue(m.Row, out var ranges))
+                _textView.Highlights[m.Row] = ranges = [];
+            ranges.Add((ToCellColumn(m.Row, m.Column), ToCellColumn(m.Row, m.End)));
+        }
+        _textView.SetNeedsDraw();
+    }
+
+    /// <summary>Select <paramref name="match"/>, leaving the cursor at its end and scrolling it into view.</summary>
+    public void Select(TextMatch match)
+    {
+        var start = ToCellColumn(match.Row, match.Column);
+        var end = ToCellColumn(match.Row, match.End);
+        _textView.InsertionPoint = new System.Drawing.Point(start, match.Row);
+        // Row before column: the column setter clamps against the selection-start row's line.
+        _textView.SelectionStartRow = match.Row;
+        _textView.SelectionStartColumn = start;
+        _textView.InsertionPoint = new System.Drawing.Point(end, match.Row);
+    }
+
+    public void ClearSelection()
+    {
+        _textView.IsSelecting = false;
+        _textView.SetNeedsDraw();
+    }
+
+    /// <summary>Replace the text covered by <paramref name="match"/>; goes through TextView editing so it's undoable.</summary>
+    public void Replace(TextMatch match, string replacement)
+    {
+        Select(match);
+        if (match.Length > 0) _textView.DeleteCharLeft();
+        if (replacement.Length > 0) _textView.InsertText(replacement);
+        _textView.IsSelecting = false;
+    }
+
+    private int ToCharColumn(int row, int cellColumn)
+    {
+        var line = _textView.GetLine(row);
+        var chars = 0;
+        for (var i = 0; i < Math.Min(cellColumn, line.Count); i++)
+            chars += line[i].Grapheme.Length;
+        return chars;
+    }
+
+    // TextMatch columns count UTF-16 chars; the TextView model counts grapheme cells.
+    private int ToCellColumn(int row, int charColumn)
+    {
+        var line = _textView.GetLine(row);
+        var chars = 0;
+        for (var i = 0; i < line.Count; i++)
+        {
+            if (chars >= charColumn) return i;
+            chars += line[i].Grapheme.Length;
+        }
+        return line.Count;
+    }
+
     public void Save()
     {
         // TextView.Text joins its lines with Environment.NewLine, so on Windows the
@@ -129,6 +250,13 @@ public sealed class EditorTab : FrameView
         return eol == "\n" ? text : text.Replace("\n", eol);
     }
 
+    // The header (find bar) belongs to its controller, which outlives this tab — don't take it down with us.
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) SetHeader(null);
+        base.Dispose(disposing);
+    }
+
     private void MarkDirty()
     {
         if (_dirty) return;
@@ -138,4 +266,19 @@ public sealed class EditorTab : FrameView
     }
 
     private void UpdateTitle() => Title = _dirty ? $"● {File.Name}" : File.Name;
+}
+
+/// <summary>TextView that paints find-in-file match highlights (#33) under the normal text colour.</summary>
+internal sealed class EditorTextView : TextView
+{
+    /// <summary>Row → half-open [start, end) cell-column ranges to highlight.</summary>
+    public Dictionary<int, List<(int Start, int End)>> Highlights { get; } = new();
+
+    protected override void OnDrawNormalColor(List<Cell> line, int idxCol, int idxRow)
+    {
+        base.OnDrawNormalColor(line, idxCol, idxRow);
+        // We never enable WordWrap, so draw coordinates are model coordinates.
+        if (Highlights.TryGetValue(idxRow, out var ranges) && ranges.Exists(r => idxCol >= r.Start && idxCol < r.End))
+            SetAttributeForRole(VisualRole.Highlight);
+    }
 }

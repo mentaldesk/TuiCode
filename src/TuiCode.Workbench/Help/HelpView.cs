@@ -54,13 +54,15 @@ public sealed class HelpView : Window
 
     private static string BuildContent()
     {
-        static string Row(string key, string desc) => $"  {key,-13}{desc}";
+        static string Row(string key, string desc) => $"  {key,-16}{desc}";
 
         return string.Join("\n",
             "Navigation",
             Row("Ctrl+1-9", "Focus editor tab 1-9"),
             Row("Ctrl+G L", "Go to line:column"),
             Row("Ctrl+G P/N", "Previous / next cursor position"),
+            Row("Ctrl+F / H", "Find / replace in file"),
+            Row("Ctrl+Shift+F/H", "Find / replace globally"),
             "",
             "Files",
             Row("Ctrl+O", "Open file or folder"),

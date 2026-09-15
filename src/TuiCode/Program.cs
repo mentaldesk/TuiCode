@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Terminal.Gui.App;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
+using TuiCode.Search;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Parts;
@@ -26,6 +27,7 @@ services.AddSingleton<ITerminalIntegration, Iterm2Integration>();
 services.AddSingleton<ITerminalIntegration, WezTermIntegration>();
 
 services.AddTransient<FileExplorerView>();
+services.AddTransient<SearchView>();
 services.AddTransient<SidebarPart>();
 services.AddTransient<EditorPart>();
 services.AddTransient<StatusBarPart>();

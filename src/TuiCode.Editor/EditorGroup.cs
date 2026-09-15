@@ -49,7 +49,7 @@ public sealed class EditorGroup : Tabs
 
         if (_byPath.Count == 0)
         {
-            Value = null;
+            ClearValue();
             return;
         }
 
@@ -66,7 +66,15 @@ public sealed class EditorGroup : Tabs
             tab.Dispose();
         }
         _byPath.Clear();
-        Value = null;
+        ClearValue();
+    }
+
+    // Removing the selected tab when it's the last one makes TG's Tabs null its value silently — no
+    // ValueChanged — so raise ActiveTabChanged ourselves; listeners (find bar, history) must see "no editor".
+    private void ClearValue()
+    {
+        if (Value is null) ActiveTabChanged?.Invoke(this, null);
+        else Value = null;
     }
 
     public void SaveActive() => ActiveTab?.Save();
