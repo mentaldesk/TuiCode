@@ -10,20 +10,21 @@ internal sealed class EditorGutter : View
     private static readonly Color DeletedColor = new(0xF8, 0x51, 0x49);
 
     private readonly EditorTextView _text;
-    private IReadOnlyList<string> _baseline;
+    private readonly LineSnapshot _lines = new();
+    private string[] _baseline;
     private LineChange[]? _changes;
 
     public EditorGutter(EditorTextView text)
     {
         _text = text;
-        _baseline = text.LineStrings;
+        _baseline = [.. _lines.Refresh(text.GetAllLines())];
         Width = WidthFor(text.Lines);
         _text.ViewportChanged += (_, _) => SetNeedsDraw();
         _text.UnwrappedCursorPositionChanged += (_, _) => SetNeedsDraw();
     }
 
     /// <summary>How each buffer line differs from the baseline; recomputed lazily after an edit.</summary>
-    public IReadOnlyList<LineChange> Changes => _changes ??= LineDiff.Compute(_baseline, _text.LineStrings);
+    public IReadOnlyList<LineChange> Changes => _changes ??= LineDiff.Compute(_baseline, _lines.Refresh(_text.GetAllLines()));
 
     public void OnContentChanged()
     {
@@ -37,7 +38,7 @@ internal sealed class EditorGutter : View
     /// <summary>Take the current buffer as the saved state, clearing every change marker.</summary>
     public void ResetBaseline()
     {
-        _baseline = _text.LineStrings;
+        _baseline = [.. _lines.Refresh(_text.GetAllLines())];
         OnContentChanged();
     }
 

@@ -78,6 +78,58 @@ public class KeybindingsCaptureTests : StaticConfigurationTest
         }
     }
 
+    [Fact]
+    public async Task Capture_rejects_a_first_key_that_types_text_but_allows_it_later_in_the_chord()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(),
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+        var defaults = keybindings.Bindings.Select(b => b.CanonicalId).ToHashSet(StringComparer.Ordinal);
+        KeybindingsPickerView? picker = null;
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(new Key(',').WithCtrl),
+            () => host.App.InjectKey(Key.CursorDown),
+            () => host.App.InjectKey(Key.CursorRight),
+            () =>
+            {
+                picker = workbench.SubViewsDeep().OfType<KeybindingsPickerView>().Single();
+                host.App.InjectKey(Key.Enter);
+            },
+            () => host.App.InjectKey(new Key('T')),
+            () => host.App.InjectKey(new Key('t')),
+            () => host.App.InjectKey(Key.T.WithCtrl),
+            () => host.App.InjectKey(new Key('g')),
+            () => host.App.InjectKey(Key.Enter));
+
+        var added = Assert.Single(picker!.CurrentBindings, b => !defaults.Contains(b.CanonicalId));
+        Assert.Equal([Key.T.WithCtrl, Key.G], added.Chord);
+    }
+
+    [Theory]
+    [InlineData((uint)KeyCode.T)]
+    [InlineData((uint)(KeyCode.T | KeyCode.ShiftMask))]
+    [InlineData((uint)KeyCode.D1)]
+    [InlineData((uint)KeyCode.Space)]
+    [InlineData((uint)'/')]
+    public void TypesText_is_true_for_keys_that_insert_characters(uint keyCode) =>
+        Assert.True(KeybindingsPickerView.TypesText(new Key((KeyCode)keyCode)));
+
+    [Theory]
+    [InlineData((uint)(KeyCode.T | KeyCode.CtrlMask))]
+    [InlineData((uint)(KeyCode.T | KeyCode.AltMask))]
+    [InlineData((uint)(KeyCode.Space | KeyCode.CtrlMask))]
+    [InlineData((uint)KeyCode.F1)]
+    [InlineData((uint)KeyCode.Esc)]
+    [InlineData((uint)KeyCode.Enter)]
+    [InlineData((uint)KeyCode.Tab)]
+    [InlineData((uint)KeyCode.CursorUp)]
+    [InlineData((uint)KeyCode.Delete)]
+    public void TypesText_is_false_for_modified_and_non_printing_keys(uint keyCode) =>
+        Assert.False(KeybindingsPickerView.TypesText(new Key((KeyCode)keyCode)));
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),

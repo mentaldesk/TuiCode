@@ -90,29 +90,9 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public void MoveCursor(int row, int col)
     {
-        if (row < 0) row = 0;
-        if (col < 0) col = 0;
-
-        var text = _textView.Text ?? string.Empty;
-
-        var currentRow = 0;
-        var lineStart = 0;
-        for (var i = 0; i < text.Length && currentRow < row; i++)
-        {
-            if (text[i] == '\n')
-            {
-                currentRow++;
-                lineStart = i + 1;
-            }
-        }
-
-        // Requested row past the end? Stay on the last line we reached.
-        var lineEnd = text.IndexOf('\n', lineStart);
-        if (lineEnd < 0) lineEnd = text.Length;
-        var lineLen = lineEnd - lineStart;
-        if (col > lineLen) col = lineLen;
-
-        _textView.InsertionPoint = new System.Drawing.Point(col, currentRow);
+        row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
+        col = Math.Clamp(col, 0, _textView.GetLine(row).Count);
+        _textView.InsertionPoint = new System.Drawing.Point(col, row);
     }
 
     /// <summary>
@@ -285,12 +265,27 @@ public sealed class EditorTab : FrameView
         DirtyChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void UpdateTitle() => Title = _dirty ? $"● {File.Name}" : File.Name;
+    private void UpdateTitle()
+    {
+        Title = _dirty ? $"● {File.Name}" : File.Name;
+        // TG redraws the tab header from Title only on layout, and positions headers from a cached width first.
+        if (Border.View is BorderView { TitleView: ITitleView header }) header.MeasuredTabLength = 0;
+        SetNeedsLayout();
+    }
 }
 
-/// <summary>TextView that paints find-in-file match highlights (#33) under the normal text colour.</summary>
+/// <summary>
+/// TextView that paints find-in-file match highlights (#33) under the normal text colour, and raises
+/// <see cref="TextView.ContentsChanged"/> only for edits that change the text.
+/// </summary>
 internal sealed class EditorTextView : TextView
 {
+    // TG 2.1.0 raises ContentsChanged for these on some paths only, and on some no-op paths too.
+    private static readonly Command[] UnreliablyReportedEdits =
+        [Command.CutToEndOfLine, Command.CutToStartOfLine, Command.KillWordLeft, Command.KillWordRight];
+
+    private bool _holdContentsChanged;
+
     private Attribute _editable;
     private Attribute _highlight;
     private long _selectionStart;
@@ -300,6 +295,45 @@ internal sealed class EditorTextView : TextView
     public Dictionary<int, List<(int Start, int End)>> Highlights { get; } = new();
 
     public IReadOnlyList<string> LineStrings => GetAllLines().Select(Cell.ToString).ToArray();
+
+    public override void OnContentsChanged()
+    {
+        if (!_holdContentsChanged) base.OnContentsChanged();
+    }
+
+    protected override bool OnKeyDown(Key key)
+    {
+        if (base.OnKeyDown(key)) return true;
+        if (!KeyBindings.TryGet(key, out var binding)) return false;
+
+        var unreliable = binding.Commands.Any(UnreliablyReportedEdits.Contains);
+        if (!unreliable && !IsNoOpDelete(binding.Commands)) return false;
+
+        var before = unreliable ? Text : null;
+        _holdContentsChanged = true;
+        try
+        {
+            InvokeCommands(binding.Commands, binding);
+        }
+        finally
+        {
+            _holdContentsChanged = false;
+        }
+        if (unreliable && Text != before) OnContentsChanged();
+        // Already invoked: returning false would let TG invoke the bound commands a second time.
+        return true;
+    }
+
+    // TG 2.1.0 raises ContentsChanged for these even with nothing to delete. Position-only, so it's cheap per keystroke.
+    private bool IsNoOpDelete(Command[] commands) =>
+        commands switch
+        {
+            [Command.DeleteCharLeft or Command.DeleteCharRight] when IsSelecting =>
+                SelectionStartRow == CurrentRow && SelectionStartColumn == CurrentColumn,
+            [Command.DeleteCharLeft] => CurrentRow == 0 && CurrentColumn == 0,
+            [Command.DeleteCharRight] => CurrentRow == Lines - 1 && CurrentColumn == GetLine(CurrentRow).Count,
+            _ => false,
+        };
 
     // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
     protected override bool OnDrawingContent(DrawContext? context)

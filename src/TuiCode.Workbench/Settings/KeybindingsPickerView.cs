@@ -187,6 +187,12 @@ public sealed class KeybindingsPickerView : View
         // a key once a non-modifier component is present.
         if (IsModifierOnly(key)) return;
 
+        if (_capturedKeys.Count == 0 && TypesText(key))
+        {
+            _footer.Text = $"{key} types text; start with Ctrl, Alt or a function key   Esc: cancel";
+            return;
+        }
+
         _capturedKeys.Add(key);
         UpdateCaptureFooter();
     }
@@ -196,6 +202,9 @@ public sealed class KeybindingsPickerView : View
         var bare = key.KeyCode & ~(KeyCode.CtrlMask | KeyCode.AltMask | KeyCode.ShiftMask);
         return bare == KeyCode.Null;
     }
+
+    internal static bool TypesText(Key key) =>
+        !key.IsCtrl && !key.IsAlt && key.TryGetPrintableRune(out _);
 
     private void EndCapture(bool commit)
     {
