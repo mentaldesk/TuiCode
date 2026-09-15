@@ -6,14 +6,15 @@ using TuiCode.Workbench.Services;
 
 namespace TuiCode.Tests;
 
-// TG 2.1.0's TextView kill commands edit the buffer without raising ContentsChanged. Boots a TG Application — serialised (#77).
-public class EditorTabKillCommandTests : StaticConfigurationTest
+// Boots a TG Application — serialised (#77).
+public class EditorTabDirtyTests : StaticConfigurationTest
 {
     private static readonly string[] Original = ["alpha beta", "gamma delta", ""];
 
     private readonly MockFileSystem _fs = new();
 
-    // Expected lines are '|'-separated; exact, so a command that ran twice would fail too.
+    // TG 2.1.0's kill commands edit without raising ContentsChanged. Expected lines are '|'-separated;
+    // exact, so a command that ran twice would fail too.
     [Theory]
     [InlineData("Ctrl+K", 0, 6, "alpha |gamma delta|")]                          // CutToEndOfLine
     [InlineData("Ctrl+K", 0, 10, "alpha betagamma delta|")]                      // CutToEndOfLine, joining
@@ -49,13 +50,52 @@ public class EditorTabKillCommandTests : StaticConfigurationTest
         Assert.Equal(0, changes);
     }
 
+    // The edit is on a line narrower than the file's widest, so it doesn't change the content size and force a layout.
+    [Fact]
+    public async Task Dirty_marker_is_drawn_in_the_tab_header_as_soon_as_the_buffer_changes_and_cleared_on_save()
+    {
+        const string text = "x\nthis line is wider than the one being edited\n";
+        _fs.AddFile("/work/a.txt", new MockFileData(text));
+        _fs.AddFile("/work/b.txt", new MockFileData(text));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        EditorTab? tab = null;
+        var dirtyHeader = "";
+        var savedHeader = "";
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt"));
+                workbench.Editor.Open(_fs.FileInfo.New("/work/b.txt"));
+            },
+            () =>
+            {
+                tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt"));
+                tab.FocusContent();
+                tab.MoveCursor(0, 1);
+            },
+            () => host.App.InjectKey(new Key('y')),
+            () =>
+            {
+                dirtyHeader = TabHeaderRow(host);
+                host.App.InjectKey(Key.S.WithCtrl);
+            },
+            () => { savedHeader = TabHeaderRow(host); });
+
+        Assert.Equal("xy", tab!.Lines[0]);
+        Assert.Contains("│● a.txt│b.txt│", dirtyHeader);
+        Assert.Contains("│a.txt│b.txt│", savedHeader);
+    }
+
+    private static string TabHeaderRow(WorkbenchHost host) =>
+        host.App.Driver!.ToString()!.Split('\n').FirstOrDefault(l => l.Contains("b.txt")) ?? "";
+
     private async Task<(IReadOnlyList<string> Lines, bool Dirty, int Changes)> PressInEditor(string key, int row, int col)
     {
         _fs.AddFile("/work/a.txt", new MockFileData(string.Join("\n", Original)));
-        using var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());
-        var commands = new CommandService();
-        using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
-            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
         EditorTab? tab = null;
         var changes = 0;
 
@@ -70,5 +110,15 @@ public class EditorTabKillCommandTests : StaticConfigurationTest
             () => host.App.InjectKey(TestKeys.Chord(key).Single()));
 
         return (tab!.Lines, tab.IsDirty, changes);
+    }
+
+    private static Workbench.Workbench BuildWorkbench() =>
+        new(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());
+
+    private static WorkbenchHost BuildHost(Workbench.Workbench workbench)
+    {
+        var commands = new CommandService();
+        return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
     }
 }

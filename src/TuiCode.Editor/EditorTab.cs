@@ -282,7 +282,13 @@ public sealed class EditorTab : FrameView
         DirtyChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void UpdateTitle() => Title = _dirty ? $"● {File.Name}" : File.Name;
+    private void UpdateTitle()
+    {
+        Title = _dirty ? $"● {File.Name}" : File.Name;
+        // TG redraws the tab header from Title only on layout, and positions headers from a cached width first.
+        if (Border.View is BorderView { TitleView: ITitleView header }) header.MeasuredTabLength = 0;
+        SetNeedsLayout();
+    }
 }
 
 /// <summary>
