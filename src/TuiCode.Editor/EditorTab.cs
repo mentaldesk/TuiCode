@@ -293,7 +293,7 @@ public sealed class EditorTab : FrameView
 
 /// <summary>
 /// TextView that paints find-in-file match highlights (#33) under the normal text colour, and raises
-/// <see cref="TextView.ContentsChanged"/> for the kill commands TG doesn't report reliably.
+/// <see cref="TextView.ContentsChanged"/> only for edits that change the text.
 /// </summary>
 internal sealed class EditorTextView : TextView
 {
@@ -316,10 +316,12 @@ internal sealed class EditorTextView : TextView
     protected override bool OnKeyDown(Key key)
     {
         if (base.OnKeyDown(key)) return true;
-        if (!KeyBindings.TryGet(key, out var binding) || !binding.Commands.Any(UnreliablyReportedEdits.Contains))
-            return false;
+        if (!KeyBindings.TryGet(key, out var binding)) return false;
 
-        var before = Text;
+        var unreliable = binding.Commands.Any(UnreliablyReportedEdits.Contains);
+        if (!unreliable && !IsNoOpDelete(binding.Commands)) return false;
+
+        var before = unreliable ? Text : null;
         _holdContentsChanged = true;
         try
         {
@@ -329,10 +331,19 @@ internal sealed class EditorTextView : TextView
         {
             _holdContentsChanged = false;
         }
-        if (Text != before) OnContentsChanged();
+        if (unreliable && Text != before) OnContentsChanged();
         // Already invoked: returning false would let TG invoke the bound commands a second time.
         return true;
     }
+
+    // TG 2.1.0 raises ContentsChanged for these even with nothing to delete. Position-only, so it's cheap per keystroke.
+    private bool IsNoOpDelete(Command[] commands) =>
+        !IsSelecting && commands switch
+        {
+            [Command.DeleteCharLeft] => CurrentRow == 0 && CurrentColumn == 0,
+            [Command.DeleteCharRight] => CurrentRow == Lines - 1 && CurrentColumn == GetLine(CurrentRow).Count,
+            _ => false,
+        };
 
     protected override void OnDrawNormalColor(List<Cell> line, int idxCol, int idxRow)
     {
