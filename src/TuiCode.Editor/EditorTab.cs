@@ -1,4 +1,7 @@
+using System.Text;
+using Terminal.Gui.Text;
 using TuiCode.Abstractions;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Editor;
 
@@ -283,6 +286,11 @@ internal sealed class EditorTextView : TextView
 
     private bool _holdContentsChanged;
 
+    private Attribute _editable;
+    private Attribute _highlight;
+    private long _selectionStart;
+    private long _selectionEnd;
+
     /// <summary>Row → half-open [start, end) cell-column ranges to highlight.</summary>
     public Dictionary<int, List<(int Start, int End)>> Highlights { get; } = new();
 
@@ -327,11 +335,137 @@ internal sealed class EditorTextView : TextView
             _ => false,
         };
 
+    // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
+    protected override bool OnDrawingContent(DrawContext? context)
+    {
+        _editable = GetAttributeForRole(VisualRole.Editable);
+        _highlight = GetAttributeForRole(VisualRole.Highlight);
+        (_selectionStart, _selectionEnd) = SelectionBounds();
+        SetAttributeForRole(Enabled ? VisualRole.Editable : VisualRole.Disabled);
+
+        var right = Viewport.Width;
+        var bottom = Viewport.Height;
+        var row = 0;
+        for (var idxRow = Viewport.Y; idxRow < Lines && row < bottom; idxRow++, row++)
+            DrawRow(GetLine(idxRow), idxRow, row, right);
+
+        if (row < bottom)
+        {
+            SetAttributeForRole(ReadOnly ? VisualRole.ReadOnly : VisualRole.Editable);
+            ClearRegion(0, row, right, bottom);
+        }
+        return false;
+    }
+
+    private void DrawRow(List<Cell> line, int idxRow, int row, int right)
+    {
+        var (colWidths, col, idxCol) = FirstVisibleGlyph(line);
+        var wasPreviousWideGlyphNegativeCol = false;
+        Move(0, row);
+
+        for (; idxCol < line.Count; idxCol++)
+        {
+            var text = line[idxCol].Grapheme;
+            var cols = text.GetColumns(false);
+
+            if (IsSelecting && InSelection(idxCol, idxRow))
+                OnDrawSelectionColor(line, idxCol, idxRow);
+            else if (idxCol == CurrentColumn && idxRow == CurrentRow && !IsSelecting && !Used && HasFocus)
+                OnDrawUsedColor(line, idxCol, idxRow);
+            else if (ReadOnly)
+                OnDrawReadOnlyColor(line, idxCol, idxRow);
+            else
+                OnDrawNormalColor(line, idxCol, idxRow);
+
+            if (text == "\t")
+            {
+                cols = TabWidth > 0 ? TabWidth - colWidths % TabWidth : 0;
+                if (col + cols > right) cols = right - col;
+                for (var i = 0; i < cols; i++)
+                    AddRune(col + i, row, (Rune)' ');
+            }
+            else
+            {
+                if (col < 0 && cols > 1)
+                    wasPreviousWideGlyphNegativeCol = true;
+                else
+                    AddStr(col, row, text);
+                cols = Math.Max(cols, 1);
+            }
+
+            if (col + cols > Viewport.Right) break;
+            col += cols;
+            colWidths += cols;
+
+            if (idxCol + 1 < line.Count && col + line[idxCol + 1].Grapheme.GetColumns() > right) break;
+        }
+
+        if (wasPreviousWideGlyphNegativeCol) AddStr(0, row, " ");
+
+        if (col < right)
+        {
+            SetAttributeForRole(ReadOnly ? VisualRole.ReadOnly : VisualRole.Editable);
+            ClearRegion(col, row, right, row + 1);
+        }
+    }
+
+    // Col is where that glyph starts relative to the viewport, so <= 0 when it straddles the left edge.
+    private (int ColWidths, int Col, int Index) FirstVisibleGlyph(List<Cell> line)
+    {
+        var start = Viewport.X;
+        if (start <= 0 || line.Count == 0) return (0, 0, 0);
+
+        var sum = 0;
+        var count = Math.Min(start, line.Count);
+        for (var i = 0; i < count; i++)
+        {
+            var grapheme = line[i].Grapheme;
+            var width = grapheme == "\t"
+                ? TabWidth > 0 ? TabWidth - sum % TabWidth : 0
+                : Math.Max(grapheme.GetColumns(), 1);
+            if (sum + width > start) return (sum, sum - start, i);
+            sum += width;
+        }
+        return (sum, sum - start, count);
+    }
+
+    private (long Start, long End) SelectionBounds()
+    {
+        var anchor = Encode(SelectionStartRow, SelectionStartColumn);
+        var point = Encode(CurrentRow, CurrentColumn);
+        return anchor > point ? (point, anchor) : (anchor, point);
+    }
+
+    private bool InSelection(int col, int row)
+    {
+        var q = Encode(row, col);
+        return q >= _selectionStart && q < _selectionEnd;
+    }
+
+    private static long Encode(int row, int col) => ((long)(uint)row << 32) | (uint)col;
+
+    private void ClearRegion(int left, int top, int right, int bottom)
+    {
+        for (var row = top; row < bottom; row++)
+        {
+            Move(left, row);
+            for (var col = left; col < right; col++)
+                AddRune(col, row, (Rune)' ');
+        }
+    }
+
+    // Skips base, which resolves the scheme attribute (allocating) and raises DrawNormalColor for every cell.
     protected override void OnDrawNormalColor(List<Cell> line, int idxCol, int idxRow)
     {
-        base.OnDrawNormalColor(line, idxCol, idxRow);
-        // We never enable WordWrap, so draw coordinates are model coordinates.
-        if (Highlights.TryGetValue(idxRow, out var ranges) && ranges.Exists(r => idxCol >= r.Start && idxCol < r.End))
-            SetAttributeForRole(VisualRole.Highlight);
+        SetAttribute(IsHighlighted(idxCol, idxRow) ? _highlight : line[idxCol].Attribute ?? _editable);
+    }
+
+    // We never enable WordWrap, so draw coordinates are model coordinates.
+    private bool IsHighlighted(int idxCol, int idxRow)
+    {
+        if (!Highlights.TryGetValue(idxRow, out var ranges)) return false;
+        foreach (var (start, end) in ranges)
+            if (idxCol >= start && idxCol < end) return true;
+        return false;
     }
 }
