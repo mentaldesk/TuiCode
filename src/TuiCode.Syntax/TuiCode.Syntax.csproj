@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TextMateSharp" Version="2.0.4" />
+    <!-- Links Oniguruma into the AOT binary instead of shipping libonigwrap beside it. -->
+    <PackageReference Include="StaticLink.libonigwrap" Version="1.0.11.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Grammars.zip" LogicalName="Grammars.zip" />
+  </ItemGroup>
+
+</Project>
