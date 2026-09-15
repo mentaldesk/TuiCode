@@ -40,6 +40,7 @@ public static class CommandMnemonics
             [CommandIds.OpenSettings] = "os",
             [CommandIds.CloseActiveEditor] = "cf",
             [CommandIds.ToggleSidebar] = "ts",
+            [CommandIds.ToggleGutter] = "tg",
             [CommandIds.FocusSidebar] = "fs",
             [CommandIds.FocusEditorBody] = "fe",
             [CommandIds.FocusEditorTabStrip] = "ft",

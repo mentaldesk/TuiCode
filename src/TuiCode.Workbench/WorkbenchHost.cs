@@ -185,6 +185,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => _find.Open(replace: true));
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
+        _commands.Register(CommandIds.ToggleGutter, "Toggle gutter", ToggleGutter);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
@@ -319,6 +320,12 @@ public sealed class WorkbenchHost : IDisposable
             FocusSidebar();
         else if (sidebarWasFocused)
             FocusEditorBody();
+    }
+
+    private void ToggleGutter()
+    {
+        var group = _workbench.Editor.Group;
+        group.GutterVisible = !group.GutterVisible;
     }
 
     // A sidebar item's shortcut (#33) shows its tab — revealing the sidebar if needed — and, pressed

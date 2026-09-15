@@ -26,7 +26,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         var statusWhileFinding = "";
         var closedCleanly = false;
 
-        await RunSteps(host,
+        await HostSteps.Run(host,
             // OpenFile (not Editor.Open) so the status bar carries its normal message to revert to.
             () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); tab = workbench.Editor.Group.ActiveTab; },
             () => { tab!.FocusContent(); host.App.InjectKey(Key.F.WithCtrl); },
@@ -71,7 +71,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         var saved = false;
         workbench.Editor.FileSaved += (_, _) => saved = true;
 
-        await RunSteps(host,
+        await HostSteps.Run(host,
             () => { workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")).FocusContent(); },
             () => host.App.InjectKey(Key.F.WithCtrl),
             () => host.App.InjectKey(Key.S.WithCtrl));
@@ -88,7 +88,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         EditorTab? tab = null;
         var statusInReplaceField = "";
 
-        await RunSteps(host,
+        await HostSteps.Run(host,
             () => { tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")); },
             () => { tab!.FocusContent(); host.App.InjectKey(Key.H.WithCtrl); },
             () => { foreach (var c in "cat") host.App.InjectKey(new Key(c)); },
@@ -112,7 +112,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
         EditorTab? tab = null;
 
-        await RunSteps(host,
+        await HostSteps.Run(host,
             () => { tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")); },
             () => { tab!.FocusContent(); host.App.InjectKey(Key.H.WithCtrl); },
             () => { foreach (var c in "cat") host.App.InjectKey(new Key(c)); },
@@ -133,7 +133,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         var states = new List<(bool Visible, SidebarTab Tab)>();
         var searchQueryFocused = false;
 
-        await RunSteps(host,
+        await HostSteps.Run(host,
             () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
             () =>
             {
@@ -167,7 +167,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
         var search = workbench.Sidebar.Search;
 
-        await RunSteps(host,
+        await HostSteps.Run(host,
             () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
             () => { foreach (var c in "needle") host.App.InjectKey(new Key(c)); },
             // The search runs in the background once the app is live; wait for it to land.
@@ -196,41 +196,6 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
     }
-
-    // Each step runs on its own main-loop iteration (so injected keys are processed in between);
-    // a Func<bool> step is polled each iteration until it returns true. Ctrl+Q is sent after the last step.
-    private static async Task RunSteps(WorkbenchHost host, params Delegate[] steps)
-    {
-        var queue = new Queue<Delegate>(steps);
-        const int maxIterations = 500;
-        var iterations = 0;
-        host.App.Iteration += OnIteration;
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await host.RunAsync(cts.Token);
-        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
-        Assert.Empty(queue);
-
-        void OnIteration(object? sender, EventArgs<IApplication?> e)
-        {
-            if (queue.Count == 0 || ++iterations > maxIterations)
-            {
-                host.App.Iteration -= OnIteration;
-                host.App.InjectKey(Key.Q.WithCtrl);
-                return;
-            }
-            var done = queue.Peek() switch
-            {
-                Func<bool> poll => poll(),
-                Action act => Run(act),
-                _ => throw new InvalidOperationException("Steps must be Action or Func<bool>"),
-            };
-            if (done) queue.Dequeue();
-        }
-
-        static bool Run(Action act) { act(); return true; }
-    }
-
 }
 
 internal static class ViewTreeExtensions
