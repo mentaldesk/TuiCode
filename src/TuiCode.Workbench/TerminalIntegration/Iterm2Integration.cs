@@ -23,7 +23,7 @@ namespace TuiCode.Workbench.TerminalIntegration;
 public sealed class Iterm2Integration : ITerminalIntegration
 {
     internal const string ProfileGuid = "a21365eb-a2a0-4260-b0b7-e7368856dc65";
-    internal const int CurrentProfileVersion = 1;
+    internal const int CurrentProfileVersion = 2;
     internal const string ProfileFileName = "tuicode.json";
 
     private readonly IFileSystem _fileSystem;
@@ -112,11 +112,12 @@ public sealed class Iterm2Integration : ITerminalIntegration
     // Raw JSON: keys / values mirror what the Homebrew formula used to ship, with two changes —
     // Bound Hosts adds the lowercase "tuicode*" pattern (Homebrew renames the binary), and a
     // TuiCodeIntegrationVersion marker so we can detect stale installs on upgrade.
+    // Shifted letters are keyed by the shifted character: Cmd+Shift+Z is 0x5a, never 0x7a (#46).
     internal const string ProfileJson = """
         {
           "Profiles" : [
             {
-              "TuiCodeIntegrationVersion" : 1,
+              "TuiCodeIntegrationVersion" : 2,
               "Bound Hosts" : ["&TuiCode*", "&tuicode*"],
               "Use Separate Colors for Light and Dark Mode" : true,
               "Rewritable" : true,
@@ -131,7 +132,7 @@ public sealed class Iterm2Integration : ITerminalIntegration
                 "0xf702-0x300000" : { "Action" : 10, "Text" : "[H" },
                 "0xf703-0x320000" : { "Action" : 10, "Text" : "[1;2F" },
                 "0xf703-0x300000" : { "Action" : 10, "Text" : "[F" },
-                "0x7a-0x120000"   : { "Action" : 11, "Text" : "0x19" },
+                "0x5a-0x120000"   : { "Action" : 11, "Text" : "0x19" },
                 "0xf702-0x2a0000" : { "Action" : 10, "Text" : "[1;6D" },
                 "0xf703-0x280000" : { "Action" : 10, "Text" : "[1;5C" },
                 "0xf703-0x2a0000" : { "Action" : 10, "Text" : "[1;6C" },

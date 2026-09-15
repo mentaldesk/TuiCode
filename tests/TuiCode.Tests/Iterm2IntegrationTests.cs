@@ -98,6 +98,44 @@ public class Iterm2IntegrationTests
     }
 
     [Fact]
+    public void Install_maps_Cmd_Shift_Z_to_Ctrl_Y_redo()
+    {
+        var (integration, fs, _) = Build();
+
+        integration.Install();
+
+        var binding = KeyboardMap(fs)["0x5a-0x120000"];
+        Assert.Equal("0x19", binding.GetProperty("Text").GetString());
+    }
+
+    [Fact]
+    public void Install_keys_shifted_letters_by_their_shifted_character()
+    {
+        // iTerm2 matches on NSEvent.charactersIgnoringModifiers, which still applies Shift (#46).
+        const int shift = 0x20000;
+        var (integration, fs, _) = Build();
+
+        integration.Install();
+
+        var unreachable = KeyboardMap(fs).Keys.Where(key =>
+        {
+            var parts = key.Split('-');
+            var character = Convert.ToInt32(parts[0], 16);
+            var modifiers = Convert.ToInt32(parts[1], 16);
+            return character is >= 'a' and <= 'z' && (modifiers & shift) != 0;
+        });
+        Assert.Empty(unreachable);
+    }
+
+    private static Dictionary<string, JsonElement> KeyboardMap(MockFileSystem fs)
+    {
+        using var doc = JsonDocument.Parse(fs.File.ReadAllText(ProfilePath));
+        return doc.RootElement.GetProperty("Profiles")[0].GetProperty("Keyboard Map")
+            .EnumerateObject()
+            .ToDictionary(p => p.Name, p => p.Value.Clone());
+    }
+
+    [Fact]
     public void Install_is_idempotent()
     {
         var (integration, fs, _) = Build();
