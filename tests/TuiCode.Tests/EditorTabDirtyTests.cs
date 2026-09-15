@@ -26,7 +26,10 @@ public class EditorTabDirtyTests : StaticConfigurationTest
     [InlineData("Ctrl+Shift+Backspace", 1, 0, "alpha betagamma delta|")]         // CutToStartOfLine, joining
     [InlineData("Ctrl+Shift+Delete", 0, 0, "")]                                  // DeleteAll
     [InlineData("Backspace", 0, 1, "lpha beta|gamma delta|")]
+    [InlineData("Backspace", 1, 0, "alpha betagamma delta|")]
     [InlineData("Delete", 0, 0, "lpha beta|gamma delta|")]
+    [InlineData("Delete", 1, 11, "alpha beta|gamma delta")]
+    [InlineData("Shift+CursorRight Backspace", 0, 0, "lpha beta|gamma delta|")]
     public async Task Deleting_keys_mark_the_tab_dirty_and_raise_ContentChanged(string key, int row, int col, string expected)
     {
         var (lines, dirty, changes) = await PressInEditor(key, row, col);
@@ -41,6 +44,11 @@ public class EditorTabDirtyTests : StaticConfigurationTest
     [InlineData("Ctrl+Delete", 2, 0)]
     [InlineData("Ctrl+Backspace", 0, 0)]
     [InlineData("Ctrl+Shift+Backspace", 0, 0)]
+    [InlineData("Backspace", 0, 0)]
+    [InlineData("Delete", 2, 0)]
+    [InlineData("Ctrl+D", 2, 0)]
+    [InlineData("Shift+CursorRight Shift+CursorLeft Backspace", 0, 3)]  // empty selection
+    [InlineData("Shift+CursorRight Shift+CursorLeft Delete", 0, 3)]
     public async Task Deleting_keys_that_change_nothing_leave_the_tab_clean(string key, int row, int col)
     {
         var (lines, dirty, changes) = await PressInEditor(key, row, col);
@@ -107,7 +115,7 @@ public class EditorTabDirtyTests : StaticConfigurationTest
                 tab.MoveCursor(row, col);
                 tab.ContentChanged += (_, _) => changes++;
             },
-            () => host.App.InjectKey(TestKeys.Chord(key).Single()));
+            () => { foreach (var k in TestKeys.Chord(key)) host.App.InjectKey(k); });
 
         return (tab!.Lines, tab.IsDirty, changes);
     }
