@@ -285,13 +285,48 @@ public sealed class EditorTab : FrameView
     private void UpdateTitle() => Title = _dirty ? $"● {File.Name}" : File.Name;
 }
 
-/// <summary>TextView that paints find-in-file match highlights (#33) under the normal text colour.</summary>
+/// <summary>
+/// TextView that paints find-in-file match highlights (#33) under the normal text colour, and raises
+/// <see cref="TextView.ContentsChanged"/> for the kill commands TG doesn't report reliably.
+/// </summary>
 internal sealed class EditorTextView : TextView
 {
+    // TG 2.1.0 raises ContentsChanged for these on some paths only, and on some no-op paths too.
+    private static readonly Command[] UnreliablyReportedEdits =
+        [Command.CutToEndOfLine, Command.CutToStartOfLine, Command.KillWordLeft, Command.KillWordRight];
+
+    private bool _holdContentsChanged;
+
     /// <summary>Row → half-open [start, end) cell-column ranges to highlight.</summary>
     public Dictionary<int, List<(int Start, int End)>> Highlights { get; } = new();
 
     public IReadOnlyList<string> LineStrings => GetAllLines().Select(Cell.ToString).ToArray();
+
+    public override void OnContentsChanged()
+    {
+        if (!_holdContentsChanged) base.OnContentsChanged();
+    }
+
+    protected override bool OnKeyDown(Key key)
+    {
+        if (base.OnKeyDown(key)) return true;
+        if (!KeyBindings.TryGet(key, out var binding) || !binding.Commands.Any(UnreliablyReportedEdits.Contains))
+            return false;
+
+        var before = Text;
+        _holdContentsChanged = true;
+        try
+        {
+            InvokeCommands(binding.Commands, binding);
+        }
+        finally
+        {
+            _holdContentsChanged = false;
+        }
+        if (Text != before) OnContentsChanged();
+        // Already invoked: returning false would let TG invoke the bound commands a second time.
+        return true;
+    }
 
     protected override void OnDrawNormalColor(List<Cell> line, int idxCol, int idxRow)
     {
