@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using TuiCode.Abstractions;
 
 namespace TuiCode.Editor;
@@ -292,8 +294,8 @@ public sealed class EditorTab : FrameView
 }
 
 /// <summary>
-/// TextView that paints find-in-file match highlights (#33) under the normal text colour, and raises
-/// <see cref="TextView.ContentsChanged"/> only for edits that change the text.
+/// TextView that paints find-in-file match highlights (#33) under the normal text colour, raises
+/// <see cref="TextView.ContentsChanged"/> only for edits that change the text, and keeps the content-width cache across edits.
 /// </summary>
 internal sealed class EditorTextView : TextView
 {
@@ -310,7 +312,11 @@ internal sealed class EditorTextView : TextView
 
     public override void OnContentsChanged()
     {
-        if (!_holdContentsChanged) base.OnContentsChanged();
+        if (_holdContentsChanged) return;
+        var model = ModelField.GetValue(this)!;
+        var maxWidth = MaxWidthAfterEdit(model);
+        base.OnContentsChanged();
+        CachedMaxWidth(model) = maxWidth;
     }
 
     protected override bool OnKeyDown(Key key)
@@ -354,4 +360,38 @@ internal sealed class EditorTextView : TextView
         if (Highlights.TryGetValue(idxRow, out var ranges) && ranges.Exists(r => idxCol >= r.Start && idxCol < r.End))
             SetAttributeForRole(VisualRole.Highlight);
     }
+
+    // TG 2.1.0's base discards the width cache on every edit; any change beyond the current row has already invalidated it.
+    private int MaxWidthAfterEdit(object model)
+    {
+        var maxWidth = CachedMaxWidth(model);
+        // On a one-line model this is a full-range query, which returns the cache instead of measuring.
+        if (maxWidth < 0 || Lines == 1) return -1;
+
+        var width = GetMaxVisibleLine(model, CurrentRow, CurrentRow + 1, TabWidth);
+        var widestRows = WidestRows(model);
+        if (width > maxWidth)
+        {
+            widestRows.Clear();
+            widestRows[CurrentRow] = width;
+            return width;
+        }
+        if (width == maxWidth) widestRows[CurrentRow] = width;
+        else if (widestRows.Remove(CurrentRow) && widestRows.Count == 0) return -1;
+        return maxWidth;
+    }
+
+    private const string TextModelType = "Terminal.Gui.Views.TextModel, Terminal.Gui";
+
+    // UnsafeAccessorType can't return a ref to an inaccessible type.
+    private static readonly FieldInfo ModelField = typeof(TextView).GetField("_model", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_cachedMaxWidth")]
+    private static extern ref int CachedMaxWidth([UnsafeAccessorType(TextModelType)] object model);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_cachedMaxWidthPerLine")]
+    private static extern ref Dictionary<int, int> WidestRows([UnsafeAccessorType(TextModelType)] object model);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "GetMaxVisibleLine")]
+    private static extern int GetMaxVisibleLine([UnsafeAccessorType(TextModelType)] object model, int first, int last, int tabWidth);
 }
