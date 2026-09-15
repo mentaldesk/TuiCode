@@ -338,8 +338,10 @@ internal sealed class EditorTextView : TextView
 
     // TG 2.1.0 raises ContentsChanged for these even with nothing to delete. Position-only, so it's cheap per keystroke.
     private bool IsNoOpDelete(Command[] commands) =>
-        !IsSelecting && commands switch
+        commands switch
         {
+            [Command.DeleteCharLeft or Command.DeleteCharRight] when IsSelecting =>
+                SelectionStartRow == CurrentRow && SelectionStartColumn == CurrentColumn,
             [Command.DeleteCharLeft] => CurrentRow == 0 && CurrentColumn == 0,
             [Command.DeleteCharRight] => CurrentRow == Lines - 1 && CurrentColumn == GetLine(CurrentRow).Count,
             _ => false,
