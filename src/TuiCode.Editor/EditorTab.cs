@@ -87,29 +87,9 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public void MoveCursor(int row, int col)
     {
-        if (row < 0) row = 0;
-        if (col < 0) col = 0;
-
-        var text = _textView.Text ?? string.Empty;
-
-        var currentRow = 0;
-        var lineStart = 0;
-        for (var i = 0; i < text.Length && currentRow < row; i++)
-        {
-            if (text[i] == '\n')
-            {
-                currentRow++;
-                lineStart = i + 1;
-            }
-        }
-
-        // Requested row past the end? Stay on the last line we reached.
-        var lineEnd = text.IndexOf('\n', lineStart);
-        if (lineEnd < 0) lineEnd = text.Length;
-        var lineLen = lineEnd - lineStart;
-        if (col > lineLen) col = lineLen;
-
-        _textView.InsertionPoint = new System.Drawing.Point(col, currentRow);
+        row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
+        col = Math.Clamp(col, 0, _textView.GetLine(row).Count);
+        _textView.InsertionPoint = new System.Drawing.Point(col, row);
     }
 
     /// <summary>
