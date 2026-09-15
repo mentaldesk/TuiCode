@@ -96,6 +96,12 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Visibility is `EditorGroup.GutterVisible` (on by default, applied to open and future tabs), toggled by `tg`. It isn't persisted: that waits for an editor section in Settings.
 - Marker colours are fixed RGB (green added, blue modified, red deleted) — TG schemes have no semantic roles for them. Line numbers use the scheme's Editable attribute, faint except on the cursor row.
 
+## Editor drawing
+
+- `EditorTextView` overrides `OnDrawingContent` with a copy of TG 2.1.0's `TextView` draw loop that stops at the viewport bottom. Upstream walks every row from `Viewport.Y` to EOF, so drawing the top of a 5,000-line file took ~900 ms per frame vs ~20 ms now, and cost grew with file length.
+- Per-cell colouring (find highlights, and syntax highlighting per #21) belongs in `OnDrawNormalColor`, which is still called once per *visible* cell. It doesn't call base: base resolves the scheme attribute (allocating) and raises `DrawNormalColor` per cell, so nothing should subscribe to that event. Resolve attributes once per frame in `OnDrawingContent`, not per cell.
+- `EditorTextViewDrawTests` asserts the copy paints exactly what `TextView` does (tabs, wide glyphs, horizontal/vertical scroll, selection, overwrite cursor, read-only). On a TG upgrade, re-diff `TextView.Drawing.cs` against the copy; drop it once upstream bounds the loop. `EditorDrawBenchmarkTests` is `Explicit` (timing-based): `dotnet test tests/TuiCode.Tests/TuiCode.Tests.csproj -c Release -- --explicit only`.
+
 ## Filesystem
 
 - All I/O through `IFileSystem` from `System.IO.Abstractions`; never call `System.IO.File` / `Directory` directly. `IFileInfo.FileSystem` plumbs the same instance through to `EditorTab` etc.
