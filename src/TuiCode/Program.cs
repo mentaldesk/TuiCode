@@ -27,7 +27,10 @@ services.AddSingleton<IKeybindingService, KeybindingService>();
 services.AddSingleton<IInputScopeStack, InputScopeStack>();
 services.AddSingleton<ISettingsService, DefaultSettingsService>();
 services.AddSingleton<IEnvironment, SystemEnvironment>();
-services.AddSingleton(_ => new SyntaxHighlighter(GrammarBundle.Load()));
+services.AddSingleton(sp => new SyntaxHighlighter(GrammarBundle.Load())
+{
+    Associations = sp.GetRequiredService<ISettingsService>().GrammarAssociations,
+});
 services.AddSingleton<ITerminalIntegration, Iterm2Integration>();
 services.AddSingleton<ITerminalIntegration, WezTermIntegration>();
 

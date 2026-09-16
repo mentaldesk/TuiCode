@@ -16,14 +16,17 @@ public sealed class LineTokenCache
     private int _valid;
     private int _themeVersion;
 
-    internal LineTokenCache(SyntaxHighlighter highlighter, IGrammar grammar)
+    internal LineTokenCache(SyntaxHighlighter highlighter, IGrammar grammar, SyntaxLanguage language)
     {
         Highlighter = highlighter;
+        Language = language;
         _grammar = grammar;
         _themeVersion = highlighter.ThemeVersion;
     }
 
     public SyntaxHighlighter Highlighter { get; }
+
+    public SyntaxLanguage Language { get; }
 
     internal int LinesLexed { get; private set; }
 

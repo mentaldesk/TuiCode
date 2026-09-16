@@ -19,9 +19,8 @@ public sealed class GrammarBundle : IRegistryOptions
     private readonly ZipArchive _archive;
     private readonly Lock _archiveLock = new();
     private readonly Dictionary<string, string> _grammarEntries = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, SyntaxLanguage> _byFileName = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, SyntaxLanguage> _byExtension = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<SyntaxLanguage> _languages = [];
+    private readonly Dictionary<string, SyntaxLanguage> _associations = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, SyntaxLanguage> _languages = new(StringComparer.Ordinal);
 
     public static GrammarBundle Load() =>
         new(typeof(GrammarBundle).Assembly.GetManifestResourceStream("Grammars.zip")
@@ -34,21 +33,28 @@ public sealed class GrammarBundle : IRegistryOptions
             AddPackage(manifest.FullName[..^manifest.Name.Length], ReadJson(manifest));
     }
 
-    public IReadOnlyList<SyntaxLanguage> Languages => _languages;
+    public IReadOnlyCollection<SyntaxLanguage> Languages => _languages.Values;
 
     public IReadOnlyCollection<string> ScopeNames => _grammarEntries.Keys;
 
-    /// <summary>Matches the exact file name (e.g. <c>Dockerfile</c>) first, then the longest known extension.</summary>
-    public SyntaxLanguage? LanguageForFile(string path)
+    /// <summary>File-name patterns — an exact name like <c>Dockerfile</c> or an extension like <c>.cs</c> — to their language.</summary>
+    public IReadOnlyDictionary<string, SyntaxLanguage> Associations => _associations;
+
+    public SyntaxLanguage? LanguageForFile(string path) => Match(_associations, path);
+
+    public SyntaxLanguage? LanguageById(string id) => _languages.GetValueOrDefault(id);
+
+    /// <summary>Looks up the exact file name first, then its extensions, longest first (<c>.js.map</c> before <c>.map</c>).</summary>
+    public static TValue? Match<TValue>(IReadOnlyDictionary<string, TValue> associations, string path) where TValue : class
     {
         var name = Path.GetFileName(path);
-        if (_byFileName.TryGetValue(name, out var language))
-            return language;
+        if (associations.TryGetValue(name, out var value))
+            return value;
 
         for (var dot = name.IndexOf('.'); dot >= 0; dot = name.IndexOf('.', dot + 1))
         {
-            if (_byExtension.TryGetValue(name[dot..], out language))
-                return language;
+            if (associations.TryGetValue(name[dot..], out value))
+                return value;
         }
         return null;
     }
@@ -87,12 +93,12 @@ public sealed class GrammarBundle : IRegistryOptions
             if (!scopeByLanguage.TryGetValue(id, out var scope))
                 continue;
             var name = node["aliases"]?.AsArray().FirstOrDefault()?.GetValue<string>() ?? id;
-            var language = new SyntaxLanguage(id, name, scope);
-            _languages.Add(language);
+            if (!_languages.TryGetValue(id, out var language))
+                _languages[id] = language = new SyntaxLanguage(id, name, scope);
             foreach (var fileName in node["filenames"]?.AsArray() ?? [])
-                _byFileName.TryAdd(fileName!.GetValue<string>(), language);
+                _associations.TryAdd(fileName!.GetValue<string>(), language);
             foreach (var extension in node["extensions"]?.AsArray() ?? [])
-                _byExtension.TryAdd(extension!.GetValue<string>(), language);
+                _associations.TryAdd(extension!.GetValue<string>(), language);
         }
     }
 

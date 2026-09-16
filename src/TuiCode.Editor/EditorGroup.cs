@@ -10,10 +10,15 @@ public sealed class EditorGroup : Tabs
     public event EventHandler<IFileInfo>? FileSaved;
     public event EventHandler<EditorTab?>? ActiveTabChanged;
 
+    /// <summary>Raised when any tab's grammar changes, e.g. from the grammar picker or new associations.</summary>
+    public event EventHandler<EditorTab>? GrammarChanged;
+
     /// <summary>Raised when the cursor moves in any tab, tagged with the owning file (#35).</summary>
     public event EventHandler<(IFileInfo File, int Row, int Column)>? CursorMoved;
 
     public EditorTab? ActiveTab => Value as EditorTab;
+
+    public SyntaxHighlighter? Syntax => _syntax;
 
     public IReadOnlyList<EditorTab> Tabs => _byPath.Values.ToArray();
 
@@ -45,6 +50,7 @@ public sealed class EditorGroup : Tabs
         var tab = new EditorTab(file, _syntax) { GutterVisible = GutterVisible };
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
+        tab.GrammarChanged += (_, _) => GrammarChanged?.Invoke(this, tab);
         Add(tab);
         _byPath[file.FullName] = tab;
         Value = tab;
@@ -93,6 +99,13 @@ public sealed class EditorGroup : Tabs
     }
 
     public void SaveActive() => ActiveTab?.Save();
+
+    /// <summary>Re-pick every tab's grammar after the associations change; tabs with a chosen grammar keep it.</summary>
+    public void InferGrammars()
+    {
+        foreach (var tab in _byPath.Values)
+            tab.InferGrammar();
+    }
 
     public void NextTab() => CycleTab(forward: true);
     public void PreviousTab() => CycleTab(forward: false);

@@ -10,6 +10,8 @@ public sealed class EditorTab : FrameView
 {
     private readonly EditorTextView _textView;
     private readonly EditorGutter _gutter;
+    private readonly SyntaxHighlighter? _syntax;
+    private bool _grammarChosen;
     private View? _header;
     private readonly string _eol;
     private bool _dirty;
@@ -42,9 +44,12 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public event EventHandler<(int Row, int Column)>? CursorMoved;
 
+    public event EventHandler? GrammarChanged;
+
     public EditorTab(IFileInfo file, SyntaxHighlighter? syntax = null)
     {
         File = file;
+        _syntax = syntax;
         BorderStyle = LineStyle.None;
 
         var initial = file.FileSystem.File.ReadAllText(file.FullName);
@@ -56,7 +61,7 @@ public sealed class EditorTab : FrameView
             Width = Dim.Fill(),
             Height = Dim.Fill(),
             Text = initial,
-            Syntax = syntax?.CreateCache(file.Name),
+            Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
         };
         _gutter = new EditorGutter(_textView) { X = 0, Y = 0, Height = Dim.Fill() };
         _textView.X = Pos.Right(_gutter);
@@ -82,6 +87,33 @@ public sealed class EditorTab : FrameView
     }
 
     internal IReadOnlyList<LineChange> LineChanges => _gutter.Changes;
+
+    /// <summary>Whether syntax colouring is available at all; without it every tab is plain text.</summary>
+    public bool HasSyntax => _syntax is not null;
+
+    /// <summary>The grammar colouring this tab, or null for plain text.</summary>
+    public SyntaxLanguage? Grammar => _textView.Syntax?.Language;
+
+    /// <summary>Pins this tab to <paramref name="grammar"/> (null for plain text), ignoring associations.</summary>
+    public void SetGrammar(SyntaxLanguage? grammar)
+    {
+        _grammarChosen = true;
+        ApplyGrammar(grammar);
+    }
+
+    /// <summary>Re-pick the grammar from the current associations, unless one was chosen for this tab.</summary>
+    public void InferGrammar()
+    {
+        if (!_grammarChosen && _syntax is not null)
+            ApplyGrammar(_syntax.LanguageForFile(File.Name));
+    }
+
+    private void ApplyGrammar(SyntaxLanguage? grammar)
+    {
+        if (_syntax is null || Equals(Grammar, grammar)) return;
+        _textView.Syntax = _syntax.CreateCache(grammar);
+        GrammarChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public bool FocusContent() => _textView.SetFocus();
     public bool ContentHasFocus => _textView.HasFocus;
@@ -304,7 +336,15 @@ internal sealed class EditorTextView : TextView
     /// <summary>Shared by the gutter and syntax colouring, so unchanged lines keep one string instance.</summary>
     internal LineSnapshot Snapshot { get; } = new();
 
-    public LineTokenCache? Syntax { get; init; }
+    public LineTokenCache? Syntax
+    {
+        get;
+        set
+        {
+            field = value;
+            SetNeedsDraw();
+        }
+    }
 
     /// <summary>Lexing time allowed per frame; the rest continues on later iterations.</summary>
     internal TimeSpan SyntaxBudget { get; set; } = TimeSpan.FromMilliseconds(15);

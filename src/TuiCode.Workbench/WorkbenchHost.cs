@@ -6,6 +6,7 @@ using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Find;
+using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
@@ -49,6 +50,7 @@ public sealed class WorkbenchHost : IDisposable
     private ActionView? _activeActions;
     private HelpView? _activeHelp;
     private GoToLineView? _activeGoToLine;
+    private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
     private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
@@ -193,6 +195,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
+        // No default key (#21): rarely needed, and users can bind one in Settings.
+        _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker);
         _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack);
         _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
@@ -392,7 +396,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var view = new SettingsView(
             _settings, _keybindings, _commands, _scopes, ApplyEditedBindings,
-            _terminalIntegrations, _environment);
+            _terminalIntegrations, _environment, _workbench.Editor.Group.Syntax, ApplyGrammarAssociations);
         view.Closed += (_, _) => CloseSettings(view);
         _activeSettings = view;
         _workbench.Add(view);
@@ -409,6 +413,37 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeSettings = null;
+        FocusEditorBody();
+    }
+
+    private void ApplyGrammarAssociations()
+    {
+        if (_workbench.Editor.Group.Syntax is not { } syntax) return;
+        syntax.Associations = _settings.GrammarAssociations;
+        _workbench.Editor.Group.InferGrammars();
+    }
+
+    private void OpenGrammarPicker()
+    {
+        if (_activeGrammarPicker is not null) return;
+        if (_workbench.Editor.Group is not { ActiveTab: { HasSyntax: true } tab, Syntax: { } syntax }) return;
+
+        var view = new GrammarPickerView(syntax.Languages, $"Grammar for {tab.File.Name}", tab.Grammar);
+        view.Chosen += (_, grammar) => tab.SetGrammar(grammar);
+        view.Closed += (_, _) => CloseGrammarPicker(view);
+        _activeGrammarPicker = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusSearch();
+    }
+
+    private void CloseGrammarPicker(GrammarPickerView view)
+    {
+        if (!ReferenceEquals(_activeGrammarPicker, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeGrammarPicker = null;
         FocusEditorBody();
     }
 

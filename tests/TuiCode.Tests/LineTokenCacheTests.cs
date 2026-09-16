@@ -15,7 +15,7 @@ public class LineTokenCacheTests
     [Fact]
     public void CreateCache_returns_null_for_a_file_without_a_grammar()
     {
-        Assert.Null(_highlighter.CreateCache("notes.unknown"));
+        Assert.Null(_highlighter.CreateCache(_highlighter.LanguageForFile("notes.unknown")));
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class LineTokenCacheTests
 
     private LineTokenCache CacheFor(IReadOnlyList<string> lines)
     {
-        var cache = _highlighter.CreateCache("file.cs")!;
+        var cache = _highlighter.CreateCache(_highlighter.LanguageById("csharp"))!;
         cache.Update(lines);
         return cache;
     }

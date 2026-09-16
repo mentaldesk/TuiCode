@@ -157,7 +157,11 @@ public class EditorTextViewDrawTests : StaticConfigurationTest
     private const string DarkComment = "#6A9955";
     private const string DarkString = "#CE9178";
 
-    private static EditorTextView SyntaxView() => new() { Syntax = new SyntaxHighlighter(GrammarBundle.Load()).CreateCache("file.cs") };
+    private static EditorTextView SyntaxView()
+    {
+        var highlighter = new SyntaxHighlighter(GrammarBundle.Load());
+        return new EditorTextView { Syntax = highlighter.CreateCache(highlighter.LanguageById("csharp")) };
+    }
 
     private static EditorTextView TextViewOf(EditorTab tab) => tab.SubViews.OfType<EditorTextView>().Single();
 

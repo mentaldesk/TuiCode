@@ -19,8 +19,12 @@ public sealed class SyntaxHighlighter
     /// <summary>The foreground id TextMate gives tokens the theme has no rule for.</summary>
     public const int DefaultForeground = 1;
 
+    /// <summary>The association value that turns highlighting off for matching files.</summary>
+    public const string PlainText = "plaintext";
+
     private readonly GrammarBundle _bundle;
     private readonly Registry _registry;
+    private Dictionary<string, string> _associations = new(StringComparer.OrdinalIgnoreCase);
 
     public SyntaxHighlighter(GrammarBundle bundle)
     {
@@ -30,6 +34,23 @@ public sealed class SyntaxHighlighter
     }
 
     public bool IsDark { get; private set; } = true;
+
+    public IReadOnlyCollection<SyntaxLanguage> Languages => _bundle.Languages;
+
+    public IReadOnlyDictionary<string, SyntaxLanguage> DefaultAssociations => _bundle.Associations;
+
+    /// <summary>The user's associations (pattern → language id or <see cref="PlainText"/>), which win over the defaults.</summary>
+    public IReadOnlyDictionary<string, string> Associations
+    {
+        get => _associations;
+        set => _associations = new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The file's language by the user's associations, then the defaults; null means plain text.</summary>
+    public SyntaxLanguage? LanguageForFile(string path) =>
+        GrammarBundle.Match(_associations, path) is { } id ? LanguageById(id) : _bundle.LanguageForFile(path);
+
+    public SyntaxLanguage? LanguageById(string id) => _bundle.LanguageById(id);
 
     /// <summary>Changes with every theme switch: token metadata from an older version encodes the old theme's colours.</summary>
     public int ThemeVersion { get; private set; }
@@ -46,9 +67,9 @@ public sealed class SyntaxHighlighter
         ThemeVersion++;
     }
 
-    public LineTokenCache? CreateCache(string path) =>
-        _bundle.LanguageForFile(path) is { } language && _registry.LoadGrammar(language.ScopeName) is { } grammar
-            ? new LineTokenCache(this, grammar)
+    public LineTokenCache? CreateCache(SyntaxLanguage? language) =>
+        language is not null && _registry.LoadGrammar(language.ScopeName) is { } grammar
+            ? new LineTokenCache(this, grammar, language)
             : null;
 
     public static int ForegroundOf(int metadata) => EncodedTokenAttributes.GetForeground(metadata);

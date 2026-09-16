@@ -109,6 +109,61 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         return fs.Path.Combine(home, ".tui", "TuiCode.config.json");
     }
 
+    [Fact]
+    public void Grammar_associations_round_trip_through_their_own_file()
+    {
+        var fs = new MockFileSystem();
+        var svc = new DefaultSettingsService(fs);
+        svc.SetGrammarAssociations(new Dictionary<string, string> { [".h"] = "cpp", ["Jenkinsfile"] = "groovy" });
+
+        svc.Save();
+        var reloaded = new DefaultSettingsService(fs);
+
+        Assert.Equal("cpp", reloaded.GrammarAssociations[".H"]);
+        Assert.Equal("groovy", reloaded.GrammarAssociations["Jenkinsfile"]);
+    }
+
+    [Fact]
+    public void Saving_no_grammar_associations_removes_the_file()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(GrammarsPath(fs), new MockFileData("{ \".h\": \"cpp\" }"));
+        var svc = new DefaultSettingsService(fs);
+
+        svc.SetGrammarAssociations(new Dictionary<string, string>());
+        svc.Save();
+
+        Assert.False(fs.File.Exists(GrammarsPath(fs)));
+    }
+
+    [Theory]
+    [InlineData("{ \".h\": ")]
+    [InlineData("[ \".h\" ]")]
+    public void Malformed_grammar_associations_load_as_empty(string json)
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(GrammarsPath(fs), new MockFileData(json));
+
+        Assert.Empty(new DefaultSettingsService(fs).GrammarAssociations);
+    }
+
+    [Fact]
+    public void A_grammar_association_of_the_wrong_type_is_skipped_without_losing_the_rest()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(GrammarsPath(fs), new MockFileData("{ \".h\": 42, \".tfvars\": \"json\" }"));
+
+        var associations = new DefaultSettingsService(fs).GrammarAssociations;
+
+        Assert.Equal(".tfvars", Assert.Single(associations).Key);
+    }
+
+    private static string GrammarsPath(MockFileSystem fs)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return fs.Path.Combine(home, ".tui", "TuiCode.grammars.json");
+    }
+
     private static string KeybindingsPath(MockFileSystem fs)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
