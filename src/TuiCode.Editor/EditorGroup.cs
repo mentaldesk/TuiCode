@@ -1,8 +1,11 @@
+using TuiCode.Syntax;
+
 namespace TuiCode.Editor;
 
 public sealed class EditorGroup : Tabs
 {
     private readonly Dictionary<string, EditorTab> _byPath = new(StringComparer.Ordinal);
+    private readonly SyntaxHighlighter? _syntax;
 
     public event EventHandler<IFileInfo>? FileSaved;
     public event EventHandler<EditorTab?>? ActiveTabChanged;
@@ -25,8 +28,9 @@ public sealed class EditorGroup : Tabs
         }
     } = true;
 
-    public EditorGroup()
+    public EditorGroup(SyntaxHighlighter? syntax = null)
     {
+        _syntax = syntax;
         ValueChanged += (_, _) => ActiveTabChanged?.Invoke(this, ActiveTab);
     }
 
@@ -38,7 +42,7 @@ public sealed class EditorGroup : Tabs
             return existing;
         }
 
-        var tab = new EditorTab(file) { GutterVisible = GutterVisible };
+        var tab = new EditorTab(file, _syntax) { GutterVisible = GutterVisible };
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         Add(tab);

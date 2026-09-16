@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TuiCode.Abstractions\TuiCode.Abstractions.csproj" />
+    <ProjectReference Include="..\TuiCode.Syntax\TuiCode.Syntax.csproj" />
   </ItemGroup>
 
   <ItemGroup>

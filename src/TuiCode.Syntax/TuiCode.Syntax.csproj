@@ -17,4 +17,8 @@
     <EmbeddedResource Include="Grammars.zip" LogicalName="Grammars.zip" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="TuiCode.Tests" />
+  </ItemGroup>
+
 </Project>
