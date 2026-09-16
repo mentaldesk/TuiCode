@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Grammars.zip" LogicalName="Grammars.zip" />
+    <EmbeddedResource Include="Themes\*.json" LogicalName="themes/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

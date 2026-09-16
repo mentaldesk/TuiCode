@@ -13,7 +13,7 @@ public enum TokenStyle
     Strikethrough = 8,
 }
 
-/// <summary>Shared by every editor tab, so each grammar compiles once. Token colours come from Dark+ or Light+.</summary>
+/// <summary>Shared by every editor tab, so each grammar compiles once. Token colours come from <see cref="Theme"/>.</summary>
 public sealed class SyntaxHighlighter
 {
     /// <summary>The foreground id TextMate gives tokens the theme has no rule for.</summary>
@@ -32,8 +32,6 @@ public sealed class SyntaxHighlighter
         _registry = new Registry(bundle);
         Colors = ReadColors();
     }
-
-    public bool IsDark { get; private set; } = true;
 
     public IReadOnlyCollection<SyntaxLanguage> Languages => _bundle.Languages;
 
@@ -60,11 +58,17 @@ public sealed class SyntaxHighlighter
     /// <summary><c>#RRGGBB</c> by the foreground id encoded in token metadata; index 0 is unused.</summary>
     public IReadOnlyList<string> Colors { get; private set; }
 
-    public void UseTheme(bool dark)
+    /// <summary>The token theme file in use, e.g. <see cref="GrammarBundle.DarkTheme"/>.</summary>
+    public string Theme { get; private set; } = GrammarBundle.DarkTheme;
+
+    /// <summary>The theme's VS Code <c>colors</c>, e.g. <c>editorCursor.foreground</c> → <c>#RRGGBB</c>.</summary>
+    public IReadOnlyDictionary<string, string> EditorColors => _registry.GetTheme().GetGuiColorDictionary();
+
+    public void UseTheme(string theme)
     {
-        if (dark == IsDark) return;
-        _registry.SetTheme(_bundle.GetTheme(dark ? GrammarBundle.DarkTheme : GrammarBundle.LightTheme)!);
-        IsDark = dark;
+        if (theme == Theme) return;
+        _registry.SetTheme(_bundle.GetTheme(theme) ?? throw new ArgumentException($"No token theme named {theme}.", nameof(theme)));
+        Theme = theme;
         Colors = ReadColors();
         ThemeVersion++;
     }

@@ -63,7 +63,7 @@ public sealed class EditorTab : FrameView
             Text = initial,
             Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
         };
-        _gutter = new EditorGutter(_textView) { X = 0, Y = 0, Height = Dim.Fill() };
+        _gutter = new EditorGutter(_textView, syntax) { X = 0, Y = 0, Height = Dim.Fill() };
         _textView.X = Pos.Right(_gutter);
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
         _textView.ContentsChanged += (_, _) => OnEdited();
@@ -414,7 +414,6 @@ internal sealed class EditorTextView : TextView
     private void PrepareSyntax()
     {
         if (Syntax is null) return;
-        Syntax.Highlighter.UseTheme(dark: IsDarkScheme(_editable));
         if (_tokenColorsVersion != Syntax.Highlighter.ThemeVersion)
         {
             _tokenColors = Syntax.Highlighter.Colors.Select(hex => hex is null ? default : Color.Parse(hex)).ToArray();
@@ -427,14 +426,6 @@ internal sealed class EditorTextView : TextView
         if (!Syntax.TokenizeThrough(lastVisible, SyntaxBudget))
             App?.Invoke(SetNeedsDraw);
     }
-
-    // TG's Dark theme leaves the background to the terminal (Color.None), so judge by the text colour there.
-    internal static bool IsDarkScheme(Attribute editable) =>
-        editable.Background == Color.None
-            ? editable.Foreground == Color.None || Brightness(editable.Foreground) >= 0.25
-            : Brightness(editable.Background) < Brightness(editable.Foreground);
-
-    private static double Brightness(Color color) => (0.299 * color.R + 0.587 * color.G + 0.114 * color.B) / 255;
 
     private void DrawRow(List<Cell> line, int idxRow, int row, int right)
     {

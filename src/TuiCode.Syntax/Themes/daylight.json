@@ -1,0 +1,12 @@
+{
+  "name": "Daylight",
+  "include": "./light_plus.json",
+  "colors": {
+    "editorCursor.foreground": "#1F2328",
+    "editorLineNumber.foreground": "#9DA1A8",
+    "editorLineNumber.activeForeground": "#383A42",
+    "editorGutter.addedBackground": "#2DA44E",
+    "editorGutter.modifiedBackground": "#0969DA",
+    "editorGutter.deletedBackground": "#CF222E"
+  }
+}

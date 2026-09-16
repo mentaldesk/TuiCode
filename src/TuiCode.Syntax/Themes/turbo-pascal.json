@@ -1,0 +1,12 @@
+{
+  "name": "Turbo Pascal",
+  "include": "./borland.json",
+  "colors": {
+    "editorCursor.foreground": "#FFFF55",
+    "editorLineNumber.foreground": "#AAAAAA",
+    "editorLineNumber.activeForeground": "#FFFFFF",
+    "editorGutter.addedBackground": "#55FF55",
+    "editorGutter.modifiedBackground": "#55FFFF",
+    "editorGutter.deletedBackground": "#FF5555"
+  }
+}
