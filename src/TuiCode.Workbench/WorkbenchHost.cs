@@ -86,8 +86,7 @@ public sealed class WorkbenchHost : IDisposable
         // OSC 1337 SetUserVar TUICODE_ACTIVE=1 (base64 "MQ=="). WezTerm's tuicode.lua keys off
         // this user-var to activate its key table only while TuiCode runs; other terminals
         // strip the unknown OSC silently. Unconditional — no detection needed.
-        Console.Out.Write("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MQ==\x07");
-        Console.Out.Flush();
+        WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MQ==\x07");
         _workbench = workbench;
         _commands = commands;
         _keybindings = keybindings;
@@ -124,8 +123,17 @@ public sealed class WorkbenchHost : IDisposable
 
     private void ApplyTokenTheme()
     {
-        if (_workbench.Editor.Group.Syntax is { } syntax)
-            syntax.TokenTheme = BundledThemes.TokenThemeFor(_settings.Theme);
+        if (_workbench.Editor.Group.Syntax is not { } syntax) return;
+        syntax.UseTheme(BundledThemes.TokenThemeFor(_settings.Theme));
+        // OSC 12 sets the terminal's cursor colour, which no TG scheme covers; terminals without it ignore the sequence.
+        if (syntax.EditorColors.TryGetValue("editorCursor.foreground", out var hex) && Color.TryParse(hex, out Color? cursor))
+            WriteToTerminal($"\x1b]12;#{cursor.Value.R:X2}{cursor.Value.G:X2}{cursor.Value.B:X2}\x07");
+    }
+
+    private static void WriteToTerminal(string sequence)
+    {
+        Console.Out.Write(sequence);
+        Console.Out.Flush();
     }
 
     public IApplication App => _app;
@@ -786,8 +794,9 @@ public sealed class WorkbenchHost : IDisposable
         _app.Dispose();
         // Tell WezTerm the tuicode key table should be popped; matches the startup activation.
         // Emitted post-Dispose so it reaches the live terminal after TG restores it.
-        Console.Out.Write("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MA==\x07");
-        Console.Out.Flush();
+        WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MA==\x07");
+        // OSC 112 restores the terminal's own cursor colour.
+        WriteToTerminal("\x1b]112\x07");
         _flowControl.Dispose();
     }
 

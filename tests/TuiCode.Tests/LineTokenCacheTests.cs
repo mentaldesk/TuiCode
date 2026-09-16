@@ -103,7 +103,7 @@ public class LineTokenCacheTests
         var cache = CacheFor(["int x;"]);
         cache.TokenizeThrough(0, TimeSpan.MaxValue);
 
-        _highlighter.UseTheme(dark: false);
+        _highlighter.UseTheme(GrammarBundle.LightTheme);
 
         Assert.Null(cache.TokensFor(0));
         cache.TokenizeThrough(0, TimeSpan.MaxValue);
@@ -123,12 +123,11 @@ public class LineTokenCacheTests
     }
 
     [Fact]
-    public void A_token_theme_wins_over_the_background_choice()
+    public void Turbo_Pascal_colours_keywords_white_and_comments_grey()
     {
         var cache = CacheFor(["int x; // note"]);
-        _highlighter.TokenTheme = GrammarBundle.BorlandTheme;
 
-        _highlighter.UseTheme(dark: true);
+        _highlighter.UseTheme("turbo-pascal.json");
 
         Assert.Null(cache.TokensFor(0));
         cache.TokenizeThrough(0, TimeSpan.MaxValue);

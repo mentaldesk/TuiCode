@@ -16,7 +16,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Grammars.zip" LogicalName="Grammars.zip" />
-    <EmbeddedResource Include="Themes\borland.json" LogicalName="themes/borland.json" />
+    <EmbeddedResource Include="Themes\*.json" LogicalName="themes/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

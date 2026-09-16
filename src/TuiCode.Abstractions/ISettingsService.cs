@@ -13,7 +13,7 @@ public interface ISettingsService
     /// <summary>Raised after <see cref="Theme"/> changes.</summary>
     event EventHandler? ThemeChanged;
 
-    /// <summary>Names of all themes the user can pick from (a subset of TG's built-ins, plus our own).</summary>
+    /// <summary>Names of all themes the user can pick from.</summary>
     IReadOnlyCollection<string> AvailableThemes { get; }
 
     /// <summary>

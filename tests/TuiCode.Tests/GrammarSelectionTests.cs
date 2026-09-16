@@ -219,10 +219,10 @@ public class GrammarHostTests : StaticConfigurationTest
         var syntax = workbench.Editor.Group.Syntax!;
 
         _settings.Theme = BundledThemes.TurboPascal;
-        Assert.Equal(GrammarBundle.BorlandTheme, syntax.TokenTheme);
+        Assert.Equal("turbo-pascal.json", syntax.Theme);
 
-        _settings.Theme = "Dark";
-        Assert.Null(syntax.TokenTheme);
+        _settings.Theme = BundledThemes.Daylight;
+        Assert.Equal("daylight.json", syntax.Theme);
     }
 
     private Workbench.Workbench BuildWorkbench() =>

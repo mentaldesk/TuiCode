@@ -1,4 +1,5 @@
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Themes;
 
 namespace TuiCode.Tests;
 
@@ -12,11 +13,11 @@ internal sealed class InMemorySettingsService : ISettingsService
             field = value;
             ThemeChanged?.Invoke(this, EventArgs.Empty);
         }
-    } = "Default";
+    } = BundledThemes.Default;
 
     public event EventHandler? ThemeChanged;
     public IReadOnlyCollection<string> AvailableThemes { get; init; } =
-        new[] { "Default", "Dark", "Light" };
+        BundledThemes.Names;
 
     private List<KeybindingOverride> _overrides = new();
     public IReadOnlyList<KeybindingOverride> KeybindingOverrides => _overrides;

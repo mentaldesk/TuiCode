@@ -15,7 +15,7 @@ namespace TuiCode.Workbench.Configuration;
 ///
 /// <para>Theme persists via TG's native <c>ThemeManager.Theme</c>
 /// (<c>[ConfigurationProperty(Scope = typeof(SettingsScope))]</c>) written as
-/// <c>{"Theme": "Dark"}</c> at the JSON root of <c>~/.tui/TuiCode.config.json</c>.
+/// <c>{"Theme": "Daylight"}</c> at the JSON root of <c>~/.tui/TuiCode.config.json</c>.
 /// <see cref="Load"/> calls <c>ConfigurationManager.Enable</c> which reads the file and
 /// applies the theme — no custom load logic needed. Saving still goes through us because
 /// <c>ConfigurationManager</c> exposes no Save API.</para>
@@ -27,8 +27,6 @@ namespace TuiCode.Workbench.Configuration;
 /// </summary>
 public sealed class DefaultSettingsService : ISettingsService
 {
-    private const string DefaultTheme = "Default";
-
     private readonly IFileSystem _fs;
     private readonly string _themeConfigPath;
     private readonly string _keybindingsPath;
@@ -62,11 +60,9 @@ public sealed class DefaultSettingsService : ISettingsService
 
     public event EventHandler? ThemeChanged;
 
-    // TG's other built-ins (TurboPascal 5, Green Phosphor, 8-Bit, …) are demo themes that look poor in a code editor.
-    private static readonly string[] AllowedThemes = ["Default", "Dark", "Light", .. BundledThemes.Names];
-
+    // TG's built-ins don't describe the editor's gutter or cursor, so we only offer our own.
     public IReadOnlyCollection<string> AvailableThemes =>
-        AllowedThemes.Where(theme => ThemeManager.Themes?.ContainsKey(theme) ?? false).ToArray();
+        BundledThemes.Names.Where(theme => ThemeManager.Themes?.ContainsKey(theme) ?? false).ToArray();
 
     public IReadOnlyList<KeybindingOverride> KeybindingOverrides => _keybindings;
 
@@ -88,6 +84,7 @@ public sealed class DefaultSettingsService : ISettingsService
     {
         ConfigurationManager.RuntimeConfig = BundledThemes.Config;
         ConfigurationManager.Enable(ConfigLocations.All);
+        Theme = BundledThemes.Migrate(ThemeManager.Theme);
     }
 
     public void Save()
@@ -141,7 +138,7 @@ public sealed class DefaultSettingsService : ISettingsService
     private void SaveTheme()
     {
         var root = new JsonObject();
-        if (!string.Equals(ThemeManager.Theme, DefaultTheme, StringComparison.Ordinal))
+        if (!string.Equals(ThemeManager.Theme, BundledThemes.Default, StringComparison.Ordinal))
             root["Theme"] = ThemeManager.Theme;
 
         EnsureDirExists(_themeConfigPath);
