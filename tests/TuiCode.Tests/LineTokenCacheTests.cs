@@ -103,7 +103,7 @@ public class LineTokenCacheTests
         var cache = CacheFor(["int x;"]);
         cache.TokenizeThrough(0, TimeSpan.MaxValue);
 
-        _highlighter.UseTheme(dark: false);
+        _highlighter.UseTheme(GrammarBundle.LightTheme);
 
         Assert.Null(cache.TokensFor(0));
         cache.TokenizeThrough(0, TimeSpan.MaxValue);
@@ -120,6 +120,21 @@ public class LineTokenCacheTests
         var semicolon = Enumerable.Range(0, tokens.Length / 2).Last(i => tokens[2 * i] <= 5);
 
         Assert.Equal(SyntaxHighlighter.DefaultForeground, SyntaxHighlighter.ForegroundOf(tokens[2 * semicolon + 1]));
+    }
+
+    [Fact]
+    public void Turbo_Pascal_colours_keywords_white_and_comments_grey()
+    {
+        var cache = CacheFor(["int x; // note"]);
+        // Lex once first: a cold grammar can overrun the per-line time limit and leave the comment uncoloured.
+        cache.TokenizeThrough(0, TimeSpan.MaxValue);
+
+        _highlighter.UseTheme("turbo-pascal.json");
+
+        Assert.Null(cache.TokensFor(0));
+        cache.TokenizeThrough(0, TimeSpan.MaxValue);
+        Assert.Equal("#FFFFFF", ColorAt(cache, 0, 0));
+        Assert.Equal("#AAAAAA", ColorAt(cache, 0, 7));
     }
 
     private LineTokenCache CacheFor(IReadOnlyList<string> lines)

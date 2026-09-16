@@ -1,0 +1,12 @@
+{
+  "name": "Midnight",
+  "include": "./dark_plus.json",
+  "colors": {
+    "editorCursor.foreground": "#E6E9EF",
+    "editorLineNumber.foreground": "#5C6370",
+    "editorLineNumber.activeForeground": "#D4D7DD",
+    "editorGutter.addedBackground": "#3FB950",
+    "editorGutter.modifiedBackground": "#6CB6FF",
+    "editorGutter.deletedBackground": "#F85149"
+  }
+}

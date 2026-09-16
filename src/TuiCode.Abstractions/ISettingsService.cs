@@ -10,7 +10,10 @@ public interface ISettingsService
     /// <summary>Current theme name. Setter applies the theme live.</summary>
     string Theme { get; set; }
 
-    /// <summary>Names of all themes the user can pick from (TG built-ins for v1).</summary>
+    /// <summary>Raised after <see cref="Theme"/> changes.</summary>
+    event EventHandler? ThemeChanged;
+
+    /// <summary>Names of all themes the user can pick from.</summary>
     IReadOnlyCollection<string> AvailableThemes { get; }
 
     /// <summary>

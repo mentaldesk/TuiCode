@@ -1,5 +1,6 @@
 using System.IO.Abstractions;
 using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using TextMateSharp.Internal.Grammars.Reader;
@@ -85,9 +86,50 @@ public sealed class GrammarBundle : IRegistryOptions
             ? GrammarReader.ReadGrammarSync(reader)
             : null;
 
-    // Also called with a theme's include of its base theme, e.g. "./dark_vs.json".
-    public IRawTheme? GetTheme(string scopeName) =>
-        OpenText("themes/" + Path.GetFileName(scopeName)) is { } reader ? ThemeReader.ReadThemeSync(reader) : null;
+    /// <summary>Every token theme: ours, then the zip's.</summary>
+    public IEnumerable<string> ThemeNames =>
+        typeof(GrammarBundle).Assembly.GetManifestResourceNames()
+            .Concat(_archive.Entries.Select(e => e.FullName))
+            .Where(name => name.StartsWith("themes/", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal))
+            .Select(Path.GetFileName)!;
+
+    public IRawTheme? GetTheme(string scopeName)
+    {
+        if (ReadTheme(scopeName) is not { } theme) return null;
+        using var reader = new StreamReader(new MemoryStream(Encoding.UTF8.GetBytes(theme.ToJsonString())));
+        return ThemeReader.ReadThemeSync(reader);
+    }
+
+    // TextMateSharp follows only one level of include, which would drop dark_vs.json from a theme that includes dark_plus.json.
+    private JsonObject? ReadTheme(string name)
+    {
+        var entryName = "themes/" + Path.GetFileName(name);
+        JsonObject theme;
+        using (var reader = typeof(GrammarBundle).Assembly.GetManifestResourceStream(entryName) is { } own ? new StreamReader(own) : OpenText(entryName))
+        {
+            if (reader is null) return null;
+            theme = JsonNode.Parse(reader.ReadToEnd(), documentOptions: ThemeJsonOptions)!.AsObject();
+        }
+
+        if (!theme.Remove("include", out var include) || ReadTheme(include!.GetValue<string>()) is not { } baseTheme)
+            return theme;
+
+        var tokenColors = Take(baseTheme, "tokenColors") as JsonArray ?? [];
+        foreach (var rule in Take(theme, "tokenColors") as JsonArray ?? [])
+            tokenColors.Add((JsonNode)rule!.DeepClone());
+        theme["tokenColors"] = tokenColors;
+
+        var colors = Take(baseTheme, "colors") as JsonObject ?? [];
+        foreach (var (key, value) in Take(theme, "colors") as JsonObject ?? [])
+            colors[key] = value?.DeepClone();
+        theme["colors"] = colors;
+        return theme;
+    }
+
+    private static readonly JsonDocumentOptions ThemeJsonOptions = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+
+    private static JsonNode? Take(JsonObject theme, string property) =>
+        theme.Remove(property, out var node) ? node : null;
 
     public IRawTheme GetDefaultTheme() => GetTheme(DarkTheme)!;
 

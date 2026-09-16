@@ -13,6 +13,7 @@ public sealed class StatusBarPart : View
     {
         Height = 1;
         CanFocus = false;
+        SchemeName = "StatusBar";
 
         _label = new Label
         {

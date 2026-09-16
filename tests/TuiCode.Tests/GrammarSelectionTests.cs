@@ -7,6 +7,7 @@ using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
+using TuiCode.Workbench.Themes;
 
 namespace TuiCode.Tests;
 
@@ -208,6 +209,20 @@ public class GrammarHostTests : StaticConfigurationTest
 
         Assert.Equal("markdown", _settings.GrammarAssociations[".notes"]);
         Assert.Equal("markdown", tab!.Grammar?.Id);
+    }
+
+    [Fact]
+    public void Switching_theme_picks_its_token_theme()
+    {
+        var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var syntax = workbench.Editor.Group.Syntax!;
+
+        _settings.Theme = BundledThemes.TurboPascal;
+        Assert.Equal("turbo-pascal.json", syntax.Theme);
+
+        _settings.Theme = BundledThemes.Daylight;
+        Assert.Equal("daylight.json", syntax.Theme);
     }
 
     private Workbench.Workbench BuildWorkbench() =>

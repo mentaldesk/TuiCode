@@ -56,6 +56,50 @@ public class GrammarBundleTests
     }
 
     [Fact]
+    public void GetTheme_resolves_includes_more_than_one_level_deep()
+    {
+        var highlighter = new SyntaxHighlighter(Bundle);
+        highlighter.UseTheme("midnight.json");
+        var cache = highlighter.CreateCache(highlighter.LanguageById("csharp"))!;
+        cache.Update(["// note"]);
+        cache.TokenizeThrough(0, TimeSpan.MaxValue);
+
+        // midnight.json → dark_plus.json → dark_vs.json, which is where the comment colour lives.
+        var comment = SyntaxHighlighter.ForegroundOf(cache.TokensFor(0)![1]);
+        Assert.Equal("#6A9955", highlighter.Colors[comment], ignoreCase: true);
+    }
+
+    [Fact]
+    public void A_theme_s_editor_colours_override_the_ones_it_includes()
+    {
+        var highlighter = new SyntaxHighlighter(Bundle);
+
+        highlighter.UseTheme("midnight.json");
+
+        Assert.Equal("#E6E9EF", highlighter.EditorColors["editorCursor.foreground"]);
+        Assert.Equal("#1E1E1E", highlighter.EditorColors["editor.background"]);
+    }
+
+    [Theory]
+    [InlineData("midnight.json")]
+    [InlineData("daylight.json")]
+    [InlineData("turbo-pascal.json")]
+    [InlineData("modern-borland.json")]
+    public void Our_themes_colour_the_cursor_and_gutter(string theme)
+    {
+        var highlighter = new SyntaxHighlighter(Bundle);
+
+        highlighter.UseTheme(theme);
+
+        foreach (var key in new[]
+                 {
+                     "editorCursor.foreground", "editorLineNumber.foreground", "editorLineNumber.activeForeground",
+                     "editorGutter.addedBackground", "editorGutter.modifiedBackground", "editorGutter.deletedBackground",
+                 })
+            Assert.True(highlighter.EditorColors.ContainsKey(key), $"{theme} has no {key}");
+    }
+
+    [Fact]
     public void Smoke_loads_every_grammar_and_theme()
     {
         var output = new StringWriter();

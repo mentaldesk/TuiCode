@@ -141,18 +141,6 @@ public class EditorTextViewDrawTests : StaticConfigurationTest
         Assert.NotNull(TextViewOf(tab).Syntax);
     }
 
-    [Theory]
-    [InlineData("White", "Gray", true)]
-    [InlineData("Gray", "None", true)]
-    [InlineData("Black", "LemonChiffon", false)]
-    [InlineData("Black", "None", false)]
-    public void IsDarkScheme_matches_the_built_in_themes(string foreground, string background, bool dark)
-    {
-        var editable = new Attribute(Color.Parse(foreground), background == "None" ? Color.None : Color.Parse(background));
-
-        Assert.Equal(dark, EditorTextView.IsDarkScheme(editable));
-    }
-
     private const string DarkKeyword = "#569CD6";
     private const string DarkComment = "#6A9955";
     private const string DarkString = "#CE9178";

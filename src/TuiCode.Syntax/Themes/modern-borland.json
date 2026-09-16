@@ -1,0 +1,12 @@
+{
+  "name": "Modern Borland",
+  "include": "./borland.json",
+  "colors": {
+    "editorCursor.foreground": "#FFFF57",
+    "editorLineNumber.foreground": "#00A8A8",
+    "editorLineNumber.activeForeground": "#57FFFF",
+    "editorGutter.addedBackground": "#57FF57",
+    "editorGutter.modifiedBackground": "#FFA857",
+    "editorGutter.deletedBackground": "#FF5757"
+  }
+}
