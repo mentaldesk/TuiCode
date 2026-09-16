@@ -67,6 +67,11 @@ jobs:
       - name: AOT publish
         run: dotnet publish src/TuiCode/TuiCode.csproj -c Release -r ${{ matrix.rid }} -o publish
 
+      - name: Third-party notices published
+        # release.yml archives these beside the binary.
+        shell: bash
+        run: test -s publish/THIRD-PARTY-NOTICES.md && test -s publish/DOTNET-THIRD-PARTY-NOTICES.TXT
+
       - name: Syntax smoke
         # Headless (no TG), so it runs on every RID, Windows included.
         shell: bash

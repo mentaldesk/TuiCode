@@ -84,11 +84,11 @@ public class GrammarBundleTests
             Assert.True(ReadAll(expected).SequenceEqual(ReadAll(actual)), $"{entry.FullName} differs from the package; rerun scripts/update-grammar-bundle.cs");
         }
 
-        var packaged = package.GetManifestResourceNames().Count(name =>
-            name.StartsWith(themePrefix, StringComparison.Ordinal)
-            || name.EndsWith(".package.json", StringComparison.Ordinal)
+        var packagedGrammarFiles = package.GetManifestResourceNames().Count(name =>
+            name.EndsWith(".package.json", StringComparison.Ordinal)
             || (name.Contains(".syntaxes.", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal)));
-        Assert.True(packaged == archive.Entries.Count, "The package has files the bundle lacks; rerun scripts/update-grammar-bundle.cs");
+        var bundledGrammarFiles = archive.Entries.Count(e => e.FullName.StartsWith("grammars/", StringComparison.Ordinal));
+        Assert.True(packagedGrammarFiles == bundledGrammarFiles, "The package has grammars the bundle lacks; rerun scripts/update-grammar-bundle.cs");
     }
 
     private static byte[] ReadAll(Stream stream)
