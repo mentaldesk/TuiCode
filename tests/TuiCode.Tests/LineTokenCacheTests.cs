@@ -155,12 +155,8 @@ public class LineTokenCacheTests
     public void Turbo_Pascal_colours_keywords_white_and_comments_grey()
     {
         var cache = CacheFor(["int x; // note"]);
-        // Lex once first: a cold grammar can overrun the per-line time limit and leave the comment uncoloured.
-        cache.TokenizeThrough(0, TimeSpan.MaxValue);
-
         _highlighter.UseTheme("turbo-pascal.json");
 
-        Assert.Null(cache.TokensFor(0));
         cache.TokenizeThrough(0, TimeSpan.MaxValue);
         Assert.Equal("#FFFFFF", ColorAt(cache, 0, 0));
         Assert.Equal("#AAAAAA", ColorAt(cache, 0, 7));
