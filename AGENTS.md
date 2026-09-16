@@ -95,10 +95,17 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 - `EditorGutter` is a sibling view left of the `EditorTextView` inside `EditorTab`, not an adornment. It draws rows from `_text.Viewport.Y` (we never enable WordWrap, so viewport rows are model rows) and redraws on the text view's `ViewportChanged` / `UnwrappedCursorPositionChanged`. Anything that moves the text view (e.g. `SetHeader`) must move the gutter's `Y` too.
 - Change markers diff the buffer against a **baseline** — the lines at load, reset on `Save` — via the pure, TG-free `LineDiff` (Myers, after trimming common prefix/suffix). Undoing back to the saved text clears the markers, which `IsDirty` doesn't. The diff is lazy: `EditorTab.OnEdited` invalidates it and the next draw recomputes, so a hidden gutter costs nothing. Past `LineDiff.MaxEdits` it gives up and marks the whole differing region modified.
+- The diff's input comes from `LineSnapshot`, not `EditorTextView.LineStrings` (which builds a string for every line). TG edits a line's `List<Cell>` in place, so the snapshot spots changed lines by reference plus `List<T>`'s private `_version` (read via `[UnsafeAccessor]`, AOT-safe), trims the unchanged prefix/suffix, and re-reads only the middle. Unchanged lines keep their string instances, so `LineDiff`'s comparisons against the baseline hit `string.Equals`' reference fast path. Don't use `ContentsChanged`'s row as a change range instead: TG reports the start of some multi-line edits and the end of others, and raises nothing for the kill commands.
 - Edits must reach `EditorTab.OnEdited`: `TextView.Text =` doesn't raise `ContentsChanged`, which is why the `Content` setter calls it directly.
 - Only set the gutter's `Width` when it actually changes — TG's `Width` setter schedules a full screen clear even for an equal value.
 - Visibility is `EditorGroup.GutterVisible` (on by default, applied to open and future tabs), toggled by `tg`. It isn't persisted: that waits for an editor section in Settings.
 - Marker colours are fixed RGB (green added, blue modified, red deleted) — TG schemes have no semantic roles for them. Line numbers use the scheme's Editable attribute, faint except on the cursor row.
+
+## Editor drawing
+
+- `EditorTextView` overrides `OnDrawingContent` with a copy of TG 2.1.0's `TextView` draw loop that stops at the viewport bottom. Upstream walks every row from `Viewport.Y` to EOF, so drawing the top of a 5,000-line file took ~900 ms per frame vs ~20 ms now, and cost grew with file length.
+- Per-cell colouring (find highlights, and syntax highlighting per #21) belongs in `OnDrawNormalColor`, which is still called once per *visible* cell. It doesn't call base: base resolves the scheme attribute (allocating) and raises `DrawNormalColor` per cell, so nothing should subscribe to that event. Resolve attributes once per frame in `OnDrawingContent`, not per cell.
+- `EditorTextViewDrawTests` asserts the copy paints exactly what `TextView` does (tabs, wide glyphs, horizontal/vertical scroll, selection, overwrite cursor, read-only). On a TG upgrade, re-diff `TextView.Drawing.cs` against the copy; drop it once upstream bounds the loop. `EditorDrawBenchmarkTests` is `Explicit` (timing-based): `dotnet test tests/TuiCode.Tests/TuiCode.Tests.csproj -c Release -- --explicit only`.
 
 ## Syntax highlighting (#21)
 
