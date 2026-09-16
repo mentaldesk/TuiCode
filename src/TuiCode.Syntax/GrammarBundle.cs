@@ -1,4 +1,6 @@
+using System.IO.Abstractions;
 using System.IO.Compression;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using TextMateSharp.Internal.Grammars.Reader;
 using TextMateSharp.Internal.Themes.Reader;
@@ -10,7 +12,7 @@ namespace TuiCode.Syntax;
 
 public sealed record SyntaxLanguage(string Id, string Name, string ScopeName);
 
-/// <summary>TextMateSharp.Grammars' grammars and themes, re-packed as a compressed embedded zip; the package's own loader embeds 6.7 MB uncompressed.</summary>
+/// <summary>User grammar packages, then TextMateSharp.Grammars' re-packed as a compressed zip (its own loader embeds 6.7 MB uncompressed).</summary>
 public sealed class GrammarBundle : IRegistryOptions
 {
     public const string DarkTheme = "dark_plus.json";
@@ -18,24 +20,43 @@ public sealed class GrammarBundle : IRegistryOptions
 
     private readonly ZipArchive _archive;
     private readonly Lock _archiveLock = new();
-    private readonly Dictionary<string, string> _grammarEntries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Func<StreamReader?>> _grammars = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SyntaxLanguage> _associations = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SyntaxLanguage> _languages = new(StringComparer.Ordinal);
+    private readonly List<string> _problems = [];
 
-    public static GrammarBundle Load() =>
-        new(typeof(GrammarBundle).Assembly.GetManifestResourceStream("Grammars.zip")
-            ?? throw new InvalidOperationException("The embedded grammar bundle is missing."));
+    public static GrammarBundle Load() => new(null, null);
 
-    private GrammarBundle(Stream archive)
+    /// <summary>Also loads each VS Code-style grammar package under <paramref name="userGrammars"/>; unusable ones go to <see cref="Problems"/>.</summary>
+    public static GrammarBundle Load(IFileSystem fileSystem, string userGrammars) => new(fileSystem, userGrammars);
+
+    private GrammarBundle(IFileSystem? fileSystem, string? userGrammars)
     {
-        _archive = new ZipArchive(archive, ZipArchiveMode.Read);
+        _archive = new ZipArchive(
+            typeof(GrammarBundle).Assembly.GetManifestResourceStream("Grammars.zip")
+            ?? throw new InvalidOperationException("The embedded grammar bundle is missing."),
+            ZipArchiveMode.Read);
+
+        // First registration wins, so user packages go first.
+        if (fileSystem is not null && userGrammars is not null && fileSystem.Directory.Exists(userGrammars))
+        {
+            foreach (var directory in fileSystem.Directory.GetDirectories(userGrammars).Order(StringComparer.Ordinal))
+                AddUserPackage(fileSystem, directory);
+        }
+
         foreach (var manifest in _archive.Entries.Where(e => e.Name == "package.json").ToArray())
-            AddPackage(manifest.FullName[..^manifest.Name.Length], ReadJson(manifest));
+        {
+            var directory = manifest.FullName[..^manifest.Name.Length];
+            AddPackage(ReadJson(manifest), path => _archive.GetEntry(directory + path) is null ? null : () => OpenText(directory + path));
+        }
     }
+
+    /// <summary>Why user grammar packages, or grammars in them, weren't loaded.</summary>
+    public IReadOnlyList<string> Problems => _problems;
 
     public IReadOnlyCollection<SyntaxLanguage> Languages => _languages.Values;
 
-    public IReadOnlyCollection<string> ScopeNames => _grammarEntries.Keys;
+    public IReadOnlyCollection<string> ScopeNames => _grammars.Keys;
 
     /// <summary>File-name patterns — an exact name like <c>Dockerfile</c> or an extension like <c>.cs</c> — to their language.</summary>
     public IReadOnlyDictionary<string, SyntaxLanguage> Associations => _associations;
@@ -60,7 +81,7 @@ public sealed class GrammarBundle : IRegistryOptions
     }
 
     public IRawGrammar? GetGrammar(string scopeName) =>
-        _grammarEntries.TryGetValue(scopeName, out var entry) && OpenText(entry) is { } reader
+        _grammars.TryGetValue(scopeName, out var open) && open() is { } reader
             ? GrammarReader.ReadGrammarSync(reader)
             : null;
 
@@ -72,25 +93,60 @@ public sealed class GrammarBundle : IRegistryOptions
 
     public ICollection<string>? GetInjections(string scopeName) => null;
 
-    private void AddPackage(string directory, JsonNode manifest)
+    private void AddUserPackage(IFileSystem fs, string directory)
+    {
+        var package = fs.Path.GetFileName(directory);
+        var manifestPath = fs.Path.Combine(directory, "package.json");
+        if (!fs.File.Exists(manifestPath))
+        {
+            _problems.Add($"{package}: no package.json");
+            return;
+        }
+
+        try
+        {
+            var manifest = JsonNode.Parse(fs.File.ReadAllText(manifestPath)) ?? throw new JsonException("empty");
+            var added = AddPackage(manifest, path =>
+            {
+                var file = fs.Path.GetFullPath(fs.Path.Combine(directory, path));
+                if (!file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                    _problems.Add($"{package}: {path} isn't a JSON grammar (convert .tmLanguage or YAML grammars to JSON)");
+                else if (!fs.File.Exists(file))
+                    _problems.Add($"{package}: {path} not found");
+                else
+                    return () => new StreamReader(new MemoryStream(fs.File.ReadAllBytes(file)));
+                return null;
+            });
+            if (added == 0)
+                _problems.Add($"{package}: no usable grammars");
+        }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or IOException)
+        {
+            _problems.Add($"{package}: package.json couldn't be read ({e.Message})");
+        }
+    }
+
+    /// <summary>Registers a package's grammars and languages; <paramref name="grammarAt"/> opens a grammar by its manifest path, or returns null.</summary>
+    private int AddPackage(JsonNode manifest, Func<string, Func<StreamReader?>?> grammarAt)
     {
         var contributes = manifest["contributes"];
         var scopeByLanguage = new Dictionary<string, string>(StringComparer.Ordinal);
+        var added = 0;
         foreach (var grammar in contributes?["grammars"]?.AsArray() ?? [])
         {
-            var scope = grammar!["scopeName"]!.GetValue<string>();
-            var entry = directory + grammar["path"]!.GetValue<string>().TrimStart('.', '/');
-            if (_archive.GetEntry(entry) is null)
+            if (grammar?["scopeName"]?.GetValue<string>() is not { } scope
+                || grammar["path"]?.GetValue<string>() is not { } path
+                || grammarAt(path.TrimStart('.', '/')) is not { } open)
                 continue;
-            _grammarEntries.TryAdd(scope, entry);
+            _grammars.TryAdd(scope, open);
+            added++;
             if (grammar["language"]?.GetValue<string>() is { } languageId)
                 scopeByLanguage.TryAdd(languageId, scope);
         }
 
         foreach (var node in contributes?["languages"]?.AsArray() ?? [])
         {
-            var id = node!["id"]!.GetValue<string>();
-            if (!scopeByLanguage.TryGetValue(id, out var scope))
+            if (node?["id"]?.GetValue<string>() is not { } id || !scopeByLanguage.TryGetValue(id, out var scope))
                 continue;
             var name = node["aliases"]?.AsArray().FirstOrDefault()?.GetValue<string>() ?? id;
             if (!_languages.TryGetValue(id, out var language))
@@ -100,6 +156,7 @@ public sealed class GrammarBundle : IRegistryOptions
             foreach (var extension in node["extensions"]?.AsArray() ?? [])
                 _associations.TryAdd(extension!.GetValue<string>(), language);
         }
+        return added;
     }
 
     private static JsonNode ReadJson(ZipArchiveEntry entry)

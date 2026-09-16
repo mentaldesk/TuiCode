@@ -14,6 +14,7 @@ public sealed class LineTokenCache
     private readonly IGrammar _grammar;
     private readonly List<Line> _lines = [];
     private int _valid;
+    private bool _failed;
     private int _themeVersion;
 
     internal LineTokenCache(SyntaxHighlighter highlighter, IGrammar grammar, SyntaxLanguage language)
@@ -50,6 +51,7 @@ public sealed class LineTokenCache
     /// <summary>Lexes every line through <paramref name="row"/>, returning false if <paramref name="budget"/> ran out first.</summary>
     public bool TokenizeThrough(int row, TimeSpan budget)
     {
+        if (_failed) return true;
         SyncTheme();
         row = Math.Min(row, _lines.Count - 1);
         var clock = Stopwatch.StartNew();
@@ -62,7 +64,8 @@ public sealed class LineTokenCache
                 continue;
             if (lexed > 0 && clock.Elapsed >= budget)
                 return false;
-            Lex(line, start);
+            if (!TryLex(line, start))
+                return true;
             lexed++;
         }
         return true;
@@ -71,8 +74,24 @@ public sealed class LineTokenCache
     /// <summary>(UTF-16 start, metadata) pairs, or null until the row is lexed.</summary>
     public int[]? TokensFor(int row)
     {
+        if (_failed) return null;
         SyncTheme();
         return row < _valid ? _lines[row].Tokens : null;
+    }
+
+    private bool TryLex(Line line, IStateStack? start)
+    {
+        try
+        {
+            Lex(line, start);
+            return true;
+        }
+        // A user grammar can be broken in ways that only show when a line is lexed (e.g. an invalid regex): stay plain.
+        catch (Exception)
+        {
+            _failed = true;
+            return false;
+        }
     }
 
     private void Lex(Line line, IStateStack? start)

@@ -34,7 +34,7 @@ public sealed class GrammarAssociationsView : View
         _search.KeyDown += OnSearchKey;
         _search.MouseEvent += (_, _) => _search.SetFocus();
 
-        _list = new ListView { X = 0, Y = Pos.Bottom(_search) + 1, Width = Dim.Fill(), Height = Dim.Fill(2) };
+        _list = new ListView { X = 0, Y = Pos.Bottom(_search) + 1, Width = Dim.Fill(), Height = Dim.Fill(3) };
         _list.KeyDown += OnListKey;
         _list.MouseEvent += (_, _) => _list.SetFocus();
 
@@ -45,11 +45,19 @@ public sealed class GrammarAssociationsView : View
             Text = syntax is null ? "Syntax highlighting isn't available." : FooterText,
         };
 
-        Add(_search, _list, footer);
+        Add(_search, _list, new Label { X = 0, Y = Pos.AnchorEnd(2), Text = UserGrammarsText(syntax) }, footer);
         Rebuild();
     }
 
     public IReadOnlyDictionary<string, string> CurrentAssociations => _associations;
+
+    internal static string UserGrammarsText(SyntaxHighlighter? syntax) => syntax?.Problems switch
+    {
+        null => "",
+        { Count: 0 } => "More grammars: add VS Code grammar packages to ~/.tui/grammars and restart",
+        { Count: 1 } problems => $"~/.tui/grammars: {problems[0]}",
+        var problems => $"~/.tui/grammars: {problems[0]} (+{problems.Count - 1} more)",
+    };
 
     public bool FocusContent() => _search.SetFocus();
 

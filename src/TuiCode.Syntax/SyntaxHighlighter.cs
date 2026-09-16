@@ -39,6 +39,8 @@ public sealed class SyntaxHighlighter
 
     public IReadOnlyDictionary<string, SyntaxLanguage> DefaultAssociations => _bundle.Associations;
 
+    public IReadOnlyList<string> Problems => _bundle.Problems;
+
     /// <summary>The user's associations (pattern → language id or <see cref="PlainText"/>), which win over the defaults.</summary>
     public IReadOnlyDictionary<string, string> Associations
     {
@@ -67,10 +69,19 @@ public sealed class SyntaxHighlighter
         ThemeVersion++;
     }
 
-    public LineTokenCache? CreateCache(SyntaxLanguage? language) =>
-        language is not null && _registry.LoadGrammar(language.ScopeName) is { } grammar
-            ? new LineTokenCache(this, grammar, language)
-            : null;
+    public LineTokenCache? CreateCache(SyntaxLanguage? language)
+    {
+        if (language is null) return null;
+        try
+        {
+            return _registry.LoadGrammar(language.ScopeName) is { } grammar ? new LineTokenCache(this, grammar, language) : null;
+        }
+        // User grammars are untrusted input to TextMateSharp, which throws various exceptions for malformed ones.
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
     public static int ForegroundOf(int metadata) => EncodedTokenAttributes.GetForeground(metadata);
 

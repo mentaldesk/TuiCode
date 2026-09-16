@@ -27,9 +27,14 @@ services.AddSingleton<IKeybindingService, KeybindingService>();
 services.AddSingleton<IInputScopeStack, InputScopeStack>();
 services.AddSingleton<ISettingsService, DefaultSettingsService>();
 services.AddSingleton<IEnvironment, SystemEnvironment>();
-services.AddSingleton(sp => new SyntaxHighlighter(GrammarBundle.Load())
+services.AddSingleton(sp =>
 {
-    Associations = sp.GetRequiredService<ISettingsService>().GrammarAssociations,
+    var fs = sp.GetRequiredService<IFileSystem>();
+    var userGrammars = fs.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".tui", "grammars");
+    return new SyntaxHighlighter(GrammarBundle.Load(fs, userGrammars))
+    {
+        Associations = sp.GetRequiredService<ISettingsService>().GrammarAssociations,
+    };
 });
 services.AddSingleton<ITerminalIntegration, Iterm2Integration>();
 services.AddSingleton<ITerminalIntegration, WezTermIntegration>();
