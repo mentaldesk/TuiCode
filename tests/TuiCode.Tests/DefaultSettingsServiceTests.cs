@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Terminal.Gui.Configuration;
 using TuiCode.Workbench.Configuration;
+using TuiCode.Workbench.Themes;
 
 namespace TuiCode.Tests;
 
@@ -49,6 +50,34 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
 
         var dir = fs.Path.GetDirectoryName(ConfigPath(fs));
         Assert.True(fs.Directory.Exists(dir));
+    }
+
+    [Fact]
+    public void Bundled_themes_load_into_TG_and_are_offered_after_the_built_ins()
+    {
+        ConfigurationManager.Enable(ConfigLocations.None);
+        try
+        {
+            ConfigurationManager.RuntimeConfig = BundledThemes.Config;
+            ConfigurationManager.Load(ConfigLocations.LibraryResources | ConfigLocations.Runtime);
+
+            Assert.Equal(
+                ["Default", "Dark", "Light", BundledThemes.TurboPascal, BundledThemes.ModernBorland, BundledThemes.Midnight],
+                new DefaultSettingsService(new MockFileSystem()).AvailableThemes);
+
+            foreach (var theme in BundledThemes.Names)
+            {
+                ThemeManager.Theme = theme;
+                ConfigurationManager.Apply();
+                foreach (var scheme in new[] { "Base", "Accent", "Dialog", "Menu", "Error", "Sidebar", "StatusBar" })
+                    Assert.True(SchemeManager.TryGetScheme(scheme, out _), $"{theme} has no {scheme} scheme");
+            }
+        }
+        finally
+        {
+            ThemeManager.Theme = "Default";
+            ConfigurationManager.Disable(resetToHardCodedDefaults: true);
+        }
     }
 
     // #90: hand-editing the keybindings file into broken JSON must not throw at construction —

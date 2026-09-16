@@ -13,6 +13,7 @@ using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
+using TuiCode.Workbench.Themes;
 
 namespace TuiCode.Workbench;
 
@@ -98,6 +99,8 @@ public sealed class WorkbenchHost : IDisposable
 
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
+        ApplyTokenTheme();
+        _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
 
         // Workbench scope is the bottom of the input stack; never popped. The search sidebar's keys
         // layer directly above it for the app's lifetime (they only engage while its inputs have focus);
@@ -117,6 +120,12 @@ public sealed class WorkbenchHost : IDisposable
         // history's own heuristic decides which of these count as navigable jumps.
         _workbench.Editor.Group.CursorMoved += OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged += OnActiveTabChanged;
+    }
+
+    private void ApplyTokenTheme()
+    {
+        if (_workbench.Editor.Group.Syntax is { } syntax)
+            syntax.TokenTheme = BundledThemes.TokenThemeFor(_settings.Theme);
     }
 
     public IApplication App => _app;

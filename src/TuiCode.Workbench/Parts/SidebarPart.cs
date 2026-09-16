@@ -21,6 +21,7 @@ public sealed class SidebarPart : FrameView
         Explorer = explorer;
         Search = search ?? new SearchView();
         BorderStyle = LineStyle.Single;
+        SchemeName = "Sidebar";
 
         _explorerTab = WrapTab("Explorer", explorer);
         // Titled after the Find globally / Replace globally commands that open it (fg / rg).

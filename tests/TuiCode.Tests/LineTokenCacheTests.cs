@@ -122,6 +122,20 @@ public class LineTokenCacheTests
         Assert.Equal(SyntaxHighlighter.DefaultForeground, SyntaxHighlighter.ForegroundOf(tokens[2 * semicolon + 1]));
     }
 
+    [Fact]
+    public void A_token_theme_wins_over_the_background_choice()
+    {
+        var cache = CacheFor(["int x; // note"]);
+        _highlighter.TokenTheme = GrammarBundle.BorlandTheme;
+
+        _highlighter.UseTheme(dark: true);
+
+        Assert.Null(cache.TokensFor(0));
+        cache.TokenizeThrough(0, TimeSpan.MaxValue);
+        Assert.Equal("#FFFFFF", ColorAt(cache, 0, 0));
+        Assert.Equal("#AAAAAA", ColorAt(cache, 0, 7));
+    }
+
     private LineTokenCache CacheFor(IReadOnlyList<string> lines)
     {
         var cache = _highlighter.CreateCache(_highlighter.LanguageById("csharp"))!;

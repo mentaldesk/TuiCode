@@ -17,6 +17,7 @@ public sealed class GrammarBundle : IRegistryOptions
 {
     public const string DarkTheme = "dark_plus.json";
     public const string LightTheme = "light_plus.json";
+    public const string BorlandTheme = "borland.json";
 
     private readonly ZipArchive _archive;
     private readonly Lock _archiveLock = new();
@@ -86,8 +87,14 @@ public sealed class GrammarBundle : IRegistryOptions
             : null;
 
     // Also called with a theme's include of its base theme, e.g. "./dark_vs.json".
-    public IRawTheme? GetTheme(string scopeName) =>
-        OpenText("themes/" + Path.GetFileName(scopeName)) is { } reader ? ThemeReader.ReadThemeSync(reader) : null;
+    public IRawTheme? GetTheme(string scopeName)
+    {
+        var entryName = "themes/" + Path.GetFileName(scopeName);
+        using var reader = typeof(GrammarBundle).Assembly.GetManifestResourceStream(entryName) is { } own
+            ? new StreamReader(own)
+            : OpenText(entryName);
+        return reader is null ? null : ThemeReader.ReadThemeSync(reader);
+    }
 
     public IRawTheme GetDefaultTheme() => GetTheme(DarkTheme)!;
 

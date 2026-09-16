@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Terminal.Gui.Configuration;
 using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Themes;
 
 namespace TuiCode.Workbench.Configuration;
 
@@ -55,19 +56,17 @@ public sealed class DefaultSettingsService : ISettingsService
             if (string.Equals(ThemeManager.Theme, value, StringComparison.Ordinal)) return;
             ThemeManager.Theme = value;
             ConfigurationManager.Apply();
+            ThemeChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
-    // Allowlist of TG built-in themes we expose to the picker. The other built-ins
-    // (TurboPascal 5, Green Phosphor, 8 bit, …) are demo themes that look poor in a
-    // code editor; intersecting filters them out without crashing if a future TG
-    // version renames or drops one. See issue #11.
-    private static readonly string[] AllowedThemes = ["Default", "Dark", "Light"];
+    public event EventHandler? ThemeChanged;
+
+    // TG's other built-ins (TurboPascal 5, Green Phosphor, 8-Bit, …) are demo themes that look poor in a code editor.
+    private static readonly string[] AllowedThemes = ["Default", "Dark", "Light", .. BundledThemes.Names];
 
     public IReadOnlyCollection<string> AvailableThemes =>
-        (ThemeManager.Themes?.Keys ?? Enumerable.Empty<string>())
-            .Intersect(AllowedThemes, StringComparer.Ordinal)
-            .ToArray();
+        AllowedThemes.Where(theme => ThemeManager.Themes?.ContainsKey(theme) ?? false).ToArray();
 
     public IReadOnlyList<KeybindingOverride> KeybindingOverrides => _keybindings;
 
@@ -85,7 +84,11 @@ public sealed class DefaultSettingsService : ISettingsService
         _grammarAssociations = new Dictionary<string, string>(associations, StringComparer.OrdinalIgnoreCase);
     }
 
-    public void Load() => ConfigurationManager.Enable(ConfigLocations.All);
+    public void Load()
+    {
+        ConfigurationManager.RuntimeConfig = BundledThemes.Config;
+        ConfigurationManager.Enable(ConfigLocations.All);
+    }
 
     public void Save()
     {

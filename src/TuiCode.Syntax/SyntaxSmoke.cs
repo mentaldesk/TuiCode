@@ -27,7 +27,7 @@ public static class SyntaxSmoke
             }
         }
 
-        foreach (var theme in new[] { GrammarBundle.DarkTheme, GrammarBundle.LightTheme })
+        foreach (var theme in new[] { GrammarBundle.DarkTheme, GrammarBundle.LightTheme, GrammarBundle.BorlandTheme })
         {
             try
             {

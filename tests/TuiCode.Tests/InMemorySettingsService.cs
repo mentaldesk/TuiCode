@@ -4,7 +4,17 @@ namespace TuiCode.Tests;
 
 internal sealed class InMemorySettingsService : ISettingsService
 {
-    public string Theme { get; set; } = "Default";
+    public string Theme
+    {
+        get;
+        set
+        {
+            field = value;
+            ThemeChanged?.Invoke(this, EventArgs.Empty);
+        }
+    } = "Default";
+
+    public event EventHandler? ThemeChanged;
     public IReadOnlyCollection<string> AvailableThemes { get; init; } =
         new[] { "Default", "Dark", "Light" };
 

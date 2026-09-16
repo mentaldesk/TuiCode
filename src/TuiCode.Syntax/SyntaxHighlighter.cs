@@ -13,7 +13,7 @@ public enum TokenStyle
     Strikethrough = 8,
 }
 
-/// <summary>Shared by every editor tab, so each grammar compiles once. Token colours come from Dark+ or Light+.</summary>
+/// <summary>Shared by every editor tab, so each grammar compiles once. Token colours come from <see cref="TokenTheme"/>, else Dark+ or Light+.</summary>
 public sealed class SyntaxHighlighter
 {
     /// <summary>The foreground id TextMate gives tokens the theme has no rule for.</summary>
@@ -33,7 +33,7 @@ public sealed class SyntaxHighlighter
         Colors = ReadColors();
     }
 
-    public bool IsDark { get; private set; } = true;
+    private string _theme = GrammarBundle.DarkTheme;
 
     public IReadOnlyCollection<SyntaxLanguage> Languages => _bundle.Languages;
 
@@ -60,11 +60,15 @@ public sealed class SyntaxHighlighter
     /// <summary><c>#RRGGBB</c> by the foreground id encoded in token metadata; index 0 is unused.</summary>
     public IReadOnlyList<string> Colors { get; private set; }
 
+    /// <summary>A bundled token theme such as <see cref="GrammarBundle.BorlandTheme"/>; null picks Dark+ or Light+ to suit the background.</summary>
+    public string? TokenTheme { get; set; }
+
     public void UseTheme(bool dark)
     {
-        if (dark == IsDark) return;
-        _registry.SetTheme(_bundle.GetTheme(dark ? GrammarBundle.DarkTheme : GrammarBundle.LightTheme)!);
-        IsDark = dark;
+        var theme = TokenTheme ?? (dark ? GrammarBundle.DarkTheme : GrammarBundle.LightTheme);
+        if (theme == _theme) return;
+        _registry.SetTheme(_bundle.GetTheme(theme)!);
+        _theme = theme;
         Colors = ReadColors();
         ThemeVersion++;
     }

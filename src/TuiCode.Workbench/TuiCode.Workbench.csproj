@@ -20,6 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Themes\themes.json" LogicalName="themes.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="TuiCode.Tests" />
   </ItemGroup>
 
