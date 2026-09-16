@@ -13,6 +13,11 @@ internal sealed class InMemorySettingsService : ISettingsService
     public void SetKeybindingOverrides(IEnumerable<KeybindingOverride> overrides) =>
         _overrides = overrides.ToList();
 
+    private Dictionary<string, string> _grammarAssociations = new(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyDictionary<string, string> GrammarAssociations => _grammarAssociations;
+    public void SetGrammarAssociations(IReadOnlyDictionary<string, string> associations) =>
+        _grammarAssociations = new(associations, StringComparer.OrdinalIgnoreCase);
+
     public int SaveCount { get; private set; }
     public void Save() => SaveCount++;
 

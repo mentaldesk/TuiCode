@@ -5,11 +5,15 @@ using Terminal.Gui.App;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Search;
+using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.TerminalIntegration;
+
+if (args.Contains("--smoke-syntax"))
+    return SyntaxSmoke.Run(Console.Out);
 
 var services = new ServiceCollection();
 
@@ -23,6 +27,15 @@ services.AddSingleton<IKeybindingService, KeybindingService>();
 services.AddSingleton<IInputScopeStack, InputScopeStack>();
 services.AddSingleton<ISettingsService, DefaultSettingsService>();
 services.AddSingleton<IEnvironment, SystemEnvironment>();
+services.AddSingleton(sp =>
+{
+    var fs = sp.GetRequiredService<IFileSystem>();
+    var userGrammars = fs.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".tui", "grammars");
+    return new SyntaxHighlighter(GrammarBundle.Load(fs, userGrammars))
+    {
+        Associations = sp.GetRequiredService<ISettingsService>().GrammarAssociations,
+    };
+});
 services.AddSingleton<ITerminalIntegration, Iterm2Integration>();
 services.AddSingleton<ITerminalIntegration, WezTermIntegration>();
 

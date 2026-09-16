@@ -5,6 +5,7 @@
     <ProjectReference Include="..\TuiCode.Explorer\TuiCode.Explorer.csproj" />
     <ProjectReference Include="..\TuiCode.Search\TuiCode.Search.csproj" />
     <ProjectReference Include="..\TuiCode.Editor\TuiCode.Editor.csproj" />
+    <ProjectReference Include="..\TuiCode.Syntax\TuiCode.Syntax.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,5 +21,15 @@
     <IsAotCompatible>true</IsAotCompatible>
     <PublishAot>true</PublishAot>
   </PropertyGroup>
+
+  <!-- Release archives ship these notices beside the binary; see "Release workflow" in AGENTS.md. -->
+  <Target Name="PublishThirdPartyNotices" AfterTargets="Publish" Condition="'$(PublishAot)' == 'true'">
+    <PropertyGroup>
+      <_DotnetNotices>$(RuntimePackagePath)/THIRD-PARTY-NOTICES.TXT</_DotnetNotices>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_DotnetNotices)')" Text="The .NET runtime's third-party notices weren't found at $(_DotnetNotices)." />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../../THIRD-PARTY-NOTICES.md" DestinationFolder="$(PublishDir)" />
+    <Copy SourceFiles="$(_DotnetNotices)" DestinationFiles="$(PublishDir)DOTNET-THIRD-PARTY-NOTICES.TXT" />
+  </Target>
 
 </Project>

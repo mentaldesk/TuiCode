@@ -1,4 +1,5 @@
 using TuiCode.Editor;
+using TuiCode.Syntax;
 
 namespace TuiCode.Workbench.Parts;
 
@@ -25,12 +26,12 @@ public sealed class EditorPart : FrameView
         }
     }
 
-    public EditorPart()
+    public EditorPart(SyntaxHighlighter? syntax = null)
     {
         Title = "Editor";
         BorderStyle = LineStyle.Single;
 
-        Group = new EditorGroup
+        Group = new EditorGroup(syntax)
         {
             X = 0,
             Y = 0,

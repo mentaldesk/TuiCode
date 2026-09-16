@@ -3,6 +3,8 @@ using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using TuiCode.Editor;
+using TuiCode.Syntax;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Tests;
 
@@ -72,12 +74,105 @@ public class EditorTextViewDrawTests : StaticConfigurationTest
             Enumerable.Range(0, 3).Select(col => RoleAt(view, 4, col)));
     }
 
-    private T Configure<T>(T view, string scenario) where T : TextView
+    [Fact]
+    public void Syntax_colours_change_only_the_foreground()
+    {
+        var view = Configure(SyntaxView(), "top", "int x; // note");
+
+        Render(view);
+
+        var editable = view.GetAttributeForRole(VisualRole.Editable);
+        Assert.Equal(editable with { Foreground = Color.Parse(DarkKeyword) }, AttributeAt(view, 0, 0));
+        Assert.Equal(editable, AttributeAt(view, 0, 5));
+        Assert.Equal(editable with { Foreground = Color.Parse(DarkComment) }, AttributeAt(view, 0, 7));
+    }
+
+    [Fact]
+    public void Syntax_colours_follow_characters_rather_than_cells()
+    {
+        // The emoji is one model cell but two UTF-16 chars (and two screen columns); tokens after it must not shift.
+        var view = Configure(SyntaxView(), "top", "s = \"😀\"; int n;");
+
+        Render(view);
+
+        Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(view, 0, 10).Foreground);
+    }
+
+    [Fact]
+    public void Syntax_colours_are_right_when_scrolled_horizontally()
+    {
+        var view = Configure(SyntaxView(), "top", "string s = \"a string wider than the view\";");
+        view.Viewport = view.Viewport with { X = 11 };
+
+        Render(view);
+
+        Assert.Equal("\"", _app.Driver!.Contents![0, 0].Grapheme);
+        Assert.Equal(Color.Parse(DarkString), AttributeAt(view, 0, 0).Foreground);
+    }
+
+    [Fact]
+    public void Find_highlights_paint_over_syntax_colours()
+    {
+        var view = Configure(SyntaxView(), "top", "int x;");
+        view.Highlights[0] = [(0, 3)];
+
+        Render(view);
+
+        Assert.Equal("Highlight", RoleAt(view, 0, 0));
+    }
+
+    [Fact]
+    public void An_unrecognised_file_type_is_drawn_plain()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/notes.unknown", new MockFileData("int x;"));
+        using var tab = new EditorTab(fs.FileInfo.New("/work/notes.unknown"), new SyntaxHighlighter(GrammarBundle.Load()));
+
+        Assert.Null(TextViewOf(tab).Syntax);
+    }
+
+    [Fact]
+    public void A_file_is_coloured_by_its_extension()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/Program.cs", new MockFileData("int x;"));
+        using var tab = new EditorTab(fs.FileInfo.New("/work/Program.cs"), new SyntaxHighlighter(GrammarBundle.Load()));
+
+        Assert.NotNull(TextViewOf(tab).Syntax);
+    }
+
+    [Theory]
+    [InlineData("White", "Gray", true)]
+    [InlineData("Gray", "None", true)]
+    [InlineData("Black", "LemonChiffon", false)]
+    [InlineData("Black", "None", false)]
+    public void IsDarkScheme_matches_the_built_in_themes(string foreground, string background, bool dark)
+    {
+        var editable = new Attribute(Color.Parse(foreground), background == "None" ? Color.None : Color.Parse(background));
+
+        Assert.Equal(dark, EditorTextView.IsDarkScheme(editable));
+    }
+
+    private const string DarkKeyword = "#569CD6";
+    private const string DarkComment = "#6A9955";
+    private const string DarkString = "#CE9178";
+
+    private static EditorTextView SyntaxView()
+    {
+        var highlighter = new SyntaxHighlighter(GrammarBundle.Load());
+        return new EditorTextView { Syntax = highlighter.CreateCache(highlighter.LanguageById("csharp")) };
+    }
+
+    private static EditorTextView TextViewOf(EditorTab tab) => tab.SubViews.OfType<EditorTextView>().Single();
+
+    private Attribute AttributeAt(View view, int row, int col) => _app.Driver!.Contents![row - view.Viewport.Y, col].Attribute!.Value;
+
+    private T Configure<T>(T view, string scenario, string text = Text) where T : TextView
     {
         view.App = _app;
         view.Width = 20;
         view.Height = 5;
-        view.Text = Text;
+        view.Text = text;
         view.BeginInit();
         view.EndInit();
         view.Layout();

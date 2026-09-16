@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="1.8.5" />
     <PackageReference Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.1.1" />
+    <PackageReference Include="TextMateSharp.Grammars" Version="2.0.4" />
     <PackageReference Include="xunit.v3" Version="3.1.0" />
   </ItemGroup>
 
@@ -22,6 +23,7 @@
     <ProjectReference Include="..\..\src\TuiCode.Search\TuiCode.Search.csproj" />
     <ProjectReference Include="..\..\src\TuiCode.Abstractions\TuiCode.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\TuiCode.Editor\TuiCode.Editor.csproj" />
+    <ProjectReference Include="..\..\src\TuiCode.Syntax\TuiCode.Syntax.csproj" />
   </ItemGroup>
 
 </Project>

@@ -31,7 +31,9 @@ public sealed class DefaultSettingsService : ISettingsService
     private readonly IFileSystem _fs;
     private readonly string _themeConfigPath;
     private readonly string _keybindingsPath;
+    private readonly string _grammarsPath;
     private List<KeybindingOverride> _keybindings;
+    private Dictionary<string, string> _grammarAssociations;
 
     public DefaultSettingsService(IFileSystem fs)
     {
@@ -40,7 +42,9 @@ public sealed class DefaultSettingsService : ISettingsService
         var dir = _fs.Path.Combine(home, ".tui");
         _themeConfigPath = _fs.Path.Combine(dir, "TuiCode.config.json");
         _keybindingsPath = _fs.Path.Combine(dir, "TuiCode.keybindings.json");
+        _grammarsPath = _fs.Path.Combine(dir, "TuiCode.grammars.json");
         _keybindings = LoadKeybindings();
+        _grammarAssociations = LoadGrammarAssociations();
     }
 
     public string Theme
@@ -73,12 +77,62 @@ public sealed class DefaultSettingsService : ISettingsService
         _keybindings = overrides.ToList();
     }
 
+    public IReadOnlyDictionary<string, string> GrammarAssociations => _grammarAssociations;
+
+    public void SetGrammarAssociations(IReadOnlyDictionary<string, string> associations)
+    {
+        ArgumentNullException.ThrowIfNull(associations);
+        _grammarAssociations = new Dictionary<string, string>(associations, StringComparer.OrdinalIgnoreCase);
+    }
+
     public void Load() => ConfigurationManager.Enable(ConfigLocations.All);
 
     public void Save()
     {
         SaveTheme();
         SaveKeybindings();
+        SaveGrammarAssociations();
+    }
+
+    // A flat object, e.g. { ".h": "cpp", "Jenkinsfile": "groovy" }, sorted so the file diffs cleanly.
+    private void SaveGrammarAssociations()
+    {
+        if (_grammarAssociations.Count == 0)
+        {
+            if (_fs.File.Exists(_grammarsPath))
+                _fs.File.Delete(_grammarsPath);
+            return;
+        }
+
+        var root = new JsonObject();
+        foreach (var (pattern, grammar) in _grammarAssociations.OrderBy(a => a.Key, StringComparer.OrdinalIgnoreCase))
+            root[pattern] = grammar;
+        EnsureDirExists(_grammarsPath);
+        _fs.File.WriteAllText(_grammarsPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private Dictionary<string, string> LoadGrammarAssociations()
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!_fs.File.Exists(_grammarsPath)) return result;
+
+        JsonObject? root;
+        try
+        {
+            root = JsonNode.Parse(_fs.File.ReadAllText(_grammarsPath)) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return result;
+        }
+
+        // Like the keybindings file (#90): skip a hand-edited entry of the wrong type rather than lose the rest.
+        foreach (var (pattern, value) in root ?? [])
+        {
+            if (value is JsonValue v && v.TryGetValue<string>(out var grammar) && pattern.Length > 0 && grammar.Length > 0)
+                result[pattern] = grammar;
+        }
+        return result;
     }
 
     private void SaveTheme()

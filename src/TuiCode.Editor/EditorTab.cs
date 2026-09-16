@@ -1,6 +1,7 @@
 using System.Text;
 using Terminal.Gui.Text;
 using TuiCode.Abstractions;
+using TuiCode.Syntax;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Editor;
@@ -9,6 +10,8 @@ public sealed class EditorTab : FrameView
 {
     private readonly EditorTextView _textView;
     private readonly EditorGutter _gutter;
+    private readonly SyntaxHighlighter? _syntax;
+    private bool _grammarChosen;
     private View? _header;
     private readonly string _eol;
     private bool _dirty;
@@ -41,9 +44,12 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public event EventHandler<(int Row, int Column)>? CursorMoved;
 
-    public EditorTab(IFileInfo file)
+    public event EventHandler? GrammarChanged;
+
+    public EditorTab(IFileInfo file, SyntaxHighlighter? syntax = null)
     {
         File = file;
+        _syntax = syntax;
         BorderStyle = LineStyle.None;
 
         var initial = file.FileSystem.File.ReadAllText(file.FullName);
@@ -54,7 +60,8 @@ public sealed class EditorTab : FrameView
             Y = 0,
             Width = Dim.Fill(),
             Height = Dim.Fill(),
-            Text = initial
+            Text = initial,
+            Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
         };
         _gutter = new EditorGutter(_textView) { X = 0, Y = 0, Height = Dim.Fill() };
         _textView.X = Pos.Right(_gutter);
@@ -80,6 +87,33 @@ public sealed class EditorTab : FrameView
     }
 
     internal IReadOnlyList<LineChange> LineChanges => _gutter.Changes;
+
+    /// <summary>Whether syntax colouring is available at all; without it every tab is plain text.</summary>
+    public bool HasSyntax => _syntax is not null;
+
+    /// <summary>The grammar colouring this tab, or null for plain text.</summary>
+    public SyntaxLanguage? Grammar => _textView.Syntax?.Language;
+
+    /// <summary>Pins this tab to <paramref name="grammar"/> (null for plain text), ignoring associations.</summary>
+    public void SetGrammar(SyntaxLanguage? grammar)
+    {
+        _grammarChosen = true;
+        ApplyGrammar(grammar);
+    }
+
+    /// <summary>Re-pick the grammar from the current associations, unless one was chosen for this tab.</summary>
+    public void InferGrammar()
+    {
+        if (!_grammarChosen && _syntax is not null)
+            ApplyGrammar(_syntax.LanguageForFile(File.Name));
+    }
+
+    private void ApplyGrammar(SyntaxLanguage? grammar)
+    {
+        if (_syntax is null || Equals(Grammar, grammar)) return;
+        _textView.Syntax = _syntax.CreateCache(grammar);
+        GrammarChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public bool FocusContent() => _textView.SetFocus();
     public bool ContentHasFocus => _textView.HasFocus;
@@ -275,7 +309,7 @@ public sealed class EditorTab : FrameView
 }
 
 /// <summary>
-/// TextView that paints find-in-file match highlights (#33) under the normal text colour, and raises
+/// TextView that paints syntax colours (#21) and find-in-file match highlights (#33), and raises
 /// <see cref="TextView.ContentsChanged"/> only for edits that change the text.
 /// </summary>
 internal sealed class EditorTextView : TextView
@@ -288,6 +322,9 @@ internal sealed class EditorTextView : TextView
 
     private Attribute _editable;
     private Attribute _highlight;
+    private Attribute _cellAttribute;
+    private Color[] _tokenColors = [];
+    private int _tokenColorsVersion = -1;
     private long _selectionStart;
     private long _selectionEnd;
 
@@ -295,6 +332,22 @@ internal sealed class EditorTextView : TextView
     public Dictionary<int, List<(int Start, int End)>> Highlights { get; } = new();
 
     public IReadOnlyList<string> LineStrings => GetAllLines().Select(Cell.ToString).ToArray();
+
+    /// <summary>Shared by the gutter and syntax colouring, so unchanged lines keep one string instance.</summary>
+    internal LineSnapshot Snapshot { get; } = new();
+
+    public LineTokenCache? Syntax
+    {
+        get;
+        set
+        {
+            field = value;
+            SetNeedsDraw();
+        }
+    }
+
+    /// <summary>Lexing time allowed per frame; the rest continues on later iterations.</summary>
+    internal TimeSpan SyntaxBudget { get; set; } = TimeSpan.FromMilliseconds(15);
 
     public override void OnContentsChanged()
     {
@@ -341,6 +394,7 @@ internal sealed class EditorTextView : TextView
         _editable = GetAttributeForRole(VisualRole.Editable);
         _highlight = GetAttributeForRole(VisualRole.Highlight);
         (_selectionStart, _selectionEnd) = SelectionBounds();
+        PrepareSyntax();
         SetAttributeForRole(Enabled ? VisualRole.Editable : VisualRole.Disabled);
 
         var right = Viewport.Width;
@@ -357,16 +411,59 @@ internal sealed class EditorTextView : TextView
         return false;
     }
 
+    private void PrepareSyntax()
+    {
+        if (Syntax is null) return;
+        Syntax.Highlighter.UseTheme(dark: IsDarkScheme(_editable));
+        if (_tokenColorsVersion != Syntax.Highlighter.ThemeVersion)
+        {
+            _tokenColors = Syntax.Highlighter.Colors.Select(hex => hex is null ? default : Color.Parse(hex)).ToArray();
+            _tokenColorsVersion = Syntax.Highlighter.ThemeVersion;
+        }
+
+        // Refreshed every frame rather than on edit: TG doesn't report every edit (see ContentsChanged in AGENTS.md).
+        Syntax.Update(Snapshot.Refresh(GetAllLines()));
+        var lastVisible = Math.Min(Viewport.Y + Viewport.Height, Lines) - 1;
+        if (!Syntax.TokenizeThrough(lastVisible, SyntaxBudget))
+            App?.Invoke(SetNeedsDraw);
+    }
+
+    // TG's Dark theme leaves the background to the terminal (Color.None), so judge by the text colour there.
+    internal static bool IsDarkScheme(Attribute editable) =>
+        editable.Background == Color.None
+            ? editable.Foreground == Color.None || Brightness(editable.Foreground) >= 0.25
+            : Brightness(editable.Background) < Brightness(editable.Foreground);
+
+    private static double Brightness(Color color) => (0.299 * color.R + 0.587 * color.G + 0.114 * color.B) / 255;
+
     private void DrawRow(List<Cell> line, int idxRow, int row, int right)
     {
         var (colWidths, col, idxCol) = FirstVisibleGlyph(line);
         var wasPreviousWideGlyphNegativeCol = false;
         Move(0, row);
 
+        var tokens = Syntax?.TokensFor(idxRow);
+        var chars = tokens is null ? 0 : CharsBefore(line, idxCol);
+        var token = 0;
+        var attributeToken = -1;
+        _cellAttribute = _editable;
+
         for (; idxCol < line.Count; idxCol++)
         {
             var text = line[idxCol].Grapheme;
             var cols = text.GetColumns(false);
+
+            if (tokens is { Length: > 0 })
+            {
+                while (token + 2 < tokens.Length && tokens[token + 2] <= chars)
+                    token += 2;
+                if (token != attributeToken)
+                {
+                    _cellAttribute = TokenAttribute(tokens[token + 1]);
+                    attributeToken = token;
+                }
+                chars += text.Length;
+            }
 
             if (IsSelecting && InSelection(idxCol, idxRow))
                 OnDrawSelectionColor(line, idxCol, idxRow);
@@ -454,10 +551,37 @@ internal sealed class EditorTextView : TextView
         }
     }
 
+    private static int CharsBefore(List<Cell> line, int idxCol)
+    {
+        var chars = 0;
+        for (var i = 0; i < idxCol; i++)
+            chars += line[i].Grapheme.Length;
+        return chars;
+    }
+
+    private Attribute TokenAttribute(int metadata)
+    {
+        var attribute = _editable;
+        var foreground = SyntaxHighlighter.ForegroundOf(metadata);
+        if (foreground != SyntaxHighlighter.DefaultForeground && foreground < _tokenColors.Length)
+            attribute = attribute with { Foreground = _tokenColors[foreground] };
+
+        var style = SyntaxHighlighter.StyleOf(metadata);
+        if (style == TokenStyle.None) return attribute;
+        return attribute with
+        {
+            Style = attribute.Style
+                    | (style.HasFlag(TokenStyle.Italic) ? TextStyle.Italic : TextStyle.None)
+                    | (style.HasFlag(TokenStyle.Bold) ? TextStyle.Bold : TextStyle.None)
+                    | (style.HasFlag(TokenStyle.Underline) ? TextStyle.Underline : TextStyle.None)
+                    | (style.HasFlag(TokenStyle.Strikethrough) ? TextStyle.Strikethrough : TextStyle.None),
+        };
+    }
+
     // Skips base, which resolves the scheme attribute (allocating) and raises DrawNormalColor for every cell.
     protected override void OnDrawNormalColor(List<Cell> line, int idxCol, int idxRow)
     {
-        SetAttribute(IsHighlighted(idxCol, idxRow) ? _highlight : line[idxCol].Attribute ?? _editable);
+        SetAttribute(IsHighlighted(idxCol, idxRow) ? _highlight : line[idxCol].Attribute ?? _cellAttribute);
     }
 
     // We never enable WordWrap, so draw coordinates are model coordinates.

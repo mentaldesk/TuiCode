@@ -38,16 +38,49 @@ jobs:
           path: '**/TestResults/**'
           if-no-files-found: warn
 
-      # AOT publish + pty smoke stay Linux-only: the smoke harness uses `script`/`timeout`
-      # (Unix) and we only verify the linux-x64 native binary here. The Windows leg exists
-      # for the JIT test run, which is where OS-specific bugs (path separators, CRLF) surface.
+  aot:
+    name: AOT ${{ matrix.rid }}
+    # Native runners, as in release.yml: the static Oniguruma link (TuiCode.Syntax) can break per RID.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: osx-arm64
+            runner: macos-14
+          - rid: linux-x64
+            runner: ubuntu-latest
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+          - rid: win-x64
+            runner: windows-latest
+          - rid: win-arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
       - name: AOT publish
-        if: matrix.os == 'ubuntu-latest'
-        run: dotnet publish src/TuiCode/TuiCode.csproj -c Release -r linux-x64 -o publish
+        run: dotnet publish src/TuiCode/TuiCode.csproj -c Release -r ${{ matrix.rid }} -o publish
+
+      - name: Third-party notices published
+        # release.yml archives these beside the binary.
+        shell: bash
+        run: test -s publish/THIRD-PARTY-NOTICES.md && test -s publish/DOTNET-THIRD-PARTY-NOTICES.TXT
+
+      - name: Syntax smoke
+        # Headless (no TG), so it runs on every RID, Windows included.
+        shell: bash
+        run: ./publish/TuiCode --smoke-syntax
 
       - name: AOT smoke
         # `dotnet test` runs JIT, so AOT-only failures (missing metadata,
         # trim-stripped paths) only surface against the published native
-        # binary. `script` allocates a pty so TG's driver initializes.
-        if: matrix.os == 'ubuntu-latest'
+        # binary. `script` allocates a pty so TG's driver initializes; the
+        # harness is Unix-only, so this stays on linux-x64.
+        if: matrix.rid == 'linux-x64'
         run: timeout 20s script -qfec './publish/TuiCode --smoke' /dev/null
