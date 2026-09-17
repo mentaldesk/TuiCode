@@ -343,7 +343,7 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Secondary_carets_are_drawn_in_reverse_video_with_their_selections()
+    public void Secondary_carets_underline_the_next_character_and_keep_their_selections()
     {
         var view = View("abcdef", "abcdef");
         view.SetCarets([At(0, 0), Selecting(1, 1, 3)]);
@@ -352,10 +352,57 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
         view.Draw();
 
         var contents = _app.Driver!.Contents!;
-        Assert.True(contents[1, 3].Attribute!.Value.Style.HasFlag(TextStyle.Reverse));
+        Assert.True(contents[1, 3].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
         Assert.Equal(view.GetAttributeForRole(VisualRole.Active), contents[1, 1].Attribute);
         Assert.Equal(view.GetAttributeForRole(VisualRole.Editable), contents[1, 4].Attribute);
     }
+
+    [Fact]
+    public void Secondary_carets_are_left_to_a_terminal_that_draws_them()
+    {
+        using var cursors = new TerminalCursors(_app, _ => { });
+        cursors.Supported(true);
+        var view = View("abcdef", "abcdef");
+        view.CanFocus = true;
+        view.SetFocus();
+        view.SetCarets([At(0, 0), At(1, 3)]);
+
+        view.SetNeedsDraw();
+        view.Draw();
+
+        Assert.False(_app.Driver!.Contents![1, 3].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
+    }
+
+    [Fact]
+    public void The_terminal_is_sent_the_focused_editors_secondary_carets_in_screen_cells_once_per_change()
+    {
+        var sent = new List<string>();
+        using var cursors = new TerminalCursors(_app, sent.Add);
+        cursors.Supported(true);
+        var view = View("abcdef", "abcdef");
+        view.X = 2;
+        view.Y = 1;
+        view.CanFocus = true;
+        view.SetFocus();
+        view.Layout();
+        view.SetCarets([At(0, 0), At(1, 3)]);
+
+        cursors.Update();
+        cursors.Update();
+        view.HasFocus = false;
+        cursors.Update();
+
+        Assert.Equal(["\e[>0;4 q\e[>29;2:3:6 q", "\e[>0;4 q"], sent);
+    }
+
+    [Theory]
+    [InlineData("\e[>1;2;3;29;30;40;100;101 q", true)]
+    [InlineData("[>2;29 q", true)]
+    [InlineData("\e[>1;2;3 q", false)]
+    [InlineData("\e[> q", false)]
+    [InlineData(null, false)]
+    public void Support_is_read_from_the_terminals_reply(string? reply, bool supported) =>
+        Assert.Equal(supported, TerminalCursors.IsFollowMainCursorShapeSupported(reply));
 
     private static Caret At(int row, int column) => new(new Point(column, row));
 

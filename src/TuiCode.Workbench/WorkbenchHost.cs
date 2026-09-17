@@ -41,6 +41,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IReadOnlyList<ITerminalIntegration> _terminalIntegrations;
     private readonly IEnvironment _environment;
     private readonly ILogger<WorkbenchHost> _logger;
+    private readonly TerminalCursors _terminalCursors;
     private readonly LayeredScope _cursorScope;
     private readonly LayeredScope _searchScope;
     private readonly FindController _find;
@@ -89,6 +90,8 @@ public sealed class WorkbenchHost : IDisposable
         // this user-var to activate its key table only while TuiCode runs; other terminals
         // strip the unknown OSC silently. Unconditional — no detection needed.
         WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MQ==\x07");
+        _terminalCursors = new TerminalCursors(_app);
+        _terminalCursors.Detect();
         _workbench = workbench;
         _commands = commands;
         _keybindings = keybindings;
@@ -823,6 +826,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
         _find.Dispose();
+        _terminalCursors.Dispose();
         _workbench.Dispose();
         _app.Dispose();
         // Tell WezTerm the tuicode key table should be popped; matches the startup activation.

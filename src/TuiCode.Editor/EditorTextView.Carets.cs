@@ -384,22 +384,31 @@ internal sealed partial class EditorTextView
                 _caretSelections.Add((Encode(caret.Start.Y, caret.Start.X), Encode(caret.End.Y, caret.End.X)));
     }
 
-    // The terminal draws only the primary cursor, so the others are painted in reverse video.
+    internal IEnumerable<Point> SecondaryCaretsOnScreen() =>
+        _secondary.Select(ViewportPosition).OfType<Point>().Select(point => ViewportToScreen(point));
+
+    // Where the terminal can't draw them, carets underline the character they're before.
     private void DrawSecondaryCarets()
     {
-        var attribute = _editable with { Style = _editable.Style | TextStyle.Reverse };
+        if (HasFocus && TerminalCursors.IsSupportedBy(App)) return;
+        var attribute = _editable with { Style = _editable.Style | TextStyle.Underline };
         foreach (var caret in _secondary)
         {
-            var row = caret.Position.Y - Viewport.Y;
-            if (row < 0 || row >= Viewport.Height || caret.Position.Y >= Lines) continue;
+            if (ViewportPosition(caret) is not { } point) continue;
             var line = GetLine(caret.Position.Y);
-            var column = Math.Min(caret.Position.X, line.Count);
-            var x = ColumnsBefore(line, column) - Viewport.X;
-            if (x < 0 || x >= Viewport.Width) continue;
-            var grapheme = column < line.Count && line[column].Grapheme != "\t" ? line[column].Grapheme : " ";
+            var grapheme = caret.Position.X < line.Count && line[caret.Position.X].Grapheme != "\t" ? line[caret.Position.X].Grapheme : " ";
             SetAttribute(attribute);
-            AddStr(x, row, grapheme);
+            AddStr(point.X, point.Y, grapheme);
         }
+    }
+
+    private Point? ViewportPosition(Caret caret)
+    {
+        var row = caret.Position.Y - Viewport.Y;
+        if (row < 0 || row >= Viewport.Height || caret.Position.Y >= Lines) return null;
+        var line = GetLine(caret.Position.Y);
+        var x = ColumnsBefore(line, Math.Min(caret.Position.X, line.Count)) - Viewport.X;
+        return x < 0 || x >= Viewport.Width ? null : new Point(x, row);
     }
 
     private int ColumnsBefore(List<Cell> line, int column)
