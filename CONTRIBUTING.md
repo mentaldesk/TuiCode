@@ -45,7 +45,7 @@ flowchart TD
     Draft -->|human review:<br/>gh release edit --draft=false| Public[("Published release<br/>assets downloadable")]
 
     Public -->|release: published event| Bump["bump-tap workflow<br/>.github/workflows/bump-tap.yml"]
-    Bump -->|opens PR| TapPR["PR to homebrew-tap<br/>bumps version + 3× sha256"]
+    Bump -->|opens PR| TapPR["PR to homebrew-tap<br/>bumps 3× url + sha256"]
     TapPR -->|human merges| Brew[("brew install<br/>mentaldesk/tap/tuicode")]
 
     style Draft fill:#fffae0
@@ -88,7 +88,7 @@ A second workflow, `.github/workflows/bump-tap.yml`, listens for `release: publi
 ```mermaid
 flowchart LR
     Pub[("release:published event")] --> Fetch["Fetch 3× .sha256 sidecars<br/>from the release"]
-    Fetch --> Edit["Rewrite Formula/tuicode.rb<br/>version + 3× sha256<br/>(structure-aware regex)"]
+    Fetch --> Edit["Rewrite Formula/tuicode.rb<br/>3× url + sha256<br/>(structure-aware regex)"]
     Edit --> Push["Push branch<br/>bump-tuicode-X.Y.Z<br/>(force-with-lease)"]
     Push --> PR["Open / update PR<br/>against mentaldesk/homebrew-tap"]
 ```
