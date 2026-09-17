@@ -1,6 +1,7 @@
 using Terminal.Gui.ViewBase;
 using TuiCode.Explorer;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Workspace;
 
 namespace TuiCode.Tests;
 
@@ -72,9 +73,101 @@ public class WorkbenchTests
         Assert.Equal(newDir.FullName, workbench.Sidebar.Explorer.Root!.FullName);
     }
 
-    private static Workbench.Workbench Build() =>
+    [Fact]
+    public void OpenFolder_reopens_the_files_that_were_open_in_that_folder()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        fs.AddFile("/work/c.txt", new MockFileData("c"));
+        var store = new WorkspaceStateStore(fs, "/state.json");
+        using (var first = Build(store))
+        {
+            first.OpenFolder(fs.DirectoryInfo.New("/work"));
+            first.OpenFile(fs.FileInfo.New("/work/a.txt"));
+            first.OpenFile(fs.FileInfo.New("/work/b.txt"));
+            first.OpenFile(fs.FileInfo.New("/work/c.txt"));
+            first.OpenFile(fs.FileInfo.New("/work/b.txt"));
+        }
+
+        using var workbench = Build(store);
+        workbench.OpenFolder(fs.DirectoryInfo.New("/work"));
+
+        Assert.Equal(["/work/a.txt", "/work/b.txt", "/work/c.txt"], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
+        Assert.Equal("/work/b.txt", workbench.Editor.Group.ActiveTab!.File.FullName);
+    }
+
+    [Fact]
+    public void OpenFolder_skips_files_that_no_longer_exist()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        var store = new WorkspaceStateStore(fs, "/state.json");
+        store.Save("/work", new WorkspaceState(["/work/gone.txt", "/work/a.txt"], "/work/gone.txt"));
+        using var workbench = Build(store);
+
+        workbench.OpenFolder(fs.DirectoryInfo.New("/work"));
+
+        Assert.Equal(["/work/a.txt"], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
+        Assert.Equal(["/work/a.txt"], store.Load("/work")!.Files);
+    }
+
+    [Fact]
+    public void Closing_tabs_updates_the_saved_state()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        var store = new WorkspaceStateStore(fs, "/state.json");
+        using var workbench = Build(store);
+        workbench.OpenFolder(fs.DirectoryInfo.New("/work"));
+        workbench.OpenFile(fs.FileInfo.New("/work/a.txt"));
+        workbench.OpenFile(fs.FileInfo.New("/work/b.txt"));
+
+        workbench.Editor.CloseActive();
+
+        Assert.Equal(["/work/a.txt"], store.Load("/work")!.Files);
+        Assert.Equal("/work/a.txt", store.Load("/work")!.ActiveFile);
+    }
+
+    [Fact]
+    public void Switching_folders_keeps_each_folders_files()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/one/a.txt", new MockFileData("a"));
+        fs.AddFile("/two/b.txt", new MockFileData("b"));
+        var store = new WorkspaceStateStore(fs, "/state.json");
+        using var workbench = Build(store);
+        workbench.OpenFolder(fs.DirectoryInfo.New("/one"));
+        workbench.OpenFile(fs.FileInfo.New("/one/a.txt"));
+
+        workbench.OpenFolder(fs.DirectoryInfo.New("/two"));
+        workbench.OpenFile(fs.FileInfo.New("/two/b.txt"));
+        workbench.OpenFolder(fs.DirectoryInfo.New("/one"));
+
+        Assert.Equal(["/one/a.txt"], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
+        Assert.Equal(["/two/b.txt"], store.Load("/two")!.Files);
+    }
+
+    [Fact]
+    public void Disposing_the_workbench_keeps_the_saved_files()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        var store = new WorkspaceStateStore(fs, "/state.json");
+        var workbench = Build(store);
+        workbench.OpenFolder(fs.DirectoryInfo.New("/work"));
+        workbench.OpenFile(fs.FileInfo.New("/work/a.txt"));
+
+        workbench.Dispose();
+
+        Assert.Equal(["/work/a.txt"], store.Load("/work")!.Files);
+    }
+
+    private static Workbench.Workbench Build(WorkspaceStateStore? store = null) =>
         new(
             new SidebarPart(new FileExplorerView()),
             new EditorPart(),
-            new StatusBarPart());
+            new StatusBarPart(),
+            store);
 }

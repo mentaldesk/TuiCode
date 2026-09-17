@@ -19,6 +19,21 @@ public class EditorGroupTests
     }
 
     [Fact]
+    public void ActiveTabChanged_for_the_first_tab_sees_it_in_Tabs()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        using var group = new EditorGroup();
+        var seen = new List<int>();
+        group.ActiveTabChanged += (_, _) => seen.Add(group.Tabs.Count);
+
+        group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+
+        Assert.All(seen, count => Assert.Equal(1, count));
+        Assert.NotEmpty(seen);
+    }
+
+    [Fact]
     public void OpenOrFocus_does_not_create_a_duplicate_when_the_same_file_is_reopened()
     {
         var fs = new MockFileSystem();
