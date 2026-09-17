@@ -43,6 +43,8 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IReadOnlyList<ITerminalIntegration> _terminalIntegrations;
     private readonly IEnvironment _environment;
     private readonly ILogger<WorkbenchHost> _logger;
+    private readonly TerminalCursors _terminalCursors;
+    private readonly LayeredScope _cursorScope;
     private readonly LayeredScope _searchScope;
     private readonly FindController _find;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
@@ -92,6 +94,8 @@ public sealed class WorkbenchHost : IDisposable
         // this user-var to activate its key table only while TuiCode runs; other terminals
         // strip the unknown OSC silently. Unconditional — no detection needed.
         WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MQ==\x07");
+        _terminalCursors = new TerminalCursors(_app);
+        _terminalCursors.Detect();
         // Detected up front so About can show a spinner rather than ASCII art that the image then replaces.
         if (_app.Driver is { } driver)
             SixelProbe.Detect(driver, support => _app.Invoke(() =>
@@ -113,10 +117,12 @@ public sealed class WorkbenchHost : IDisposable
         ApplyTokenTheme();
         _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
 
-        // Workbench scope is the bottom of the input stack; never popped. The search sidebar's keys
-        // layer directly above it for the app's lifetime (they only engage while its inputs have focus);
-        // the find bar layers above that while it's open.
+        // Workbench scope is the bottom of the input stack; never popped. Esc for removing extra cursors and
+        // the search sidebar's keys layer above it for the app's lifetime (each only engages while its view
+        // has focus); the find bar layers above those while it's open.
         _scopes.Push(_keybindings);
+        _cursorScope = CreateCursorScope();
+        _scopes.Push(_cursorScope);
         _searchScope = CreateSearchScope();
         _scopes.Push(_searchScope);
         _find = new FindController(_workbench.Editor.Group, _scopes, _searchScope);
@@ -234,6 +240,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)));
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)));
         _commands.Register(CommandIds.DuplicateLinesDown, "Duplicate line down", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Down)));
+        _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Up)));
+        _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Down)));
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
@@ -338,6 +346,8 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Alt+CursorDown", CommandIds.MoveLinesDown);
         keybindings.Bind("Alt+Shift+CursorUp", CommandIds.DuplicateLinesUp);
         keybindings.Bind("Alt+Shift+CursorDown", CommandIds.DuplicateLinesDown);
+        keybindings.Bind("Ctrl+Alt+CursorUp", CommandIds.AddCursorAbove);
+        keybindings.Bind("Ctrl+Alt+CursorDown", CommandIds.AddCursorBelow);
         keybindings.Bind("Ctrl+F", CommandIds.FindInFile);
         keybindings.Bind("Ctrl+H", CommandIds.ReplaceInFile);
         // Ctrl+Shift+letter needs a terminal that doesn't collapse it onto Ctrl+letter (see AGENTS.md).
@@ -391,6 +401,16 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Sidebar.Search.FocusReplacement();
     }
 
+    private LayeredScope CreateCursorScope()
+    {
+        var group = _workbench.Editor.Group;
+        var commands = new CommandService();
+        var bindings = new KeybindingService(commands);
+        commands.Register(CommandIds.RemoveSecondaryCursors, () => group.ActiveTab?.RemoveSecondaryCursors());
+        bindings.Bind("Esc", CommandIds.RemoveSecondaryCursors);
+        return new LayeredScope(bindings, _keybindings, _ => group.ActiveTab is { HasSecondaryCursors: true, ContentHasFocus: true });
+    }
+
     private LayeredScope CreateSearchScope()
     {
         var search = _workbench.Sidebar.Search;
@@ -404,7 +424,7 @@ public sealed class WorkbenchHost : IDisposable
         bindings.Bind("Tab", CommandIds.SearchSwitchField);
         bindings.Bind("Shift+Tab", CommandIds.SearchSwitchField);
         bindings.Bind("Ctrl+Enter", CommandIds.SearchReplaceAll);
-        return new LayeredScope(bindings, _keybindings, _ => search.InputsHaveFocus);
+        return new LayeredScope(bindings, _cursorScope, _ => search.InputsHaveFocus);
     }
 
     private void FocusEditorBody()
@@ -850,6 +870,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
         _find.Dispose();
+        _terminalCursors.Dispose();
         _workbench.Dispose();
         _app.Dispose();
         // Tell WezTerm the tuicode key table should be popped; matches the startup activation.

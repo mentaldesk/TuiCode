@@ -1,3 +1,4 @@
+using Terminal.Gui.Input;
 using TuiCode.Editor;
 
 namespace TuiCode.Tests;
@@ -55,6 +56,22 @@ public class EditorTabCursorTests
         tab.MoveCursor(1, 2);
 
         Assert.False(tab.IsDirty);
+    }
+
+    [Fact]
+    public void An_edit_at_several_cursors_reports_only_where_the_primary_cursor_moves()
+    {
+        using var tab = OpenTab("alpha\nbravo\ncharlie\n");
+        tab.MoveCursor(0, 1);
+        tab.AddCursor(LineDirection.Down);
+        tab.AddCursor(LineDirection.Down);
+        var moves = new List<(int Row, int Column)>();
+        tab.CursorMoved += (_, position) => moves.Add(position);
+
+        tab.SubViews.OfType<EditorTextView>().Single().NewKeyDownEvent(Key.X);
+
+        Assert.NotEmpty(moves);
+        Assert.All(moves, move => Assert.Equal((0, 2), move));
     }
 
     private static EditorTab OpenTab(string content)
