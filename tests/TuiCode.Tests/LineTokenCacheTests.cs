@@ -86,6 +86,35 @@ public class LineTokenCacheTests
     }
 
     [Fact]
+    public void A_line_that_overran_its_time_limit_is_relexed_on_the_next_pass()
+    {
+        var cache = CacheFor(["int a; // comment", "int b;"]);
+        cache.LineTimeLimit = TimeSpan.Zero;
+        Assert.False(cache.TokenizeThrough(1, TimeSpan.MaxValue));
+
+        cache.LineTimeLimit = TimeSpan.FromMinutes(1);
+        Assert.True(cache.TokenizeThrough(1, TimeSpan.MaxValue));
+
+        Assert.Equal(DarkComment, ColorAt(cache, 0, 10));
+        Assert.Equal(DarkKeyword, ColorAt(cache, 1, 0));
+    }
+
+    [Fact]
+    public void A_line_that_always_overruns_keeps_its_partial_tokens_after_the_retries()
+    {
+        var cache = CacheFor(["int a; // comment"]);
+        cache.LineTimeLimit = TimeSpan.Zero;
+
+        for (var i = 0; i < LineTokenCache.MaxRetries; i++)
+            Assert.False(cache.TokenizeThrough(0, TimeSpan.MaxValue));
+        Assert.True(cache.TokenizeThrough(0, TimeSpan.MaxValue));
+        Assert.True(cache.TokenizeThrough(0, TimeSpan.MaxValue));
+
+        Assert.Equal(LineTokenCache.MaxRetries + 1, cache.LinesLexed);
+        Assert.NotNull(cache.TokensFor(0));
+    }
+
+    [Fact]
     public void Lines_over_the_length_limit_stay_plain_and_dont_affect_the_lines_after()
     {
         string[] lines = ["/* " + new string('x', LineTokenCache.MaxLineLength), "int a;"];
@@ -126,12 +155,8 @@ public class LineTokenCacheTests
     public void Turbo_Pascal_colours_keywords_white_and_comments_grey()
     {
         var cache = CacheFor(["int x; // note"]);
-        // Lex once first: a cold grammar can overrun the per-line time limit and leave the comment uncoloured.
-        cache.TokenizeThrough(0, TimeSpan.MaxValue);
-
         _highlighter.UseTheme("turbo-pascal.json");
 
-        Assert.Null(cache.TokensFor(0));
         cache.TokenizeThrough(0, TimeSpan.MaxValue);
         Assert.Equal("#FFFFFF", ColorAt(cache, 0, 0));
         Assert.Equal("#AAAAAA", ColorAt(cache, 0, 7));
@@ -140,6 +165,7 @@ public class LineTokenCacheTests
     private LineTokenCache CacheFor(IReadOnlyList<string> lines)
     {
         var cache = _highlighter.CreateCache(_highlighter.LanguageById("csharp"))!;
+        cache.LineTimeLimit = TimeSpan.FromMinutes(1);
         cache.Update(lines);
         return cache;
     }
