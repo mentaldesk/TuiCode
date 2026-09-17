@@ -36,8 +36,8 @@ public static class WorkspaceSearch
 
     // VS Code's files.exclude / search.exclude defaults plus .NET build output. Honouring .gitignore
     // is a follow-up.
-    private static readonly HashSet<string> ExcludedDirectories =
-        new(StringComparer.OrdinalIgnoreCase) { ".git", ".hg", ".svn", "node_modules", "bin", "obj" };
+    public static readonly IReadOnlySet<string> ExcludedDirectories =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".git", ".hg", ".svn", "node_modules", "bin", "obj" };
 
     private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
 
