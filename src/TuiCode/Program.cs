@@ -11,6 +11,7 @@ using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.TerminalIntegration;
+using TuiCode.Workbench.Workspace;
 
 if (args.Contains("--smoke-syntax"))
     return SyntaxSmoke.Run(Console.Out);
@@ -44,6 +45,7 @@ services.AddTransient<SearchView>();
 services.AddTransient<SidebarPart>();
 services.AddTransient<EditorPart>();
 services.AddTransient<StatusBarPart>();
+services.AddSingleton(sp => WorkspaceStateStore.ForUser(sp.GetRequiredService<IFileSystem>()));
 services.AddTransient<Workbench>();
 // Driver override (--driver <name> / TUICODE_DRIVER) lets us A/B the TG driver on Windows,
 // where the auto-selected `ansi` driver mis-decodes kitty key events (issue #82). Resolved
@@ -78,7 +80,7 @@ provider.GetRequiredService<ISettingsService>().Load();
 
 using var app = provider.GetRequiredService<App>();
 var fileSystem = provider.GetRequiredService<IFileSystem>();
-app.Host.Workbench.Sidebar.Explorer.Open(
+app.Host.Workbench.OpenFolder(
     fileSystem.DirectoryInfo.New(Environment.CurrentDirectory));
 
 // --smoke: boot through Application.Init + one render iteration, then quit.

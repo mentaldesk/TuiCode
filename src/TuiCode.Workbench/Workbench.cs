@@ -2,6 +2,7 @@ using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Workspace;
 
 namespace TuiCode.Workbench;
 
@@ -15,8 +16,14 @@ public sealed class Workbench : Window
 
     public bool IsSidebarVisible { get; private set; } = true;
 
-    public Workbench(SidebarPart sidebar, EditorPart editor, StatusBarPart statusBar)
+    private readonly WorkspaceStateStore? _workspaceState;
+
+    // Null while switching folders or shutting down, so closing the old folder's tabs isn't saved as its state.
+    private string? _workspaceFolder;
+
+    public Workbench(SidebarPart sidebar, EditorPart editor, StatusBarPart statusBar, WorkspaceStateStore? workspaceState = null)
     {
+        _workspaceState = workspaceState;
         Sidebar = sidebar;
         Editor = editor;
         StatusBar = statusBar;
@@ -51,7 +58,11 @@ public sealed class Workbench : Window
         editor.FileSaved += (_, file) =>
             statusBar.SetMessage($"Saved: {file.FullName}");
 
-        editor.Group.ActiveTabChanged += (_, tab) => ShowActiveFile(tab);
+        editor.Group.ActiveTabChanged += (_, tab) =>
+        {
+            ShowActiveFile(tab);
+            SaveWorkspaceState();
+        };
         editor.Group.GrammarChanged += (_, tab) =>
         {
             if (ReferenceEquals(tab, editor.Group.ActiveTab)) ShowActiveFile(tab);
@@ -82,15 +93,56 @@ public sealed class Workbench : Window
     }
 
     /// <summary>
-    /// Switch the workspace to <paramref name="directory"/>: close every open editor and re-root
-    /// the explorer. Mirrors VS Code's "Open Folder" — the previous workspace is discarded.
+    /// Switch the workspace to <paramref name="directory"/>: close every open editor, re-root the
+    /// explorer and reopen the files that were open when this folder was last used (#13).
     /// </summary>
     public void OpenFolder(IDirectoryInfo directory)
     {
+        _workspaceFolder = null;
         Editor.Group.CloseAll();
         Sidebar.Explorer.Open(directory);
         Sidebar.Search.RunSearch();
         StatusBar.SetMessage($"Opened folder: {directory.FullName}");
+
+        RestoreOpenFiles(directory);
+        _workspaceFolder = directory.FullName;
+        SaveWorkspaceState();
+    }
+
+    private void RestoreOpenFiles(IDirectoryInfo directory)
+    {
+        if (_workspaceState?.Load(directory.FullName) is not { } state) return;
+
+        EditorTab? active = null;
+        foreach (var path in state.Files)
+        {
+            var file = directory.FileSystem.FileInfo.New(path);
+            if (!file.Exists) continue;
+            try
+            {
+                var tab = Editor.Open(file);
+                if (path == state.ActiveFile) active = tab;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+        if (active is not null) Editor.Open(active.File);
+    }
+
+    private void SaveWorkspaceState()
+    {
+        if (_workspaceState is null || _workspaceFolder is null) return;
+        var group = Editor.Group;
+        _workspaceState.Save(_workspaceFolder, new WorkspaceState(
+            group.Tabs.Select(t => t.File.FullName).ToList(),
+            group.ActiveTab?.File.FullName));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _workspaceFolder = null;
+        base.Dispose(disposing);
     }
 
     public void SetSidebarVisible(bool visible)

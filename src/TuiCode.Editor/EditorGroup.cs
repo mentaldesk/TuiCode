@@ -51,8 +51,9 @@ public sealed class EditorGroup : Tabs
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         tab.GrammarChanged += (_, _) => GrammarChanged?.Invoke(this, tab);
-        Add(tab);
+        // Tabs selects the first tab it's given during Add, so register it first for ActiveTabChanged listeners to see.
         _byPath[file.FullName] = tab;
+        Add(tab);
         Value = tab;
         return tab;
     }
