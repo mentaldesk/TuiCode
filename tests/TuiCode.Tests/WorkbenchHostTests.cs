@@ -1008,23 +1008,24 @@ public class WorkbenchHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task About_dialog_shows_a_spinner_then_the_ascii_art_when_the_terminal_never_answers_the_sixel_query()
+    public async Task About_dialog_shows_a_spinner_until_sixel_detection_finishes_then_the_ascii_art_if_unsupported()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
         using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
 
-        AboutView? About() => workbench.SubViews.OfType<AboutView>().SingleOrDefault();
-        var wasLoading = false;
+        AboutView About() => workbench.SubViews.OfType<AboutView>().Single();
+        bool loading = false, ascii = false;
 
         await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.ShowAbout),
-            () => wasLoading = About()!.IsLoading,
-            () => About()!.ShowsAsciiArt,
+            () => { commands.TryExecute(CommandIds.ShowAbout); },
+            () => { About().Present(null); loading = About().IsLoading; },
+            () => { About().Present(SixelSupport.Unsupported); ascii = About().ShowsAsciiArt; },
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.True(wasLoading, "AboutView didn't show the spinner while detection was pending");
+        Assert.True(loading, "AboutView didn't show the spinner while detection was pending");
+        Assert.True(ascii, "AboutView didn't fall back to the ASCII art");
     }
 
     private static Workbench.Workbench BuildWorkbench() =>
