@@ -57,6 +57,8 @@ public sealed class WorkbenchHost : IDisposable
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
     private AboutView? _activeAbout;
+    private (SixelSupportResult Support, System.Drawing.SizeF CellPixels)? _sixelSupport;
+    private bool _detectingSixel;
     private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
     private NewPathView? _activeNewPath;
@@ -747,6 +749,22 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.SetFocus();
+
+        if (_sixelSupport is { } sixel)
+            view.ShowImage(sixel.Support, sixel.CellPixels);
+        else
+            DetectSixelSupport();
+    }
+
+    private void DetectSixelSupport()
+    {
+        if (_detectingSixel || _app.Driver is null) return;
+        _detectingSixel = true;
+        SixelProbe.Detect(_app, (support, cellPixels) =>
+        {
+            _sixelSupport = (support, cellPixels);
+            _activeAbout?.ShowImage(support, cellPixels);
+        });
     }
 
     private void CloseAbout(AboutView view)

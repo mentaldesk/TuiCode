@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Themes\themes.json" LogicalName="themes.json" />
+    <EmbeddedResource Include="About\about.rgb.z" LogicalName="about.rgb.z" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,3 +1,6 @@
+using Point = System.Drawing.Point;
+using Size = System.Drawing.Size;
+using SizeF = System.Drawing.SizeF;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Services;
 
@@ -25,6 +28,12 @@ public sealed class AboutView : Window
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
+    private const int ChromeHeight = 8;
+
+    private readonly AboutArt _art;
+    private IApplication? _app;
+    private SixelToRender? _sixel;
+    private bool _disposed;
 
     public IKeybindingService Scope => _scopeKeybindings;
 
@@ -37,10 +46,10 @@ public sealed class AboutView : Window
         X = Pos.Center();
         Y = Pos.Center();
         Width = Art.Max(line => line.Length) + 4;
-        Height = Art.Length + 8;
+        Height = Art.Length + ChromeHeight;
         CanFocus = true;
 
-        var art = new AboutArt
+        var art = _art = new AboutArt
         {
             X = 1,
             Y = 1,
@@ -72,12 +81,63 @@ public sealed class AboutView : Window
         _scopeKeybindings.Bind("Enter", CommandIds.AboutClose);
     }
 
+    /// <summary>Swaps the ASCII art for the sixel artwork once it's encoded in the background.</summary>
+    public void ShowImage(SixelSupportResult support, SizeF cellPixels)
+    {
+        if (!support.IsSupported || App is not { Driver: { } driver } app) return;
+        _app = app;
+
+        var columns = Art.Max(line => line.Length);
+        Task.Run(() =>
+        {
+            var source = AboutImage.Load();
+            var (pixels, rows) = AboutImage.Fit(new Size(source.GetLength(0), source.GetLength(1)), cellPixels, columns);
+            var encoder = new SixelEncoder();
+            encoder.Quantizer.MaxColors = Math.Min(encoder.Quantizer.MaxColors, support.MaxPaletteColors);
+            var data = encoder.EncodeSixel(AboutImage.Cover(source, pixels));
+
+            app.Invoke(() =>
+            {
+                if (_disposed) return;
+                _sixel = new SixelToRender { Id = "about", SixelData = data };
+                _art.Sixel = _sixel;
+                _art.Height = rows;
+                Height = rows + ChromeHeight;
+                driver.GetOutput().GetSixels().Enqueue(_sixel);
+                SetNeedsLayout();
+            });
+        });
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && !_disposed && _sixel is not null && _app?.Driver is { } driver)
+        {
+            var sixels = driver.GetOutput().GetSixels();
+            var others = sixels.Where(s => !ReferenceEquals(s, _sixel)).ToList();
+            sixels.Clear();
+            foreach (var other in others) sixels.Enqueue(other);
+            // TG only rewrites cells whose contents changed, which would leave the image on screen.
+            _app.ClearScreenNextIteration = true;
+        }
+        _disposed = true;
+        base.Dispose(disposing);
+    }
+
     private sealed class AboutArt : View
     {
         private static readonly Color Green = new(0x2E, 0xA0, 0x43);
 
+        public SixelToRender? Sixel { get; set; }
+
         protected override bool OnDrawingContent(DrawContext? context)
         {
+            if (Sixel is not null)
+            {
+                Sixel.ScreenPosition = ViewportToScreen(Point.Empty);
+                return true;
+            }
+
             SetAttribute(GetAttributeForRole(VisualRole.Normal) with { Foreground = Green });
             for (var row = 0; row < Art.Length && row < Viewport.Height; row++)
             {

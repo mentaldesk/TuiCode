@@ -133,6 +133,13 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - The status bar shows the active tab's grammar after its path (`path  •  C#`, or `Plain Text`). `Workbench` refreshes both on `ActiveTabChanged` and `EditorGroup.GrammarChanged`, so switching tabs now also resets the message to that tab's path.
 - `EditorDrawBenchmarkTests.Syntax_colouring_keeps_drawing_a_large_file_fast` (Explicit): on a 50k-line C# file a frame costs the same ~14 ms with colours as without.
 
+## About dialog (#107)
+
+- `tui` opens `AboutView`. It shows ASCII art, then swaps in the artwork as a sixel image if the terminal supports it (WezTerm, iTerm2, Windows Terminal, foot…). kitty and Ghostty don't do sixel (TG 2.1.0 has no kitty graphics), nor does tmux by default, so they keep the ASCII art.
+- `SixelProbe` runs TG's `SixelSupportDetector` once per session, on the first open. iTerm2 doesn't answer `CSI 16 t`, and the detector's fallback (window pixels ÷ cells) counts the title bar and margins, so we also ask iTerm2's `OSC 1337 ; ReportCellSize`. The cell size has to be exact: iTerm2 blanks every row an image touches, so an image that ends mid-row leaves a dark band (`AboutImage.Fit` rounds down to whole rows and `Cover` trims the top/bottom to match).
+- TG re-emits queued sixels on every output write and only rewrites cells whose contents changed, so `AboutView.Dispose` dequeues its sixel and sets `ClearScreenNextIteration` — otherwise the image stays on screen after close.
+- The artwork is `assets/about.png`, baked into the embedded `About/about.rgb.z` (raw RGB, zlib) by `dotnet run scripts/update-about-image.cs`. We have no image decoder at runtime and don't want one in the AOT binary.
+
 ## Filesystem
 
 - All I/O through `IFileSystem` from `System.IO.Abstractions`; never call `System.IO.File` / `Directory` directly. `IFileInfo.FileSystem` plumbs the same instance through to `EditorTab` etc.
