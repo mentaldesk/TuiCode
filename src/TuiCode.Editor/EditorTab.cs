@@ -428,7 +428,7 @@ internal sealed partial class EditorTextView : TextView
         var row = 0;
         for (var idxRow = Viewport.Y; idxRow < Lines && row < bottom; idxRow++, row++)
             DrawRow(GetLine(idxRow), idxRow, row, right);
-        DrawSecondaryCarets();
+        DrawCaretUnderlines();
 
         if (row < bottom)
         {

@@ -1,4 +1,6 @@
 using Terminal.Gui.Drawing;
+using Terminal.Gui.Drivers;
+using Terminal.Gui.Views;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Input;
 using TuiCode.Editor;
@@ -343,7 +345,7 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Secondary_carets_underline_the_next_character_and_keep_their_selections()
+    public void Every_caret_underlines_the_next_character_in_place_of_the_terminal_cursor()
     {
         var view = View("abcdef", "abcdef");
         view.SetCarets([At(0, 0), Selecting(1, 1, 3)]);
@@ -353,6 +355,8 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
 
         var contents = _app.Driver!.Contents!;
         Assert.True(contents[1, 3].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
+        Assert.True(contents[0, 0].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
+        Assert.Equal(CursorStyle.Hidden, view.Cursor.Style);
         Assert.Equal(view.GetAttributeForRole(VisualRole.Active), contents[1, 1].Attribute);
         Assert.Equal(view.GetAttributeForRole(VisualRole.Editable), contents[1, 4].Attribute);
     }
@@ -371,6 +375,21 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
         view.Draw();
 
         Assert.False(_app.Driver!.Contents![1, 3].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
+        Assert.Equal(TextView.DefaultCursorStyle, view.Cursor.Style);
+    }
+
+    [Fact]
+    public void The_terminal_cursor_comes_back_with_a_single_caret()
+    {
+        var view = View("abcdef", "abcdef");
+        view.SetCarets([At(0, 0), At(1, 3)]);
+        Render(view);
+
+        view.RemoveSecondaryCarets();
+        Render(view);
+
+        Assert.Equal(TextView.DefaultCursorStyle, view.Cursor.Style);
+        Assert.False(_app.Driver!.Contents![0, 0].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
     }
 
     [Fact]
@@ -403,6 +422,13 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
     [InlineData(null, false)]
     public void Support_is_read_from_the_terminals_reply(string? reply, bool supported) =>
         Assert.Equal(supported, TerminalCursors.IsFollowMainCursorShapeSupported(reply));
+
+    private void Render(View view)
+    {
+        _app.Driver!.Clip = new Region(_app.Driver.Screen);
+        view.SetNeedsDraw();
+        view.Draw();
+    }
 
     private static Caret At(int row, int column) => new(new Point(column, row));
 

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Terminal.Gui.Drivers;
 using Terminal.Gui.Text;
 using Point = System.Drawing.Point;
 
@@ -387,12 +388,16 @@ internal sealed partial class EditorTextView
     internal IEnumerable<Point> SecondaryCaretsOnScreen() =>
         _secondary.Select(ViewportPosition).OfType<Point>().Select(point => ViewportToScreen(point));
 
-    // Where the terminal can't draw them, carets underline the character they're before.
-    private void DrawSecondaryCarets()
+    // Where the terminal can't draw the extra carets, every caret, the primary included, underlines the character it's before.
+    private void DrawCaretUnderlines()
     {
-        if (HasFocus && TerminalCursors.IsSupportedBy(App)) return;
+        var underline = HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
+        var style = underline ? CursorStyle.Hidden : DefaultCursorStyle;
+        if (Cursor.Style != style) Cursor = Cursor with { Style = style };
+        if (!underline) return;
+
         var attribute = _editable with { Style = _editable.Style | TextStyle.Underline };
-        foreach (var caret in _secondary)
+        foreach (var caret in Carets)
         {
             if (ViewportPosition(caret) is not { } point) continue;
             var line = GetLine(caret.Position.Y);
