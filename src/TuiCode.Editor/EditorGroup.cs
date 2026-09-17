@@ -33,6 +33,17 @@ public sealed class EditorGroup : Tabs
         }
     } = true;
 
+    /// <summary>Whether selections sweep a rectangle (#114); applies to open and future tabs alike.</summary>
+    public bool ColumnSelect
+    {
+        get;
+        set
+        {
+            field = value;
+            foreach (var tab in _byPath.Values) tab.ColumnSelect = value;
+        }
+    }
+
     public EditorGroup(SyntaxHighlighter? syntax = null)
     {
         _syntax = syntax;
@@ -47,7 +58,7 @@ public sealed class EditorGroup : Tabs
             return existing;
         }
 
-        var tab = new EditorTab(file, _syntax) { GutterVisible = GutterVisible };
+        var tab = new EditorTab(file, _syntax) { GutterVisible = GutterVisible, ColumnSelect = ColumnSelect };
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         tab.GrammarChanged += (_, _) => GrammarChanged?.Invoke(this, tab);

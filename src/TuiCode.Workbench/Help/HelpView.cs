@@ -19,7 +19,7 @@ public sealed class HelpView : Window
         X = Pos.Center();
         Y = Pos.Center();
         Width = 58;
-        Height = 31;
+        Height = 32;
         CanFocus = true;
 
         var content = new Label
@@ -75,6 +75,7 @@ public sealed class HelpView : Window
             Row("Alt+Shift+Up/Dn", "Duplicate line"),
             Row("Ctrl+Alt+Up/Dn", "Add cursor above / below"),
             Row("Alt+Click", "Add / remove cursor (iTerm2: Cmd+Click)"),
+            Row("Ctrl+T C", "Toggle column select"),
             Row("Esc", "Back to one cursor"),
             "",
             "Tools",
