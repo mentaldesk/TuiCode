@@ -19,7 +19,7 @@ public sealed class HelpView : Window
         X = Pos.Center();
         Y = Pos.Center();
         Width = 58;
-        Height = 24;
+        Height = 31;
         CanFocus = true;
 
         var content = new Label
@@ -69,6 +69,13 @@ public sealed class HelpView : Window
             Row("Ctrl+N", "New file or folder"),
             Row("Ctrl+S", "Save active file"),
             Row("Ctrl+W", "Close active tab"),
+            "",
+            "Editing",
+            Row("Alt+Up/Dn", "Move line"),
+            Row("Alt+Shift+Up/Dn", "Duplicate line"),
+            Row("Ctrl+Alt+Up/Dn", "Add cursor above / below"),
+            Row("Alt+Click", "Add / remove cursor (iTerm2: Cmd+Click)"),
+            Row("Esc", "Back to one cursor"),
             "",
             "Tools",
             Row("Ctrl+Space", "Run command (mnemonic)"),
