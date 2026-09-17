@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Terminal.Gui.Configuration;
 using TuiCode.Workbench.Configuration;
+using TuiCode.Workbench.Themes;
 
 namespace TuiCode.Tests;
 
@@ -11,7 +12,7 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     [Fact]
     public void Save_writes_empty_object_when_theme_is_default()
     {
-        ThemeManager.Theme = "Default";
+        ThemeManager.Theme = BundledThemes.Default;
         var fs = new MockFileSystem();
         var svc = new DefaultSettingsService(fs);
 
@@ -27,7 +28,7 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     [Fact]
     public void Save_writes_theme_in_TG_native_format_when_non_default()
     {
-        ThemeManager.Theme = "Dark";
+        ThemeManager.Theme = BundledThemes.Daylight;
         var fs = new MockFileSystem();
         var svc = new DefaultSettingsService(fs);
 
@@ -35,13 +36,13 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
 
         var json = fs.File.ReadAllText(ConfigPath(fs));
         using var doc = JsonDocument.Parse(json);
-        Assert.Equal("Dark", doc.RootElement.GetProperty("Theme").GetString());
+        Assert.Equal(BundledThemes.Daylight, doc.RootElement.GetProperty("Theme").GetString());
     }
 
     [Fact]
     public void Save_creates_parent_directory_if_missing()
     {
-        ThemeManager.Theme = "Dark";
+        ThemeManager.Theme = BundledThemes.Daylight;
         var fs = new MockFileSystem();
         var svc = new DefaultSettingsService(fs);
 
@@ -49,6 +50,44 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
 
         var dir = fs.Path.GetDirectoryName(ConfigPath(fs));
         Assert.True(fs.Directory.Exists(dir));
+    }
+
+    [Fact]
+    public void Only_our_themes_are_offered_and_each_defines_every_scheme()
+    {
+        ConfigurationManager.Enable(ConfigLocations.None);
+        try
+        {
+            ConfigurationManager.RuntimeConfig = BundledThemes.Config;
+            ConfigurationManager.Load(ConfigLocations.LibraryResources | ConfigLocations.Runtime);
+
+            Assert.Equal(
+                [BundledThemes.Midnight, BundledThemes.Daylight, BundledThemes.TurboPascal, BundledThemes.ModernBorland],
+                new DefaultSettingsService(new MockFileSystem()).AvailableThemes);
+
+            foreach (var theme in BundledThemes.Names)
+            {
+                ThemeManager.Theme = theme;
+                ConfigurationManager.Apply();
+                foreach (var scheme in new[] { "Base", "Accent", "Dialog", "Menu", "Error", "Sidebar", "StatusBar" })
+                    Assert.True(SchemeManager.TryGetScheme(scheme, out _), $"{theme} has no {scheme} scheme");
+            }
+        }
+        finally
+        {
+            ThemeManager.Theme = "Default";
+            ConfigurationManager.Disable(resetToHardCodedDefaults: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("Default", BundledThemes.Midnight)]
+    [InlineData("Dark", BundledThemes.Midnight)]
+    [InlineData("Light", BundledThemes.Daylight)]
+    [InlineData(BundledThemes.TurboPascal, BundledThemes.TurboPascal)]
+    public void A_theme_we_do_not_ship_migrates_to_one_we_do(string saved, string expected)
+    {
+        Assert.Equal(expected, BundledThemes.Migrate(saved));
     }
 
     // #90: hand-editing the keybindings file into broken JSON must not throw at construction —
@@ -107,6 +146,61 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return fs.Path.Combine(home, ".tui", "TuiCode.config.json");
+    }
+
+    [Fact]
+    public void Grammar_associations_round_trip_through_their_own_file()
+    {
+        var fs = new MockFileSystem();
+        var svc = new DefaultSettingsService(fs);
+        svc.SetGrammarAssociations(new Dictionary<string, string> { [".h"] = "cpp", ["Jenkinsfile"] = "groovy" });
+
+        svc.Save();
+        var reloaded = new DefaultSettingsService(fs);
+
+        Assert.Equal("cpp", reloaded.GrammarAssociations[".H"]);
+        Assert.Equal("groovy", reloaded.GrammarAssociations["Jenkinsfile"]);
+    }
+
+    [Fact]
+    public void Saving_no_grammar_associations_removes_the_file()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(GrammarsPath(fs), new MockFileData("{ \".h\": \"cpp\" }"));
+        var svc = new DefaultSettingsService(fs);
+
+        svc.SetGrammarAssociations(new Dictionary<string, string>());
+        svc.Save();
+
+        Assert.False(fs.File.Exists(GrammarsPath(fs)));
+    }
+
+    [Theory]
+    [InlineData("{ \".h\": ")]
+    [InlineData("[ \".h\" ]")]
+    public void Malformed_grammar_associations_load_as_empty(string json)
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(GrammarsPath(fs), new MockFileData(json));
+
+        Assert.Empty(new DefaultSettingsService(fs).GrammarAssociations);
+    }
+
+    [Fact]
+    public void A_grammar_association_of_the_wrong_type_is_skipped_without_losing_the_rest()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(GrammarsPath(fs), new MockFileData("{ \".h\": 42, \".tfvars\": \"json\" }"));
+
+        var associations = new DefaultSettingsService(fs).GrammarAssociations;
+
+        Assert.Equal(".tfvars", Assert.Single(associations).Key);
+    }
+
+    private static string GrammarsPath(MockFileSystem fs)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return fs.Path.Combine(home, ".tui", "TuiCode.grammars.json");
     }
 
     private static string KeybindingsPath(MockFileSystem fs)

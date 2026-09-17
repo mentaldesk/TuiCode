@@ -31,6 +31,30 @@ public class StatusBarPartTests
     }
 
     [Fact]
+    public void The_grammar_follows_the_message_after_a_separator()
+    {
+        using var bar = new StatusBarPart();
+        bar.SetMessage("/work/a.cs");
+
+        bar.SetGrammar("C#");
+        Assert.Equal("/work/a.cs  •  C#", bar.DisplayedText);
+
+        bar.SetGrammar(null);
+        Assert.Equal("/work/a.cs", bar.DisplayedText);
+    }
+
+    [Fact]
+    public void An_in_flight_chord_hides_the_grammar()
+    {
+        using var bar = new StatusBarPart();
+        bar.SetGrammar("C#");
+
+        bar.SetChord("Ctrl+G");
+
+        Assert.Equal("Ctrl+G…", bar.DisplayedText);
+    }
+
+    [Fact]
     public void An_in_flight_chord_takes_precedence_over_a_hint()
     {
         using var bar = new StatusBarPart();

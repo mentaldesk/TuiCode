@@ -8,13 +8,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Terminal.Gui" Version="2.1.0" />
     <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.1.1" />
+    <PackageReference Include="TextMateSharp" Version="2.0.4" />
+    <!-- Links Oniguruma into the AOT binary instead of shipping libonigwrap beside it. -->
+    <PackageReference Include="StaticLink.libonigwrap" Version="1.0.11.3" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TuiCode.Abstractions\TuiCode.Abstractions.csproj" />
-    <ProjectReference Include="..\TuiCode.Syntax\TuiCode.Syntax.csproj" />
+    <EmbeddedResource Include="Grammars.zip" LogicalName="Grammars.zip" />
+    <EmbeddedResource Include="Themes\*.json" LogicalName="themes/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

@@ -112,10 +112,10 @@ jobs:
           mkdir -p dist
           if [ "${{ matrix.archive }}" = "zip" ]; then
             archive="dist/${name}.zip"
-            (cd publish && 7z a -tzip "../${archive}" TuiCode.exe)
+            (cd publish && 7z a -tzip "../${archive}" TuiCode.exe THIRD-PARTY-NOTICES.md DOTNET-THIRD-PARTY-NOTICES.TXT)
           else
             archive="dist/${name}.tar.gz"
-            tar -czf "$archive" -C publish TuiCode
+            tar -czf "$archive" -C publish TuiCode THIRD-PARTY-NOTICES.md DOTNET-THIRD-PARTY-NOTICES.TXT
           fi
           echo "path=$archive" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$archive")" >> "$GITHUB_OUTPUT"

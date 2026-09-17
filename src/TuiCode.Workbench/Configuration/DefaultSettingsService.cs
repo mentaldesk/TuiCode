@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Terminal.Gui.Configuration;
 using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Themes;
 
 namespace TuiCode.Workbench.Configuration;
 
@@ -14,7 +15,7 @@ namespace TuiCode.Workbench.Configuration;
 ///
 /// <para>Theme persists via TG's native <c>ThemeManager.Theme</c>
 /// (<c>[ConfigurationProperty(Scope = typeof(SettingsScope))]</c>) written as
-/// <c>{"Theme": "Dark"}</c> at the JSON root of <c>~/.tui/TuiCode.config.json</c>.
+/// <c>{"Theme": "Daylight"}</c> at the JSON root of <c>~/.tui/TuiCode.config.json</c>.
 /// <see cref="Load"/> calls <c>ConfigurationManager.Enable</c> which reads the file and
 /// applies the theme — no custom load logic needed. Saving still goes through us because
 /// <c>ConfigurationManager</c> exposes no Save API.</para>
@@ -26,12 +27,12 @@ namespace TuiCode.Workbench.Configuration;
 /// </summary>
 public sealed class DefaultSettingsService : ISettingsService
 {
-    private const string DefaultTheme = "Default";
-
     private readonly IFileSystem _fs;
     private readonly string _themeConfigPath;
     private readonly string _keybindingsPath;
+    private readonly string _grammarsPath;
     private List<KeybindingOverride> _keybindings;
+    private Dictionary<string, string> _grammarAssociations;
 
     public DefaultSettingsService(IFileSystem fs)
     {
@@ -40,7 +41,9 @@ public sealed class DefaultSettingsService : ISettingsService
         var dir = _fs.Path.Combine(home, ".tui");
         _themeConfigPath = _fs.Path.Combine(dir, "TuiCode.config.json");
         _keybindingsPath = _fs.Path.Combine(dir, "TuiCode.keybindings.json");
+        _grammarsPath = _fs.Path.Combine(dir, "TuiCode.grammars.json");
         _keybindings = LoadKeybindings();
+        _grammarAssociations = LoadGrammarAssociations();
     }
 
     public string Theme
@@ -51,19 +54,15 @@ public sealed class DefaultSettingsService : ISettingsService
             if (string.Equals(ThemeManager.Theme, value, StringComparison.Ordinal)) return;
             ThemeManager.Theme = value;
             ConfigurationManager.Apply();
+            ThemeChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
-    // Allowlist of TG built-in themes we expose to the picker. The other built-ins
-    // (TurboPascal 5, Green Phosphor, 8 bit, …) are demo themes that look poor in a
-    // code editor; intersecting filters them out without crashing if a future TG
-    // version renames or drops one. See issue #11.
-    private static readonly string[] AllowedThemes = ["Default", "Dark", "Light"];
+    public event EventHandler? ThemeChanged;
 
+    // TG's built-ins don't describe the editor's gutter or cursor, so we only offer our own.
     public IReadOnlyCollection<string> AvailableThemes =>
-        (ThemeManager.Themes?.Keys ?? Enumerable.Empty<string>())
-            .Intersect(AllowedThemes, StringComparer.Ordinal)
-            .ToArray();
+        BundledThemes.Names.Where(theme => ThemeManager.Themes?.ContainsKey(theme) ?? false).ToArray();
 
     public IReadOnlyList<KeybindingOverride> KeybindingOverrides => _keybindings;
 
@@ -73,18 +72,73 @@ public sealed class DefaultSettingsService : ISettingsService
         _keybindings = overrides.ToList();
     }
 
-    public void Load() => ConfigurationManager.Enable(ConfigLocations.All);
+    public IReadOnlyDictionary<string, string> GrammarAssociations => _grammarAssociations;
+
+    public void SetGrammarAssociations(IReadOnlyDictionary<string, string> associations)
+    {
+        ArgumentNullException.ThrowIfNull(associations);
+        _grammarAssociations = new Dictionary<string, string>(associations, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public void Load()
+    {
+        ConfigurationManager.RuntimeConfig = BundledThemes.Config;
+        ConfigurationManager.Enable(ConfigLocations.All);
+        Theme = BundledThemes.Migrate(ThemeManager.Theme);
+    }
 
     public void Save()
     {
         SaveTheme();
         SaveKeybindings();
+        SaveGrammarAssociations();
+    }
+
+    // A flat object, e.g. { ".h": "cpp", "Jenkinsfile": "groovy" }, sorted so the file diffs cleanly.
+    private void SaveGrammarAssociations()
+    {
+        if (_grammarAssociations.Count == 0)
+        {
+            if (_fs.File.Exists(_grammarsPath))
+                _fs.File.Delete(_grammarsPath);
+            return;
+        }
+
+        var root = new JsonObject();
+        foreach (var (pattern, grammar) in _grammarAssociations.OrderBy(a => a.Key, StringComparer.OrdinalIgnoreCase))
+            root[pattern] = grammar;
+        EnsureDirExists(_grammarsPath);
+        _fs.File.WriteAllText(_grammarsPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private Dictionary<string, string> LoadGrammarAssociations()
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!_fs.File.Exists(_grammarsPath)) return result;
+
+        JsonObject? root;
+        try
+        {
+            root = JsonNode.Parse(_fs.File.ReadAllText(_grammarsPath)) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return result;
+        }
+
+        // Like the keybindings file (#90): skip a hand-edited entry of the wrong type rather than lose the rest.
+        foreach (var (pattern, value) in root ?? [])
+        {
+            if (value is JsonValue v && v.TryGetValue<string>(out var grammar) && pattern.Length > 0 && grammar.Length > 0)
+                result[pattern] = grammar;
+        }
+        return result;
     }
 
     private void SaveTheme()
     {
         var root = new JsonObject();
-        if (!string.Equals(ThemeManager.Theme, DefaultTheme, StringComparison.Ordinal))
+        if (!string.Equals(ThemeManager.Theme, BundledThemes.Default, StringComparison.Ordinal))
             root["Theme"] = ThemeManager.Theme;
 
         EnsureDirExists(_themeConfigPath);

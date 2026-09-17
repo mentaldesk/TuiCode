@@ -7,11 +7,13 @@ public sealed class StatusBarPart : View
     private string _message = DefaultMessage;
     private string? _chord;
     private string? _hint;
+    private string? _grammar;
 
     public StatusBarPart()
     {
         Height = 1;
         CanFocus = false;
+        SchemeName = "StatusBar";
 
         _label = new Label
         {
@@ -38,6 +40,13 @@ public sealed class StatusBarPart : View
         UpdateLabel();
     }
 
+    /// <summary>The active file's grammar, shown after the message; null hides it.</summary>
+    public void SetGrammar(string? grammar)
+    {
+        _grammar = grammar;
+        UpdateLabel();
+    }
+
     internal string DisplayedText => _label.Text;
 
     public void SetChord(string? chord)
@@ -47,5 +56,7 @@ public sealed class StatusBarPart : View
     }
 
     private void UpdateLabel() =>
-        _label.Text = _chord is not null ? $"{_chord}…" : _hint ?? _message;
+        _label.Text = _chord is not null ? $"{_chord}…"
+            : _grammar is null ? _hint ?? _message
+            : $"{_hint ?? _message}  •  {_grammar}";
 }

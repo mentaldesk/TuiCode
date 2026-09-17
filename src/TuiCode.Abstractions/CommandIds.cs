@@ -62,6 +62,10 @@ public static class CommandIds
     public const string NewPathConfirm = "newPath.action.confirm";
     public const string NewPathCancel = "newPath.action.cancel";
 
+    public const string ChangeGrammar = "workbench.action.changeGrammar";
+    public const string GrammarPickerConfirm = "grammarPicker.action.confirm";
+    public const string GrammarPickerCancel = "grammarPicker.action.cancel";
+
     public static string FocusEditorByIndex(int oneBasedIndex) =>
         $"workbench.action.focusEditor{oneBasedIndex}";
 }

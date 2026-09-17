@@ -37,6 +37,16 @@ public class EditorTabCursorTests
     }
 
     [Fact]
+    public void MoveCursor_in_an_empty_file_stays_at_the_start()
+    {
+        using var tab = OpenTab("");
+
+        tab.MoveCursor(3, 4);
+
+        Assert.Equal((0, 0), (tab.CursorRow, tab.CursorColumn));
+    }
+
+    [Fact]
     public void MoveCursor_does_not_mark_dirty()
     {
         using var tab = OpenTab("alpha\nbravo\n");

@@ -10,7 +10,10 @@ public interface ISettingsService
     /// <summary>Current theme name. Setter applies the theme live.</summary>
     string Theme { get; set; }
 
-    /// <summary>Names of all themes the user can pick from (TG built-ins for v1).</summary>
+    /// <summary>Raised after <see cref="Theme"/> changes.</summary>
+    event EventHandler? ThemeChanged;
+
+    /// <summary>Names of all themes the user can pick from.</summary>
     IReadOnlyCollection<string> AvailableThemes { get; }
 
     /// <summary>
@@ -21,6 +24,12 @@ public interface ISettingsService
 
     /// <summary>Replace the override list. Stages the change in memory; <see cref="Save"/> persists it.</summary>
     void SetKeybindingOverrides(IEnumerable<KeybindingOverride> overrides);
+
+    /// <summary>User grammar associations (#21): a pattern (<c>.ext</c> or an exact file name) → grammar id, overriding the built-in ones.</summary>
+    IReadOnlyDictionary<string, string> GrammarAssociations { get; }
+
+    /// <summary>Replace the grammar associations. Stages the change in memory; <see cref="Save"/> persists it.</summary>
+    void SetGrammarAssociations(IReadOnlyDictionary<string, string> associations);
 
     /// <summary>Persist the current settings to disk, writing only values that differ from defaults.</summary>
     void Save();

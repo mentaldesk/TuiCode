@@ -1,4 +1,5 @@
 using TuiCode.Abstractions;
+using TuiCode.Editor;
 using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Parts;
 
@@ -6,6 +7,8 @@ namespace TuiCode.Workbench;
 
 public sealed class Workbench : Window
 {
+    public const string PlainTextName = "Plain Text";
+
     public SidebarPart Sidebar { get; }
     public EditorPart Editor { get; }
     public StatusBarPart StatusBar { get; }
@@ -47,6 +50,18 @@ public sealed class Workbench : Window
 
         editor.FileSaved += (_, file) =>
             statusBar.SetMessage($"Saved: {file.FullName}");
+
+        editor.Group.ActiveTabChanged += (_, tab) => ShowActiveFile(tab);
+        editor.Group.GrammarChanged += (_, tab) =>
+        {
+            if (ReferenceEquals(tab, editor.Group.ActiveTab)) ShowActiveFile(tab);
+        };
+    }
+
+    private void ShowActiveFile(EditorTab? tab)
+    {
+        if (tab is not null) StatusBar.SetMessage(tab.File.FullName);
+        StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
     }
 
     /// <summary>Open a file in the editor and focus it. Shared by the explorer and the Open dialog.</summary>

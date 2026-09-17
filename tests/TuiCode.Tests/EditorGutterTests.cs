@@ -32,6 +32,22 @@ public class EditorGutterTests
     }
 
     [Fact]
+    public void Markers_follow_successive_edits()
+    {
+        using var tab = OpenTab("alpha\nbravo\ncharlie\n");
+
+        tab.Replace(new TextMatch(1, 0, 5), "BRAVO");
+        var modified = tab.LineChanges.ToArray();
+        tab.Replace(new TextMatch(2, 7, 0), "\nnew");
+        var added = tab.LineChanges.ToArray();
+        tab.Replace(new TextMatch(1, 0, 5), "bravo");
+
+        Assert.Equal([None, Modified, None, None], modified);
+        Assert.Equal([None, Modified, None, Added, None], added);
+        Assert.Equal([None, None, None, Added, None], tab.LineChanges);
+    }
+
+    [Fact]
     public void Setting_content_is_diffed_against_the_loaded_text()
     {
         using var tab = OpenTab("alpha\nbravo\n");

@@ -1,6 +1,10 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text;
+using Terminal.Gui.Text;
 using TuiCode.Abstractions;
+using TuiCode.Syntax;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Editor;
 
@@ -8,6 +12,8 @@ public sealed class EditorTab : FrameView
 {
     private readonly EditorTextView _textView;
     private readonly EditorGutter _gutter;
+    private readonly SyntaxHighlighter? _syntax;
+    private bool _grammarChosen;
     private View? _header;
     private readonly string _eol;
     private bool _dirty;
@@ -40,9 +46,12 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public event EventHandler<(int Row, int Column)>? CursorMoved;
 
-    public EditorTab(IFileInfo file)
+    public event EventHandler? GrammarChanged;
+
+    public EditorTab(IFileInfo file, SyntaxHighlighter? syntax = null)
     {
         File = file;
+        _syntax = syntax;
         BorderStyle = LineStyle.None;
 
         var initial = file.FileSystem.File.ReadAllText(file.FullName);
@@ -53,9 +62,10 @@ public sealed class EditorTab : FrameView
             Y = 0,
             Width = Dim.Fill(),
             Height = Dim.Fill(),
-            Text = initial
+            Text = initial,
+            Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
         };
-        _gutter = new EditorGutter(_textView) { X = 0, Y = 0, Height = Dim.Fill() };
+        _gutter = new EditorGutter(_textView, syntax) { X = 0, Y = 0, Height = Dim.Fill() };
         _textView.X = Pos.Right(_gutter);
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
         _textView.ContentsChanged += (_, _) => OnEdited();
@@ -80,6 +90,33 @@ public sealed class EditorTab : FrameView
 
     internal IReadOnlyList<LineChange> LineChanges => _gutter.Changes;
 
+    /// <summary>Whether syntax colouring is available at all; without it every tab is plain text.</summary>
+    public bool HasSyntax => _syntax is not null;
+
+    /// <summary>The grammar colouring this tab, or null for plain text.</summary>
+    public SyntaxLanguage? Grammar => _textView.Syntax?.Language;
+
+    /// <summary>Pins this tab to <paramref name="grammar"/> (null for plain text), ignoring associations.</summary>
+    public void SetGrammar(SyntaxLanguage? grammar)
+    {
+        _grammarChosen = true;
+        ApplyGrammar(grammar);
+    }
+
+    /// <summary>Re-pick the grammar from the current associations, unless one was chosen for this tab.</summary>
+    public void InferGrammar()
+    {
+        if (!_grammarChosen && _syntax is not null)
+            ApplyGrammar(_syntax.LanguageForFile(File.Name));
+    }
+
+    private void ApplyGrammar(SyntaxLanguage? grammar)
+    {
+        if (_syntax is null || Equals(Grammar, grammar)) return;
+        _textView.Syntax = _syntax.CreateCache(grammar);
+        GrammarChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public bool FocusContent() => _textView.SetFocus();
     public bool ContentHasFocus => _textView.HasFocus;
 
@@ -89,29 +126,9 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public void MoveCursor(int row, int col)
     {
-        if (row < 0) row = 0;
-        if (col < 0) col = 0;
-
-        var text = _textView.Text ?? string.Empty;
-
-        var currentRow = 0;
-        var lineStart = 0;
-        for (var i = 0; i < text.Length && currentRow < row; i++)
-        {
-            if (text[i] == '\n')
-            {
-                currentRow++;
-                lineStart = i + 1;
-            }
-        }
-
-        // Requested row past the end? Stay on the last line we reached.
-        var lineEnd = text.IndexOf('\n', lineStart);
-        if (lineEnd < 0) lineEnd = text.Length;
-        var lineLen = lineEnd - lineStart;
-        if (col > lineLen) col = lineLen;
-
-        _textView.InsertionPoint = new System.Drawing.Point(col, currentRow);
+        row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
+        col = Math.Clamp(col, 0, _textView.GetLine(row).Count);
+        _textView.InsertionPoint = new System.Drawing.Point(col, row);
     }
 
     /// <summary>
@@ -294,7 +311,7 @@ public sealed class EditorTab : FrameView
 }
 
 /// <summary>
-/// TextView that paints find-in-file match highlights (#33) under the normal text colour, raises
+/// TextView that paints syntax colours (#21) and find-in-file match highlights (#33), raises
 /// <see cref="TextView.ContentsChanged"/> only for edits that change the text, and keeps the content-width cache across edits.
 /// </summary>
 internal sealed class EditorTextView : TextView
@@ -305,10 +322,34 @@ internal sealed class EditorTextView : TextView
 
     private bool _holdContentsChanged;
 
+    private Attribute _editable;
+    private Attribute _highlight;
+    private Attribute _cellAttribute;
+    private Color[] _tokenColors = [];
+    private int _tokenColorsVersion = -1;
+    private long _selectionStart;
+    private long _selectionEnd;
+
     /// <summary>Row → half-open [start, end) cell-column ranges to highlight.</summary>
     public Dictionary<int, List<(int Start, int End)>> Highlights { get; } = new();
 
     public IReadOnlyList<string> LineStrings => GetAllLines().Select(Cell.ToString).ToArray();
+
+    /// <summary>Shared by the gutter and syntax colouring, so unchanged lines keep one string instance.</summary>
+    internal LineSnapshot Snapshot { get; } = new();
+
+    public LineTokenCache? Syntax
+    {
+        get;
+        set
+        {
+            field = value;
+            SetNeedsDraw();
+        }
+    }
+
+    /// <summary>Lexing time allowed per frame; the rest continues on later iterations.</summary>
+    internal TimeSpan SyntaxBudget { get; set; } = TimeSpan.FromMilliseconds(15);
 
     public override void OnContentsChanged()
     {
@@ -353,12 +394,200 @@ internal sealed class EditorTextView : TextView
             _ => false,
         };
 
+    // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
+    protected override bool OnDrawingContent(DrawContext? context)
+    {
+        _editable = GetAttributeForRole(VisualRole.Editable);
+        _highlight = GetAttributeForRole(VisualRole.Highlight);
+        (_selectionStart, _selectionEnd) = SelectionBounds();
+        PrepareSyntax();
+        SetAttributeForRole(Enabled ? VisualRole.Editable : VisualRole.Disabled);
+
+        var right = Viewport.Width;
+        var bottom = Viewport.Height;
+        var row = 0;
+        for (var idxRow = Viewport.Y; idxRow < Lines && row < bottom; idxRow++, row++)
+            DrawRow(GetLine(idxRow), idxRow, row, right);
+
+        if (row < bottom)
+        {
+            SetAttributeForRole(ReadOnly ? VisualRole.ReadOnly : VisualRole.Editable);
+            ClearRegion(0, row, right, bottom);
+        }
+        return false;
+    }
+
+    private void PrepareSyntax()
+    {
+        if (Syntax is null) return;
+        if (_tokenColorsVersion != Syntax.Highlighter.ThemeVersion)
+        {
+            _tokenColors = Syntax.Highlighter.Colors.Select(hex => hex is null ? default : Color.Parse(hex)).ToArray();
+            _tokenColorsVersion = Syntax.Highlighter.ThemeVersion;
+        }
+
+        // Refreshed every frame rather than on edit: TG doesn't report every edit (see ContentsChanged in AGENTS.md).
+        Syntax.Update(Snapshot.Refresh(GetAllLines()));
+        var lastVisible = Math.Min(Viewport.Y + Viewport.Height, Lines) - 1;
+        if (!Syntax.TokenizeThrough(lastVisible, SyntaxBudget))
+            App?.Invoke(SetNeedsDraw);
+    }
+
+    private void DrawRow(List<Cell> line, int idxRow, int row, int right)
+    {
+        var (colWidths, col, idxCol) = FirstVisibleGlyph(line);
+        var wasPreviousWideGlyphNegativeCol = false;
+        Move(0, row);
+
+        var tokens = Syntax?.TokensFor(idxRow);
+        var chars = tokens is null ? 0 : CharsBefore(line, idxCol);
+        var token = 0;
+        var attributeToken = -1;
+        _cellAttribute = _editable;
+
+        for (; idxCol < line.Count; idxCol++)
+        {
+            var text = line[idxCol].Grapheme;
+            var cols = text.GetColumns(false);
+
+            if (tokens is { Length: > 0 })
+            {
+                while (token + 2 < tokens.Length && tokens[token + 2] <= chars)
+                    token += 2;
+                if (token != attributeToken)
+                {
+                    _cellAttribute = TokenAttribute(tokens[token + 1]);
+                    attributeToken = token;
+                }
+                chars += text.Length;
+            }
+
+            if (IsSelecting && InSelection(idxCol, idxRow))
+                OnDrawSelectionColor(line, idxCol, idxRow);
+            else if (idxCol == CurrentColumn && idxRow == CurrentRow && !IsSelecting && !Used && HasFocus)
+                OnDrawUsedColor(line, idxCol, idxRow);
+            else if (ReadOnly)
+                OnDrawReadOnlyColor(line, idxCol, idxRow);
+            else
+                OnDrawNormalColor(line, idxCol, idxRow);
+
+            if (text == "\t")
+            {
+                cols = TabWidth > 0 ? TabWidth - colWidths % TabWidth : 0;
+                if (col + cols > right) cols = right - col;
+                for (var i = 0; i < cols; i++)
+                    AddRune(col + i, row, (Rune)' ');
+            }
+            else
+            {
+                if (col < 0 && cols > 1)
+                    wasPreviousWideGlyphNegativeCol = true;
+                else
+                    AddStr(col, row, text);
+                cols = Math.Max(cols, 1);
+            }
+
+            if (col + cols > Viewport.Right) break;
+            col += cols;
+            colWidths += cols;
+
+            if (idxCol + 1 < line.Count && col + line[idxCol + 1].Grapheme.GetColumns() > right) break;
+        }
+
+        if (wasPreviousWideGlyphNegativeCol) AddStr(0, row, " ");
+
+        if (col < right)
+        {
+            SetAttributeForRole(ReadOnly ? VisualRole.ReadOnly : VisualRole.Editable);
+            ClearRegion(col, row, right, row + 1);
+        }
+    }
+
+    // Col is where that glyph starts relative to the viewport, so <= 0 when it straddles the left edge.
+    private (int ColWidths, int Col, int Index) FirstVisibleGlyph(List<Cell> line)
+    {
+        var start = Viewport.X;
+        if (start <= 0 || line.Count == 0) return (0, 0, 0);
+
+        var sum = 0;
+        var count = Math.Min(start, line.Count);
+        for (var i = 0; i < count; i++)
+        {
+            var grapheme = line[i].Grapheme;
+            var width = grapheme == "\t"
+                ? TabWidth > 0 ? TabWidth - sum % TabWidth : 0
+                : Math.Max(grapheme.GetColumns(), 1);
+            if (sum + width > start) return (sum, sum - start, i);
+            sum += width;
+        }
+        return (sum, sum - start, count);
+    }
+
+    private (long Start, long End) SelectionBounds()
+    {
+        var anchor = Encode(SelectionStartRow, SelectionStartColumn);
+        var point = Encode(CurrentRow, CurrentColumn);
+        return anchor > point ? (point, anchor) : (anchor, point);
+    }
+
+    private bool InSelection(int col, int row)
+    {
+        var q = Encode(row, col);
+        return q >= _selectionStart && q < _selectionEnd;
+    }
+
+    private static long Encode(int row, int col) => ((long)(uint)row << 32) | (uint)col;
+
+    private void ClearRegion(int left, int top, int right, int bottom)
+    {
+        for (var row = top; row < bottom; row++)
+        {
+            Move(left, row);
+            for (var col = left; col < right; col++)
+                AddRune(col, row, (Rune)' ');
+        }
+    }
+
+    private static int CharsBefore(List<Cell> line, int idxCol)
+    {
+        var chars = 0;
+        for (var i = 0; i < idxCol; i++)
+            chars += line[i].Grapheme.Length;
+        return chars;
+    }
+
+    private Attribute TokenAttribute(int metadata)
+    {
+        var attribute = _editable;
+        var foreground = SyntaxHighlighter.ForegroundOf(metadata);
+        if (foreground != SyntaxHighlighter.DefaultForeground && foreground < _tokenColors.Length)
+            attribute = attribute with { Foreground = _tokenColors[foreground] };
+
+        var style = SyntaxHighlighter.StyleOf(metadata);
+        if (style == TokenStyle.None) return attribute;
+        return attribute with
+        {
+            Style = attribute.Style
+                    | (style.HasFlag(TokenStyle.Italic) ? TextStyle.Italic : TextStyle.None)
+                    | (style.HasFlag(TokenStyle.Bold) ? TextStyle.Bold : TextStyle.None)
+                    | (style.HasFlag(TokenStyle.Underline) ? TextStyle.Underline : TextStyle.None)
+                    | (style.HasFlag(TokenStyle.Strikethrough) ? TextStyle.Strikethrough : TextStyle.None),
+        };
+    }
+
+    // Skips base, which resolves the scheme attribute (allocating) and raises DrawNormalColor for every cell.
     protected override void OnDrawNormalColor(List<Cell> line, int idxCol, int idxRow)
     {
-        base.OnDrawNormalColor(line, idxCol, idxRow);
-        // We never enable WordWrap, so draw coordinates are model coordinates.
-        if (Highlights.TryGetValue(idxRow, out var ranges) && ranges.Exists(r => idxCol >= r.Start && idxCol < r.End))
-            SetAttributeForRole(VisualRole.Highlight);
+        SetAttribute(IsHighlighted(idxCol, idxRow) ? _highlight : line[idxCol].Attribute ?? _cellAttribute);
+    }
+
+    // We never enable WordWrap, so draw coordinates are model coordinates.
+    private bool IsHighlighted(int idxCol, int idxRow)
+    {
+        if (!Highlights.TryGetValue(idxRow, out var ranges)) return false;
+        foreach (var (start, end) in ranges)
+            if (idxCol >= start && idxCol < end) return true;
+        return false;
     }
 
     // TG 2.1.0's base discards the width cache on every edit; any change beyond the current row has already invalidated it.
