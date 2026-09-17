@@ -1,6 +1,6 @@
 using Point = System.Drawing.Point;
 using Size = System.Drawing.Size;
-using SizeF = System.Drawing.SizeF;
+using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Services;
 
@@ -31,11 +31,16 @@ public sealed class AboutView : Window
     private const int ChromeHeight = 8;
 
     private readonly AboutArt _art;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Size, string> EncodedImages = new();
+
     private IApplication? _app;
     private SixelToRender? _sixel;
     private bool _disposed;
 
     public IKeybindingService Scope => _scopeKeybindings;
+
+    internal bool IsLoading => _art.Mode == ArtMode.Loading;
+    internal bool ShowsAsciiArt => _art.Mode == ArtMode.Ascii;
 
     public event EventHandler? Closed;
 
@@ -81,31 +86,68 @@ public sealed class AboutView : Window
         _scopeKeybindings.Bind("Enter", CommandIds.AboutClose);
     }
 
-    /// <summary>Swaps the ASCII art for the sixel artwork once it's encoded in the background.</summary>
-    public void ShowImage(SixelSupportResult support, SizeF cellPixels)
+    /// <summary>
+    /// Shows the artwork as a sixel image if <paramref name="support"/> allows, else the ASCII art. Null means
+    /// detection is still running. Call once the view is added.
+    /// </summary>
+    internal void Present(SixelSupport? support)
     {
-        if (!support.IsSupported || App is not { Driver: { } driver } app) return;
-        _app = app;
+        if (_disposed || App is not { Driver: { } driver } app) return;
+
+        if (support is null)
+        {
+            StartLoading(app);
+            return;
+        }
+
+        if (!support.IsSupported)
+        {
+            _art.Mode = ArtMode.Ascii;
+            _art.SetNeedsDraw();
+            return;
+        }
 
         var columns = Art.Max(line => line.Length);
+        var (pixels, rows) = AboutImage.Fit(AboutImage.ReadSize(), support.CellPixels, columns);
+        _art.Height = rows;
+        Height = rows + ChromeHeight;
+
+        if (EncodedImages.TryGetValue(pixels, out var cached))
+        {
+            ShowSixel(app, driver, cached);
+            return;
+        }
+
+        StartLoading(app);
         Task.Run(() =>
         {
-            var source = AboutImage.Load();
-            var (pixels, rows) = AboutImage.Fit(new Size(source.GetLength(0), source.GetLength(1)), cellPixels, columns);
-            var encoder = new SixelEncoder();
-            encoder.Quantizer.MaxColors = Math.Min(encoder.Quantizer.MaxColors, support.MaxPaletteColors);
-            var data = encoder.EncodeSixel(AboutImage.Cover(source, pixels));
+            var data = EncodedImages.GetOrAdd(pixels, size => new SixelEncoder().EncodeSixel(AboutImage.Cover(AboutImage.Load(), size)));
+            app.Invoke(() => ShowSixel(app, driver, data));
+        });
+    }
 
-            app.Invoke(() =>
-            {
-                if (_disposed) return;
-                _sixel = new SixelToRender { Id = "about", SixelData = data };
-                _art.Sixel = _sixel;
-                _art.Height = rows;
-                Height = rows + ChromeHeight;
-                driver.GetOutput().GetSixels().Enqueue(_sixel);
-                SetNeedsLayout();
-            });
+    private void ShowSixel(IApplication app, IDriver driver, string data)
+    {
+        if (_disposed) return;
+        _app = app;
+        _sixel = new SixelToRender { Id = "about", SixelData = data };
+        _art.Sixel = _sixel;
+        _art.Mode = ArtMode.Image;
+        driver.GetOutput().GetSixels().Enqueue(_sixel);
+        _art.SetNeedsDraw();
+    }
+
+    private void StartLoading(IApplication app)
+    {
+        if (_art.Mode == ArtMode.Loading) return;
+        _art.Mode = ArtMode.Loading;
+        _art.SetNeedsDraw();
+        app.AddTimeout(TimeSpan.FromMilliseconds(80), () =>
+        {
+            if (_disposed || _art.Mode != ArtMode.Loading) return false;
+            _art.SpinnerFrame++;
+            _art.SetNeedsDraw();
+            return true;
         });
     }
 
@@ -124,25 +166,36 @@ public sealed class AboutView : Window
         base.Dispose(disposing);
     }
 
+    private enum ArtMode { Ascii, Loading, Image }
+
     private sealed class AboutArt : View
     {
         private static readonly Color Green = new(0x2E, 0xA0, 0x43);
+        private const string Spinner = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
 
+        public ArtMode Mode { get; set; }
+        public int SpinnerFrame { get; set; }
         public SixelToRender? Sixel { get; set; }
 
         protected override bool OnDrawingContent(DrawContext? context)
         {
-            if (Sixel is not null)
-            {
-                Sixel.ScreenPosition = ViewportToScreen(Point.Empty);
-                return true;
-            }
-
             SetAttribute(GetAttributeForRole(VisualRole.Normal) with { Foreground = Green });
-            for (var row = 0; row < Art.Length && row < Viewport.Height; row++)
+            switch (Mode)
             {
-                Move(0, row);
-                AddStr(Art[row]);
+                case ArtMode.Image:
+                    Sixel!.ScreenPosition = ViewportToScreen(Point.Empty);
+                    break;
+                case ArtMode.Loading:
+                    Move(Viewport.Width / 2, Viewport.Height / 2);
+                    AddStr(Spinner[SpinnerFrame % Spinner.Length].ToString());
+                    break;
+                default:
+                    for (var row = 0; row < Art.Length && row < Viewport.Height; row++)
+                    {
+                        Move(0, row);
+                        AddStr(Art[row]);
+                    }
+                    break;
             }
             return true;
         }

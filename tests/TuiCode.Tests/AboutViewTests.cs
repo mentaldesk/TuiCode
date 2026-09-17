@@ -68,7 +68,7 @@ public class AboutImageTests
     }
 }
 
-public class Iterm2CellSizeTests
+public class SixelProbeTests
 {
     [Fact]
     public void ParseIterm2CellSize_reads_width_and_height()
@@ -84,4 +84,20 @@ public class Iterm2CellSizeTests
     [InlineData("\x1b]1337;ReportCellSize=0;11\x1b\\")]
     public void ParseIterm2CellSize_rejects_other_replies(string? response) =>
         Assert.Null(SixelProbe.ParseIterm2CellSize(response));
+
+    [Fact]
+    public void ParseCellResolution_reads_width_and_height() =>
+        Assert.Equal(new System.Drawing.SizeF(10, 21), SixelProbe.ParseCellResolution("\x1b[6;21;10t"));
+
+    [Fact]
+    public void ParseCellResolution_rejects_other_replies() =>
+        Assert.Null(SixelProbe.ParseCellResolution("\x1b[8;31;124t"));
+
+    [Theory]
+    [InlineData("\x1b[?64;1;2;4;6;17c", true)]
+    [InlineData("\x1b[?62;4c", true)]
+    [InlineData("\x1b[?62;22c", false)]
+    [InlineData(null, false)]
+    public void IndicatesSixel_looks_for_attribute_4(string? response, bool expected) =>
+        Assert.Equal(expected, SixelProbe.IndicatesSixel(response));
 }

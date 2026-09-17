@@ -7,12 +7,15 @@ namespace TuiCode.Workbench.About;
 /// <summary>The About artwork as pixels, decoded from the resource written by scripts/update-about-image.cs.</summary>
 internal static class AboutImage
 {
+    public static Size ReadSize()
+    {
+        using var reader = Open();
+        return new Size(reader.ReadUInt16(), reader.ReadUInt16());
+    }
+
     public static Color[,] Load()
     {
-        using var stream = typeof(AboutImage).Assembly.GetManifestResourceStream("about.rgb.z")
-            ?? throw new InvalidOperationException("about.rgb.z resource is missing");
-        using var zlib = new ZLibStream(stream, CompressionMode.Decompress);
-        using var reader = new BinaryReader(zlib);
+        using var reader = Open();
         int width = reader.ReadUInt16();
         int height = reader.ReadUInt16();
         var rgb = reader.ReadBytes(width * height * 3);
@@ -25,6 +28,13 @@ internal static class AboutImage
                 pixels[x, y] = new Color(rgb[i], rgb[i + 1], rgb[i + 2]);
             }
         return pixels;
+    }
+
+    private static BinaryReader Open()
+    {
+        var stream = typeof(AboutImage).Assembly.GetManifestResourceStream("about.rgb.z")
+            ?? throw new InvalidOperationException("about.rgb.z resource is missing");
+        return new BinaryReader(new ZLibStream(stream, CompressionMode.Decompress));
     }
 
     public static Color[,] Scale(Color[,] source, int width, int height)

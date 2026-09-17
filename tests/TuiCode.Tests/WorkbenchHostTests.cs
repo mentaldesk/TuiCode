@@ -1007,6 +1007,26 @@ public class WorkbenchHostTests : StaticConfigurationTest
         Assert.True(wasShown, "AboutView did not appear after typing tui");
     }
 
+    [Fact]
+    public async Task About_dialog_shows_a_spinner_then_the_ascii_art_when_the_terminal_never_answers_the_sixel_query()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+
+        AboutView? About() => workbench.SubViews.OfType<AboutView>().SingleOrDefault();
+        var wasLoading = false;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.ShowAbout),
+            () => wasLoading = About()!.IsLoading,
+            () => About()!.ShowsAsciiArt,
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.True(wasLoading, "AboutView didn't show the spinner while detection was pending");
+    }
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),

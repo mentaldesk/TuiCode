@@ -57,8 +57,7 @@ public sealed class WorkbenchHost : IDisposable
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
     private AboutView? _activeAbout;
-    private (SixelSupportResult Support, System.Drawing.SizeF CellPixels)? _sixelSupport;
-    private bool _detectingSixel;
+    private SixelSupport? _sixelSupport;
     private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
     private NewPathView? _activeNewPath;
@@ -93,6 +92,13 @@ public sealed class WorkbenchHost : IDisposable
         // this user-var to activate its key table only while TuiCode runs; other terminals
         // strip the unknown OSC silently. Unconditional — no detection needed.
         WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MQ==\x07");
+        // Detected up front so About can show a spinner rather than ASCII art that the image then replaces.
+        if (_app.Driver is { } driver)
+            SixelProbe.Detect(driver, support => _app.Invoke(() =>
+            {
+                _sixelSupport = support;
+                _activeAbout?.Present(support);
+            }));
         _workbench = workbench;
         _commands = commands;
         _keybindings = keybindings;
@@ -750,21 +756,7 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(view.Scope);
         view.SetFocus();
 
-        if (_sixelSupport is { } sixel)
-            view.ShowImage(sixel.Support, sixel.CellPixels);
-        else
-            DetectSixelSupport();
-    }
-
-    private void DetectSixelSupport()
-    {
-        if (_detectingSixel || _app.Driver is null) return;
-        _detectingSixel = true;
-        SixelProbe.Detect(_app, (support, cellPixels) =>
-        {
-            _sixelSupport = (support, cellPixels);
-            _activeAbout?.ShowImage(support, cellPixels);
-        });
+        view.Present(_sixelSupport);
     }
 
     private void CloseAbout(AboutView view)
