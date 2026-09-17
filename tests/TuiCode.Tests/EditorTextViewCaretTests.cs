@@ -351,7 +351,29 @@ public class EditorTextViewCaretTests
         Assert.Equal(["xb", "xb"], view.LineStrings);
     }
 
-    private static Caret Selected(int row, int start, int end) => new(new Point(end, row), new Point(start, row));
+    [Theory]
+    [InlineData(nameof(EditorTextView.SelectNextOccurrence))]
+    [InlineData(nameof(EditorTextView.SelectPreviousOccurrence))]
+    [InlineData(nameof(EditorTextView.SelectAllOccurrences))]
+    public void An_arrow_key_clears_occurrence_selections(string command)
+    {
+        var view = View("foo foo");
+        view.InsertionPoint = new Point(1, 0);
+        Action select = command switch
+        {
+            nameof(EditorTextView.SelectNextOccurrence) => view.SelectNextOccurrence,
+            nameof(EditorTextView.SelectPreviousOccurrence) => view.SelectPreviousOccurrence,
+            _ => view.SelectAllOccurrences,
+        };
+
+        select();
+        select();
+        view.NewKeyDownEvent(Key.CursorRight);
+
+        Assert.All(view.Carets, caret => Assert.Null(caret.Anchor));
+    }
+
+    private static Caret Selected(int row, int start, int end) => new(new Point(end, row), new Point(start, row), Extending: true);
 
     private static Caret At(int row, int column) => new(new Point(column, row));
 

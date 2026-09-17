@@ -22,7 +22,7 @@ internal sealed partial class EditorTextView
 
         var primary = PrimaryCaret;
         var matches = FindOccurrences(lines, primary);
-        var carets = matches.Select(m => new Caret(m.End, m.Start)).ToList();
+        var carets = matches.Select(m => new Caret(m.End, m.Start, Extending: true)).ToList();
         var index = carets.FindIndex(c => c.Start == primary.Start);
         if (index < 0) return;
         SetCarets([carets[index], .. carets.Where((_, i) => i != index)], reveal: false);
@@ -47,7 +47,7 @@ internal sealed partial class EditorTextView
         var (start, end) = forward
             ? unselected.FirstOrDefault(m => !Caret.Before(m.Start, primary.End), unselected[0])
             : unselected.LastOrDefault(m => !Caret.Before(primary.Start, m.End), unselected[^1]);
-        SetCarets([new Caret(end, start), .. carets]);
+        SetCarets([new Caret(end, start, Extending: true), .. carets]);
     }
 
     // Selects the word or whitespace run at every caret without a selection. False if the primary caret has none.
@@ -58,7 +58,7 @@ internal sealed partial class EditorTextView
 
         _wholeOccurrence = TextBetween(run.Start, run.End);
         SetCarets([.. carets.Select(caret =>
-            caret.Anchor is null && Occurrences.RunAt(lines, caret.Position) is { } r ? new Caret(r.End, r.Start) : caret)]);
+            caret.Anchor is null && Occurrences.RunAt(lines, caret.Position) is { } r ? new Caret(r.End, r.Start, Extending: true) : caret)]);
         return true;
     }
 
