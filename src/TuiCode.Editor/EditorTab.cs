@@ -71,7 +71,9 @@ public sealed class EditorTab : FrameView
         _textView.ContentsChanged += (_, _) => OnEdited();
         // Point is (X=column, Y=row). Re-expose in (row, column) order to match the rest of the editor API.
         _textView.UnwrappedCursorPositionChanged += (_, point) =>
-            CursorMoved?.Invoke(this, (point.Y, point.X));
+        {
+            if (!_textView.IsVisitingCarets) CursorMoved?.Invoke(this, (point.Y, point.X));
+        };
         Add(_gutter, _textView);
 
         UpdateTitle();
@@ -128,6 +130,7 @@ public sealed class EditorTab : FrameView
     {
         row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
         col = Math.Clamp(col, 0, _textView.GetLine(row).Count);
+        _textView.RemoveSecondaryCarets();
         _textView.InsertionPoint = new System.Drawing.Point(col, row);
     }
 
@@ -142,6 +145,13 @@ public sealed class EditorTab : FrameView
     public void MoveLines(LineDirection direction) => _textView.MoveLines(direction);
 
     public void DuplicateLines(LineDirection direction) => _textView.DuplicateLines(direction);
+
+    public bool HasSecondaryCursors => _textView.HasSecondaryCarets;
+
+    /// <summary>Add a cursor on the line above or below every cursor.</summary>
+    public void AddCursor(LineDirection direction) => _textView.AddCaret(direction);
+
+    public void RemoveSecondaryCursors() => _textView.RemoveSecondaryCarets();
 
     /// <summary>
     /// Start of the selection, or the cursor when nothing is selected — with the column in UTF-16 chars,
@@ -200,6 +210,7 @@ public sealed class EditorTab : FrameView
     {
         var start = ToCellColumn(match.Row, match.Column);
         var end = ToCellColumn(match.Row, match.End);
+        _textView.RemoveSecondaryCarets();
         _textView.InsertionPoint = new System.Drawing.Point(start, match.Row);
         // Row before column: the column setter clamps against the selection-start row's line.
         _textView.SelectionStartRow = match.Row;
@@ -213,12 +224,15 @@ public sealed class EditorTab : FrameView
         _textView.SetNeedsDraw();
     }
 
-    /// <summary>Replace the text covered by <paramref name="match"/>; goes through TextView editing so it's undoable.</summary>
+    /// <summary>Replace the text covered by <paramref name="match"/>, as one undo step.</summary>
     public void Replace(TextMatch match, string replacement)
     {
         Select(match);
-        if (match.Length > 0) _textView.DeleteCharLeft();
-        if (replacement.Length > 0) _textView.InsertText(replacement);
+        _textView.EditAtPrimary(() =>
+        {
+            if (match.Length > 0) _textView.DeleteCharLeft();
+            if (replacement.Length > 0) _textView.InsertText(replacement);
+        });
         _textView.IsSelecting = false;
     }
 
@@ -318,11 +332,17 @@ public sealed class EditorTab : FrameView
 /// TextView that paints syntax colours (#21) and find-in-file match highlights (#33), raises
 /// <see cref="TextView.ContentsChanged"/> only for edits that change the text, and keeps the content-width cache across edits.
 /// </summary>
-internal sealed class EditorTextView : TextView
+internal sealed partial class EditorTextView : TextView
 {
-    // TG 2.1.0 raises ContentsChanged for these on some paths only, and on some no-op paths too.
-    private static readonly Command[] UnreliablyReportedEdits =
+    private static readonly Command[] KillCommands =
         [Command.CutToEndOfLine, Command.CutToStartOfLine, Command.KillWordLeft, Command.KillWordRight];
+
+    // Run with ContentsChanged held and raised once if the text changed, since TG 2.1.0 raises it unreliably for these.
+    private static readonly HashSet<Command> EditCommands =
+    [
+        .. KillCommands, Command.NewLine, Command.DeleteCharLeft, Command.DeleteCharRight,
+        Command.NextTabStop, Command.PreviousTabStop, Command.Paste, Command.Cut, Command.DeleteAll,
+    ];
 
     private bool _holdContentsChanged;
 
@@ -358,6 +378,8 @@ internal sealed class EditorTextView : TextView
     public override void OnContentsChanged()
     {
         if (_holdContentsChanged) return;
+        // Records edits that don't come through a key, such as from TG's context menu.
+        if (!_recordedEdit) RecordPending(Carets);
         var model = ModelField.GetValue(this)!;
         var maxWidth = MaxWidthAfterEdit(model);
         base.OnContentsChanged();
@@ -368,100 +390,27 @@ internal sealed class EditorTextView : TextView
     {
         if (base.OnKeyDown(key)) return true;
         if (!KeyBindings.TryGet(key, out var binding)) return false;
+        if (HasSecondaryCarets) return InvokeAtCarets(binding);
+        if (!binding.Commands.Any(EditCommands.Contains)) return false;
 
-        var unreliable = binding.Commands.Any(UnreliablyReportedEdits.Contains);
-        if (!unreliable && !IsNoOpDelete(binding.Commands)) return false;
-
-        var before = unreliable ? Text : null;
-        _holdContentsChanged = true;
-        try
-        {
-            InvokeCommands(binding.Commands, binding);
-        }
-        finally
-        {
-            _holdContentsChanged = false;
-        }
-        if (unreliable && Text != before) OnContentsChanged();
+        EditAtPrimary(() => InvokeEditCommands(binding.Commands, binding));
         // Already invoked: returning false would let TG invoke the bound commands a second time.
         return true;
     }
 
-    // TG 2.1.0 raises ContentsChanged for these even with nothing to delete. Position-only, so it's cheap per keystroke.
-    private bool IsNoOpDelete(Command[] commands) =>
-        commands switch
+    // TG 2.1.0's kill commands ignore a selection and then throw reading it, so delete the selection instead, as VS Code does.
+    private void InvokeEditCommands(Command[] commands, Terminal.Gui.Input.KeyBinding binding)
+    {
+        if (IsSelecting && commands.Any(KillCommands.Contains))
         {
-            [Command.DeleteCharLeft or Command.DeleteCharRight] when IsSelecting =>
-                SelectionStartRow == CurrentRow && SelectionStartColumn == CurrentColumn,
-            [Command.DeleteCharLeft] => CurrentRow == 0 && CurrentColumn == 0,
-            [Command.DeleteCharRight] => CurrentRow == Lines - 1 && CurrentColumn == GetLine(CurrentRow).Count,
-            _ => false,
-        };
-
-    /// <summary>Swap the lines under the cursor or selection with the line beyond them, as one undo step.</summary>
-    public void MoveLines(LineDirection direction)
-    {
-        var (first, last) = SelectedRows();
-        var up = direction == LineDirection.Up;
-        if (ReadOnly || (up ? first == 0 : last == Lines - 1)) return;
-
-        var top = up ? first - 1 : first;
-        var before = CopyRows(top, up ? last : last + 1);
-        List<List<Cell>> after = up ? [.. before[1..], before[0]] : [before[^1], .. before[..^1]];
-        var model = ModelField.GetValue(this)!;
-        var history = HistoryField.GetValue(this)!;
-        // TG undoes an Original + Attribute pair as one multi-line replacement starting at the point's row.
-        var point = new System.Drawing.Point(CurrentColumn, top);
-        AddHistory(history, before, point, TextEditingLineStatus.Original);
-        for (var i = 0; i < after.Count; i++)
-            ReplaceLine(model, top + i, after[i]);
-        AddHistory(history, CopyRows(top, top + after.Count - 1), point, TextEditingLineStatus.Attribute);
-
-        ShiftRows(up ? -1 : 1);
-        OnContentsChanged();
-    }
-
-    /// <summary>Copy the lines under the cursor or selection above or below themselves, as one undo step.</summary>
-    public void DuplicateLines(LineDirection direction)
-    {
-        if (ReadOnly) return;
-        var (first, last) = SelectedRows();
-        var copies = CopyRows(first, last);
-        var model = ModelField.GetValue(this)!;
-        var history = HistoryField.GetValue(this)!;
-        // Recorded the way TG records a multi-line paste at the start of a line.
-        var point = new System.Drawing.Point(CurrentColumn, first);
-        AddHistory(history, CopyRows(first, first), point, TextEditingLineStatus.Original);
-        for (var i = 0; i < copies.Count; i++)
-            AddLine(model, first + i, copies[i]);
-        AddHistory(history, CopyRows(first, last + 1), point, TextEditingLineStatus.Added);
-
-        if (direction == LineDirection.Down) ShiftRows(copies.Count);
-        AddHistory(history, CopyRows(first, first), InsertionPoint, TextEditingLineStatus.Replaced);
-        OnContentsChanged();
-    }
-
-    // A selection ending at the start of a line doesn't include that line.
-    private (int First, int Last) SelectedRows()
-    {
-        if (!IsSelecting) return (CurrentRow, CurrentRow);
-        var (first, last, lastColumn) = (SelectionStartRow, SelectionStartColumn).CompareTo((CurrentRow, CurrentColumn)) <= 0
-            ? (SelectionStartRow, CurrentRow, CurrentColumn)
-            : (CurrentRow, SelectionStartRow, SelectionStartColumn);
-        return (first, lastColumn == 0 && last > first ? last - 1 : last);
-    }
-
-    private List<List<Cell>> CopyRows(int first, int last) =>
-        [.. Enumerable.Range(first, last - first + 1).Select(row => new List<Cell>(GetLine(row)))];
-
-    private void ShiftRows(int rows)
-    {
-        var (selecting, anchorRow, anchorColumn) = (IsSelecting, SelectionStartRow, SelectionStartColumn);
-        InsertionPoint = new System.Drawing.Point(CurrentColumn, CurrentRow + rows);
-        if (!selecting) return;
-        // Row before column: the column setter clamps against the selection-start row's line.
-        SelectionStartRow = anchorRow + rows;
-        SelectionStartColumn = anchorColumn;
+            if (SelectionStartRow != CurrentRow || SelectionStartColumn != CurrentColumn)
+            {
+                DeleteCharLeft();
+                return;
+            }
+            IsSelecting = false;
+        }
+        InvokeCommands(commands, binding);
     }
 
     // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
@@ -470,6 +419,7 @@ internal sealed class EditorTextView : TextView
         _editable = GetAttributeForRole(VisualRole.Editable);
         _highlight = GetAttributeForRole(VisualRole.Highlight);
         (_selectionStart, _selectionEnd) = SelectionBounds();
+        PrepareCaretSelections();
         PrepareSyntax();
         SetAttributeForRole(Enabled ? VisualRole.Editable : VisualRole.Disabled);
 
@@ -478,6 +428,7 @@ internal sealed class EditorTextView : TextView
         var row = 0;
         for (var idxRow = Viewport.Y; idxRow < Lines && row < bottom; idxRow++, row++)
             DrawRow(GetLine(idxRow), idxRow, row, right);
+        DrawSecondaryCarets();
 
         if (row < bottom)
         {
@@ -532,7 +483,7 @@ internal sealed class EditorTextView : TextView
                 chars += text.Length;
             }
 
-            if (IsSelecting && InSelection(idxCol, idxRow))
+            if (InSelection(idxCol, idxRow))
                 OnDrawSelectionColor(line, idxCol, idxRow);
             else if (idxCol == CurrentColumn && idxRow == CurrentRow && !IsSelecting && !Used && HasFocus)
                 OnDrawUsedColor(line, idxCol, idxRow);
@@ -603,7 +554,10 @@ internal sealed class EditorTextView : TextView
     private bool InSelection(int col, int row)
     {
         var q = Encode(row, col);
-        return q >= _selectionStart && q < _selectionEnd;
+        if (IsSelecting && q >= _selectionStart && q < _selectionEnd) return true;
+        foreach (var (start, end) in _caretSelections)
+            if (q >= start && q < end) return true;
+        return false;
     }
 
     private static long Encode(int row, int col) => ((long)(uint)row << 32) | (uint)col;
@@ -682,20 +636,8 @@ internal sealed class EditorTextView : TextView
 
     private const string TextModelType = "Terminal.Gui.Views.TextModel, Terminal.Gui";
 
-    private const string HistoryTextType = "Terminal.Gui.Views.HistoryText, Terminal.Gui";
-
     // UnsafeAccessorType can't return a ref to an inaccessible type.
     private static readonly FieldInfo ModelField = typeof(TextView).GetField("_model", BindingFlags.NonPublic | BindingFlags.Instance)!;
-    private static readonly FieldInfo HistoryField = typeof(TextView).GetField("_historyText", BindingFlags.NonPublic | BindingFlags.Instance)!;
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "Add")]
-    private static extern void AddHistory([UnsafeAccessorType(HistoryTextType)] object history, List<List<Cell>> lines, System.Drawing.Point point, TextEditingLineStatus status);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "AddLine")]
-    private static extern void AddLine([UnsafeAccessorType(TextModelType)] object model, int row, List<Cell> cells);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "ReplaceLine")]
-    private static extern void ReplaceLine([UnsafeAccessorType(TextModelType)] object model, int row, List<Cell> cells);
 
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_cachedMaxWidth")]
     private static extern ref int CachedMaxWidth([UnsafeAccessorType(TextModelType)] object model);

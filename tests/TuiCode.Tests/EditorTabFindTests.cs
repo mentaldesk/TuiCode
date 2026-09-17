@@ -51,6 +51,20 @@ public class EditorTabFindTests
     }
 
     [Fact]
+    public void Replace_is_one_edit_and_one_undo_step()
+    {
+        using var tab = OpenTab("one two one\n");
+        var changes = 0;
+        tab.ContentChanged += (_, _) => changes++;
+
+        tab.Replace(new TextMatch(0, 8, 3), "three");
+        Assert.Equal(1, changes);
+        tab.SubViews.OfType<EditorTextView>().Single().Undo();
+
+        Assert.Equal("one two one", tab.Lines[0]);
+    }
+
+    [Fact]
     public void Replace_with_empty_text_deletes_the_match()
     {
         using var tab = OpenTab("keep drop keep");

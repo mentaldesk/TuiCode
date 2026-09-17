@@ -66,6 +66,9 @@ public static class CommandIds
     public const string MoveLinesDown = "editor.action.moveLinesDown";
     public const string DuplicateLinesUp = "editor.action.duplicateLinesUp";
     public const string DuplicateLinesDown = "editor.action.duplicateLinesDown";
+    public const string AddCursorAbove = "editor.action.addCursorAbove";
+    public const string AddCursorBelow = "editor.action.addCursorBelow";
+    public const string RemoveSecondaryCursors = "editor.action.removeSecondaryCursors";
 
     public const string ChangeGrammar = "workbench.action.changeGrammar";
     public const string GrammarPickerConfirm = "grammarPicker.action.confirm";

@@ -9,6 +9,8 @@ public enum LineChange
     Deleted,
 }
 
+internal readonly record struct Hunk(int OldStart, int OldCount, int NewStart, int NewCount);
+
 /// <summary>Classifies each current line against a baseline (the last-saved buffer) for the gutter (#23).</summary>
 public static class LineDiff
 {
@@ -18,48 +20,59 @@ public static class LineDiff
     public static LineChange[] Compute(IReadOnlyList<string> baseline, IReadOnlyList<string> current)
     {
         var changes = new LineChange[current.Count];
+        foreach (var hunk in Hunks(baseline, current))
+            MarkHunk(changes, hunk.NewStart, hunk.NewCount, hunk.OldCount);
+        return changes;
+    }
+
+    /// <summary>The runs of lines that differ, in order; each replaces OldCount lines of a at OldStart with NewCount lines of b at NewStart.</summary>
+    internal static List<Hunk> Hunks(IReadOnlyList<string> a, IReadOnlyList<string> b)
+    {
+        var hunks = new List<Hunk>();
 
         var prefix = 0;
-        while (prefix < baseline.Count && prefix < current.Count && baseline[prefix] == current[prefix])
+        while (prefix < a.Count && prefix < b.Count && a[prefix] == b[prefix])
             prefix++;
         var suffix = 0;
-        while (suffix < baseline.Count - prefix && suffix < current.Count - prefix
-               && baseline[baseline.Count - 1 - suffix] == current[current.Count - 1 - suffix])
+        while (suffix < a.Count - prefix && suffix < b.Count - prefix
+               && a[a.Count - 1 - suffix] == b[b.Count - 1 - suffix])
             suffix++;
 
-        var oldLength = baseline.Count - prefix - suffix;
-        var newLength = current.Count - prefix - suffix;
-        if (oldLength == 0 && newLength == 0) return changes;
+        var oldLength = a.Count - prefix - suffix;
+        var newLength = b.Count - prefix - suffix;
+        if (oldLength == 0 && newLength == 0) return hunks;
 
-        if (EditScript(baseline, current, prefix, oldLength, newLength) is not { } edits)
+        if (EditScript(a, b, prefix, oldLength, newLength) is not { } edits)
         {
-            MarkHunk(changes, prefix, newLength, oldLength);
-            return changes;
+            hunks.Add(new Hunk(prefix, oldLength, prefix, newLength));
+            return hunks;
         }
 
-        var row = prefix;
-        var hunkStart = row;
-        int inserted = 0, deleted = 0;
+        int oldRow = prefix, newRow = prefix, inserted = 0, deleted = 0;
         foreach (var edit in edits)
         {
             switch (edit)
             {
                 case Edit.Equal:
-                    MarkHunk(changes, hunkStart, inserted, deleted);
+                    if (inserted > 0 || deleted > 0)
+                        hunks.Add(new Hunk(oldRow - deleted, deleted, newRow - inserted, inserted));
                     inserted = deleted = 0;
-                    hunkStart = ++row;
+                    oldRow++;
+                    newRow++;
                     break;
                 case Edit.Insert:
                     inserted++;
-                    row++;
+                    newRow++;
                     break;
                 case Edit.Delete:
                     deleted++;
+                    oldRow++;
                     break;
             }
         }
-        MarkHunk(changes, hunkStart, inserted, deleted);
-        return changes;
+        if (inserted > 0 || deleted > 0)
+            hunks.Add(new Hunk(oldRow - deleted, deleted, newRow - inserted, inserted));
+        return hunks;
     }
 
     private static void MarkHunk(LineChange[] changes, int start, int inserted, int deleted)
