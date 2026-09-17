@@ -139,6 +139,10 @@ public sealed class EditorTab : FrameView
 
     public string SelectedText => _textView.SelectedText;
 
+    public void MoveLines(LineDirection direction) => _textView.MoveLines(direction);
+
+    public void DuplicateLines(LineDirection direction) => _textView.DuplicateLines(direction);
+
     /// <summary>
     /// Start of the selection, or the cursor when nothing is selected — with the column in UTF-16 chars,
     /// comparable with <see cref="TextMatch"/> positions.
@@ -394,6 +398,72 @@ internal sealed class EditorTextView : TextView
             _ => false,
         };
 
+    /// <summary>Swap the lines under the cursor or selection with the line beyond them, as one undo step.</summary>
+    public void MoveLines(LineDirection direction)
+    {
+        var (first, last) = SelectedRows();
+        var up = direction == LineDirection.Up;
+        if (ReadOnly || (up ? first == 0 : last == Lines - 1)) return;
+
+        var top = up ? first - 1 : first;
+        var before = CopyRows(top, up ? last : last + 1);
+        List<List<Cell>> after = up ? [.. before[1..], before[0]] : [before[^1], .. before[..^1]];
+        var model = ModelField.GetValue(this)!;
+        var history = HistoryField.GetValue(this)!;
+        // TG undoes an Original + Attribute pair as one multi-line replacement starting at the point's row.
+        var point = new System.Drawing.Point(CurrentColumn, top);
+        AddHistory(history, before, point, TextEditingLineStatus.Original);
+        for (var i = 0; i < after.Count; i++)
+            ReplaceLine(model, top + i, after[i]);
+        AddHistory(history, CopyRows(top, top + after.Count - 1), point, TextEditingLineStatus.Attribute);
+
+        ShiftRows(up ? -1 : 1);
+        OnContentsChanged();
+    }
+
+    /// <summary>Copy the lines under the cursor or selection above or below themselves, as one undo step.</summary>
+    public void DuplicateLines(LineDirection direction)
+    {
+        if (ReadOnly) return;
+        var (first, last) = SelectedRows();
+        var copies = CopyRows(first, last);
+        var model = ModelField.GetValue(this)!;
+        var history = HistoryField.GetValue(this)!;
+        // Recorded the way TG records a multi-line paste at the start of a line.
+        var point = new System.Drawing.Point(CurrentColumn, first);
+        AddHistory(history, CopyRows(first, first), point, TextEditingLineStatus.Original);
+        for (var i = 0; i < copies.Count; i++)
+            AddLine(model, first + i, copies[i]);
+        AddHistory(history, CopyRows(first, last + 1), point, TextEditingLineStatus.Added);
+
+        if (direction == LineDirection.Down) ShiftRows(copies.Count);
+        AddHistory(history, CopyRows(first, first), InsertionPoint, TextEditingLineStatus.Replaced);
+        OnContentsChanged();
+    }
+
+    // A selection ending at the start of a line doesn't include that line.
+    private (int First, int Last) SelectedRows()
+    {
+        if (!IsSelecting) return (CurrentRow, CurrentRow);
+        var (first, last, lastColumn) = (SelectionStartRow, SelectionStartColumn).CompareTo((CurrentRow, CurrentColumn)) <= 0
+            ? (SelectionStartRow, CurrentRow, CurrentColumn)
+            : (CurrentRow, SelectionStartRow, SelectionStartColumn);
+        return (first, lastColumn == 0 && last > first ? last - 1 : last);
+    }
+
+    private List<List<Cell>> CopyRows(int first, int last) =>
+        [.. Enumerable.Range(first, last - first + 1).Select(row => new List<Cell>(GetLine(row)))];
+
+    private void ShiftRows(int rows)
+    {
+        var (selecting, anchorRow, anchorColumn) = (IsSelecting, SelectionStartRow, SelectionStartColumn);
+        InsertionPoint = new System.Drawing.Point(CurrentColumn, CurrentRow + rows);
+        if (!selecting) return;
+        // Row before column: the column setter clamps against the selection-start row's line.
+        SelectionStartRow = anchorRow + rows;
+        SelectionStartColumn = anchorColumn;
+    }
+
     // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
     protected override bool OnDrawingContent(DrawContext? context)
     {
@@ -612,8 +682,20 @@ internal sealed class EditorTextView : TextView
 
     private const string TextModelType = "Terminal.Gui.Views.TextModel, Terminal.Gui";
 
+    private const string HistoryTextType = "Terminal.Gui.Views.HistoryText, Terminal.Gui";
+
     // UnsafeAccessorType can't return a ref to an inaccessible type.
     private static readonly FieldInfo ModelField = typeof(TextView).GetField("_model", BindingFlags.NonPublic | BindingFlags.Instance)!;
+    private static readonly FieldInfo HistoryField = typeof(TextView).GetField("_historyText", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "Add")]
+    private static extern void AddHistory([UnsafeAccessorType(HistoryTextType)] object history, List<List<Cell>> lines, System.Drawing.Point point, TextEditingLineStatus status);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "AddLine")]
+    private static extern void AddLine([UnsafeAccessorType(TextModelType)] object model, int row, List<Cell> cells);
+
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "ReplaceLine")]
+    private static extern void ReplaceLine([UnsafeAccessorType(TextModelType)] object model, int row, List<Cell> cells);
 
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_cachedMaxWidth")]
     private static extern ref int CachedMaxWidth([UnsafeAccessorType(TextModelType)] object model);
