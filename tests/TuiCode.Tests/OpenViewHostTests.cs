@@ -35,7 +35,7 @@ public class OpenViewHostTests : StaticConfigurationTest
 
         Assert.Equal("ov", view!.Filter);
         Assert.Empty(workbench.SubViews.OfType<OpenView>());
-        Assert.Equal("/work/src/Navigation/OpenView.cs", workbench.Editor.Group.ActiveTab?.File.FullName);
+        Assert.Equal(_fs.FileInfo.New("/work/src/Navigation/OpenView.cs").FullName, workbench.Editor.Group.ActiveTab?.File.FullName);
     }
 
     [Fact]
