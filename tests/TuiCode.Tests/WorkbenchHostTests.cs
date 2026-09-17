@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.About;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
@@ -982,6 +983,28 @@ public class WorkbenchHostTests : StaticConfigurationTest
             host.App.Iteration -= OnSecond;
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
+    }
+
+    [Fact]
+    public async Task Typing_tui_in_the_mnemonic_overlay_opens_the_about_dialog_and_Esc_closes_it()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+
+        bool AboutShown() => workbench.SubViews.OfType<AboutView>().Any();
+        var wasShown = false;
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Space.WithCtrl),
+            () => host.App.InjectKey(Key.T),
+            () => host.App.InjectKey(Key.U),
+            () => host.App.InjectKey(Key.I),
+            () => { wasShown = AboutShown(); host.App.InjectKey(Key.Esc); },
+            () => !AboutShown());
+
+        Assert.True(wasShown, "AboutView did not appear after typing tui");
     }
 
     private static Workbench.Workbench BuildWorkbench() =>

@@ -52,6 +52,7 @@ public class CommandMnemonicsTests
         Assert.Equal("se", CommandMnemonics.For(CommandIds.ShowExplorer));
         Assert.Equal("fg", CommandMnemonics.For(CommandIds.FindGlobally));
         Assert.Equal("rg", CommandMnemonics.For(CommandIds.ReplaceGlobally));
+        Assert.Equal("tui", CommandMnemonics.For(CommandIds.ShowAbout));
     }
 
     [Fact]

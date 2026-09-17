@@ -33,6 +33,7 @@ public static class CommandMnemonics
             [CommandIds.ShowHelp] = "?",
             [CommandIds.SaveActiveEditor] = "sf",
             [CommandIds.ShowDiagnostics] = "sd",
+            [CommandIds.ShowAbout] = "tui",
             [CommandIds.New] = "nf",
             [CommandIds.NextEditor] = "tn",
             [CommandIds.PreviousEditor] = "tp",

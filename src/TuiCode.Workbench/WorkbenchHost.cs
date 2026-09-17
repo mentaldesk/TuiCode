@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Terminal.Gui.Drivers;
+using System.Reflection;
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
+using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Find;
@@ -54,6 +56,7 @@ public sealed class WorkbenchHost : IDisposable
     private GoToLineView? _activeGoToLine;
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
+    private AboutView? _activeAbout;
     private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
     private NewPathView? _activeNewPath;
@@ -218,6 +221,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack);
         _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
+        _commands.Register(CommandIds.ShowAbout, "About TuiCode", OpenAbout);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)));
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)));
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)));
@@ -731,6 +735,36 @@ public sealed class WorkbenchHost : IDisposable
         view.Dispose();
         _activeHelp = null;
         FocusEditorBody();
+    }
+
+    private void OpenAbout()
+    {
+        if (_activeAbout is not null) return;
+
+        var view = new AboutView(AppVersion());
+        view.Closed += (_, _) => CloseAbout(view);
+        _activeAbout = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.SetFocus();
+    }
+
+    private void CloseAbout(AboutView view)
+    {
+        if (!ReferenceEquals(_activeAbout, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeAbout = null;
+        FocusEditorBody();
+    }
+
+    private static string AppVersion()
+    {
+        var version = Assembly.GetEntryAssembly()?
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+        return version?.Split('+')[0] ?? "unknown";
     }
 
     private void OpenDiagnostics()
