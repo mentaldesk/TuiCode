@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.About;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
@@ -982,6 +983,49 @@ public class WorkbenchHostTests : StaticConfigurationTest
             host.App.Iteration -= OnSecond;
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
+    }
+
+    [Fact]
+    public async Task Typing_tui_in_the_mnemonic_overlay_opens_the_about_dialog_and_Esc_closes_it()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+
+        bool AboutShown() => workbench.SubViews.OfType<AboutView>().Any();
+        var wasShown = false;
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Space.WithCtrl),
+            () => host.App.InjectKey(Key.T),
+            () => host.App.InjectKey(Key.U),
+            () => host.App.InjectKey(Key.I),
+            () => { wasShown = AboutShown(); host.App.InjectKey(Key.Esc); },
+            () => !AboutShown());
+
+        Assert.True(wasShown, "AboutView did not appear after typing tui");
+    }
+
+    [Fact]
+    public async Task About_dialog_shows_a_spinner_until_sixel_detection_finishes_then_the_ascii_art_if_unsupported()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+
+        AboutView About() => workbench.SubViews.OfType<AboutView>().Single();
+        bool loading = false, ascii = false;
+
+        await HostSteps.Run(host,
+            () => { commands.TryExecute(CommandIds.ShowAbout); },
+            () => { About().Present(null); loading = About().IsLoading; },
+            () => { About().Present(SixelSupport.Unsupported); ascii = About().ShowsAsciiArt; },
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.True(loading, "AboutView didn't show the spinner while detection was pending");
+        Assert.True(ascii, "AboutView didn't fall back to the ASCII art");
     }
 
     private static Workbench.Workbench BuildWorkbench() =>
