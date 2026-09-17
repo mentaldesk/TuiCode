@@ -70,6 +70,9 @@ public static class CommandIds
     public const string DuplicateLinesDown = "editor.action.duplicateLinesDown";
     public const string AddCursorAbove = "editor.action.addCursorAbove";
     public const string AddCursorBelow = "editor.action.addCursorBelow";
+    public const string SelectNextOccurrence = "editor.action.addSelectionToNextFindMatch";
+    public const string SelectPreviousOccurrence = "editor.action.addSelectionToPreviousFindMatch";
+    public const string SelectAllOccurrences = "editor.action.selectHighlights";
     public const string RemoveSecondaryCursors = "editor.action.removeSecondaryCursors";
 
     public const string ChangeGrammar = "workbench.action.changeGrammar";

@@ -56,6 +56,9 @@ public static class CommandMnemonics
             [CommandIds.DuplicateLinesDown] = "dd",
             [CommandIds.AddCursorAbove] = "aa",
             [CommandIds.AddCursorBelow] = "ab",
+            [CommandIds.SelectNextOccurrence] = "sno",
+            [CommandIds.SelectPreviousOccurrence] = "spo",
+            [CommandIds.SelectAllOccurrences] = "sao",
             // Find is the `f` family and replace the `r` family: a trailing `f` is the active file (as in
             // sf/cf/of/nf) and `g` is global. ff/fg share `f` with focus (fs/fe/ft/f1-9) without prefix clashes.
             [CommandIds.FindInFile] = "ff",
