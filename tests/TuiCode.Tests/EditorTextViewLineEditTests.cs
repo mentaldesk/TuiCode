@@ -229,3 +229,37 @@ public class LineEditHostTests : StaticConfigurationTest
         Assert.Equal(1, tab.CursorRow);
     }
 }
+
+// Boots a TG Application — serialised (#77).
+public class MultipleCursorHostTests : StaticConfigurationTest
+{
+    [Fact]
+    public async Task Ctrl_Alt_Down_adds_cursors_that_type_together_and_Esc_removes_them()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("one\ntwo\nthree"));
+        using var workbench = new TuiCode.Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());
+        var commands = new CommandService();
+        using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+        EditorTab? tab = null;
+        var hadCursors = false;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                tab = workbench.Editor.Open(fs.FileInfo.New("/work/a.txt"));
+                tab.MoveCursor(0, 0);
+            },
+            () => host.App.InjectKey(Key.CursorDown.WithCtrl.WithAlt),
+            () => host.App.InjectKey(Key.CursorDown.WithCtrl.WithAlt),
+            () => host.App.InjectKey(Key.X),
+            () => { hadCursors = tab!.HasSecondaryCursors; },
+            () => host.App.InjectKey(Key.Esc),
+            () => host.App.InjectKey(Key.Y));
+
+        Assert.True(hadCursors);
+        Assert.Equal(["xyone", "xtwo", "xthree"], tab!.Lines);
+        Assert.False(tab.HasSecondaryCursors);
+    }
+}
