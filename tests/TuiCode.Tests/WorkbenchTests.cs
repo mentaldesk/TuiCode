@@ -93,8 +93,8 @@ public class WorkbenchTests
         using var workbench = Build(store);
         workbench.OpenFolder(fs.DirectoryInfo.New("/work"));
 
-        Assert.Equal(["/work/a.txt", "/work/b.txt", "/work/c.txt"], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
-        Assert.Equal("/work/b.txt", workbench.Editor.Group.ActiveTab!.File.FullName);
+        Assert.Equal([Full("/work/a.txt"), Full("/work/b.txt"), Full("/work/c.txt")], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
+        Assert.Equal(Full("/work/b.txt"), workbench.Editor.Group.ActiveTab!.File.FullName);
     }
 
     [Fact]
@@ -103,13 +103,13 @@ public class WorkbenchTests
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("a"));
         var store = new WorkspaceStateStore(fs, "/state.json");
-        store.Save("/work", new WorkspaceState(["/work/gone.txt", "/work/a.txt"], "/work/gone.txt"));
+        store.Save(Full("/work"), new WorkspaceState([Full("/work/gone.txt"), Full("/work/a.txt")], Full("/work/gone.txt")));
         using var workbench = Build(store);
 
         workbench.OpenFolder(fs.DirectoryInfo.New("/work"));
 
-        Assert.Equal(["/work/a.txt"], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
-        Assert.Equal(["/work/a.txt"], store.Load("/work")!.Files);
+        Assert.Equal([Full("/work/a.txt")], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
+        Assert.Equal([Full("/work/a.txt")], store.Load(Full("/work"))!.Files);
     }
 
     [Fact]
@@ -126,8 +126,8 @@ public class WorkbenchTests
 
         workbench.Editor.CloseActive();
 
-        Assert.Equal(["/work/a.txt"], store.Load("/work")!.Files);
-        Assert.Equal("/work/a.txt", store.Load("/work")!.ActiveFile);
+        Assert.Equal([Full("/work/a.txt")], store.Load(Full("/work"))!.Files);
+        Assert.Equal(Full("/work/a.txt"), store.Load(Full("/work"))!.ActiveFile);
     }
 
     [Fact]
@@ -145,8 +145,8 @@ public class WorkbenchTests
         workbench.OpenFile(fs.FileInfo.New("/two/b.txt"));
         workbench.OpenFolder(fs.DirectoryInfo.New("/one"));
 
-        Assert.Equal(["/one/a.txt"], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
-        Assert.Equal(["/two/b.txt"], store.Load("/two")!.Files);
+        Assert.Equal([Full("/one/a.txt")], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
+        Assert.Equal([Full("/two/b.txt")], store.Load(Full("/two"))!.Files);
     }
 
     [Fact]
@@ -161,8 +161,10 @@ public class WorkbenchTests
 
         workbench.Dispose();
 
-        Assert.Equal(["/work/a.txt"], store.Load("/work")!.Files);
+        Assert.Equal([Full("/work/a.txt")], store.Load(Full("/work"))!.Files);
     }
+
+    private static string Full(string path) => new MockFileSystem().Path.GetFullPath(path);
 
     private static Workbench.Workbench Build(WorkspaceStateStore? store = null) =>
         new(
