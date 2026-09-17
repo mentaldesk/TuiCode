@@ -223,6 +223,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.ToggleGutter, "Toggle gutter", ToggleGutter);
+        _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
@@ -352,6 +353,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Alt+Shift+CursorDown", CommandIds.DuplicateLinesDown);
         keybindings.Bind("Ctrl+Alt+CursorUp", CommandIds.AddCursorAbove);
         keybindings.Bind("Ctrl+Alt+CursorDown", CommandIds.AddCursorBelow);
+        keybindings.Bind("Ctrl+T C", CommandIds.ToggleColumnSelect);
         keybindings.Bind("Ctrl+F", CommandIds.FindInFile);
         keybindings.Bind("Ctrl+H", CommandIds.ReplaceInFile);
         // Ctrl+Shift+letter needs a terminal that doesn't collapse it onto Ctrl+letter (see AGENTS.md).
@@ -382,6 +384,15 @@ public sealed class WorkbenchHost : IDisposable
     {
         var group = _workbench.Editor.Group;
         group.GutterVisible = !group.GutterVisible;
+    }
+
+    // Unlike the gutter this mode is invisible until a selection is swept, so flag it in the status bar.
+    private void ToggleColumnSelect()
+    {
+        var group = _workbench.Editor.Group;
+        group.ColumnSelect = !group.ColumnSelect;
+        _workbench.StatusBar.SetMode(group.ColumnSelect ? "Column select" : null);
+        FocusEditorBody();
     }
 
     // A sidebar item's shortcut (#33) shows its tab — revealing the sidebar if needed — and, pressed

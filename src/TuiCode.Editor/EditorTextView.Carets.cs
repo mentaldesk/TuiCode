@@ -51,6 +51,8 @@ internal sealed partial class EditorTextView
 
     public void RemoveSecondaryCarets()
     {
+        // Going back to one caret ends any column-select box too (#114).
+        _box = null;
         if (_secondary.Count == 0) return;
         _secondary.Clear();
         SetNeedsDraw();

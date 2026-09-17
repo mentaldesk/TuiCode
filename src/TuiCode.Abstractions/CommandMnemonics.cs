@@ -43,6 +43,7 @@ public static class CommandMnemonics
             [CommandIds.ChangeGrammar] = "cg",
             [CommandIds.ToggleSidebar] = "ts",
             [CommandIds.ToggleGutter] = "tg",
+            [CommandIds.ToggleColumnSelect] = "tc",
             [CommandIds.FocusSidebar] = "fs",
             [CommandIds.FocusEditorBody] = "fe",
             [CommandIds.FocusEditorTabStrip] = "ft",

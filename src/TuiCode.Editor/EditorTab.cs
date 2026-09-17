@@ -148,6 +148,13 @@ public sealed class EditorTab : FrameView
 
     public bool HasSecondaryCursors => _textView.HasSecondaryCarets;
 
+    /// <summary>Whether extending the selection sweeps a rectangle rather than a run of text (#114).</summary>
+    public bool ColumnSelect
+    {
+        get => _textView.ColumnSelect;
+        set => _textView.ColumnSelect = value;
+    }
+
     /// <summary>Add a cursor on the line above or below every cursor.</summary>
     public void AddCursor(LineDirection direction) => _textView.AddCaret(direction);
 
@@ -395,7 +402,11 @@ internal sealed partial class EditorTextView : TextView
     protected override bool OnKeyDown(Key key)
     {
         if (base.OnKeyDown(key)) return true;
-        if (!KeyBindings.TryGet(key, out var binding)) return false;
+        var bound = KeyBindings.TryGet(key, out var binding);
+        if (ColumnSelect && bound && ExtendColumnSelection(binding)) return true;
+        // Anything else ends the box, so the next extend starts one from where the caret now is.
+        _box = null;
+        if (!bound) return false;
         if (HasSecondaryCarets) return InvokeAtCarets(binding);
         if (!binding.Commands.Any(EditCommands.Contains)) return false;
 

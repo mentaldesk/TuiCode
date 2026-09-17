@@ -8,6 +8,7 @@ public sealed class StatusBarPart : View
     private string? _chord;
     private string? _hint;
     private string? _grammar;
+    private string? _mode;
 
     public StatusBarPart()
     {
@@ -47,6 +48,13 @@ public sealed class StatusBarPart : View
         UpdateLabel();
     }
 
+    /// <summary>An editor mode to flag after the grammar, e.g. column select; null hides it.</summary>
+    public void SetMode(string? mode)
+    {
+        _mode = mode;
+        UpdateLabel();
+    }
+
     internal string DisplayedText => _label.Text;
 
     public void SetChord(string? chord)
@@ -56,7 +64,7 @@ public sealed class StatusBarPart : View
     }
 
     private void UpdateLabel() =>
-        _label.Text = _chord is not null ? $"{_chord}…"
-            : _grammar is null ? _hint ?? _message
-            : $"{_hint ?? _message}  •  {_grammar}";
+        _label.Text = _chord is not null
+            ? $"{_chord}…"
+            : string.Join("  •  ", new[] { _hint ?? _message, _grammar, _mode }.Where(part => part is not null));
 }
