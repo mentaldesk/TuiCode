@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
+using TuiCode.Editor;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Find;
@@ -217,6 +218,10 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack);
         _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
+        _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)));
+        _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)));
+        _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)));
+        _commands.Register(CommandIds.DuplicateLinesDown, "Duplicate line down", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Down)));
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
@@ -317,6 +322,10 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
+        keybindings.Bind("Alt+CursorUp", CommandIds.MoveLinesUp);
+        keybindings.Bind("Alt+CursorDown", CommandIds.MoveLinesDown);
+        keybindings.Bind("Alt+Shift+CursorUp", CommandIds.DuplicateLinesUp);
+        keybindings.Bind("Alt+Shift+CursorDown", CommandIds.DuplicateLinesDown);
         keybindings.Bind("Ctrl+F", CommandIds.FindInFile);
         keybindings.Bind("Ctrl+H", CommandIds.ReplaceInFile);
         // Ctrl+Shift+letter needs a terminal that doesn't collapse it onto Ctrl+letter (see AGENTS.md).
@@ -391,6 +400,13 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Group.ActiveTab is { } tab)
             tab.FocusContent();
         _focusLevel = FocusLevel.EditorBody;
+    }
+
+    private void EditActiveTab(Action<EditorTab> edit)
+    {
+        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
+        edit(tab);
+        FocusEditorBody();
     }
 
     private void FocusEditorTabStrip()
