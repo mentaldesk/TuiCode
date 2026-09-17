@@ -153,6 +153,12 @@ public sealed class EditorTab : FrameView
 
     public void RemoveSecondaryCursors() => _textView.RemoveSecondaryCarets();
 
+    public void SelectNextOccurrence() => _textView.SelectNextOccurrence();
+
+    public void SelectPreviousOccurrence() => _textView.SelectPreviousOccurrence();
+
+    public void SelectAllOccurrences() => _textView.SelectAllOccurrences();
+
     /// <summary>
     /// Start of the selection, or the cursor when nothing is selected — with the column in UTF-16 chars,
     /// comparable with <see cref="TextMatch"/> positions.

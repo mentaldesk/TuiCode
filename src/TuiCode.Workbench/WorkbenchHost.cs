@@ -230,6 +230,10 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.DuplicateLinesDown, "Duplicate line down", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Down)));
         _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Up)));
         _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Down)));
+        // No default keys (#113).
+        _commands.Register(CommandIds.SelectNextOccurrence, "Select next occurrence", () => EditActiveTab(tab => tab.SelectNextOccurrence()));
+        _commands.Register(CommandIds.SelectPreviousOccurrence, "Select previous occurrence", () => EditActiveTab(tab => tab.SelectPreviousOccurrence()));
+        _commands.Register(CommandIds.SelectAllOccurrences, "Select all occurrences", () => EditActiveTab(tab => tab.SelectAllOccurrences()));
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {

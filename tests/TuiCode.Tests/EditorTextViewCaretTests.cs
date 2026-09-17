@@ -277,6 +277,82 @@ public class EditorTextViewCaretTests
         Assert.Equal([At(1, 0), At(4, 0)], view.Carets);
     }
 
+    [Fact]
+    public void SelectNextOccurrence_from_a_bare_caret_selects_the_word_at_every_caret()
+    {
+        var view = View("foo bar", "baz foo");
+        view.SetCarets([At(0, 1), At(1, 5)]);
+
+        view.SelectNextOccurrence();
+
+        Assert.Equal([Selected(0, 0, 3), Selected(1, 4, 7)], view.Carets);
+    }
+
+    [Fact]
+    public void SelectNextOccurrence_adds_whole_word_matches_and_wraps()
+    {
+        var view = View("foo foobar", "foo", "foo");
+        view.InsertionPoint = new Point(0, 1);
+
+        view.SelectNextOccurrence();
+        view.SelectNextOccurrence();
+        Assert.Equal([Selected(2, 0, 3), Selected(1, 0, 3)], view.Carets);
+
+        view.SelectNextOccurrence();
+        Assert.Equal([Selected(0, 0, 3), Selected(1, 0, 3), Selected(2, 0, 3)], view.Carets);
+
+        view.SelectNextOccurrence();
+        Assert.Equal(3, view.Carets.Length);
+    }
+
+    [Fact]
+    public void SelectNextOccurrence_of_a_selection_matches_inside_words()
+    {
+        var view = View("foo foobar");
+        view.SetCarets([Selected(0, 0, 3)]);
+
+        view.SelectNextOccurrence();
+
+        Assert.Equal([Selected(0, 4, 7), Selected(0, 0, 3)], view.Carets);
+    }
+
+    [Fact]
+    public void SelectPreviousOccurrence_adds_the_match_before_and_wraps()
+    {
+        var view = View("ab", "ab", "ab");
+        view.SetCarets([Selected(1, 0, 2)]);
+
+        view.SelectPreviousOccurrence();
+        view.SelectPreviousOccurrence();
+
+        Assert.Equal([Selected(2, 0, 2), Selected(0, 0, 2), Selected(1, 0, 2)], view.Carets);
+    }
+
+    [Fact]
+    public void SelectAllOccurrences_selects_every_identical_whitespace_run_and_keeps_the_primary()
+    {
+        var view = View("a  b", "  c    d", "e  ");
+        view.InsertionPoint = new Point(1, 1);
+
+        view.SelectAllOccurrences();
+
+        Assert.Equal([Selected(1, 0, 2), Selected(0, 1, 3), Selected(2, 1, 3)], view.Carets);
+    }
+
+    [Fact]
+    public void SelectAllOccurrences_of_a_multi_line_selection_then_typing_replaces_them()
+    {
+        var view = View("a", "b", "a", "b");
+        view.SetCarets([new Caret(new Point(0, 1), new Point(0, 0))]);
+
+        view.SelectAllOccurrences();
+        view.NewKeyDownEvent(Key.X);
+
+        Assert.Equal(["xb", "xb"], view.LineStrings);
+    }
+
+    private static Caret Selected(int row, int start, int end) => new(new Point(end, row), new Point(start, row));
+
     private static Caret At(int row, int column) => new(new Point(column, row));
 
     private static Mouse AltClick(int column, int row) =>
