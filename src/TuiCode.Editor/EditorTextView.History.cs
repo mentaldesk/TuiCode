@@ -19,6 +19,8 @@ internal sealed partial class EditorTextView
     {
         AddCommand(Command.Undo, () => Undo());
         AddCommand(Command.Redo, () => Redo());
+        AddCommand(Command.NextTabStop, () => Indent());
+        AddCommand(Command.PreviousTabStop, () => Outdent());
     }
 
     public override string Text

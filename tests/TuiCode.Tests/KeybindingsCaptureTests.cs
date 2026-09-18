@@ -49,7 +49,7 @@ public class KeybindingsCaptureTests : StaticConfigurationTest
             switch (step)
             {
                 case 1: Inject("Ctrl+,"); break;
-                case 2: Inject("CursorDown"); break;       // select Keyboard Shortcuts
+                case 2: Inject("CursorDown"); Inject("CursorDown"); break; // select Keyboard Shortcuts
                 case 3: Inject("CursorRight"); break;       // drill into picker
                 case 4:
                     picker = workbench.SubViews.OfType<SettingsView>().FirstOrDefault()?
@@ -91,7 +91,7 @@ public class KeybindingsCaptureTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => host.App.InjectKey(new Key(',').WithCtrl),
-            () => host.App.InjectKey(Key.CursorDown),
+            () => { host.App.InjectKey(Key.CursorDown); host.App.InjectKey(Key.CursorDown); },
             () => host.App.InjectKey(Key.CursorRight),
             () =>
             {

@@ -25,6 +25,7 @@ public sealed class SettingsView : Window
     private readonly View _separator;
 
     private readonly ThemePickerView _themePicker;
+    private readonly EditorSettingsView _editorSettings;
     private readonly KeybindingsPickerView _keybindingsPicker;
     private readonly GrammarAssociationsView _grammarAssociations;
     private readonly TerminalIntegrationPickerView _terminalIntegrationPicker;
@@ -104,6 +105,15 @@ public sealed class SettingsView : Window
             Visible = true
         };
 
+        _editorSettings = new EditorSettingsView(settings.Editor)
+        {
+            X = Pos.Right(_separator) + 1,
+            Y = 1,
+            Width = Dim.Fill(2),
+            Height = Dim.Fill(2),
+            Visible = false
+        };
+
         _keybindingsPicker = new KeybindingsPickerView(workbenchCommands, workbenchKeybindings, scopes)
         {
             X = Pos.Right(_separator) + 1,
@@ -134,6 +144,7 @@ public sealed class SettingsView : Window
         _panels =
         [
             ("Theme", _themePicker, _themePicker.FocusContent),
+            ("Editor", _editorSettings, _editorSettings.FocusContent),
             ("Keyboard Shortcuts", _keybindingsPicker, _keybindingsPicker.FocusContent),
             ("Grammars", _grammarAssociations, _grammarAssociations.FocusContent),
             ("Terminal Integration", _terminalIntegrationPicker, _terminalIntegrationPicker.FocusContent),
@@ -225,6 +236,7 @@ public sealed class SettingsView : Window
         _settings.SetGrammarAssociations(_grammarAssociations.CurrentAssociations);
         if (_icons is not null)
             _settings.FileIcons = _icons.Setting;
+        _settings.Editor = _editorSettings.Current;
         _settings.Save();
         _applyGrammarAssociations?.Invoke();
         Closed?.Invoke(this, EventArgs.Empty);

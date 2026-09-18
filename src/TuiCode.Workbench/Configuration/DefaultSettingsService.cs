@@ -46,7 +46,7 @@ public sealed class DefaultSettingsService : ISettingsService
         _settingsPath = _fs.Path.Combine(dir, "TuiCode.settings.json");
         _keybindings = LoadKeybindings();
         _grammarAssociations = LoadGrammarAssociations();
-        FileIcons = LoadFileIcons();
+        LoadSettings();
     }
 
     public string Theme
@@ -85,6 +85,8 @@ public sealed class DefaultSettingsService : ISettingsService
 
     public FileIconStyle FileIcons { get; set; }
 
+    public EditorSettings Editor { get; set; } = EditorSettings.Default;
+
     public void Load()
     {
         ConfigurationManager.RuntimeConfig = BundledThemes.Config;
@@ -106,6 +108,15 @@ public sealed class DefaultSettingsService : ISettingsService
         var root = new JsonObject();
         if (FileIcons != FileIconStyle.Auto)
             root["FileIcons"] = FileIcons.ToString();
+        var defaults = EditorSettings.Default;
+        if (Editor.IndentSize != defaults.IndentSize)
+            root["IndentSize"] = Editor.IndentSize;
+        if (Editor.InsertSpaces != defaults.InsertSpaces)
+            root["InsertSpaces"] = Editor.InsertSpaces;
+        if (Editor.LineEnding != defaults.LineEnding)
+            root["LineEnding"] = Editor.LineEnding.ToString();
+        if (Editor.InsertFinalNewline != defaults.InsertFinalNewline)
+            root["InsertFinalNewline"] = Editor.InsertFinalNewline;
 
         if (root.Count == 0)
         {
@@ -168,23 +179,40 @@ public sealed class DefaultSettingsService : ISettingsService
         _fs.File.WriteAllText(_themeConfigPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    private FileIconStyle LoadFileIcons()
+    // Each value falls back to its default on its own, so one bad hand edit doesn't lose the rest.
+    private void LoadSettings()
     {
-        if (!_fs.File.Exists(_settingsPath)) return FileIconStyle.Auto;
-        try
+        JsonObject? root = null;
+        if (_fs.File.Exists(_settingsPath))
         {
-            return (JsonNode.Parse(_fs.File.ReadAllText(_settingsPath)) as JsonObject)?["FileIcons"] is JsonValue v
-                && v.TryGetValue<string>(out var s)
-                && Enum.TryParse<FileIconStyle>(s, ignoreCase: true, out var style)
-                && Enum.IsDefined(style)
-                    ? style
-                    : FileIconStyle.Auto;
+            try
+            {
+                root = JsonNode.Parse(_fs.File.ReadAllText(_settingsPath)) as JsonObject;
+            }
+            catch (JsonException)
+            {
+            }
         }
-        catch (JsonException)
+
+        var defaults = EditorSettings.Default;
+        FileIcons = ReadEnum(root, "FileIcons", FileIconStyle.Auto);
+        Editor = new EditorSettings
         {
-            return FileIconStyle.Auto;
-        }
+            IndentSize = Read(root, "IndentSize", defaults.IndentSize) is var size
+                && size is >= EditorSettings.MinIndentSize and <= EditorSettings.MaxIndentSize
+                    ? size
+                    : defaults.IndentSize,
+            InsertSpaces = Read(root, "InsertSpaces", defaults.InsertSpaces),
+            LineEnding = ReadEnum(root, "LineEnding", defaults.LineEnding),
+            InsertFinalNewline = Read(root, "InsertFinalNewline", defaults.InsertFinalNewline),
+        };
     }
+
+    private static T Read<T>(JsonObject? root, string key, T fallback) =>
+        root?[key] is JsonValue v && v.TryGetValue<T>(out var value) ? value : fallback;
+
+    private static T ReadEnum<T>(JsonObject? root, string key, T fallback) where T : struct, Enum =>
+        Enum.TryParse<T>(Read(root, key, ""), ignoreCase: true, out var value) && Enum.IsDefined(value) ? value : fallback;
 
     private void SaveKeybindings()
     {
