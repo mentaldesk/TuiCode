@@ -1,3 +1,4 @@
+using TuiCode.Abstractions;
 using TuiCode.Syntax;
 
 namespace TuiCode.Editor;
@@ -71,10 +72,35 @@ public sealed class EditorGroup : Tabs
 
     public void CloseActive()
     {
-        if (ActiveTab is not { } tab) return;
+        if (ActiveTab is { } tab) Close(tab);
+    }
 
+    public IEnumerable<EditorTab> TabsUnder(string path) =>
+        _byPath.Values.Where(t => FilePaths.IsSameOrUnder(t.File.FullName, path));
+
+    /// <summary>Discards unsaved changes.</summary>
+    public void CloseUnder(string path)
+    {
+        foreach (var tab in TabsUnder(path).ToList())
+            Close(tab);
+    }
+
+    public void Relocate(string from, string to)
+    {
+        var tabs = _byPath.Values.ToList();
+        foreach (var tab in tabs.Where(t => FilePaths.IsSameOrUnder(t.File.FullName, from)))
+            tab.Relocate(tab.File.FileSystem.FileInfo.New(FilePaths.Rebase(tab.File.FullName, from, to)));
+
+        _byPath.Clear();
+        foreach (var tab in tabs)
+            _byPath[tab.File.FullName] = tab;
+    }
+
+    private void Close(EditorTab tab)
+    {
         var tabs = _byPath.Values.ToList();
         var index = tabs.IndexOf(tab);
+        var wasActive = ReferenceEquals(tab, ActiveTab);
 
         _byPath.Remove(tab.File.FullName);
         Remove(tab);
@@ -85,6 +111,7 @@ public sealed class EditorGroup : Tabs
             ClearValue();
             return;
         }
+        if (!wasActive) return;
 
         var nextIndex = Math.Min(index, _byPath.Count - 1);
         Value = tabs.Where(t => t != tab).ElementAt(nextIndex);

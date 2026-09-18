@@ -61,8 +61,13 @@ public static class CommandIds
     public const string OpenConfirm = "open.action.confirm";
     public const string OpenCancel = "open.action.cancel";
 
-    public const string NewPathConfirm = "newPath.action.confirm";
-    public const string NewPathCancel = "newPath.action.cancel";
+    public const string PathPromptConfirm = "pathPrompt.action.confirm";
+    public const string PathPromptCancel = "pathPrompt.action.cancel";
+    public const string PathPromptCycleSelection = "pathPrompt.action.cycleSelection";
+
+    public const string DeleteFile = "explorer.action.deleteFile";
+    public const string RenameFile = "explorer.action.renameFile";
+    public const string ConfirmCancel = "confirm.action.cancel";
 
     public const string MoveLinesUp = "editor.action.moveLinesUp";
     public const string MoveLinesDown = "editor.action.moveLinesDown";

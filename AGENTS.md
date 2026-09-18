@@ -93,6 +93,14 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - **Sidebar tabs.** `SidebarPart` is now `Tabs` (Explorer / Find). Per #33, a sidebar item's shortcut (`Ctrl+Shift+E`, `Ctrl+Shift+F`) shows its tab and, pressed again while that tab is already showing, hides the sidebar — decided on visibility, not focus, like `ts` (#85). `fs` focuses whichever tab is active; `Ctrl+Shift+H` always shows (never hides).
 - Keys needing a capable terminal: `Shift+Enter` (previous match) and the `Ctrl+Shift+letter` chords (collapse onto `Ctrl+letter` in Terminal.app — the `fg`/`rg`/`se` mnemonics always work).
 
+## Explorer file operations (#101)
+
+- Delete (`Delete` / `df`) is **permanent** for now — moving to the Trash is #128 — behind a `ConfirmView` whose Cancel button has focus, so a stray Enter never deletes. It closes every tab at or under the path, unsaved changes included (the prompt counts them).
+- Rename and move are one command (`F2` / `mf`): `PathPromptView` (shared with New File or Folder) pre-filled with the workspace-relative path and the name's stem selected; F2 cycles stem → name → extension. TextField selects all on focus, so `FocusInput` re-applies the selection. Tabs follow via `EditorGroup.Relocate` (re-keys `_byPath`, re-infers grammar unless pinned); `CursorLocationHistory.Rebase`/`Forget` keep history in step. Path arithmetic is `FilePaths` (Abstractions, ordinal) and `EntryPaths` (Explorer).
+- A case-only rename skips our "already exists" check — on a case-insensitive file system the target *is* the source — and relies on .NET's `File.Move`/`Directory.Move`, which handle it on macOS and Windows.
+- `Delete` and `F2` live in a `LayeredScope` that only engages while the explorer has focus (Delete must still delete text in the editor), so they aren't in the keybindings picker. The target is the explorer selection when the explorer has focus, else the active tab's file. Launchers close — focusing the editor — before running their command, so `ActionView`/`MnemonicView` capture whether the explorer had focus when they opened (`RunLaunched`).
+- `FileSystemTreeBuilder` hands out fresh `IFileSystemInfo`s on every read and TG's `Branch.Refresh` matches children by reference, so a plain `RefreshObject` collapses every folder under the refreshed node. `FileExplorerView.RefreshKeepingExpansion` records expanded paths and re-expands them.
+
 ## Editor gutter (#23)
 
 - `EditorGutter` is a sibling view left of the `EditorTextView` inside `EditorTab`, not an adornment. It draws rows from `_text.Viewport.Y` (we never enable WordWrap, so viewport rows are model rows) and redraws on the text view's `ViewportChanged` / `UnwrappedCursorPositionChanged`. Anything that moves the text view (e.g. `SetHeader`) must move the gutter's `Y` too.

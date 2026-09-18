@@ -581,7 +581,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(modalAppeared, "NewPathView did not mount after Ctrl+N");
+        Assert.True(modalAppeared, "PathPromptView did not mount after Ctrl+N");
 
         void OnFirst(object? s, EventArgs<IApplication?> e)
         {
@@ -593,7 +593,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnSecond(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnSecond;
-            modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Navigation.NewPathView>().Any();
+            modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Files.PathPromptView>().Any();
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
     }
@@ -619,7 +619,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(modalWasGone, "NewPathView was still mounted after Esc");
+        Assert.True(modalWasGone, "PathPromptView was still mounted after Esc");
 
         void OnFirst(object? s, EventArgs<IApplication?> e)
         {
@@ -638,7 +638,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnThird(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnThird;
-            modalWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Navigation.NewPathView>().Any();
+            modalWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Files.PathPromptView>().Any();
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
     }

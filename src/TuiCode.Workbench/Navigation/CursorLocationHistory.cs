@@ -1,3 +1,5 @@
+using TuiCode.Abstractions;
+
 namespace TuiCode.Workbench.Navigation;
 
 /// <summary>A recorded cursor position: a file plus a zero-based row/column inside it.</summary>
@@ -85,6 +87,28 @@ public sealed class CursorLocationHistory
     {
         if (!CanGoForward) return null;
         return _entries[++_current];
+    }
+
+    public void Rebase(string from, string to)
+    {
+        for (var i = 0; i < _entries.Count; i++)
+            _entries[i] = _entries[i] with { FilePath = FilePaths.Rebase(_entries[i].FilePath, from, to) };
+    }
+
+    /// <summary>Drop entries at or under a deleted path, staying at the nearest earlier entry.</summary>
+    public void Forget(string path)
+    {
+        var kept = 0;
+        var current = -1;
+        for (var i = 0; i < _entries.Count; i++)
+        {
+            if (FilePaths.IsSameOrUnder(_entries[i].FilePath, path)) continue;
+            _entries[kept] = _entries[i];
+            if (i <= _current) current = kept;
+            kept++;
+        }
+        _entries.RemoveRange(kept, _entries.Count - kept);
+        _current = current < 0 && kept > 0 ? 0 : current;
     }
 
     private void TrimToCapacity()

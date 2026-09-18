@@ -18,7 +18,7 @@ public sealed class EditorTab : FrameView
     private readonly string _eol;
     private bool _dirty;
 
-    public IFileInfo File { get; }
+    public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
 
     public string Content
@@ -117,6 +117,14 @@ public sealed class EditorTab : FrameView
         if (_syntax is null || Equals(Grammar, grammar)) return;
         _textView.Syntax = _syntax.CreateCache(grammar);
         GrammarChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Follow a rename or move; the buffer is untouched.</summary>
+    internal void Relocate(IFileInfo file)
+    {
+        File = file;
+        UpdateTitle();
+        InferGrammar();
     }
 
     public bool FocusContent() => _textView.SetFocus();
