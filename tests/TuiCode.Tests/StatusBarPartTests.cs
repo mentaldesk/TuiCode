@@ -64,4 +64,31 @@ public class StatusBarPartTests
 
         Assert.Equal("Ctrl+G…", bar.DisplayedText);
     }
+
+    [Fact]
+    public void Position_shows_one_based_and_null_hides_it()
+    {
+        using var bar = new StatusBarPart();
+
+        bar.SetPosition((41, 6));
+        Assert.Equal("Ln 42, Col 7", bar.DisplayedPosition);
+
+        bar.SetPosition(null);
+        Assert.Equal("", bar.DisplayedPosition);
+    }
+
+    [Fact]
+    public void Position_is_right_aligned_and_a_long_message_stops_short_of_it()
+    {
+        using var bar = new StatusBarPart { Width = 40 };
+        bar.SetMessage(new string('x', 60));
+        bar.SetPosition((0, 0));
+
+        bar.Layout(new System.Drawing.Size(40, 1));
+
+        var position = bar.SubViews.Single(v => v.Text == "Ln 1, Col 1");
+        var message = bar.SubViews.Single(v => v != position);
+        Assert.Equal(40 - 1, position.Frame.Right);
+        Assert.Equal(position.Frame.X - 2, message.Frame.Right);
+    }
 }

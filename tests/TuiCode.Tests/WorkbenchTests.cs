@@ -164,6 +164,56 @@ public class WorkbenchTests
         Assert.Equal([Full("/work/a.txt")], store.Load(Full("/work"))!.Files);
     }
 
+    [Fact]
+    public void Status_bar_shows_the_active_cursor_position()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("one\ntwo\nthree"));
+        using var workbench = Build();
+        workbench.OpenFile(fs.FileInfo.New("/work/a.txt"));
+        workbench.ShowCursorPosition();
+        Assert.Equal("Ln 1, Col 1", workbench.StatusBar.DisplayedPosition);
+
+        workbench.Editor.Group.ActiveTab!.MoveCursor(2, 3);
+        workbench.ShowCursorPosition();
+
+        Assert.Equal("Ln 3, Col 4", workbench.StatusBar.DisplayedPosition);
+    }
+
+    [Fact]
+    public void Switching_tabs_shows_that_tabs_cursor_position()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        using var workbench = Build();
+        workbench.OpenFile(fs.FileInfo.New("/work/a.txt"));
+        workbench.Editor.Group.ActiveTab!.MoveCursor(1, 2);
+
+        workbench.OpenFile(fs.FileInfo.New("/work/b.txt"));
+        workbench.ShowCursorPosition();
+        Assert.Equal("Ln 1, Col 1", workbench.StatusBar.DisplayedPosition);
+
+        workbench.OpenFile(fs.FileInfo.New("/work/a.txt"));
+        workbench.ShowCursorPosition();
+        Assert.Equal("Ln 2, Col 3", workbench.StatusBar.DisplayedPosition);
+    }
+
+    [Fact]
+    public void Closing_the_last_tab_hides_the_position()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        using var workbench = Build();
+        workbench.OpenFile(fs.FileInfo.New("/work/a.txt"));
+        workbench.ShowCursorPosition();
+
+        workbench.Editor.CloseActive();
+        workbench.ShowCursorPosition();
+
+        Assert.Equal("", workbench.StatusBar.DisplayedPosition);
+    }
+
     private static string Full(string path) => new MockFileSystem().Path.GetFullPath(path);
 
     private static Workbench.Workbench Build(WorkspaceStateStore? store = null) =>

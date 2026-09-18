@@ -130,6 +130,8 @@ public sealed class WorkbenchHost : IDisposable
         _find.HintChanged += (_, hint) => _workbench.StatusBar.SetHint(hint);
 
         _app.Keyboard.KeyDown += OnAppKeyDown;
+        // TG raises no event for most programmatic cursor moves (find, multi-caret, line moves), so poll.
+        _app.Iteration += OnIteration;
         _keybindings.ChordChanged += OnChordChanged;
 
         // Feed the cursor-location history (#35): within-file moves come from CursorMoved,
@@ -615,6 +617,8 @@ public sealed class WorkbenchHost : IDisposable
         FocusEditorBody();
     }
 
+    private void OnIteration(object? sender, EventArgs<IApplication?> e) => _workbench.ShowCursorPosition();
+
     private void OnEditorCursorMoved(object? sender, (IFileInfo File, int Row, int Column) e)
     {
         if (_suppressHistory) return;
@@ -881,6 +885,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_disposed) return;
         _disposed = true;
         _app.Keyboard.KeyDown -= OnAppKeyDown;
+        _app.Iteration -= OnIteration;
         _keybindings.ChordChanged -= OnChordChanged;
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
