@@ -7,9 +7,9 @@ however good it is on its own.
 
 Developers who live in the terminal — locally or over SSH — and want the editor model they
 already know from VS Code and JetBrains (an explorer, tabs, a command palette, rebindable
-shortcuts, themes) without leaving it. They're keyboard-first, they switch between languages and
-repos, and they'd rather not learn a modal editor or maintain a config file to get a comfortable
-setup.
+shortcuts, themes). They're keyboard-first, they switch between languages and repos, they 
+spend most of they're time navigating code bases, reviewing PRs and trying to understand
+existing/new code.
 
 The first of those users is the maintainer. TuiCode should be good enough to be their daily
 driver, and every rough edge they hit in daily use is a legitimate priority.
@@ -21,7 +21,7 @@ driver, and every rough edge they hit in daily use is a legitimate priority.
 - **Familiar.** Borrow the concepts that make VS Code pleasant: commands, keybindings, themes,
   tabs, an explorer, find across files. A VS Code user should be productive in minutes.
 - **Discoverable.** Every action is a command you can find (F1), trigger with a mnemonic, and
-  rebind in Settings. Nothing important is hidden behind a config file or a man page.
+  rebind in Settings. No secret hand shakes.
 - **Keyboard-first, mouse-tolerant.** Anything you can do, you can do from the keyboard. The mouse
   works where the terminal lets it.
 - **Honest about the terminal.** Terminals eat keys and differ in what they support. Where we
@@ -29,23 +29,19 @@ driver, and every rough edge they hit in daily use is a legitimate priority.
   integrations) or tell them plainly what won't work.
 - **Fast and self-contained.** One native (AOT) binary, quick to start, comfortable over a slow
   SSH link. Installed through the package manager the user already has.
-- **Built in-tree.** Features ship with the editor, behind the parts + services architecture, not
-  through an extension host.
+- **Batteries included.** Where possible, features ship with the editor, behind the parts + services
+  architecture, not through an extension host.
 
 ## What it deliberately isn't
 
-- **Not a modal editor.** Vim and Helix exist. A vim mode may come later as an opt-in; it won't
-  shape the defaults.
-- **Not a GUI, a web view, or Electron.** If it can't be drawn in a terminal cell grid, it doesn't
-  belong.
-- **Not configured by hand-editing JSON.** Settings exist only if there's a picker for them. The
-  files are storage, not the interface.
+- **Not a modal editor.** Vim and Helix exist already.
+- **Not a GUI, a web view, or Electron.** If it can't be drawn in a terminal, it doesn't fit.
 - **Not a terminal multiplexer or shell.** The user's terminal already has tabs and splits;
-  TuiCode doesn't need to reimplement them (see #64).
+  TuiCode doesn't need to reimplement them.
 - **Not an extension marketplace.** Plugins, if they come, are for what we genuinely can't ship
   in-tree (see *Code intelligence* below), not a platform in their own right.
-- **Not chasing Terminal.app.** It strips the modifiers a keyboard-driven editor needs. We
-  recommend a better terminal instead.
+- **Not chasing Terminal.app.** Some terminals strip the modifiers a keyboard-driven editor needs. We
+  recommend a better terminal instead of trying to support these atrocities.
 
 ## Next themes
 
