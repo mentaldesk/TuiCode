@@ -9,6 +9,7 @@ using TuiCode.Icons;
 using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Diagnostics;
+using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Help;
@@ -47,6 +48,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly FileIcons? _icons;
     private readonly TerminalCursors _terminalCursors;
     private readonly LayeredScope _cursorScope;
+    private readonly LayeredScope _explorerScope;
     private readonly LayeredScope _searchScope;
     private readonly FindController _find;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
@@ -64,7 +66,9 @@ public sealed class WorkbenchHost : IDisposable
     private SixelSupport? _sixelSupport;
     private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
-    private NewPathView? _activeNewPath;
+    private PathPromptView? _activePathPrompt;
+    private ConfirmView? _activeConfirm;
+    private bool _launchedFromExplorer;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -121,12 +125,14 @@ public sealed class WorkbenchHost : IDisposable
         ApplyTokenTheme();
         _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
 
-        // Workbench scope is the bottom of the input stack; never popped. Esc for removing extra cursors and
-        // the search sidebar's keys layer above it for the app's lifetime (each only engages while its view
-        // has focus); the find bar layers above those while it's open.
+        // Workbench scope is the bottom of the input stack; never popped. Esc for removing extra cursors,
+        // the explorer's file keys and the search sidebar's keys layer above it for the app's lifetime (each
+        // only engages while its view has focus); the find bar layers above those while it's open.
         _scopes.Push(_keybindings);
         _cursorScope = CreateCursorScope();
         _scopes.Push(_cursorScope);
+        _explorerScope = CreateExplorerScope();
+        _scopes.Push(_explorerScope);
         _searchScope = CreateSearchScope();
         _scopes.Push(_searchScope);
         _find = new FindController(_workbench.Editor.Group, _scopes, _searchScope);
@@ -233,6 +239,9 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
+        // Delete and F2 are bound only while the explorer has focus (CreateExplorerScope).
+        _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete);
+        _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
@@ -287,6 +296,9 @@ public sealed class WorkbenchHost : IDisposable
                 _logger.LogWarning(ex, "Ignored invalid keybinding override {Chord} for command {Command}", KeyChord.Display(o.Keys), o.Command);
             }
         }
+
+        var help = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ShowHelp);
+        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
     }
 
     /// <summary>
@@ -432,6 +444,20 @@ public sealed class WorkbenchHost : IDisposable
         return new LayeredScope(bindings, _keybindings, _ => group.ActiveTab is { HasSecondaryCursors: true, ContentHasFocus: true });
     }
 
+    private LayeredScope CreateExplorerScope()
+    {
+        var explorer = _workbench.Sidebar.Explorer;
+        var commands = new CommandService();
+        var bindings = new KeybindingService(commands);
+        commands.Register(CommandIds.DeleteFile, ConfirmDelete);
+        commands.Register(CommandIds.RenameFile, OpenRename);
+        bindings.Bind("Delete", CommandIds.DeleteFile);
+        // Our iTerm2 profile sends forward-delete as ^D (Iterm2Integration).
+        bindings.Bind("Ctrl+D", CommandIds.DeleteFile);
+        bindings.Bind("F2", CommandIds.RenameFile);
+        return new LayeredScope(bindings, _cursorScope, _ => explorer.HasFocus);
+    }
+
     private LayeredScope CreateSearchScope()
     {
         var search = _workbench.Sidebar.Search;
@@ -445,7 +471,7 @@ public sealed class WorkbenchHost : IDisposable
         bindings.Bind("Tab", CommandIds.SearchSwitchField);
         bindings.Bind("Shift+Tab", CommandIds.SearchSwitchField);
         bindings.Bind("Ctrl+Enter", CommandIds.SearchReplaceAll);
-        return new LayeredScope(bindings, _cursorScope, _ => search.InputsHaveFocus);
+        return new LayeredScope(bindings, _explorerScope, _ => search.InputsHaveFocus);
     }
 
     private void FocusEditorBody()
@@ -537,7 +563,8 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeActions is not null) return;
 
-        var view = new ActionView(_commands, _keybindings, commandId => _commands.TryExecute(commandId));
+        var fromExplorer = _workbench.Sidebar.Explorer.HasFocus;
+        var view = new ActionView(_commands, _keybindings, commandId => RunLaunched(commandId, fromExplorer));
         view.Closed += (_, _) => CloseActions(view);
         _activeActions = view;
         _workbench.Add(view);
@@ -555,6 +582,15 @@ public sealed class WorkbenchHost : IDisposable
         FocusEditorBody();
     }
 
+    // Launchers close, handing focus to the editor, before they run their command; remember whether the
+    // explorer had focus so file commands still act on its selection.
+    private void RunLaunched(string commandId, bool fromExplorer)
+    {
+        _launchedFromExplorer = fromExplorer;
+        try { _commands.TryExecute(commandId); }
+        finally { _launchedFromExplorer = false; }
+    }
+
     private void OpenMnemonics()
     {
         if (_activeMnemonics is not null) return;
@@ -567,7 +603,8 @@ public sealed class WorkbenchHost : IDisposable
             .Where(x => x.Mnemonic is not null)
             .Select(x => new MnemonicEntry(x.Command.Id, x.Mnemonic!, x.Command.Label));
 
-        var view = new MnemonicView(entries, commandId => _commands.TryExecute(commandId));
+        var fromExplorer = _workbench.Sidebar.Explorer.HasFocus;
+        var view = new MnemonicView(entries, commandId => RunLaunched(commandId, fromExplorer));
         view.Closed += (_, _) => CloseMnemonics(view);
         _activeMnemonics = view;
         _workbench.Add(view);
@@ -698,19 +735,20 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OpenNewPath()
     {
-        if (_activeNewPath is not null) return;
+        if (_activePathPrompt is not null) return;
         var explorer = _workbench.Sidebar.Explorer;
         // No workspace root means there's nowhere to create the entry.
         if (explorer.Root is null) return;
 
-        var view = new NewPathView(explorer.NewEntryPrefill());
-        view.Cancelled += (_, _) => CloseNewPath(view);
+        var view = new PathPromptView(
+            "New File or Folder", "Path (relative to root; end with / for a folder)", explorer.NewEntryPrefill());
+        view.Cancelled += (_, _) => ClosePathPrompt(view);
         view.Submitted += (_, relativePath) =>
         {
             try
             {
                 var created = explorer.Create(relativePath);
-                CloseNewPath(view);
+                ClosePathPrompt(view);
                 // A new file opens in the editor (VS Code behaviour); a new folder just gets
                 // selected in the explorer so the user can keep building it out.
                 if (created is IFileInfo file)
@@ -728,20 +766,125 @@ public sealed class WorkbenchHost : IDisposable
             }
         };
 
-        _activeNewPath = view;
+        ShowPathPrompt(view);
+    }
+
+    private void OpenRename()
+    {
+        if (_activePathPrompt is not null) return;
+        var fromExplorer = ExplorerIsContext;
+        if (FileCommandTarget(fromExplorer, "renamed") is not { } item) return;
+
+        var view = new PathPromptView("Move or Rename", "Path (relative to root)", _workbench.Sidebar.Explorer.RelativePath(item));
+        view.SelectName(item is IDirectoryInfo);
+        view.Cancelled += (_, _) =>
+        {
+            ClosePathPrompt(view);
+            if (fromExplorer) FocusSidebar();
+        };
+        view.Submitted += (_, relativePath) =>
+        {
+            try
+            {
+                var moved = _workbench.Move(item, relativePath);
+                _history.Rebase(item.FullName, moved.FullName);
+                ClosePathPrompt(view);
+                if (fromExplorer) FocusSidebar();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                view.ShowError(ex.Message);
+            }
+        };
+
+        ShowPathPrompt(view);
+    }
+
+    private void ShowPathPrompt(PathPromptView view)
+    {
+        _activePathPrompt = view;
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusInput();
     }
 
-    private void CloseNewPath(NewPathView view)
+    private void ClosePathPrompt(PathPromptView view)
     {
-        if (!ReferenceEquals(_activeNewPath, view)) return;
+        if (!ReferenceEquals(_activePathPrompt, view)) return;
         _scopes.Pop(view.Scope);
         _workbench.Remove(view);
         view.Dispose();
-        _activeNewPath = null;
+        _activePathPrompt = null;
         FocusEditorBody();
+    }
+
+    private void ConfirmDelete()
+    {
+        if (_activeConfirm is not null) return;
+        var fromExplorer = ExplorerIsContext;
+        if (FileCommandTarget(fromExplorer, "deleted") is not { } item) return;
+
+        var unsaved = _workbench.Editor.Group.TabsUnder(item.FullName).Count(t => t.IsDirty);
+        var message = string.Join('\n', new[]
+        {
+            item is IDirectoryInfo ? $"Permanently delete '{item.Name}' and its contents?" : $"Permanently delete '{item.Name}'?",
+            unsaved switch
+            {
+                0 => null,
+                1 => "1 open file has unsaved changes, which will be lost.",
+                _ => $"{unsaved} open files have unsaved changes, which will be lost.",
+            },
+            "This action is irreversible!",
+        }.OfType<string>());
+
+        var view = new ConfirmView("Delete", message, "Delete");
+        view.Cancelled += (_, _) =>
+        {
+            CloseConfirm(view);
+            if (fromExplorer) FocusSidebar();
+        };
+        view.Confirmed += (_, _) =>
+        {
+            CloseConfirm(view);
+            try
+            {
+                _workbench.Delete(item);
+                _history.Forget(item.FullName);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _workbench.StatusBar.SetMessage(ex.Message);
+            }
+            if (fromExplorer) FocusSidebar();
+        };
+
+        _activeConfirm = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusCancel();
+    }
+
+    private void CloseConfirm(ConfirmView view)
+    {
+        if (!ReferenceEquals(_activeConfirm, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeConfirm = null;
+        FocusEditorBody();
+    }
+
+    private bool ExplorerIsContext => _launchedFromExplorer || _workbench.Sidebar.Explorer.HasFocus;
+
+    // The explorer's selection when it has (or the launcher came from) focus, otherwise the active tab's file.
+    private IFileSystemInfo? FileCommandTarget(bool fromExplorer, string verb)
+    {
+        var explorer = _workbench.Sidebar.Explorer;
+        var item = fromExplorer ? explorer.SelectedObject : _workbench.Editor.Group.ActiveTab?.File;
+        if (item is null || explorer.Root is null) return null;
+        if (!explorer.IsRoot(item)) return item;
+        _workbench.StatusBar.SetMessage($"The workspace root can't be {verb}.");
+        return null;
     }
 
     // Show the sidebar and focus its active tab: the explorer tree, or the search query input.

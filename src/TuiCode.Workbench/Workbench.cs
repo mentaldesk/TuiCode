@@ -113,6 +113,30 @@ public sealed class Workbench : Window
         SaveWorkspaceState();
     }
 
+    /// <summary>Permanently delete <paramref name="item"/> and close its tabs, unsaved changes and all.</summary>
+    public void Delete(IFileSystemInfo item)
+    {
+        Sidebar.Explorer.Delete(item);
+        Editor.Group.CloseUnder(item.FullName);
+        Sidebar.Search.RunSearch();
+        StatusBar.SetMessage($"Deleted: {item.FullName}");
+        SaveWorkspaceState();
+    }
+
+    /// <summary>Rename or move <paramref name="item"/>; its tabs follow. Returns <paramref name="item"/> itself when the path doesn't change.</summary>
+    public IFileSystemInfo Move(IFileSystemInfo item, string relativePath)
+    {
+        var moved = Sidebar.Explorer.Move(item, relativePath);
+        if (ReferenceEquals(moved, item)) return item;
+
+        Editor.Group.Relocate(item.FullName, moved.FullName);
+        ShowActiveFile(Editor.Group.ActiveTab);
+        Sidebar.Search.RunSearch();
+        StatusBar.SetMessage($"Renamed: {moved.FullName}");
+        SaveWorkspaceState();
+        return moved;
+    }
+
     private void RestoreOpenFiles(IDirectoryInfo directory)
     {
         if (_workspaceState?.Load(directory.FullName) is not { } state) return;

@@ -137,4 +137,61 @@ public class CursorLocationHistoryTests
         Assert.Equal(Loc("a", 30), history.GoBack());
         Assert.False(history.CanGoBack);
     }
+
+    [Fact]
+    public void Rebase_rewrites_entries_under_a_moved_folder()
+    {
+        var history = new CursorLocationHistory();
+        history.Visit(Loc("/work/src/a.cs", 0));
+        history.Visit(Loc("/work/other.cs", 0));
+
+        history.Rebase("/work/src", "/work/code");
+
+        Assert.Equal(Loc("/work/code/a.cs", 0), history.GoBack());
+    }
+
+    [Fact]
+    public void Forget_drops_entries_under_a_deleted_path_and_keeps_the_rest_navigable()
+    {
+        var history = new CursorLocationHistory();
+        history.Visit(Loc("a", 0));
+        history.Visit(Loc("gone", 0));
+        history.Visit(Loc("b", 0));
+        history.Visit(Loc("gone", 5));
+        history.GoBack();
+
+        history.Forget("gone");
+
+        Assert.Equal(2, history.Count);
+        Assert.Equal(Loc("b", 0), history.Current);
+        Assert.Equal(Loc("a", 0), history.GoBack());
+        Assert.False(history.CanGoBack);
+    }
+
+    [Fact]
+    public void Forget_moves_back_to_the_nearest_earlier_entry_when_the_current_one_goes()
+    {
+        var history = new CursorLocationHistory();
+        history.Visit(Loc("a", 0));
+        history.Visit(Loc("gone", 0));
+        history.Visit(Loc("b", 0));
+        history.GoBack();
+
+        history.Forget("gone");
+
+        Assert.Equal(Loc("a", 0), history.Current);
+        Assert.Equal(Loc("b", 0), history.GoForward());
+    }
+
+    [Fact]
+    public void Forget_everything_empties_the_history()
+    {
+        var history = new CursorLocationHistory();
+        history.Visit(Loc("gone", 0));
+
+        history.Forget("gone");
+
+        Assert.Equal(0, history.Count);
+        Assert.Null(history.Current);
+    }
 }

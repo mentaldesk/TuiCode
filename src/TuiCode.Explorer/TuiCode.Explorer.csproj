@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\TuiCode.Abstractions\TuiCode.Abstractions.csproj" />
     <ProjectReference Include="..\TuiCode.Icons\TuiCode.Icons.csproj" />
   </ItemGroup>
 

@@ -581,7 +581,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(modalAppeared, "NewPathView did not mount after Ctrl+N");
+        Assert.True(modalAppeared, "PathPromptView did not mount after Ctrl+N");
 
         void OnFirst(object? s, EventArgs<IApplication?> e)
         {
@@ -593,7 +593,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnSecond(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnSecond;
-            modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Navigation.NewPathView>().Any();
+            modalAppeared = workbench.SubViews.OfType<TuiCode.Workbench.Files.PathPromptView>().Any();
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
     }
@@ -619,7 +619,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(modalWasGone, "NewPathView was still mounted after Esc");
+        Assert.True(modalWasGone, "PathPromptView was still mounted after Esc");
 
         void OnFirst(object? s, EventArgs<IApplication?> e)
         {
@@ -638,7 +638,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnThird(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnThird;
-            modalWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Navigation.NewPathView>().Any();
+            modalWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Files.PathPromptView>().Any();
             if (Key.TryParse("Ctrl+Q", out var q)) host.App.InjectKey(q);
         }
     }
@@ -1026,6 +1026,29 @@ public class WorkbenchHostTests : StaticConfigurationTest
 
         Assert.True(loading, "AboutView didn't show the spinner while detection was pending");
         Assert.True(ascii, "AboutView didn't fall back to the ASCII art");
+    }
+
+    [Fact]
+    public void The_status_bar_names_the_help_key_while_no_file_is_open_and_follows_a_rebind()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+        workbench.ShowCursorPosition();
+        var byDefault = workbench.StatusBar.DisplayedPosition;
+
+        host.ApplyKeybindings(
+        [
+            new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp),
+            new KeybindingOverride([Key.F3], CommandIds.ShowHelp),
+        ]);
+        var rebound = workbench.StatusBar.DisplayedPosition;
+        host.ApplyKeybindings([new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp)]);
+
+        Assert.Equal("Press F1 for help", byDefault);
+        Assert.Equal("Press F3 for help", rebound);
+        Assert.Equal("", workbench.StatusBar.DisplayedPosition);
     }
 
     private static Workbench.Workbench BuildWorkbench() =>

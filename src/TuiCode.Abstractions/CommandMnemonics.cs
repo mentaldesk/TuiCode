@@ -35,6 +35,8 @@ public static class CommandMnemonics
             [CommandIds.ShowDiagnostics] = "sd",
             [CommandIds.ShowAbout] = "tui",
             [CommandIds.New] = "nf",
+            [CommandIds.DeleteFile] = "df",
+            [CommandIds.RenameFile] = "mf",
             [CommandIds.NextEditor] = "tn",
             [CommandIds.PreviousEditor] = "tp",
             [CommandIds.Open] = "of",

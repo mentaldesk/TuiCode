@@ -1,4 +1,5 @@
 using TuiCode.Editor;
+using TuiCode.Syntax;
 
 namespace TuiCode.Tests;
 
@@ -217,5 +218,91 @@ public class EditorGroupTests
         else group.CloseActive();
 
         Assert.Equal([null], raised);
+    }
+
+    [Fact]
+    public void Relocate_points_a_tab_at_its_new_file_keeping_unsaved_changes()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        using var group = new EditorGroup();
+        var tab = group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+        tab.Content = "edited";
+        fs.File.Move("/work/a.txt", "/work/b.txt");
+
+        group.Relocate(fs.Path.GetFullPath("/work/a.txt"), fs.Path.GetFullPath("/work/b.txt"));
+
+        Assert.Equal(fs.Path.GetFullPath("/work/b.txt"), tab.File.FullName);
+        Assert.Equal("● b.txt", tab.Title);
+        Assert.True(tab.IsDirty);
+        Assert.Same(tab, group.OpenOrFocus(fs.FileInfo.New("/work/b.txt")));
+        tab.Save();
+        Assert.StartsWith("edited", fs.File.ReadAllText("/work/b.txt"));
+    }
+
+    [Fact]
+    public void Relocate_moves_every_tab_under_a_folder_and_leaves_the_rest()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/src/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/src/lib/b.txt", new MockFileData("b"));
+        fs.AddFile("/work/srcs/c.txt", new MockFileData("c"));
+        using var group = new EditorGroup();
+        foreach (var path in new[] { "/work/src/a.txt", "/work/src/lib/b.txt", "/work/srcs/c.txt" })
+            group.OpenOrFocus(fs.FileInfo.New(path));
+
+        group.Relocate(fs.Path.GetFullPath("/work/src"), fs.Path.GetFullPath("/work/code"));
+
+        Assert.Equal(
+            new[] { "/work/code/a.txt", "/work/code/lib/b.txt", "/work/srcs/c.txt" }.Select(fs.Path.GetFullPath),
+            group.Tabs.Select(t => t.File.FullName));
+    }
+
+    [Fact]
+    public void Relocate_infers_the_grammar_from_the_new_name()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("{}"));
+        using var group = new EditorGroup(new SyntaxHighlighter(GrammarBundle.Load()));
+        var tab = group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+
+        group.Relocate(fs.Path.GetFullPath("/work/a.txt"), fs.Path.GetFullPath("/work/a.json"));
+
+        Assert.Equal("json", tab.Grammar?.Id);
+    }
+
+    [Fact]
+    public void CloseUnder_closes_the_tabs_under_a_folder_even_with_unsaved_changes()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/src/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/src/b.txt", new MockFileData("b"));
+        fs.AddFile("/work/other.txt", new MockFileData("o"));
+        using var group = new EditorGroup();
+        group.OpenOrFocus(fs.FileInfo.New("/work/other.txt"));
+        group.OpenOrFocus(fs.FileInfo.New("/work/src/a.txt")).Content = "edited";
+        group.OpenOrFocus(fs.FileInfo.New("/work/src/b.txt"));
+
+        group.CloseUnder(fs.Path.GetFullPath("/work/src"));
+
+        var remaining = Assert.Single(group.Tabs);
+        Assert.Equal(fs.Path.GetFullPath("/work/other.txt"), remaining.File.FullName);
+        Assert.Same(remaining, group.ActiveTab);
+    }
+
+    [Fact]
+    public void CloseUnder_keeps_the_active_tab_when_it_is_not_affected()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        using var group = new EditorGroup();
+        group.OpenOrFocus(fs.FileInfo.New("/work/a.txt"));
+        var b = group.OpenOrFocus(fs.FileInfo.New("/work/b.txt"));
+
+        group.CloseUnder(fs.Path.GetFullPath("/work/a.txt"));
+
+        Assert.Same(b, Assert.Single(group.Tabs));
+        Assert.Same(b, group.ActiveTab);
     }
 }

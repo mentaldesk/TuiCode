@@ -78,6 +78,21 @@ public class StatusBarPartTests
     }
 
     [Fact]
+    public void The_idle_hint_takes_the_position_slot_only_while_there_is_no_position()
+    {
+        using var bar = new StatusBarPart();
+
+        bar.SetIdleHint("Press F1 for help");
+        Assert.Equal("Press F1 for help", bar.DisplayedPosition);
+
+        bar.SetPosition((0, 0));
+        Assert.Equal("Ln 1, Col 1", bar.DisplayedPosition);
+
+        bar.SetPosition(null);
+        Assert.Equal("Press F1 for help", bar.DisplayedPosition);
+    }
+
+    [Fact]
     public void Position_is_right_aligned_and_a_long_message_stops_short_of_it()
     {
         using var bar = new StatusBarPart { Width = 40 };

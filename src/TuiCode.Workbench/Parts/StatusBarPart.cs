@@ -11,6 +11,7 @@ public sealed class StatusBarPart : View
     private string? _grammar;
     private string? _mode;
     private (int Row, int Column)? _cursor;
+    private string? _idleHint;
 
     public StatusBarPart()
     {
@@ -64,8 +65,18 @@ public sealed class StatusBarPart : View
     {
         if (position == _cursor) return;
         _cursor = position;
-        _position.Text = position is var (row, column) ? $"Ln {row + 1}, Col {column + 1}" : string.Empty;
+        ShowPosition();
     }
+
+    /// <summary>Shown in the position's place while no file is open; null for nothing.</summary>
+    public void SetIdleHint(string? hint)
+    {
+        _idleHint = hint;
+        ShowPosition();
+    }
+
+    private void ShowPosition() =>
+        _position.Text = _cursor is var (row, column) ? $"Ln {row + 1}, Col {column + 1}" : _idleHint ?? string.Empty;
 
     internal string DisplayedText => _label.Text;
 
