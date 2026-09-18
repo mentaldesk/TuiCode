@@ -5,6 +5,7 @@ using System.Reflection;
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
+using TuiCode.Icons;
 using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Diagnostics;
@@ -43,6 +44,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IReadOnlyList<ITerminalIntegration> _terminalIntegrations;
     private readonly IEnvironment _environment;
     private readonly ILogger<WorkbenchHost> _logger;
+    private readonly FileIcons? _icons;
     private readonly TerminalCursors _terminalCursors;
     private readonly LayeredScope _cursorScope;
     private readonly LayeredScope _searchScope;
@@ -75,7 +77,8 @@ public sealed class WorkbenchHost : IDisposable
         IEnvironment? environment = null,
         ITimeProvider? timeProvider = null,
         string? driverName = null,
-        ILogger<WorkbenchHost>? logger = null)
+        ILogger<WorkbenchHost>? logger = null,
+        FileIcons? icons = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -111,6 +114,7 @@ public sealed class WorkbenchHost : IDisposable
         _terminalIntegrations = (terminalIntegrations ?? Array.Empty<ITerminalIntegration>()).ToArray();
         _environment = environment ?? new SystemEnvironment();
         _logger = logger ?? NullLogger<WorkbenchHost>.Instance;
+        _icons = icons;
 
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
@@ -478,7 +482,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var view = new SettingsView(
             _settings, _keybindings, _commands, _scopes, ApplyEditedBindings,
-            _terminalIntegrations, _environment, _workbench.Editor.Group.Syntax, ApplyGrammarAssociations);
+            _terminalIntegrations, _environment, _workbench.Editor.Group.Syntax, ApplyGrammarAssociations, _icons);
         view.Closed += (_, _) => CloseSettings(view);
         _activeSettings = view;
         _workbench.Add(view);
@@ -663,7 +667,7 @@ public sealed class WorkbenchHost : IDisposable
         // Start browsing from the current workspace root; no root means nothing's open yet.
         if (_workbench.Sidebar.Explorer.Root is not { } root) return;
 
-        var view = new OpenView(root);
+        var view = new OpenView(root, _icons);
         view.Cancelled += (_, _) => CloseOpen(view);
         view.FileSelected += (_, file) =>
         {

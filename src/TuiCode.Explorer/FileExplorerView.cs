@@ -1,3 +1,5 @@
+using TuiCode.Icons;
+
 namespace TuiCode.Explorer;
 
 public sealed class FileExplorerView : TreeView<IFileSystemInfo>
@@ -7,10 +9,24 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
     /// <summary>The directory the tree is currently rooted at, or null before the first <see cref="Open"/>.</summary>
     public IDirectoryInfo? Root { get; private set; }
 
-    public FileExplorerView()
+    public FileExplorerView(FileIcons? icons = null)
     {
         TreeBuilder = new FileSystemTreeBuilder { IncludeFiles = true };
         AspectGetter = info => info.Name;
+        if (icons is not null)
+        {
+            DrawLine += (_, e) =>
+            {
+                var icon = e.Model switch
+                {
+                    IDirectoryInfo dir => icons.ForDirectory(IsExpanded(dir)),
+                    IFileInfo file => icons.ForFile(file.Name),
+                    _ => null,
+                };
+                if (icon is { } i) IconDrawing.Prepend(e, i);
+            };
+            icons.Changed += (_, _) => SetNeedsDraw();
+        }
         Activated += (_, _) => ActivateSelected();
 
         // TG TreeView's default Enter binding maps to Command.Activate but does NOT raise the

@@ -29,6 +29,8 @@ internal sealed class InMemorySettingsService : ISettingsService
     public void SetGrammarAssociations(IReadOnlyDictionary<string, string> associations) =>
         _grammarAssociations = new(associations, StringComparer.OrdinalIgnoreCase);
 
+    public FileIconStyle FileIcons { get; set; }
+
     public int SaveCount { get; private set; }
     public void Save() => SaveCount++;
 

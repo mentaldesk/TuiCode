@@ -26,6 +26,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `src/TuiCode.Explorer/` — `FileExplorerView`.
 - `src/TuiCode.Search/` — `TextSearch` / `WorkspaceSearch` (pure) and the sidebar `SearchView`.
 - `src/TuiCode.Syntax/` — TextMate grammar bundle for syntax highlighting (TG-free).
+- `src/TuiCode.Icons/` — file and folder icons for the explorer, Find results and Open dialog.
 - `src/TuiCode.Abstractions/` — interfaces + DTOs. Features depend only on this.
 - `tests/TuiCode.Tests/` — single test assembly.
 
@@ -144,6 +145,15 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Encoding runs in the background and is cached per pixel size, so reopening shows the image immediately.
 - TG re-emits queued sixels on every output write and only rewrites cells whose contents changed, so `AboutView.Dispose` dequeues its sixel and sets `ClearScreenNextIteration`. Otherwise the image stays on screen after close.
 - The artwork is `assets/about.png`, baked into the embedded `About/about.rgb.z` (raw RGB, zlib) by `dotnet run scripts/update-about-image.cs`. We have no image decoder at runtime and don't want one in the AOT binary.
+
+## File icons (#119)
+
+- `FileIcons` (a DI singleton) picks each icon for the explorer tree, the Find results tree, the Open dialog (`OpenView`) and the sample in Settings → File Icons. It raises `Changed` when the style changes, so views redraw live. Each view takes it as an optional constructor parameter, so tests that don't pass one draw plain names.
+- Styles are `FileIconStyle`: `NerdFont` (a coloured icon per file type), `Emoji` (📁/📂/📄, drawn two cells wide), `Off`, and `Auto`, the default. `Auto` becomes Nerd Font or Emoji depending on `TerminalFontDetection`, which runs lazily and only once.
+- No terminal reports its font, so detection is a best guess. Ghostty, WezTerm and kitty (0.36+) bundle the Nerd Font symbols. iTerm2, Windows Terminal, VS Code and Alacritty get their font read from their config: iTerm2's binary plist goes through `plutil -convert xml1`, and the other configs are JSONC or TOML. A font counts as a Nerd Font when its name contains "Nerd Font" or ends in `NF`/`NFM`/`NFP`. Any other terminal gets Emoji. Terminal-specific env markers (`WEZTERM_PANE`, `KITTY_WINDOW_ID`, …) identify the terminal when tmux has replaced `TERM_PROGRAM`. `TERM_PROGRAM=vscode` wins over markers leaked from the shell that launched VS Code.
+- Icons are drawn, never put in the display text. In a tree, `IconDrawing.Prepend` inserts the icon cells in `DrawLine`, so `AspectGetter` stays the bare name and type-to-jump still matches. In a `ListView`, `IconListSource` draws the icon, then hands the text to a `ListWrapper<string>`. The icon keeps the row's background, so selection still shows. Its foreground is the icon's dark or light colour, whichever suits the row's background.
+- The Nerd Font data is `src/TuiCode.Icons/file-icons.tsv`, generated from nvim-web-devicons (MIT, listed in `THIRD-PARTY-NOTICES.md`). It has about 700 exact file names and extensions, each with a dark and a light colour. To update it, bump `commit` in `scripts/update-file-icons.cs`, then run `GITHUB_TOKEN=$(gh auth token) dotnet run scripts/update-file-icons.cs`. Lookup follows devicons: an exact file name first, then each dotted suffix from the longest down (`app.spec.ts` tries `spec.ts`, then `ts`), all case-insensitive. Folder icons and the generic file icon are fixed in `FileIcons`, because devicons has none.
+- The setting persists to `~/.tui/TuiCode.settings.json`, a flat object for settings TG doesn't own. It can't go in `TuiCode.config.json`: TG silently ignores that whole file, theme included, when it holds a key TG doesn't know.
 
 ## Filesystem
 

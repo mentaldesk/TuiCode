@@ -31,6 +31,9 @@ public interface ISettingsService
     /// <summary>Replace the grammar associations. Stages the change in memory; <see cref="Save"/> persists it.</summary>
     void SetGrammarAssociations(IReadOnlyDictionary<string, string> associations);
 
+    /// <summary>How files and folders are decorated (#119). Stages the change in memory; <see cref="Save"/> persists it.</summary>
+    FileIconStyle FileIcons { get; set; }
+
     /// <summary>Persist the current settings to disk, writing only values that differ from defaults.</summary>
     void Save();
 

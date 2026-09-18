@@ -1,4 +1,5 @@
 using TuiCode.Abstractions;
+using TuiCode.Icons;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Navigation;
@@ -28,6 +29,7 @@ public sealed class OpenView : Window
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
+    private readonly FileIcons? _icons;
 
     private IDirectoryInfo _currentDirectory;
     private List<OpenEntry> _entries = new();
@@ -41,10 +43,11 @@ public sealed class OpenView : Window
     public event EventHandler<IFileInfo>? FileSelected;
     public event EventHandler<IDirectoryInfo>? FolderSelected;
 
-    public OpenView(IDirectoryInfo startDirectory)
+    public OpenView(IDirectoryInfo startDirectory, FileIcons? icons = null)
     {
         ArgumentNullException.ThrowIfNull(startDirectory);
         _currentDirectory = startDirectory;
+        _icons = icons;
 
         Title = "Open File or Folder";
         BorderStyle = LineStyle.Single;
@@ -163,7 +166,10 @@ public sealed class OpenView : Window
             _hint.Text = FilterHint;
         }
 
-        _list.Source = new ListWrapper<string>(new(_entries.Select(e => e.Display)));
+        var items = _entries.Select(e => e.Display).ToList();
+        _list.Source = _icons is { } icons
+            ? new IconListSource(items, _entries.Select(e => e.Kind == OpenEntryKind.File ? icons.ForFile(e.Info.Name) : icons.ForDirectory(false)).ToList())
+            : new ListWrapper<string>(new(items));
         _list.SelectedItem = _entries.Count > 0 ? 0 : null;
     }
 

@@ -1,3 +1,5 @@
+using TuiCode.Icons;
+
 namespace TuiCode.Search;
 
 /// <summary>
@@ -49,7 +51,7 @@ public sealed class SearchView : View
 
     internal TreeView<SearchNode> Results => _results;
 
-    public SearchView()
+    public SearchView(FileIcons? icons = null)
     {
         CanFocus = true;
 
@@ -68,6 +70,21 @@ public sealed class SearchView : View
         };
 
         Add(queryLabel, _query, _replaceLabel, _replacement, _status, _results);
+
+        if (icons is not null)
+        {
+            _results.DrawLine += (_, e) =>
+            {
+                var icon = e.Model switch
+                {
+                    DirectoryNode => icons.ForDirectory(_results.IsExpanded(e.Model)),
+                    FileNode file => icons.ForFile(file.Result.File.Name),
+                    _ => null,
+                };
+                if (icon is { } i) IconDrawing.Prepend(e, i);
+            };
+            icons.Changed += (_, _) => _results.SetNeedsDraw();
+        }
 
         _query.TextChanged += (_, _) => { _pendingReplace = null; RunSearch(); };
         _replacement.TextChanged += (_, _) => _pendingReplace = null;

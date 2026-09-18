@@ -1,0 +1,125 @@
+using System.Text;
+using Terminal.Gui.Drawing;
+using Terminal.Gui.Text;
+using Terminal.Gui.ViewBase;
+using Terminal.Gui.Views;
+using TuiCode.Abstractions;
+using TuiCode.Explorer;
+using TuiCode.Icons;
+
+namespace TuiCode.Tests;
+
+public class FileIconDrawingTests : StaticConfigurationTest
+{
+    private const string Folder = "\uf07c";
+    private const string CSharp = "\U000f031b";
+
+    private readonly IApplication _app = Application.Create().Init(DriverRegistry.Names.ANSI);
+    private readonly FileIcons _icons = new(() => new FontDetection(true, "test"));
+
+    public FileIconDrawingTests() => _app.Driver!.SetScreenSize(20, 4);
+
+    public override void Dispose()
+    {
+        _app.Dispose();
+        base.Dispose();
+    }
+
+    [Fact]
+    public void Explorer_rows_show_the_icon_before_the_name()
+    {
+        var explorer = Explorer();
+
+        Render(explorer);
+
+        Assert.Equal($"└-{Folder} work", Row(0).TrimEnd());
+        Assert.Equal($"  └─{CSharp} Program.cs", Row(1).TrimEnd());
+    }
+
+    [Fact]
+    public void The_icon_takes_its_colour_and_the_name_keeps_the_rows()
+    {
+        var explorer = Explorer();
+
+        Render(explorer);
+
+        var icon = Cell(1, 4).Attribute!.Value;
+        var name = Cell(1, 6).Attribute!.Value;
+        Assert.Equal(name.Background, icon.Background);
+        Assert.NotEqual(name.Foreground, icon.Foreground);
+    }
+
+    [Fact]
+    public void A_long_name_is_cut_at_the_edge_of_the_view()
+    {
+        var explorer = Explorer("AVeryLongFileNameIndeed.cs");
+
+        Render(explorer);
+
+        Assert.Equal($"  └─{CSharp} AVeryLongFileN", Row(1));
+    }
+
+    [Fact]
+    public void Turning_icons_off_redraws_plain_names()
+    {
+        var explorer = Explorer();
+        Render(explorer);
+
+        _icons.Setting = FileIconStyle.Off;
+        Render(explorer);
+
+        Assert.Equal("  └─Program.cs", Row(1).TrimEnd());
+    }
+
+    [Fact]
+    public void Wide_emoji_icons_draw_in_two_cells()
+    {
+        _icons.Setting = FileIconStyle.Emoji;
+        var list = new ListView
+        {
+            App = _app,
+            Width = 20,
+            Height = 2,
+            Source = new IconListSource(["src/", "notes"], [_icons.ForDirectory(false), _icons.ForFile("notes")]),
+        };
+
+        Render(list);
+
+        Assert.Equal("📁 src/", Row(0).TrimEnd());
+        Assert.Equal("📄 notes", Row(1).TrimEnd());
+    }
+
+    private FileExplorerView Explorer(string file = "Program.cs")
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile($"/work/{file}", new MockFileData(""));
+        var explorer = new FileExplorerView(_icons) { App = _app, Width = 20, Height = 4 };
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+        return explorer;
+    }
+
+    private void Render(View view)
+    {
+        if (!view.IsInitialized)
+        {
+            view.BeginInit();
+            view.EndInit();
+        }
+        view.Layout();
+        var driver = _app.Driver!;
+        driver.ClearContents();
+        driver.Clip = new Region(driver.Screen);
+        view.SetNeedsDraw();
+        view.Draw();
+    }
+
+    private Cell Cell(int row, int col) => _app.Driver!.Contents![row, col];
+
+    private string Row(int row)
+    {
+        var sb = new StringBuilder();
+        for (var col = 0; col < 20; col += Math.Max(1, Cell(row, col).Grapheme.GetColumns()))
+            sb.Append(Cell(row, col).Grapheme);
+        return sb.ToString();
+    }
+}
