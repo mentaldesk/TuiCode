@@ -1028,6 +1028,29 @@ public class WorkbenchHostTests : StaticConfigurationTest
         Assert.True(ascii, "AboutView didn't fall back to the ASCII art");
     }
 
+    [Fact]
+    public void The_status_bar_names_the_help_key_while_no_file_is_open_and_follows_a_rebind()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+        workbench.ShowCursorPosition();
+        var byDefault = workbench.StatusBar.DisplayedPosition;
+
+        host.ApplyKeybindings(
+        [
+            new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp),
+            new KeybindingOverride([Key.F3], CommandIds.ShowHelp),
+        ]);
+        var rebound = workbench.StatusBar.DisplayedPosition;
+        host.ApplyKeybindings([new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp)]);
+
+        Assert.Equal("Press F1 for help", byDefault);
+        Assert.Equal("Press F3 for help", rebound);
+        Assert.Equal("", workbench.StatusBar.DisplayedPosition);
+    }
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),

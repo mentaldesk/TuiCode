@@ -19,7 +19,7 @@ public sealed class HelpView : Window
         X = Pos.Center();
         Y = Pos.Center();
         Width = 58;
-        Height = 32;
+        Height = 12;
         CanFocus = true;
 
         var content = new Label
@@ -57,33 +57,13 @@ public sealed class HelpView : Window
         static string Row(string key, string desc) => $"  {key,-16}{desc}";
 
         return string.Join("\n",
-            "Navigation",
-            Row("Ctrl+1-9", "Focus editor tab 1-9"),
-            Row("Ctrl+G L", "Go to line:column"),
-            Row("Ctrl+G P/N", "Previous / next cursor position"),
-            Row("Ctrl+F / H", "Find / replace in file"),
-            Row("Ctrl+Shift+F/H", "Find / replace globally"),
-            "",
-            "Files",
+            Row("Ctrl+E", "Command palette: every command"),
+            Row("Ctrl+Space", "Run a command by its mnemonic"),
             Row("Ctrl+O", "Open file or folder"),
             Row("Ctrl+N", "New file or folder"),
-            Row("Ctrl+S", "Save active file"),
-            Row("Ctrl+W", "Close active tab"),
-            "",
-            "Editing",
-            Row("Alt+Up/Dn", "Move line"),
-            Row("Alt+Shift+Up/Dn", "Duplicate line"),
-            Row("Ctrl+Alt+Up/Dn", "Add cursor above / below"),
-            Row("Alt+Click", "Add / remove cursor (iTerm2: Cmd+Click)"),
-            Row("Ctrl+T C", "Toggle column select"),
-            Row("Esc", "Back to one cursor"),
-            "",
-            "Tools",
-            Row("Ctrl+Space", "Run command (mnemonic)"),
-            Row("Ctrl+E", "Command palette"),
-            Row("Ctrl+,", "Settings"),
-            Row("F1", "Help (this dialog)"),
-            Row("F12", "Diagnostics"),
+            Row("Ctrl+S", "Save"),
+            Row("Ctrl+W", "Close tab"),
+            Row("Ctrl+F", "Find in file"),
             Row("Ctrl+Q", "Quit"));
     }
 }

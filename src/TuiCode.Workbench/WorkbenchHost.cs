@@ -296,6 +296,9 @@ public sealed class WorkbenchHost : IDisposable
                 _logger.LogWarning(ex, "Ignored invalid keybinding override {Chord} for command {Command}", KeyChord.Display(o.Keys), o.Command);
             }
         }
+
+        var help = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ShowHelp);
+        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
     }
 
     /// <summary>
