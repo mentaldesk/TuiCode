@@ -182,6 +182,23 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         Assert.Equal(1, tab.CursorRow);
     }
 
+    [Fact]
+    public async Task The_status_bar_follows_the_cursor_to_the_next_match()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("foo\nbar\n  foo\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedPosition == "Ln 1, Col 1",
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            () => { foreach (var c in "foo") host.App.InjectKey(new Key(c)); },
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.StatusBar.DisplayedPosition == "Ln 3, Col 6",
+            () => host.App.InjectKey(Key.Esc));
+    }
+
     private Workbench.Workbench BuildWorkbench()
     {
         var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());

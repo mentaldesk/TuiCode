@@ -4,11 +4,13 @@ public sealed class StatusBarPart : View
 {
     private const string DefaultMessage = "TuiCode  •  F1 help  •  Ctrl+Q quit";
     private readonly Label _label;
+    private readonly Label _position;
     private string _message = DefaultMessage;
     private string? _chord;
     private string? _hint;
     private string? _grammar;
     private string? _mode;
+    private (int Row, int Column)? _cursor;
 
     public StatusBarPart()
     {
@@ -16,13 +18,15 @@ public sealed class StatusBarPart : View
         CanFocus = false;
         SchemeName = "StatusBar";
 
+        _position = new Label { X = Pos.AnchorEnd() - 1, Y = 0 };
         _label = new Label
         {
             X = 1,
             Y = 0,
+            Width = Dim.Fill(2, _position),
             Text = DefaultMessage
         };
-        Add(_label);
+        Add(_label, _position);
     }
 
     public void SetMessage(string message)
@@ -55,7 +59,17 @@ public sealed class StatusBarPart : View
         UpdateLabel();
     }
 
+    /// <summary>The active cursor's zero-based position, shown 1-based at the right; null hides it.</summary>
+    public void SetPosition((int Row, int Column)? position)
+    {
+        if (position == _cursor) return;
+        _cursor = position;
+        _position.Text = position is var (row, column) ? $"Ln {row + 1}, Col {column + 1}" : string.Empty;
+    }
+
     internal string DisplayedText => _label.Text;
+
+    internal string DisplayedPosition => _position.Text;
 
     public void SetChord(string? chord)
     {
