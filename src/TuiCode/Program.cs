@@ -4,10 +4,12 @@ using Microsoft.Extensions.Logging;
 using Terminal.Gui.App;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
+using TuiCode.Icons;
 using TuiCode.Search;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Configuration;
+using TuiCode.Workbench.Icons;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.TerminalIntegration;
@@ -37,6 +39,11 @@ services.AddSingleton(sp =>
         Associations = sp.GetRequiredService<ISettingsService>().GrammarAssociations,
     };
 });
+services.AddSingleton(sp => new FileIcons(() => TerminalFontDetection.Detect(
+    sp.GetRequiredService<IEnvironment>(), sp.GetRequiredService<IFileSystem>()))
+{
+    Setting = sp.GetRequiredService<ISettingsService>().FileIcons,
+});
 services.AddSingleton<ITerminalIntegration, Iterm2Integration>();
 services.AddSingleton<ITerminalIntegration, WezTermIntegration>();
 
@@ -60,7 +67,8 @@ services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
     sp.GetRequiredService<IEnvironment>(),
     timeProvider: null,
     driverName: DriverSelection.Resolve(args, sp.GetRequiredService<IEnvironment>()),
-    logger: sp.GetRequiredService<ILogger<WorkbenchHost>>()));
+    logger: sp.GetRequiredService<ILogger<WorkbenchHost>>(),
+    icons: sp.GetRequiredService<FileIcons>()));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();

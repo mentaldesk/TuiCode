@@ -1,4 +1,5 @@
 using TuiCode.Abstractions;
+using TuiCode.Icons;
 using TuiCode.Syntax;
 using TuiCode.Workbench.Services;
 
@@ -13,12 +14,12 @@ namespace TuiCode.Workbench.Settings;
 /// </summary>
 public sealed class SettingsView : Window
 {
-    private static readonly string[] CategoryNames = ["Theme", "Keyboard Shortcuts", "Grammars", "Terminal Integration"];
-
     private readonly ISettingsService _settings;
     private readonly Action<IEnumerable<KeyBinding>> _applyEditedBindings;
     private readonly Action? _applyGrammarAssociations;
     private readonly string _originalTheme;
+    private readonly FileIcons? _icons;
+    private readonly FileIconStyle _originalIcons;
 
     private readonly ListView _categoriesList;
     private readonly View _separator;
@@ -27,6 +28,7 @@ public sealed class SettingsView : Window
     private readonly KeybindingsPickerView _keybindingsPicker;
     private readonly GrammarAssociationsView _grammarAssociations;
     private readonly TerminalIntegrationPickerView _terminalIntegrationPicker;
+    private readonly List<(string Name, View Panel, Func<bool> Focus)> _panels;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
@@ -45,7 +47,8 @@ public sealed class SettingsView : Window
         IEnumerable<ITerminalIntegration> terminalIntegrations,
         IEnvironment environment,
         SyntaxHighlighter? syntax = null,
-        Action? applyGrammarAssociations = null)
+        Action? applyGrammarAssociations = null,
+        FileIcons? icons = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(workbenchKeybindings);
@@ -59,6 +62,8 @@ public sealed class SettingsView : Window
         _applyEditedBindings = applyEditedBindings;
         _applyGrammarAssociations = applyGrammarAssociations;
         _originalTheme = settings.Theme;
+        _icons = icons;
+        _originalIcons = icons?.Setting ?? settings.FileIcons;
 
         Title = "Settings";
         BorderStyle = LineStyle.Single;
@@ -73,9 +78,7 @@ public sealed class SettingsView : Window
             Y = 1,
             Width = 22,
             Height = Dim.Fill(2),
-            Source = new ListWrapper<string>(new(CategoryNames))
         };
-        _categoriesList.SelectedItem = 0;
         _categoriesList.ValueChanged += (_, _) => SwapPanel();
         // KeyDown on the categories ListView itself doesn't fire reliably in this layout —
         // TG seems to route keys to the focused Window (us) rather than the inner ListView,
@@ -128,6 +131,28 @@ public sealed class SettingsView : Window
             Visible = false
         };
 
+        _panels =
+        [
+            ("Theme", _themePicker, _themePicker.FocusContent),
+            ("Keyboard Shortcuts", _keybindingsPicker, _keybindingsPicker.FocusContent),
+            ("Grammars", _grammarAssociations, _grammarAssociations.FocusContent),
+            ("Terminal Integration", _terminalIntegrationPicker, _terminalIntegrationPicker.FocusContent),
+        ];
+        if (icons is not null)
+        {
+            var iconsPicker = new FileIconsPickerView(icons)
+            {
+                X = Pos.Right(_separator) + 1,
+                Y = 1,
+                Width = Dim.Fill(2),
+                Height = Dim.Fill(2),
+                Visible = false
+            };
+            _panels.Insert(1, ("File Icons", iconsPicker, iconsPicker.FocusContent));
+        }
+        _categoriesList.Source = new ListWrapper<string>(new(_panels.Select(p => p.Name)));
+        _categoriesList.SelectedItem = 0;
+
         var footer = new Label
         {
             X = 1,
@@ -135,7 +160,10 @@ public sealed class SettingsView : Window
             Text = "Ctrl+Enter: Save   Esc: Cancel   Ctrl+0 / Ctrl+Esc: Categories"
         };
 
-        Add(_categoriesList, _separator, _themePicker, _keybindingsPicker, _grammarAssociations, _terminalIntegrationPicker, footer);
+        Add(_categoriesList, _separator);
+        foreach (var panel in _panels)
+            Add(panel.Panel);
+        Add(footer);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -146,11 +174,9 @@ public sealed class SettingsView : Window
 
     private void SwapPanel()
     {
-        var i = _categoriesList.SelectedItem ?? 0;
-        _themePicker.Visible = i == 0;
-        _keybindingsPicker.Visible = i == 1;
-        _grammarAssociations.Visible = i == 2;
-        _terminalIntegrationPicker.Visible = i == 3;
+        var selected = _categoriesList.SelectedItem ?? 0;
+        for (var i = 0; i < _panels.Count; i++)
+            _panels[i].Panel.Visible = i == selected;
     }
 
     private void OnSettingsKey(object? sender, Key key)
@@ -166,11 +192,7 @@ public sealed class SettingsView : Window
         }
     }
 
-    private bool PanelHasFocus() =>
-        (_themePicker.Visible && HasFocusDescendant(_themePicker))
-        || (_keybindingsPicker.Visible && HasFocusDescendant(_keybindingsPicker))
-        || (_grammarAssociations.Visible && HasFocusDescendant(_grammarAssociations))
-        || (_terminalIntegrationPicker.Visible && HasFocusDescendant(_terminalIntegrationPicker));
+    private bool PanelHasFocus() => _panels.Any(p => p.Panel.Visible && HasFocusDescendant(p.Panel));
 
     private static bool HasFocusDescendant(View v)
     {
@@ -183,13 +205,7 @@ public sealed class SettingsView : Window
     /// <summary>Public so panels can call back to return focus to the categories list (e.g. on Left arrow).</summary>
     public void FocusCategories() => _categoriesList.SetFocus();
 
-    private bool FocusActivePanel()
-    {
-        if (_keybindingsPicker.Visible) return _keybindingsPicker.FocusContent();
-        if (_grammarAssociations.Visible) return _grammarAssociations.FocusContent();
-        if (_terminalIntegrationPicker.Visible) return _terminalIntegrationPicker.FocusContent();
-        return _themePicker.FocusContent();
-    }
+    private bool FocusActivePanel() => _panels.FirstOrDefault(p => p.Panel.Visible).Focus?.Invoke() ?? false;
 
     private void RegisterScopeBindings()
     {
@@ -207,6 +223,8 @@ public sealed class SettingsView : Window
     {
         _applyEditedBindings(_keybindingsPicker.CurrentBindings);
         _settings.SetGrammarAssociations(_grammarAssociations.CurrentAssociations);
+        if (_icons is not null)
+            _settings.FileIcons = _icons.Setting;
         _settings.Save();
         _applyGrammarAssociations?.Invoke();
         Closed?.Invoke(this, EventArgs.Empty);
@@ -216,6 +234,7 @@ public sealed class SettingsView : Window
     {
         if (!string.Equals(_settings.Theme, _originalTheme, StringComparison.Ordinal))
             _settings.Theme = _originalTheme;
+        _icons?.Setting = _originalIcons;
         // Pending keybinding edits are dropped — they were never applied to the live trie.
         Closed?.Invoke(this, EventArgs.Empty);
     }

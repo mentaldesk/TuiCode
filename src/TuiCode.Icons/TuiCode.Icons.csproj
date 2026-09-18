@@ -9,12 +9,14 @@
 
   <ItemGroup>
     <PackageReference Include="Terminal.Gui" Version="2.1.0" />
-    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.1.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TuiCode.Icons\TuiCode.Icons.csproj" />
     <ProjectReference Include="..\TuiCode.Abstractions\TuiCode.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="file-icons.tsv" LogicalName="file-icons.tsv" />
   </ItemGroup>
 
   <ItemGroup>

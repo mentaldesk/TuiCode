@@ -31,6 +31,7 @@ public sealed class DefaultSettingsService : ISettingsService
     private readonly string _themeConfigPath;
     private readonly string _keybindingsPath;
     private readonly string _grammarsPath;
+    private readonly string _settingsPath;
     private List<KeybindingOverride> _keybindings;
     private Dictionary<string, string> _grammarAssociations;
 
@@ -42,8 +43,10 @@ public sealed class DefaultSettingsService : ISettingsService
         _themeConfigPath = _fs.Path.Combine(dir, "TuiCode.config.json");
         _keybindingsPath = _fs.Path.Combine(dir, "TuiCode.keybindings.json");
         _grammarsPath = _fs.Path.Combine(dir, "TuiCode.grammars.json");
+        _settingsPath = _fs.Path.Combine(dir, "TuiCode.settings.json");
         _keybindings = LoadKeybindings();
         _grammarAssociations = LoadGrammarAssociations();
+        FileIcons = LoadFileIcons();
     }
 
     public string Theme
@@ -80,6 +83,8 @@ public sealed class DefaultSettingsService : ISettingsService
         _grammarAssociations = new Dictionary<string, string>(associations, StringComparer.OrdinalIgnoreCase);
     }
 
+    public FileIconStyle FileIcons { get; set; }
+
     public void Load()
     {
         ConfigurationManager.RuntimeConfig = BundledThemes.Config;
@@ -92,6 +97,24 @@ public sealed class DefaultSettingsService : ISettingsService
         SaveTheme();
         SaveKeybindings();
         SaveGrammarAssociations();
+        SaveSettings();
+    }
+
+    // Settings TG doesn't know. They can't share TuiCode.config.json: TG drops that whole file when it meets an unknown key.
+    private void SaveSettings()
+    {
+        var root = new JsonObject();
+        if (FileIcons != FileIconStyle.Auto)
+            root["FileIcons"] = FileIcons.ToString();
+
+        if (root.Count == 0)
+        {
+            if (_fs.File.Exists(_settingsPath))
+                _fs.File.Delete(_settingsPath);
+            return;
+        }
+        EnsureDirExists(_settingsPath);
+        _fs.File.WriteAllText(_settingsPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     // A flat object, e.g. { ".h": "cpp", "Jenkinsfile": "groovy" }, sorted so the file diffs cleanly.
@@ -143,6 +166,24 @@ public sealed class DefaultSettingsService : ISettingsService
 
         EnsureDirExists(_themeConfigPath);
         _fs.File.WriteAllText(_themeConfigPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private FileIconStyle LoadFileIcons()
+    {
+        if (!_fs.File.Exists(_settingsPath)) return FileIconStyle.Auto;
+        try
+        {
+            return (JsonNode.Parse(_fs.File.ReadAllText(_settingsPath)) as JsonObject)?["FileIcons"] is JsonValue v
+                && v.TryGetValue<string>(out var s)
+                && Enum.TryParse<FileIconStyle>(s, ignoreCase: true, out var style)
+                && Enum.IsDefined(style)
+                    ? style
+                    : FileIconStyle.Auto;
+        }
+        catch (JsonException)
+        {
+            return FileIconStyle.Auto;
+        }
     }
 
     private void SaveKeybindings()

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Terminal.Gui.Configuration;
+using TuiCode.Abstractions;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Themes;
 
@@ -195,6 +196,52 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         var associations = new DefaultSettingsService(fs).GrammarAssociations;
 
         Assert.Equal(".tfvars", Assert.Single(associations).Key);
+    }
+
+    [Fact]
+    public void File_icons_round_trip_through_the_settings_file_not_TGs()
+    {
+        var fs = new MockFileSystem();
+        var svc = new DefaultSettingsService(fs) { FileIcons = FileIconStyle.Emoji };
+
+        svc.Save();
+
+        Assert.Equal(FileIconStyle.Emoji, new DefaultSettingsService(fs).FileIcons);
+        // TG ignores the whole config file if it holds a key it doesn't know.
+        using var config = JsonDocument.Parse(fs.File.ReadAllText(ConfigPath(fs)));
+        Assert.False(config.RootElement.TryGetProperty("FileIcons", out _));
+    }
+
+    [Fact]
+    public void Saving_auto_file_icons_removes_the_settings_file()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{ \"FileIcons\": \"Off\" }"));
+        var svc = new DefaultSettingsService(fs) { FileIcons = FileIconStyle.Auto };
+
+        svc.Save();
+
+        Assert.False(fs.File.Exists(SettingsPath(fs)));
+    }
+
+    [Theory]
+    [InlineData("{ \"FileIcons\": ")]
+    [InlineData("[ \"Off\" ]")]
+    [InlineData("{ \"FileIcons\": 2 }")]
+    [InlineData("{ \"FileIcons\": \"7\" }")]
+    [InlineData("{ \"FileIcons\": \"Sparkly\" }")]
+    public void Malformed_file_icons_load_as_auto(string json)
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData(json));
+
+        Assert.Equal(FileIconStyle.Auto, new DefaultSettingsService(fs).FileIcons);
+    }
+
+    private static string SettingsPath(MockFileSystem fs)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return fs.Path.Combine(home, ".tui", "TuiCode.settings.json");
     }
 
     private static string GrammarsPath(MockFileSystem fs)
