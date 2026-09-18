@@ -71,20 +71,18 @@ jobs:
           with open(path) as f:
               text = f.read()
 
-          new = re.sub(r'^(  version) "[^"]+"$', f'\\1 "{version}"', text, count=1, flags=re.M)
-          if new == text:
-              sys.exit("could not find version line")
-          text = new
-
-          # Match each platform's sha256 by the rid embedded in the preceding url line.
+          # The version lives only in the URLs: brew audit --strict rejects a redundant `version` line.
           for rid, sha in shas.items():
               pat = re.compile(
-                  rf'(url "[^"]*-{re.escape(rid)}\.tar\.gz")\n(\s+)sha256 "[a-f0-9]+"'
+                  rf'url "(?P<base>[^"]*/releases/download/)[^"/]+/tuicode-[^"]+-{re.escape(rid)}\.tar\.gz"\n(?P<indent>\s+)sha256 "[a-f0-9]+"'
               )
-              new = pat.sub(rf'\1\n\g<2>sha256 "{sha}"', text, count=1)
-              if new == text:
-                  sys.exit(f"could not find sha256 block for {rid}")
-              text = new
+              text, n = pat.subn(
+                  lambda m: f'url "{m["base"]}v{version}/tuicode-{version}-{rid}.tar.gz"\n{m["indent"]}sha256 "{sha}"',
+                  text,
+                  count=1,
+              )
+              if n == 0:
+                  sys.exit(f"could not find url/sha256 block for {rid}")
 
           with open(path, "w") as f:
               f.write(text)
