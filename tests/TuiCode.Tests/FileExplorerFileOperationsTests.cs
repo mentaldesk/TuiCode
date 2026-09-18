@@ -235,4 +235,102 @@ public class FileExplorerFileOperationsTests
 
         Assert.Equal("src/lib/a.cs", explorer.RelativePath(Node(explorer, "src/lib/a.cs")));
     }
+
+    [Theory]
+    [InlineData("lib", "lib/a.cs")]
+    [InlineData("lib/b.cs", "lib/a.cs")]
+    [InlineData(null, "a.cs")]
+    public void PastePath_puts_the_cut_item_in_a_folder_next_to_a_file_or_at_the_root(string? target, string expected)
+    {
+        var (_, explorer) = Open("/work/src/a.cs", "/work/lib/b.cs");
+        using var _ = explorer;
+        explorer.Cut(Node(explorer, "src/a.cs"));
+
+        Assert.Equal(expected, explorer.PastePath(target is null ? null : Node(explorer, target)));
+    }
+
+    [Fact]
+    public void PastePath_is_null_with_nothing_cut()
+    {
+        var (_, explorer) = Open("/work/a.cs");
+        using var _ = explorer;
+
+        Assert.Null(explorer.PastePath(null));
+    }
+
+    [Fact]
+    public void Cut_replaces_an_earlier_cut()
+    {
+        var (_, explorer) = Open("/work/a.cs", "/work/b.cs");
+        using var _ = explorer;
+
+        explorer.Cut(Node(explorer, "a.cs"));
+        explorer.Cut(Node(explorer, "b.cs"));
+
+        Assert.Equal("b.cs", explorer.PendingCut?.Name);
+    }
+
+    [Fact]
+    public void Cut_refuses_the_root()
+    {
+        var (_, explorer) = Open("/work/a.cs");
+        using var _ = explorer;
+
+        var ex = Assert.Throws<IOException>(() => explorer.Cut(explorer.Root!));
+
+        Assert.Equal("The workspace root can't be cut.", ex.Message);
+        Assert.Null(explorer.PendingCut);
+    }
+
+    [Theory]
+    [InlineData("src/a.cs")]
+    [InlineData("src")]
+    public void Deleting_the_cut_item_or_its_folder_clears_the_cut(string deleted)
+    {
+        var (_, explorer) = Open("/work/src/a.cs");
+        using var _ = explorer;
+        explorer.Cut(Node(explorer, "src/a.cs"));
+
+        explorer.Delete(Node(explorer, deleted));
+
+        Assert.Null(explorer.PendingCut);
+    }
+
+    [Theory]
+    [InlineData("src/a.cs", "src/b.cs")]
+    [InlineData("src", "lib")]
+    public void Renaming_the_cut_item_or_its_folder_clears_the_cut(string renamed, string to)
+    {
+        var (_, explorer) = Open("/work/src/a.cs");
+        using var _ = explorer;
+        explorer.Cut(Node(explorer, "src/a.cs"));
+
+        explorer.Move(Node(explorer, renamed), to);
+
+        Assert.Null(explorer.PendingCut);
+    }
+
+    [Fact]
+    public void Deleting_something_else_keeps_the_cut()
+    {
+        var (_, explorer) = Open("/work/a.cs", "/work/b.cs");
+        using var _ = explorer;
+        explorer.Cut(Node(explorer, "a.cs"));
+
+        explorer.Delete(Node(explorer, "b.cs"));
+
+        Assert.Equal("a.cs", explorer.PendingCut?.Name);
+    }
+
+    [Fact]
+    public void Opening_another_folder_clears_the_cut()
+    {
+        var (fs, explorer) = Open("/work/a.cs", "/other/");
+        using var _ = explorer;
+        explorer.Cut(Node(explorer, "a.cs"));
+
+        explorer.Open(fs.DirectoryInfo.New("/other"));
+
+        Assert.Null(explorer.PendingCut);
+    }
 }

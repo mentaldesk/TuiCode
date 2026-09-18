@@ -72,6 +72,32 @@ public class FileIconDrawingTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void A_cut_item_is_drawn_dimmed_with_its_icon()
+    {
+        var explorer = Explorer();
+        explorer.Cut(explorer.GetChildren(explorer.Root!).Single());
+
+        Render(explorer);
+
+        Assert.True(Cell(1, 4).Attribute!.Value.Style.HasFlag(TextStyle.Faint), "icon");
+        Assert.True(Cell(1, 6).Attribute!.Value.Style.HasFlag(TextStyle.Faint), "name");
+        Assert.False(Cell(0, 4).Attribute!.Value.Style.HasFlag(TextStyle.Faint), "the root isn't cut");
+    }
+
+    [Fact]
+    public void Clearing_the_cut_redraws_the_item_normally()
+    {
+        var explorer = Explorer();
+        explorer.Cut(explorer.GetChildren(explorer.Root!).Single());
+        Render(explorer);
+
+        explorer.ClearCut();
+        Render(explorer);
+
+        Assert.False(Cell(1, 6).Attribute!.Value.Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
     public void Wide_emoji_icons_draw_in_two_cells()
     {
         _icons.Setting = FileIconStyle.Emoji;
