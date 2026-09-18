@@ -1,3 +1,4 @@
+using Terminal.Gui.Drawing;
 using TuiCode.Abstractions;
 using TuiCode.Icons;
 
@@ -10,10 +11,19 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
     /// <summary>The directory the tree is currently rooted at, or null before the first <see cref="Open"/>.</summary>
     public IDirectoryInfo? Root { get; private set; }
 
+    /// <summary>The item marked by <see cref="Cut"/>, drawn dimmed until it's pasted or the mark is cleared.</summary>
+    public IFileSystemInfo? PendingCut { get; private set; }
+
     public FileExplorerView(FileIcons? icons = null)
     {
         TreeBuilder = new FileSystemTreeBuilder { IncludeFiles = true };
         AspectGetter = info => info.Name;
+        // Before the icon handler, so the icon picks up the dimmed style too.
+        DrawLine += (_, e) =>
+        {
+            if (PendingCut is { } cut && string.Equals(e.Model?.FullName, cut.FullName, StringComparison.Ordinal))
+                Dim(e);
+        };
         if (icons is not null)
         {
             DrawLine += (_, e) =>
@@ -46,6 +56,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
     public void Open(IDirectoryInfo root)
     {
         Root = root;
+        PendingCut = null;
         ClearObjects();
         AddObject(root);
         Expand(root);
@@ -63,7 +74,9 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
     /// parent hosts it as a sibling, and with nothing selected it lands at the tree root.
     /// Returns null before the first <see cref="Open"/>.
     /// </summary>
-    public IDirectoryInfo? NewEntryTarget() => SelectedObject switch
+    public IDirectoryInfo? NewEntryTarget() => FolderFor(SelectedObject);
+
+    private IDirectoryInfo? FolderFor(IFileSystemInfo? item) => item switch
     {
         IDirectoryInfo dir => dir,
         IFileInfo file => file.Directory ?? Root,
@@ -138,6 +151,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
             fs.Directory.Delete(item.FullName, recursive: true);
         else
             fs.File.Delete(item.FullName);
+        ClearCutAtOrUnder(item);
 
         if (Find(parent) is { } parentNode)
             RefreshKeepingExpansion(parentNode);
@@ -178,11 +192,54 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
             fs.Directory.Move(source, target);
         else
             fs.File.Move(source, target);
+        ClearCutAtOrUnder(item);
 
         if (Find(fs.Path.GetDirectoryName(source)!) is { } sourceParent)
             RefreshKeepingExpansion(sourceParent);
         return Reveal(root, target)
             ?? throw new IOException($"Moved to '{shown}' but could not locate it in the tree.");
+    }
+
+    /// <summary>Mark <paramref name="item"/> to be moved by the next <see cref="PastePath"/>, replacing any earlier mark.</summary>
+    public void Cut(IFileSystemInfo item)
+    {
+        if (IsRoot(item))
+            throw new IOException("The workspace root can't be cut.");
+        PendingCut = item;
+        SetNeedsDraw();
+    }
+
+    public void ClearCut()
+    {
+        if (PendingCut is null) return;
+        PendingCut = null;
+        SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// Where pasting the pending cut onto <paramref name="target"/> moves it, relative to <see cref="Root"/>: into a
+    /// folder, next to a file, or to the root when <paramref name="target"/> is null. Null when nothing is cut.
+    /// </summary>
+    public string? PastePath(IFileSystemInfo? target)
+    {
+        var root = RequireRoot();
+        if (PendingCut is not { } cut) return null;
+        var folder = FolderFor(target) ?? root;
+        return EntryPaths.Relative(root, root.FileSystem.Path.Combine(folder.FullName, cut.Name));
+    }
+
+    private void ClearCutAtOrUnder(IFileSystemInfo item)
+    {
+        if (PendingCut is { } cut && FilePaths.IsSameOrUnder(cut.FullName, item.FullName))
+            ClearCut();
+    }
+
+    private static void Dim(DrawTreeViewLineEventArgs<IFileSystemInfo> e)
+    {
+        if (e.Cells is not { } cells) return;
+        for (var i = Math.Max(e.IndexOfModelText, 0); i < cells.Count; i++)
+            if (cells[i].Attribute is { } attribute)
+                cells[i] = cells[i] with { Attribute = attribute with { Style = attribute.Style | TextStyle.Faint } };
     }
 
     private IDirectoryInfo RequireRoot() =>

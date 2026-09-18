@@ -37,6 +37,8 @@ public static class CommandMnemonics
             [CommandIds.New] = "nf",
             [CommandIds.DeleteFile] = "df",
             [CommandIds.RenameFile] = "mf",
+            [CommandIds.CutFile] = "xf",
+            [CommandIds.PasteFile] = "pf",
             [CommandIds.NextEditor] = "tn",
             [CommandIds.PreviousEditor] = "tp",
             [CommandIds.Open] = "of",

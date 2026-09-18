@@ -239,9 +239,11 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
-        // Delete and F2 are bound only while the explorer has focus (CreateExplorerScope).
+        // Delete, F2, Ctrl+X and Ctrl+V are bound only while the explorer has focus (CreateExplorerScope).
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename);
+        _commands.Register(CommandIds.CutFile, "Cut file or folder", CutEntry);
+        _commands.Register(CommandIds.PasteFile, "Paste file or folder", PasteEntry);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
@@ -451,11 +453,18 @@ public sealed class WorkbenchHost : IDisposable
         var bindings = new KeybindingService(commands);
         commands.Register(CommandIds.DeleteFile, ConfirmDelete);
         commands.Register(CommandIds.RenameFile, OpenRename);
+        commands.Register(CommandIds.CutFile, CutEntry);
+        commands.Register(CommandIds.PasteFile, PasteEntry);
+        commands.Register(CommandIds.CancelCut, explorer.ClearCut);
         bindings.Bind("Delete", CommandIds.DeleteFile);
         // Our iTerm2 profile sends forward-delete as ^D (Iterm2Integration).
         bindings.Bind("Ctrl+D", CommandIds.DeleteFile);
         bindings.Bind("F2", CommandIds.RenameFile);
-        return new LayeredScope(bindings, _cursorScope, _ => explorer.HasFocus);
+        bindings.Bind("Ctrl+X", CommandIds.CutFile);
+        bindings.Bind("Ctrl+V", CommandIds.PasteFile);
+        bindings.Bind("Esc", CommandIds.CancelCut);
+        return new LayeredScope(bindings, _cursorScope,
+            key => explorer.HasFocus && (key != Key.Esc || explorer.PendingCut is not null));
     }
 
     private LayeredScope CreateSearchScope()
