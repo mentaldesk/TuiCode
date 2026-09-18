@@ -809,6 +809,38 @@ public sealed class WorkbenchHost : IDisposable
         ShowPathPrompt(view);
     }
 
+    private void CutEntry()
+    {
+        var fromExplorer = ExplorerIsContext;
+        if (FileCommandTarget(fromExplorer, "cut") is not { } item) return;
+        _workbench.Sidebar.Explorer.Cut(item);
+        _workbench.StatusBar.SetMessage($"Cut: {item.FullName}");
+        if (fromExplorer) FocusSidebar();
+    }
+
+    private void PasteEntry()
+    {
+        var explorer = _workbench.Sidebar.Explorer;
+        if (explorer.PendingCut is not { } item) return;
+        var fromExplorer = ExplorerIsContext;
+        var target = fromExplorer ? explorer.SelectedObject : _workbench.Editor.Group.ActiveTab?.File;
+        try
+        {
+            var moved = _workbench.Move(item, explorer.PastePath(target)!);
+            explorer.ClearCut();
+            if (!ReferenceEquals(moved, item))
+            {
+                _history.Rebase(item.FullName, moved.FullName);
+                _workbench.StatusBar.SetMessage($"Moved: {moved.FullName}");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _workbench.StatusBar.SetMessage(ex.Message);
+        }
+        if (fromExplorer) FocusSidebar();
+    }
+
     private void ShowPathPrompt(PathPromptView view)
     {
         _activePathPrompt = view;
