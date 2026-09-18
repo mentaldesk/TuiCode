@@ -13,8 +13,11 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 {
     private readonly MockFileSystem _fs = new();
 
-    [Fact]
-    public async Task Delete_in_the_explorer_asks_first_and_Esc_keeps_the_file()
+    public static TheoryData<Key> DeleteKeys => [Key.Delete, Key.D.WithCtrl];
+
+    [Theory]
+    [MemberData(nameof(DeleteKeys))]
+    public async Task Delete_in_the_explorer_asks_first_and_Esc_keeps_the_file(Key deleteKey)
     {
         _fs.AddFile("/work/a.txt", new MockFileData("a"));
         using var workbench = BuildWorkbench();
@@ -23,7 +26,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => SelectInExplorer(workbench, "a.txt"),
-            () => host.App.InjectKey(Key.Delete),
+            () => host.App.InjectKey(deleteKey),
             () => Confirm(workbench) is not null,
             () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Esc); },
             () => Confirm(workbench) is null);
@@ -129,8 +132,9 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
         Assert.True(_fs.File.Exists("/work/a.txt"));
     }
 
-    [Fact]
-    public async Task Delete_in_the_editor_still_deletes_text()
+    [Theory]
+    [MemberData(nameof(DeleteKeys))]
+    public async Task Delete_in_the_editor_still_deletes_text(Key deleteKey)
     {
         _fs.AddFile("/work/a.txt", new MockFileData("abc"));
         using var workbench = BuildWorkbench();
@@ -139,7 +143,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); tab = workbench.Editor.Group.ActiveTab; },
-            () => host.App.InjectKey(Key.Delete),
+            () => host.App.InjectKey(deleteKey),
             () => tab!.Content.StartsWith("bc", StringComparison.Ordinal));
 
         Assert.Null(Confirm(workbench));

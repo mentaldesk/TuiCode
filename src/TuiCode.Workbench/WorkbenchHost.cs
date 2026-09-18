@@ -449,6 +449,8 @@ public sealed class WorkbenchHost : IDisposable
         commands.Register(CommandIds.DeleteFile, ConfirmDelete);
         commands.Register(CommandIds.RenameFile, OpenRename);
         bindings.Bind("Delete", CommandIds.DeleteFile);
+        // Our iTerm2 profile sends forward-delete as ^D (Iterm2Integration).
+        bindings.Bind("Ctrl+D", CommandIds.DeleteFile);
         bindings.Bind("F2", CommandIds.RenameFile);
         return new LayeredScope(bindings, _cursorScope, _ => explorer.HasFocus);
     }

@@ -19,7 +19,7 @@ public sealed class HelpView : Window
         X = Pos.Center();
         Y = Pos.Center();
         Width = 58;
-        Height = 33;
+        Height = 32;
         CanFocus = true;
 
         var content = new Label
@@ -67,7 +67,6 @@ public sealed class HelpView : Window
             "Files",
             Row("Ctrl+O", "Open file or folder"),
             Row("Ctrl+N", "New file or folder"),
-            Row("F2 / Delete", "Rename / delete (in the explorer)"),
             Row("Ctrl+S", "Save active file"),
             Row("Ctrl+W", "Close active tab"),
             "",
