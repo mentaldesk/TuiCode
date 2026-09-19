@@ -1,31 +1,39 @@
 using TuiCode.Explorer;
 using TuiCode.Search;
+using TuiCode.Workbench.Review;
 
 namespace TuiCode.Workbench.Parts;
 
-public enum SidebarTab { Explorer, Find }
+public enum SidebarTab { Explorer, Find, Review }
 
 public sealed class SidebarPart : FrameView
 {
     private readonly Tabs _tabs;
     private readonly View _explorerTab;
     private readonly View _findTab;
+    private readonly View _reviewTab;
 
     public FileExplorerView Explorer { get; }
     public SearchView Search { get; }
+    public ReviewView Review { get; }
 
-    public SidebarTab ActiveTab => ReferenceEquals(_tabs.Value, _findTab) ? SidebarTab.Find : SidebarTab.Explorer;
+    public SidebarTab ActiveTab =>
+        ReferenceEquals(_tabs.Value, _findTab) ? SidebarTab.Find
+        : ReferenceEquals(_tabs.Value, _reviewTab) ? SidebarTab.Review
+        : SidebarTab.Explorer;
 
-    public SidebarPart(FileExplorerView explorer, SearchView? search = null)
+    public SidebarPart(FileExplorerView explorer, SearchView? search = null, ReviewView? review = null)
     {
         Explorer = explorer;
         Search = search ?? new SearchView();
+        Review = review ?? new ReviewView();
         BorderStyle = LineStyle.Single;
         SchemeName = "Sidebar";
 
         _explorerTab = WrapTab("Explorer", explorer);
         // Titled after the Find globally / Replace globally commands that open it (fg / rg).
         _findTab = WrapTab("Find", Search);
+        _reviewTab = WrapTab("Review", Review);
 
         _tabs = new Tabs
         {
@@ -35,13 +43,22 @@ public sealed class SidebarPart : FrameView
             Height = Dim.Fill(),
             CanFocus = true,
         };
-        _tabs.Add(_explorerTab, _findTab);
+        _tabs.Add(_explorerTab, _findTab, _reviewTab);
         _tabs.Value = _explorerTab;
+        _tabs.ValueChanged += (_, _) =>
+        {
+            if (ActiveTab == SidebarTab.Review) Review.Refresh();
+        };
         Add(_tabs);
     }
 
     public void ShowTab(SidebarTab tab) =>
-        _tabs.Value = tab == SidebarTab.Find ? _findTab : _explorerTab;
+        _tabs.Value = tab switch
+        {
+            SidebarTab.Find => _findTab,
+            SidebarTab.Review => _reviewTab,
+            _ => _explorerTab,
+        };
 
     private static View WrapTab(string title, View content)
     {

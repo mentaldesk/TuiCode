@@ -12,6 +12,7 @@ using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Icons;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.TerminalIntegration;
 using TuiCode.Workbench.Workspace;
@@ -51,6 +52,7 @@ services.AddSingleton<ITerminalIntegration, WezTermIntegration>();
 
 services.AddTransient<FileExplorerView>();
 services.AddTransient<SearchView>();
+services.AddTransient<ReviewView>();
 services.AddTransient<SidebarPart>();
 services.AddTransient<EditorPart>();
 services.AddTransient<StatusBarPart>();

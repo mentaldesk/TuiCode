@@ -55,8 +55,13 @@ public sealed class Workbench : Window
         sidebar.Search.MatchActivated += (_, hit) => OpenMatch(hit.File, hit.Match);
         sidebar.Search.Message += (_, message) => statusBar.SetMessage(message);
 
+        sidebar.Review.RootProvider = () => sidebar.Explorer.Root;
+
         editor.FileSaved += (_, file) =>
+        {
             statusBar.SetMessage($"Saved: {file.FullName}");
+            RefreshReviewIfShowing();
+        };
 
         editor.Group.ActiveTabChanged += (_, tab) =>
         {
@@ -117,6 +122,7 @@ public sealed class Workbench : Window
         Editor.Group.CloseAll();
         Sidebar.Explorer.Open(directory);
         Sidebar.Search.RunSearch();
+        RefreshReviewIfShowing();
         StatusBar.SetMessage($"Opened folder: {directory.FullName}");
 
         RestoreOpenFiles(directory);
@@ -191,6 +197,13 @@ public sealed class Workbench : Window
         Sidebar.Visible = visible;
         Editor.X = visible ? Pos.Right(Sidebar) : 0;
         SetNeedsLayout();
+        RefreshReviewIfShowing();
+    }
+
+    /// <summary>The Review tab refreshes itself when it's switched to; this covers the other times it needs to.</summary>
+    public void RefreshReviewIfShowing()
+    {
+        if (IsSidebarVisible && Sidebar.ActiveTab == SidebarTab.Review) Sidebar.Review.Refresh();
     }
 
     public void ToggleSidebar() => SetSidebarVisible(!IsSidebarVisible);

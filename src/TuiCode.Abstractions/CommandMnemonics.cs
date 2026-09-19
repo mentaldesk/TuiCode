@@ -57,6 +57,7 @@ public static class CommandMnemonics
             [CommandIds.FocusSidebar] = "fs",
             [CommandIds.FocusEditorBody] = "fe",
             [CommandIds.FocusEditorTabStrip] = "ft",
+            [CommandIds.FocusReview] = "fr",
             [CommandIds.GoToLine] = "gl",
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
