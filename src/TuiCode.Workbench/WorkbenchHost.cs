@@ -244,6 +244,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.CutFile, "Cut file or folder", CutEntry, CommandScope.Explorer);
         _commands.Register(CommandIds.PasteFile, "Paste file or folder", PasteEntry, CommandScope.Explorer);
         _commands.Register(CommandIds.CancelCut, "Cancel cut", explorer.ClearCut, CommandScope.Explorer, () => explorer.PendingCut is not null);
+        explorer.CutCleared += (_, item) => _workbench.StatusBar.ClearMessage(CutMessage(item));
         var search = _workbench.Sidebar.Search;
         _commands.Register(CommandIds.SearchFocusResults, "Focus find results", () => search.FocusResults(), CommandScope.Find);
         _commands.Register(CommandIds.SearchSwitchField, "Switch find field", search.SwitchField, CommandScope.Find);
@@ -791,9 +792,11 @@ public sealed class WorkbenchHost : IDisposable
         var fromExplorer = ExplorerIsContext;
         if (FileCommandTarget(fromExplorer, "cut") is not { } item) return;
         _workbench.Sidebar.Explorer.Cut(item);
-        _workbench.StatusBar.SetMessage($"Cut: {item.FullName}");
+        _workbench.StatusBar.SetMessage(CutMessage(item));
         if (fromExplorer) FocusSidebar();
     }
+
+    private static string CutMessage(IFileSystemInfo item) => $"Cut: {item.FullName}";
 
     private void PasteEntry()
     {
