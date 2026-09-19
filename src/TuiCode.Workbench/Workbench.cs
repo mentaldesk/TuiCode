@@ -72,6 +72,7 @@ public sealed class Workbench : Window
     private void ShowActiveFile(EditorTab? tab)
     {
         if (tab is not null) StatusBar.SetMessage(tab.File.FullName);
+        else if (Editor.Group.ActiveDiffTab is { } diff) StatusBar.SetMessage(diff.Title);
         StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
     }
 
@@ -164,7 +165,7 @@ public sealed class Workbench : Window
         var group = Editor.Group;
         _workspaceState.Save(_workspaceFolder, new WorkspaceState(
             group.Tabs.Select(t => t.File.FullName).ToList(),
-            group.ActiveTab?.File.FullName));
+            (group.ActiveTab ?? group.ActiveDiffTab?.Source)?.File.FullName));
     }
 
     protected override void Dispose(bool disposing)

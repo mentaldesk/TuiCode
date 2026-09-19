@@ -263,6 +263,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
         _commands.Register(CommandIds.ShowAbout, "About TuiCode", OpenAbout);
         _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo);
+        // No default key (#61): users can bind one in Settings.
+        _commands.Register(CommandIds.CompareToSaved, "Compare to saved", CompareToSaved);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)));
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)));
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)));
@@ -465,8 +467,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private void FocusEditorBody()
     {
-        if (_workbench.Editor.Group.ActiveTab is { } tab)
-            tab.FocusContent();
+        _workbench.Editor.Group.FocusActive();
         _focusLevel = FocusLevel.EditorBody;
     }
 
@@ -1006,6 +1007,27 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeDocumentInfo = null;
+        FocusEditorBody();
+    }
+
+    private void CompareToSaved()
+    {
+        var group = _workbench.Editor.Group;
+        if ((group.ActiveTab ?? group.ActiveDiffTab?.Source) is not { } tab)
+        {
+            _workbench.StatusBar.SetMessage("No file is open.");
+            return;
+        }
+        if (!tab.File.FileSystem.File.Exists(tab.File.FullName))
+        {
+            _workbench.StatusBar.SetMessage($"{tab.File.Name} has never been saved.");
+            return;
+        }
+        if (group.CompareToSaved(tab) is null)
+        {
+            _workbench.StatusBar.SetMessage("No changes against saved");
+            return;
+        }
         FocusEditorBody();
     }
 

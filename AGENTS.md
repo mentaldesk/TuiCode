@@ -119,6 +119,12 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Visibility is `EditorGroup.GutterVisible` (on by default, applied to open and future tabs), toggled by `tg`. It isn't persisted: that waits for an editor section in Settings.
 - Gutter colours come from the token theme's VS Code `colors` (`editorLineNumber.foreground` / `activeForeground`, `editorGutter.addedBackground` / `modifiedBackground` / `deletedBackground`); TG schemes have no semantic roles for them. Without them (no highlighter, e.g. in tests) markers fall back to fixed green/blue/red and line numbers to the Editable attribute, faint except on the cursor row.
 
+## Diff tab (#61)
+
+- **Compare to saved** (`cts`, no default key) opens a read-only `DiffTab` in the editor group: the file on disk on the left, the live buffer on the right, laid out by `AlignedDiff` with `DiffTab.MaxEdits` (5,000) as the give-up limit. `DiffTab.ReadLines` splits the file with TG's own `Cell.StringToLinesOfCells`, so an unedited buffer compares equal.
+- Diff tabs sit in the same `Tabs` strip as editor tabs, so cycling, focus-by-index and closing work from `TabCollection`, not `_byPath`. `EditorGroup.ActiveTab` is null while one is active, so editor commands skip it; use `FocusActive` to focus whichever kind is showing. Closing a file's tab closes its diff tabs.
+- The diff is recomputed on `ValueChanged`, i.e. each time the tab becomes active, not on edits. The tab draws both panes itself and scrolls with its own view key bindings (arrows, PgUp/PgDn, Home/End, wheel). Tints come from the token theme's `diffEditor.removedLineBackground` / `insertedLineBackground`, which every bundled theme sets opaque (terminals can't blend VS Code's translucent ones).
+
 ## Multiple cursors and undo (#106)
 
 - `Alt+Up`/`Alt+Down` move, and `Alt+Shift+Up`/`Alt+Shift+Down` duplicate, the lines under every cursor or selection (`EditorTextView.MoveLines`/`DuplicateLines`). As in VS Code, a selection that ends at column 0 leaves that last line out, and adjacent cursors' lines move as one block. `Ctrl+Alt+Up`/`Ctrl+Alt+Down` add a cursor above/below every cursor, keeping the column across shorter lines. `Alt+Click` adds or removes a cursor, and a plain click or `Esc` goes back to one. `Esc` is `RemoveSecondaryCursors`, `Editor`-scoped and enabled only with extra cursors; the find bar's layer sits above it, so Esc closes find first. These are workbench commands like any other, so they act on the active tab whatever has focus, then focus the editor.

@@ -46,6 +46,7 @@ public static class CommandMnemonics
             [CommandIds.OpenSettings] = "os",
             [CommandIds.CloseActiveEditor] = "cf",
             [CommandIds.ChangeGrammar] = "cg",
+            [CommandIds.CompareToSaved] = "cts",
             [CommandIds.ToggleSidebar] = "ts",
             [CommandIds.ToggleGutter] = "tg",
             [CommandIds.ToggleColumnSelect] = "tc",
