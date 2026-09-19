@@ -144,7 +144,7 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => host.App.InjectKey(new Key(',').WithCtrl),
-            () => host.App.InjectKey(Key.CursorDown),
+            () => { host.App.InjectKey(Key.CursorDown); host.App.InjectKey(Key.CursorDown); },
             () => host.App.InjectKey(Key.CursorRight),
             () =>
             {
