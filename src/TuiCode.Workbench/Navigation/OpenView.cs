@@ -19,13 +19,15 @@ namespace TuiCode.Workbench.Navigation;
 public sealed class OpenView : Window
 {
     private const string BrowseHint = "Type to filter · Enter open · Tab -> Open folder · Esc cancel";
+    private const string FileOnlyBrowseHint = "Type to filter · Enter open · Esc cancel";
     private const string FilterHint = "Up/Down select · Enter open · Esc clear filter";
 
     private readonly Label _pathLabel;
     private readonly Label _filterLabel;
     private readonly Label _hint;
     private readonly ListView _list;
-    private readonly Button _openFolderButton;
+    private readonly Button? _openFolderButton;
+    private readonly string _browseHint;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
@@ -43,13 +45,14 @@ public sealed class OpenView : Window
     public event EventHandler<IFileInfo>? FileSelected;
     public event EventHandler<IDirectoryInfo>? FolderSelected;
 
-    public OpenView(IDirectoryInfo startDirectory, FileIcons? icons = null)
+    public OpenView(IDirectoryInfo startDirectory, FileIcons? icons = null, string title = "Open File or Folder", bool canOpenFolder = true)
     {
         ArgumentNullException.ThrowIfNull(startDirectory);
         _currentDirectory = startDirectory;
         _icons = icons;
+        _browseHint = canOpenFolder ? BrowseHint : FileOnlyBrowseHint;
 
-        Title = "Open File or Folder";
+        Title = title;
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
         Y = Pos.Center();
@@ -70,23 +73,27 @@ public sealed class OpenView : Window
         };
         _list.MouseEvent += (_, _) => _list.SetFocus();
 
-        _openFolderButton = new Button
-        {
-            X = 1,
-            Y = Pos.AnchorEnd(2),
-            Text = "Open this folder",
-        };
-        _openFolderButton.Accepting += (_, _) => OpenCurrentFolder();
-
         _hint = new Label
         {
             X = 1,
             Y = Pos.AnchorEnd(1),
             Width = Dim.Fill(1),
-            Text = BrowseHint,
+            Text = _browseHint,
         };
 
-        Add(_pathLabel, _filterLabel, _list, _openFolderButton, _hint);
+        Add(_pathLabel, _filterLabel, _list, _hint);
+
+        if (canOpenFolder)
+        {
+            _openFolderButton = new Button
+            {
+                X = 1,
+                Y = Pos.AnchorEnd(2),
+                Text = "Open this folder",
+            };
+            _openFolderButton.Accepting += (_, _) => OpenCurrentFolder();
+            Add(_openFolderButton);
+        }
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new FilterScope(new KeybindingService(_scopeCommands), OnFilterKey);
@@ -150,7 +157,7 @@ public sealed class OpenView : Window
         {
             _entries = DirectoryListing.Build(_currentDirectory);
             _filterLabel.Text = "";
-            _hint.Text = BrowseHint;
+            _hint.Text = _browseHint;
         }
         else
         {
@@ -202,7 +209,7 @@ public sealed class OpenView : Window
     // on the highlighted entry.
     private void OnConfirm()
     {
-        if (_openFolderButton.HasFocus)
+        if (_openFolderButton?.HasFocus == true)
         {
             OpenCurrentFolder();
             return;

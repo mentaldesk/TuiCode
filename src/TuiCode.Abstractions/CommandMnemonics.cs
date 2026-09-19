@@ -50,6 +50,7 @@ public static class CommandMnemonics
             [CommandIds.NextChange] = "nc",
             [CommandIds.PreviousChange] = "pc",
             [CommandIds.CompareToRevision] = "ctr",
+            [CommandIds.CompareToOtherFile] = "cto",
             [CommandIds.ToggleSidebar] = "ts",
             [CommandIds.ToggleGutter] = "tg",
             [CommandIds.ToggleColumnSelect] = "tc",

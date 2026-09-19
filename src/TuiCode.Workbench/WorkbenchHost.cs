@@ -276,6 +276,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.PreviousChange, "Previous change", () => _workbench.Editor.Group.ActiveDiffTab?.PreviousChange(), CommandScope.Diff);
         _commands.Register(CommandIds.GoToChangeLine, "Go to line in file", GoToChangeLine, CommandScope.Diff);
         _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision);
+        _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)));
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)));
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)));
@@ -1097,6 +1098,52 @@ public sealed class WorkbenchHost : IDisposable
             else
                 OpenRevisionPicker(tab);
         });
+    }
+
+    private void CompareToOtherFile()
+    {
+        if (_activeOpen is not null) return;
+        var group = _workbench.Editor.Group;
+        if ((group.ActiveTab ?? group.ActiveDiffTab?.Source) is not { } tab)
+        {
+            _workbench.StatusBar.SetMessage("No file is open.");
+            return;
+        }
+        var start = tab.File.Directory is { Exists: true } folder ? folder : _workbench.Sidebar.Explorer.Root;
+        if (start is null) return;
+
+        var view = new OpenView(start, _icons, $"Compare {tab.File.Name} to…", canOpenFolder: false);
+        view.Cancelled += (_, _) => CloseOpen(view);
+        view.FileSelected += (_, other) =>
+        {
+            CloseOpen(view);
+            CompareTo(tab, other);
+        };
+
+        _activeOpen = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusList();
+    }
+
+    private void CompareTo(EditorTab tab, IFileInfo other)
+    {
+        if (string.Equals(other.FullName, tab.File.FullName, StringComparison.Ordinal))
+        {
+            _workbench.StatusBar.SetMessage($"Can't compare {tab.File.Name} with itself");
+            return;
+        }
+        try
+        {
+            if (_workbench.Editor.Group.Compare(tab, other.Name, () => DiffTab.ReadLines(other), other.FullName) is null)
+                _workbench.StatusBar.SetMessage($"No changes against {other.Name}");
+            else
+                FocusEditorBody();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _workbench.StatusBar.SetMessage($"Can't read {other.Name}: {ex.Message}");
+        }
     }
 
     private void OpenRevisionPicker(EditorTab tab)
