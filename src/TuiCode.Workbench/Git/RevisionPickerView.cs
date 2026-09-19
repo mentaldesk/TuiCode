@@ -8,7 +8,7 @@ namespace TuiCode.Workbench.Git;
 /// <summary>
 /// Modal picker for Compare to revision (<c>ctr</c>): a filter over the file's branches, tags and
 /// recent commits. Enter picks the highlighted row, or the typed text when nothing matches.
-/// The list is empty until <see cref="Load"/>, so the host can fill it in off the UI thread.
+/// The list holds only <c>HEAD</c> until <see cref="Load"/>, so the host can fill it in off the UI thread.
 /// </summary>
 public sealed class RevisionPickerView : Window
 {
@@ -23,7 +23,7 @@ public sealed class RevisionPickerView : Window
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
 
-    private IReadOnlyList<RevisionEntry> _entries = [];
+    private IReadOnlyList<RevisionEntry> _entries = RevisionList.Build([], []);
     private IReadOnlyList<RevisionEntry> _visible = [];
 
     public IKeybindingService Scope => _scopeKeybindings;
@@ -61,6 +61,7 @@ public sealed class RevisionPickerView : Window
     internal string Error => _error.Text ?? "";
     internal IReadOnlyList<string> VisibleItems => _visible.Select(e => e.Text).ToList();
     internal int? SelectedItem => _list.SelectedItem;
+    internal bool Loaded { get; private set; }
 
     public bool FocusFilter() => _filter.SetFocus();
 
@@ -68,6 +69,7 @@ public sealed class RevisionPickerView : Window
     {
         _entries = RevisionList.Build(refs, commits);
         _hint.Text = ReadyHint;
+        Loaded = true;
         ShowEntries();
     }
 
@@ -115,7 +117,7 @@ public sealed class RevisionPickerView : Window
         _error.Text = "";
         _visible = RevisionList.Filter(_entries, Filter);
         _list.Source = new RevisionListSource(_visible);
-        _list.SelectedItem = _visible.Count > 0 ? 0 : null;
+        _list.SelectedItem = RevisionList.Selected(_visible, Filter);
     }
 
     private sealed class RevisionListSource(IReadOnlyList<RevisionEntry> rows) : IListDataSource

@@ -18,10 +18,11 @@ public class RevisionListTests
         ]);
 
     [Fact]
-    public void Build_lists_branches_remotes_tags_then_commits_with_their_kind()
+    public void Build_lists_HEAD_branches_remotes_tags_then_commits_with_their_kind()
     {
         Assert.Equal(
         [
+            ("HEAD", "HEAD", "checked out"),
             ("main", "main", "branch"),
             ("feature/DiffTab", "feature/DiffTab", "branch"),
             ("origin/main", "origin/main", "branch"),
@@ -37,10 +38,47 @@ public class RevisionListTests
     [InlineData("3F2", new[] { "3f2a9c1" })]
     [InlineData("igitcli", new[] { "3f2a9c1" })]
     [InlineData("HEAD~3", new string[0])]
-    [InlineData("", new[] { "main", "feature/DiffTab", "origin/main", "v1.2", "3f2a9c1", "a1b2c3d" })]
+    [InlineData("", new[] { "HEAD", "main", "feature/DiffTab", "origin/main", "v1.2", "3f2a9c1", "a1b2c3d" })]
     public void Filter_matches_names_by_camel_humps_and_commits_by_hash_prefix_or_subject(string filter, string[] expected)
     {
         Assert.Equal(expected, RevisionList.Filter(Entries, filter).Select(e => e.Revision));
+    }
+
+    [Theory]
+    [InlineData("HEAD")]
+    [InlineData("head")]
+    [InlineData(" Head ")]
+    public void Selected_is_the_HEAD_row_for_HEAD_in_any_case_above_branches_it_matches(string filter)
+    {
+        var entries = RevisionList.Build([new GitRef("feature/header", GitRefKind.Branch)], []);
+        var visible = RevisionList.Filter(entries, filter);
+
+        Assert.Equal(["HEAD", "feature/header"], visible.Select(e => e.Revision));
+        Assert.Equal(0, RevisionList.Selected(visible, filter));
+    }
+
+    [Theory]
+    [InlineData("v1.2-", 0)]
+    [InlineData("v1.2", 1)]
+    [InlineData("v1", 2)]
+    public void Selected_is_the_ref_named_exactly_even_below_partial_matches(string filter, int expected)
+    {
+        var entries = RevisionList.Build(
+        [
+            new GitRef("v1.2-rc", GitRefKind.Tag),
+            new GitRef("v1.2", GitRefKind.Tag),
+            new GitRef("v1", GitRefKind.Tag),
+        ], []);
+        var visible = RevisionList.Filter(entries, filter);
+
+        Assert.Equal(expected, RevisionList.Selected(visible, filter));
+    }
+
+    [Fact]
+    public void Selected_is_the_first_row_with_no_filter_and_none_with_no_rows()
+    {
+        Assert.Equal(0, RevisionList.Selected(Entries, ""));
+        Assert.Null(RevisionList.Selected([], "zzz"));
     }
 
     [Fact]
