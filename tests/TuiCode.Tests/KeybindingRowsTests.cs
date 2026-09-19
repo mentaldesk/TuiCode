@@ -33,23 +33,59 @@ public class KeybindingRowsTests
         Assert.Equal(["cut"], rows.Select(r => r.CommandId));
     }
 
+    // The Keyboard Shortcuts list is 51 columns wide at 80×24.
+    internal const int WidthAt80 = 51;
+
     [Fact]
-    public void Display_puts_the_keys_and_scope_in_columns()
+    public void Display_puts_the_keys_and_scope_in_columns_two_spaces_apart()
     {
         var row = new KeybindingRow("cut", "Cut file or folder", CommandScope.Explorer, Binding("Ctrl+X", "cut", CommandScope.Explorer));
 
-        Assert.Equal("Cut file or folder         Ctrl+X        Explorer", row.Display);
-        Assert.Equal("Command                    Keys          When", KeybindingRows.Header);
+        Assert.Equal("Cut file or folder          Ctrl+X         Explorer", row.Display(WidthAt80));
+        Assert.Equal("Command                     Keys           When", KeybindingRows.Header(WidthAt80));
+    }
+
+    [Fact]
+    public void Display_keeps_the_longest_default_chord_two_spaces_from_its_neighbours_at_80_columns()
+    {
+        var row = new KeybindingRow("dup", "Duplicate line down", CommandScope.Global, Binding("Alt+Shift+CursorDown", "dup", CommandScope.Global));
+
+        Assert.Equal("Duplicate line down  Alt+Shift+CursorDown  Global", row.Display(WidthAt80));
+    }
+
+    [Fact]
+    public void Columns_widen_with_the_pane()
+    {
+        var narrow = Starts(KeybindingRows.Header(WidthAt80));
+        var wide = Starts(KeybindingRows.Header(171));
+
+        Assert.Equal(171 - "Explorer".Length, wide.When);
+        Assert.True(wide.Keys > 2 * narrow.Keys, $"{wide}");
+        Assert.True(wide.When - wide.Keys > 2 * (narrow.When - narrow.Keys), $"{wide}");
+
+        static (int Keys, int When) Starts(string header) =>
+            (header.IndexOf("Keys", StringComparison.Ordinal), header.IndexOf("When", StringComparison.Ordinal));
     }
 
     [Fact]
     public void Display_shortens_the_command_to_keep_long_keys_and_the_scope_in_the_row()
     {
-        var chord = "Ctrl+Alt+Shift+G Ctrl+Alt+Shift+H";
+        var chord = "Ctrl+Alt+Shift+G Ctrl+Alt+Shift+H Ctrl+Alt+Shift+J";
         var row = new KeybindingRow("x", "Move or rename file or folder", CommandScope.Explorer, Binding(chord, "x", CommandScope.Explorer));
 
-        Assert.EndsWith("Explorer", row.Display);
-        Assert.True(row.Display.Length <= 49, row.Display);
+        var display = row.Display(WidthAt80);
+
+        Assert.True(display.Length <= WidthAt80, display);
+        Assert.EndsWith("  Explorer", display);
+        Assert.Contains("…  ", display);
+    }
+
+    [Fact]
+    public void Display_truncates_a_long_command_with_an_ellipsis_at_80_columns()
+    {
+        var row = new KeybindingRow("x", "Move or rename file or folder", CommandScope.Explorer, Binding("F2", "x", CommandScope.Explorer));
+
+        Assert.StartsWith("Move or rename file or fo…  F2", row.Display(WidthAt80));
     }
 
     private static KeyBinding Binding(string keys, string command, CommandScope scope) => new(TestKeys.Chord(keys), command, scope);
