@@ -8,6 +8,9 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 {
     public event EventHandler<IFileInfo>? FileActivated;
 
+    /// <summary>Raised with the item whose cut mark was just cleared, whether pasted, cancelled, deleted or renamed.</summary>
+    public event EventHandler<IFileSystemInfo>? CutCleared;
+
     /// <summary>The directory the tree is currently rooted at, or null before the first <see cref="Open"/>.</summary>
     public IDirectoryInfo? Root { get; private set; }
 
@@ -211,9 +214,10 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 
     public void ClearCut()
     {
-        if (PendingCut is null) return;
+        if (PendingCut is not { } cut) return;
         PendingCut = null;
         SetNeedsDraw();
+        CutCleared?.Invoke(this, cut);
     }
 
     /// <summary>
