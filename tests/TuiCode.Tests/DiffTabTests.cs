@@ -224,6 +224,78 @@ public class DiffTabDrawTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void Right_scrolls_both_sides_and_keeps_the_gutter_in_place()
+    {
+        var diff = Diff("one\nabcdefghijklmnopqrstuvwxyz", "one\nabcdefghijklmnopqrstuvwxyZ");
+
+        Press(diff, Key.CursorRight, 4);
+
+        Assert.Equal(
+        [
+            " saved         │ working copy  ",
+            "  1            │  1            ",
+            "  2- efghijklmn│  2+ efghijklmn",
+        ], Render(diff)[..3]);
+    }
+
+    [Fact]
+    public void Sideways_scrolling_stops_at_the_left_edge_and_at_the_end_of_the_widest_line()
+    {
+        var diff = Diff("one\nabcdefghijklmnopqrstuvwxyz", "one\nabcdefghijklmnopqrstuvwxyZ");
+
+        Press(diff, Key.CursorRight, 30);
+        Assert.Equal(16, diff.LeftColumn);
+        Assert.Equal("  2- qrstuvwxyz│  2+ qrstuvwxyZ", Render(diff)[2]);
+
+        Press(diff, Key.CursorLeft, 30);
+        Assert.Equal(0, diff.LeftColumn);
+        Assert.Equal("  2- abcdefghij│  2+ abcdefghij", Render(diff)[2]);
+    }
+
+    [Fact]
+    public void Tabs_and_wide_glyphs_cut_by_the_left_edge_show_as_blanks()
+    {
+        var diff = Diff("\tabcdefghijklmn\nx日本語abcdefghijk", "\tabcdefghijklmN\nx日本語abcdefghijK");
+
+        Press(diff, Key.CursorRight, 2);
+
+        var screen = Render(diff);
+        Assert.Equal("  1-   abcdefgh│  1+   abcdefgh", screen[1]);
+        Assert.Equal("  2-  本 語 abcde│  2+  本 語 abcde", screen[2]);
+    }
+
+    [Fact]
+    public void The_horizontal_wheel_scrolls_sideways()
+    {
+        var diff = Diff("abcdefghijklmnopqrstuvwxyz", "abcdefghijklmnopqrstuvwxyZ");
+
+        diff.NewMouseEvent(new Mouse { Flags = MouseFlags.WheeledRight, Position = new System.Drawing.Point(5, 1) });
+        diff.NewMouseEvent(new Mouse { Flags = MouseFlags.WheeledRight, Position = new System.Drawing.Point(5, 1) });
+        diff.NewMouseEvent(new Mouse { Flags = MouseFlags.WheeledLeft, Position = new System.Drawing.Point(5, 1) });
+
+        Assert.Equal(1, diff.LeftColumn);
+    }
+
+    [Fact]
+    public void Moving_between_rows_and_changes_keeps_the_sideways_scroll()
+    {
+        var saved = Enumerable.Range(1, 30).Select(i => $"a long line number {i}").ToArray();
+        var buffer = saved.ToArray();
+        buffer[9] = "A LONG LINE NUMBER 10";
+        buffer[24] = "A LONG LINE NUMBER 25";
+        var diff = Diff(string.Join('\n', saved), string.Join('\n', buffer));
+        Press(diff, Key.CursorRight, 3);
+
+        diff.NextChange();
+        diff.PreviousChange();
+        diff.NewKeyDownEvent(Key.End);
+        diff.NewKeyDownEvent(Key.Home);
+        diff.Refresh();
+
+        Assert.Equal(3, diff.LeftColumn);
+    }
+
+    [Fact]
     public void The_current_row_has_its_line_numbers_marked_on_both_sides()
     {
         var diff = Diff("one\ntwo\nthree", "one\nthree");
@@ -296,6 +368,25 @@ public class DiffTabDrawTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void Syntax_colours_and_tints_stay_with_the_text_when_scrolled_sideways()
+    {
+        var diff = Diff("int a; int bbbbbbbbbbbbbbbbbb;", "int a; int cccccccccccccccccc;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/a.cs");
+
+        Press(diff, Key.CursorRight, 7);
+        Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.
+
+        Assert.Equal("  1- int bbbbbb│  1+ int cccccc", Render(diff)[1]);
+        var normal = diff.GetAttributeForRole(VisualRole.Editable);
+        foreach (var col in new[] { 5, 21 })
+        {
+            Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(1, col).Foreground);
+            Assert.NotEqual(Color.Parse(DarkKeyword), AttributeAt(1, col + 4).Foreground);
+            Assert.NotEqual(normal.Background, BackgroundAt(1, col));
+            Assert.Equal(BackgroundAt(1, col), BackgroundAt(1, col + 4));
+        }
+    }
+
+    [Fact]
     public void Both_sides_follow_a_grammar_pinned_on_the_source_tab()
     {
         var syntax = new SyntaxHighlighter(GrammarBundle.Load());
@@ -364,6 +455,12 @@ public class DiffTabDrawTests : StaticConfigurationTest
         diff.Layout();
         diff.Refresh();
         return diff;
+    }
+
+    private static void Press(DiffTab diff, Key key, int times)
+    {
+        for (var i = 0; i < times; i++)
+            diff.NewKeyDownEvent(key);
     }
 
     private Color BackgroundAt(int row, int col) => AttributeAt(row, col).Background;

@@ -25,6 +25,8 @@ public sealed class DiffTab : FrameView
     private IReadOnlyList<string> _right = [];
     private int _top;
     private int _current;
+    private int _column;
+    private int? _widest;
 
     public DiffTab(EditorTab source, string leftLabel, Func<IReadOnlyList<string>> readLeft, SyntaxHighlighter? syntax = null, string? leftKey = null)
     {
@@ -45,8 +47,12 @@ public sealed class DiffTab : FrameView
         AddCommand(Command.End, () => MoveTo(int.MaxValue));
         AddCommand(Command.ScrollUp, () => ScrollTo(_top - 1));
         AddCommand(Command.ScrollDown, () => ScrollTo(_top + 1));
+        AddCommand(Command.ScrollLeft, () => ScrollSidewaysTo(_column - 1));
+        AddCommand(Command.ScrollRight, () => ScrollSidewaysTo(_column + 1));
         KeyBindings.Add(Key.CursorUp, Command.Up);
         KeyBindings.Add(Key.CursorDown, Command.Down);
+        KeyBindings.Add(Key.CursorLeft, Command.ScrollLeft);
+        KeyBindings.Add(Key.CursorRight, Command.ScrollRight);
         KeyBindings.Add(Key.PageUp, Command.PageUp);
         KeyBindings.Add(Key.PageDown, Command.PageDown);
         KeyBindings.Add(Key.Home, Command.Start);
@@ -55,6 +61,8 @@ public sealed class DiffTab : FrameView
         KeyBindings.Add(Key.End.WithCtrl, Command.End);
         MouseBindings.Add(MouseFlags.WheeledUp, Command.ScrollUp);
         MouseBindings.Add(MouseFlags.WheeledDown, Command.ScrollDown);
+        MouseBindings.Add(MouseFlags.WheeledLeft, Command.ScrollLeft);
+        MouseBindings.Add(MouseFlags.WheeledRight, Command.ScrollRight);
         UpdateTitle();
     }
 
@@ -69,6 +77,9 @@ public sealed class DiffTab : FrameView
     public AlignedDiff Diff { get; private set; }
 
     public int TopRow => _top;
+
+    /// <summary>How many columns both sides are scrolled right.</summary>
+    public int LeftColumn => _column;
 
     // Focus sits in the tab header, and HasFocus stays true after it moves on, so ask the app what's focused.
     public bool IsFocused => App?.Navigation?.GetFocused() is { } focused && IsInHierarchy(this, focused, includeAdornments: true);
@@ -124,6 +135,7 @@ public sealed class DiffTab : FrameView
         _left = _readLeft();
         _right = [.. Source.SnapshotLines];
         Diff = AlignedDiff.Compute(_left, _right, MaxEdits);
+        _widest = null;
         if (!Equals(LeftTokens?.Language, Source.Grammar))
         {
             LeftTokens = _syntax?.CreateCache(Source.Grammar);
@@ -133,6 +145,7 @@ public sealed class DiffTab : FrameView
         RightTokens?.Update(_right);
         UpdateTitle();
         ScrollTo(_top);
+        if (_column > 0) ScrollSidewaysTo(_column);
         MoveTo(_current);
     }
 
@@ -168,16 +181,32 @@ public sealed class DiffTab : FrameView
         return true;
     }
 
+    private bool ScrollSidewaysTo(int column)
+    {
+        _widest ??= _left.Concat(_right).Select(line => Columns(line)).DefaultIfEmpty().Max();
+        _column = Math.Clamp(column, 0, Math.Max(0, _widest.Value - NarrowerTextWidth));
+        SetNeedsDraw();
+        return true;
+    }
+
+    private int Digits => Math.Max(MinDigits, Math.Max(_left.Count, _right.Count).ToString().Length);
+
+    private (int Left, int Right) SideWidths()
+    {
+        var left = Math.Max(0, Viewport.Width - 1) / 2;
+        return (left, Math.Max(0, Viewport.Width - left - 1));
+    }
+
+    private int NarrowerTextWidth => Math.Max(0, SideWidths().Left - Digits - 2);
+
     protected override bool OnDrawingContent(DrawContext? context)
     {
         var normal = GetAttributeForRole(VisualRole.Editable);
         var removed = normal with { Background = ThemeColor("diffEditor.removedLineBackground") ?? DefaultRemoved };
         var inserted = normal with { Background = ThemeColor("diffEditor.insertedLineBackground") ?? DefaultInserted };
-        var width = Viewport.Width;
-        var leftWidth = Math.Max(0, width - 1) / 2;
+        var (leftWidth, rightWidth) = SideWidths();
         var rightX = leftWidth + 1;
-        var rightWidth = Math.Max(0, width - rightX);
-        var digits = Math.Max(MinDigits, Math.Max(_left.Count, _right.Count).ToString().Length);
+        var digits = Digits;
 
         var current = GetAttributeForRole(VisualRole.Focus);
         var header = normal with { Style = normal.Style | TextStyle.Bold };
@@ -221,7 +250,7 @@ public sealed class DiffTab : FrameView
         var number = marker == ' ' ? tint with { Style = tint.Style | TextStyle.Faint } : tint;
         var used = Math.Min(width, prefix.Length);
         DrawText(x, y, used, prefix, current ?? (line is null ? normal : number));
-        if (line is { } l) DrawText(x + used, y, width - used, lines[l], tint, tokens?.TokensFor(l));
+        if (line is { } l) DrawText(x + used, y, width - used, lines[l], tint, tokens?.TokensFor(l), _column);
         else DrawText(x + used, y, width - used, "", normal);
     }
 
@@ -232,15 +261,15 @@ public sealed class DiffTab : FrameView
         AddStr(x, y, "│");
     }
 
-    // Pads to width; long lines are cut, not wrapped or scrolled. Token offsets are UTF-16 chars, not cells.
-    private void DrawText(int x, int y, int width, string text, Attribute attribute, int[]? tokens = null)
+    // Pads to width; the first `skip` columns and whatever passes width are cut. Token offsets are UTF-16 chars, not cells.
+    private void DrawText(int x, int y, int width, string text, Attribute attribute, int[]? tokens = null, int skip = 0)
     {
         SetAttribute(attribute);
         var col = 0;
         var chars = 0;
         var token = -1;
         var elements = StringInfo.GetTextElementEnumerator(text);
-        while (elements.MoveNext())
+        while (elements.MoveNext() && col - skip < width)
         {
             var grapheme = elements.GetTextElement();
             if (tokens is { Length: > 0 })
@@ -255,22 +284,34 @@ public sealed class DiffTab : FrameView
                 }
                 chars += grapheme.Length;
             }
-            if (grapheme == "\t")
+            var cols = Columns(grapheme, col);
+            if (grapheme == "\t" || col < skip)
             {
-                var spaces = Source.Settings.IndentSize - col % Source.Settings.IndentSize;
-                for (var i = 0; i < spaces && col < width; i++)
-                    AddStr(x + col++, y, " ");
+                for (var end = col + cols; col < end && col - skip < width; col++)
+                    if (col >= skip) AddStr(x + col - skip, y, " ");
                 continue;
             }
-            var cols = Math.Max(1, grapheme.GetColumns(false));
-            if (col + cols > width) break;
-            AddStr(x + col, y, grapheme);
+            if (col - skip + cols > width) break;
+            AddStr(x + col - skip, y, grapheme);
             col += cols;
         }
         SetAttribute(attribute);
-        for (; col < width; col++)
-            AddStr(x + col, y, " ");
+        for (col = Math.Max(col, skip); col - skip < width; col++)
+            AddStr(x + col - skip, y, " ");
     }
+
+    private int Columns(string text)
+    {
+        var col = 0;
+        var elements = StringInfo.GetTextElementEnumerator(text);
+        while (elements.MoveNext())
+            col += Columns(elements.GetTextElement(), col);
+        return col;
+    }
+
+    private int Columns(string grapheme, int col) => grapheme == "\t"
+        ? Source.Settings.IndentSize - col % Source.Settings.IndentSize
+        : Math.Max(1, grapheme.GetColumns(false));
 
     private Color? ThemeColor(string key) =>
         _syntax?.EditorColors.TryGetValue(key, out var hex) == true && Color.TryParse(hex, out Color? color) ? color : null;
