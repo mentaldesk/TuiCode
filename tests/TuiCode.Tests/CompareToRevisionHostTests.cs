@@ -27,7 +27,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Ctr_lists_branches_tags_and_commits_in_order()
+    public async Task Ctr_lists_HEAD_branches_tags_and_commits_in_order()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -40,13 +40,52 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.C),
             () => host.App.InjectKey(Key.T),
             () => host.App.InjectKey(Key.R),
-            () => (view = Picker(workbench)) is { VisibleItems.Count: > 0 },
+            () => (view = Picker(workbench)) is { Loaded: true },
             () => { rows = view!.VisibleItems; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal("Compare a.txt to revision", view!.Title);
-        Assert.Equal(["main", "origin/main", "v1.0", "3f2a9c1  Add bravo"], rows);
+        Assert.Equal(["HEAD", "main", "origin/main", "v1.0", "3f2a9c1  Add bravo"], rows);
         Assert.Null(Picker(workbench));
+    }
+
+    [Fact]
+    public async Task Ctr_then_Enter_compares_against_HEAD()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        int? selected = null;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench) is not null,
+            () => { selected = Picker(workbench)!.SelectedItem; },
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.Editor.Group.ActiveDiffTab is not null);
+
+        Assert.Equal(0, selected);
+        Assert.Equal("a.txt ↔ HEAD", Assert.Single(workbench.Editor.Group.DiffTabs).Title);
+    }
+
+    [Fact]
+    public async Task Typing_HEAD_picks_HEAD_over_a_branch_it_also_matches()
+    {
+        _git.Refs = [new GitRef("feature/header", GitRefKind.Branch), .. _git.Refs];
+        _git.Files["feature/header"] = "zulu\n";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench) is { Loaded: true },
+            () => Type(host, "HEAD"),
+            () => Picker(workbench)!.VisibleItems.SequenceEqual(["HEAD", "feature/header"]),
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.Editor.Group.ActiveDiffTab is not null);
+
+        Assert.Equal("a.txt ↔ HEAD", Assert.Single(workbench.Editor.Group.DiffTabs).Title);
     }
 
     [Fact]
@@ -59,7 +98,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => Picker(workbench) is { Loaded: true },
             () => Type(host, "HEAD~3"),
             () => Picker(workbench)!.VisibleItems.Count == 0,
             () => host.App.InjectKey(Key.Enter),
@@ -80,7 +119,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => Picker(workbench) is { Loaded: true },
             () => Type(host, "bravo"),
             () => Picker(workbench)!.VisibleItems.SequenceEqual(["3f2a9c1  Add bravo"]),
             () => host.App.InjectKey(Key.Enter),
@@ -100,11 +139,12 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => Picker(workbench) is { Loaded: true },
+            () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.CursorUp),
-            () => Picker(workbench)!.SelectedItem == 1,
+            () => Picker(workbench)!.SelectedItem == 2,
             () =>
             {
                 _git.Files["origin/main"] = "alpha\nzulu\n";
@@ -127,7 +167,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.PageDown),
             Record,
             () => host.App.InjectKey(Key.PageDown),
@@ -136,7 +176,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.PageUp),
             Record);
 
-        Assert.Equal([16, 42, 26], selected);
+        Assert.Equal([16, 43, 27], selected);
     }
 
     [Fact]
@@ -150,7 +190,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => Picker(workbench) is { Loaded: true },
             () => Type(host, "mian~"),
             () => host.App.InjectKey(Key.Enter),
             () => (error = Picker(workbench)!.Error).Length > 0,
@@ -174,7 +214,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => Picker(workbench) is { Loaded: true },
             () => Type(host, "v1"),
             () => host.App.InjectKey(Key.Enter),
             () => (error = Picker(workbench)!.Error).Length > 0,
@@ -195,35 +235,35 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is not null,
             () => { group.OpenOrFocus(group.Tabs[0].File); },
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is not null);
 
-        Assert.Equal("a.txt ↔ main", Assert.Single(group.DiffTabs).Title);
+        Assert.Equal("a.txt ↔ HEAD", Assert.Single(group.DiffTabs).Title);
         Assert.Equal(1, _git.ShowCount);
     }
 
     [Fact]
     public async Task A_buffer_identical_to_the_revision_says_so_and_opens_no_tab()
     {
-        _git.Files["main"] = "alpha\nbravo\n";
+        _git.Files["HEAD"] = "alpha\nbravo\n";
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench) is null);
 
         Assert.Empty(workbench.Editor.Group.DiffTabs);
-        Assert.Equal("No changes against main", workbench.StatusBar.DisplayedText);
+        Assert.Equal("No changes against HEAD", workbench.StatusBar.DisplayedText);
     }
 
     [Fact]
@@ -233,7 +273,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         _git.RefsGate = gate.Task;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        var rowsBeforeLoad = -1;
+        IReadOnlyList<string> rowsBeforeLoad = [];
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -241,13 +281,13 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => Picker(workbench) is not null,
             () =>
             {
-                rowsBeforeLoad = Picker(workbench)!.VisibleItems.Count;
+                rowsBeforeLoad = Picker(workbench)!.VisibleItems;
                 gate.SetResult();
             },
-            () => Picker(workbench)!.VisibleItems.Count == 4,
+            () => Picker(workbench)!.VisibleItems.Count == 5,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal(0, rowsBeforeLoad);
+        Assert.Equal(["HEAD"], rowsBeforeLoad);
     }
 
     [Theory]

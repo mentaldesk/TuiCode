@@ -20,9 +20,12 @@ internal sealed record RevisionEntry(string Revision, string Text, string Kind, 
 
 internal static class RevisionList
 {
-    /// <summary>Refs in the order <see cref="IGitCli.GetRefsAsync"/> gives them, then commits, newest first.</summary>
+    private static readonly RevisionEntry Head = new("HEAD", "HEAD", "checked out");
+
+    /// <summary><c>HEAD</c>, refs in the order <see cref="IGitCli.GetRefsAsync"/> gives them, then commits, newest first.</summary>
     public static IReadOnlyList<RevisionEntry> Build(IReadOnlyList<GitRef> refs, IReadOnlyList<GitCommit> commits) =>
     [
+        Head,
         .. refs.Select(r => new RevisionEntry(r.Name, r.Name, r.Kind == GitRefKind.Tag ? "tag" : "branch")),
         .. commits.Select(c => new RevisionEntry(c.ShortHash, $"{c.ShortHash}  {c.Subject.Replace('\t', ' ')}", "commit", c.Subject)),
     ];
@@ -32,6 +35,21 @@ internal static class RevisionList
     {
         filter = filter.Trim();
         return filter.Length == 0 ? entries : entries.Where(e => Matches(e, filter)).ToList();
+    }
+
+    /// <summary>The first row <paramref name="filter"/> names exactly (<c>HEAD</c> in any case), else the first row.</summary>
+    public static int? Selected(IReadOnlyList<RevisionEntry> visible, string filter)
+    {
+        if (visible.Count == 0) return null;
+        filter = filter.Trim();
+        for (var i = 0; i < visible.Count; i++)
+        {
+            var named = visible[i] == Head
+                ? filter.Equals(Head.Revision, StringComparison.OrdinalIgnoreCase)
+                : visible[i].Revision == filter;
+            if (named) return i;
+        }
+        return 0;
     }
 
     private static bool Matches(RevisionEntry entry, string filter) =>
