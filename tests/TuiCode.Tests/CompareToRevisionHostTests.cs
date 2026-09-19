@@ -248,6 +248,81 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         Assert.Equal(1, _git.ShowCount);
     }
 
+    [Theory]
+    [InlineData("row")]
+    [InlineData("typed")]
+    public async Task Ctr_from_a_diff_tab_shows_and_focuses_the_new_diff(string pick)
+    {
+        _git.Files["HEAD~3"] = "zulu\n";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+        DiffTab? active = null;
+        var focused = false;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench) is { Loaded: true },
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.Space.WithCtrl),
+            () => Type(host, "ctr"),
+            () => Picker(workbench) is { Loaded: true },
+            () =>
+            {
+                if (pick == "row") host.App.InjectKey(Key.CursorDown);
+                else Type(host, "HEAD~3");
+            },
+            () => host.App.InjectKey(Key.Enter),
+            () => group.DiffTabs.Count == 2 && Picker(workbench) is null,
+            () =>
+            {
+                active = group.ActiveDiffTab;
+                focused = active?.IsFocused ?? false;
+            });
+
+        Assert.Equal(pick == "row" ? "a.txt ↔ main" : "a.txt ↔ HEAD~3", active?.Title);
+        Assert.True(focused);
+    }
+
+    [Fact]
+    public async Task Ctr_from_a_diff_tab_brings_an_already_open_diff_to_the_front()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+        DiffTab? active = null;
+        var focused = false;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench) is { Loaded: true },
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is not null,
+            () => { group.OpenOrFocus(group.Tabs[0].File); },
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench) is { Loaded: true },
+            () => host.App.InjectKey(Key.CursorDown),
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { Title: "a.txt ↔ main", IsFocused: true },
+            () => host.App.InjectKey(Key.Space.WithCtrl),
+            () => Type(host, "ctr"),
+            () => Picker(workbench) is { Loaded: true },
+            () => host.App.InjectKey(Key.Enter),
+            () => Picker(workbench) is null,
+            () =>
+            {
+                active = group.ActiveDiffTab;
+                focused = active?.IsFocused ?? false;
+            });
+
+        Assert.Equal("a.txt ↔ HEAD", active?.Title);
+        Assert.True(focused);
+        Assert.Equal(2, group.DiffTabs.Count);
+    }
+
     [Fact]
     public async Task A_buffer_identical_to_the_revision_says_so_and_opens_no_tab()
     {
