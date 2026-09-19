@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
@@ -207,7 +206,7 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
     private static bool IsSafeRevision(string revision) =>
         !string.IsNullOrWhiteSpace(revision) && !revision.StartsWith('-');
 
-    private static string ErrorMessage(Run run)
+    private static string ErrorMessage(CliRun run)
     {
         if (run.Failure is { } failure)
             return failure;
@@ -217,7 +216,7 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return line.StartsWith("fatal: ", StringComparison.Ordinal) ? line["fatal: ".Length..] : line;
     }
 
-    private async Task<Run> RunAsync(string workingDirectory, IEnumerable<string> arguments, CancellationToken cancellationToken)
+    private Task<CliRun> RunAsync(string workingDirectory, IEnumerable<string> arguments, CancellationToken cancellationToken)
     {
         var info = new ProcessStartInfo(executable)
         {
@@ -236,41 +235,6 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         info.Environment["LC_ALL"] = "C";
         info.Environment["GIT_OPTIONAL_LOCKS"] = "0";
 
-        using var process = new Process { StartInfo = info };
-        try
-        {
-            process.Start();
-        }
-        catch (Win32Exception)
-        {
-            return Run.Failed("git isn't installed or isn't on PATH");
-        }
-
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(_timeout);
-        var output = process.StandardOutput.ReadToEndAsync(timeoutSource.Token);
-        var error = process.StandardError.ReadToEndAsync(timeoutSource.Token);
-        try
-        {
-            await process.WaitForExitAsync(timeoutSource.Token);
-            return new Run(process.ExitCode, await output, await error, null);
-        }
-        catch (OperationCanceledException)
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch (InvalidOperationException)
-            {
-            }
-            cancellationToken.ThrowIfCancellationRequested();
-            return Run.Failed($"git didn't answer within {_timeout.TotalSeconds:0.#} s");
-        }
-    }
-
-    private readonly record struct Run(int ExitCode, string Output, string Error, string? Failure)
-    {
-        public static Run Failed(string failure) => new(-1, "", "", failure);
+        return CliProcess.RunAsync("git", info, _timeout, cancellationToken);
     }
 }

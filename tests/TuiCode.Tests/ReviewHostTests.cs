@@ -13,6 +13,7 @@ public class ReviewHostTests : StaticConfigurationTest
 {
     private readonly MockFileSystem _fs = new();
     private readonly FakeGitCli _git = new();
+    private readonly FakeGitHubCli _gitHub = new();
 
     public ReviewHostTests()
     {
@@ -137,9 +138,27 @@ public class ReviewHostTests : StaticConfigurationTest
             () => review.HeaderText == "No changes against main");
     }
 
+    [Fact]
+    public async Task The_PR_header_fills_in_after_the_file_list()
+    {
+        _gitHub.PullRequest = new GitHubPullRequest(183, "Shows the PR", "main", "feature", new GitHubChecks(3, 0, 1));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var review = workbench.Sidebar.Review;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => review.TitleText.Length > 0);
+
+        Assert.Equal("#183 Shows the PR", review.TitleText);
+        Assert.Equal("main ← feature", review.HeaderText);
+        Assert.Equal("✓ 3  ● 1 checks", review.ChecksText);
+        Assert.True(review.Files.Visible);
+    }
+
     private Workbench.Workbench BuildWorkbench()
     {
-        var sidebar = new SidebarPart(new FileExplorerView(), review: new ReviewView(_git));
+        var sidebar = new SidebarPart(new FileExplorerView(), review: new ReviewView(_git, _gitHub));
         var workbench = new Workbench.Workbench(sidebar, new EditorPart(), new StatusBarPart());
         workbench.Sidebar.Explorer.Open(_fs.DirectoryInfo.New("/work"));
         return workbench;

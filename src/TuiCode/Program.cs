@@ -33,6 +33,7 @@ services.AddSingleton<IInputScopeStack, InputScopeStack>();
 services.AddSingleton<ISettingsService, DefaultSettingsService>();
 services.AddSingleton<IEnvironment, SystemEnvironment>();
 services.AddSingleton<IGitCli>(sp => new GitCli(sp.GetRequiredService<IFileSystem>()));
+services.AddSingleton<IGitHubCli>(_ => new GitHubCli());
 services.AddSingleton(sp =>
 {
     var fs = sp.GetRequiredService<IFileSystem>();
