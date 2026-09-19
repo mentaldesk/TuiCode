@@ -1156,9 +1156,13 @@ public sealed class WorkbenchHost : IDisposable
         view.Submitted += (_, revision) =>
         {
             if (lookingUp) return;
-            if (_workbench.Editor.Group.FocusDiff(tab, revision))
+            var group = _workbench.Editor.Group;
+            // Close first: removing the picker hands focus back to a tab, switching away from the diff.
+            if (group.HasDiff(tab, revision))
             {
                 CloseRevisionPicker(view);
+                group.FocusDiff(tab, revision);
+                FocusEditorBody();
                 return;
             }
             lookingUp = true;
@@ -1173,9 +1177,11 @@ public sealed class WorkbenchHost : IDisposable
                     return;
                 }
                 var lines = DiffTab.SplitLines(content.Result.Value);
-                var diff = _workbench.Editor.Group.Compare(tab, revision, () => lines);
                 CloseRevisionPicker(view);
-                if (diff is null) _workbench.StatusBar.SetMessage($"No changes against {revision}");
+                if (group.Compare(tab, revision, () => lines) is null)
+                    _workbench.StatusBar.SetMessage($"No changes against {revision}");
+                else
+                    FocusEditorBody();
             });
         };
 

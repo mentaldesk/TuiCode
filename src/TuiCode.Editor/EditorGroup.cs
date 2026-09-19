@@ -112,6 +112,8 @@ public sealed class EditorGroup : Tabs
         return tab;
     }
 
+    public bool HasDiff(EditorTab source, string label) => FindDiff(source, label) is not null;
+
     /// <summary>Focuses an open diff of <paramref name="source"/> against <paramref name="label"/>, if there is one.</summary>
     public bool FocusDiff(EditorTab source, string label)
     {
