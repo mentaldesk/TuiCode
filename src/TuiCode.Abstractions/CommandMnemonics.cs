@@ -36,6 +36,7 @@ public static class CommandMnemonics
             [CommandIds.ShowAbout] = "tui",
             [CommandIds.New] = "nf",
             [CommandIds.DeleteFile] = "df",
+            [CommandIds.ShowDocumentInfo] = "di",
             [CommandIds.RenameFile] = "mf",
             [CommandIds.CutFile] = "xf",
             [CommandIds.PasteFile] = "pf",
