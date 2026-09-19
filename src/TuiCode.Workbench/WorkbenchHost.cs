@@ -9,6 +9,7 @@ using TuiCode.Icons;
 using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Diagnostics;
+using TuiCode.Workbench.DocumentInfo;
 using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Grammars;
@@ -60,6 +61,7 @@ public sealed class WorkbenchHost : IDisposable
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
     private AboutView? _activeAbout;
+    private DocumentInfoView? _activeDocumentInfo;
     private SixelSupport? _sixelSupport;
     private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
@@ -260,6 +262,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
         _commands.Register(CommandIds.ShowAbout, "About TuiCode", OpenAbout);
+        _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)));
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)));
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)));
@@ -974,6 +977,44 @@ public sealed class WorkbenchHost : IDisposable
         view.Dispose();
         _activeAbout = null;
         FocusEditorBody();
+    }
+
+    private void OpenDocumentInfo()
+    {
+        if (_activeDocumentInfo is not null) return;
+        if (_workbench.Editor.Group.ActiveTab is not { } tab)
+        {
+            _workbench.StatusBar.SetMessage("No file is open.");
+            return;
+        }
+
+        var file = tab.File.FileSystem.FileInfo.New(tab.File.FullName);
+        var grammar = tab.Grammar?.Name ?? Workbench.PlainTextName;
+        var facts = DocumentInfoView.Facts(grammar, tab.LineEnding, file.Exists ? file.Length : null, tab.IsDirty);
+        var view = new DocumentInfoView(WorkspacePath(tab.File), facts, tab.CountDocument(), tab.CountSelection());
+        view.Closed += (_, _) => CloseDocumentInfo(view);
+        _activeDocumentInfo = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.SetFocus();
+    }
+
+    private void CloseDocumentInfo(DocumentInfoView view)
+    {
+        if (!ReferenceEquals(_activeDocumentInfo, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeDocumentInfo = null;
+        FocusEditorBody();
+    }
+
+    private string WorkspacePath(IFileInfo file)
+    {
+        var explorer = _workbench.Sidebar.Explorer;
+        if (explorer.Root is null) return file.FullName;
+        var relative = explorer.RelativePath(file);
+        return relative.StartsWith("..", StringComparison.Ordinal) ? file.FullName : relative;
     }
 
     private static string AppVersion()
