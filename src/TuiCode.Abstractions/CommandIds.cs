@@ -30,6 +30,10 @@ public static class CommandIds
     public const string CompareToSaved = "workbench.action.compareToSaved";
     public const string CompareToRevision = "workbench.action.compareToRevision";
 
+    public const string NextChange = "diff.action.nextChange";
+    public const string PreviousChange = "diff.action.previousChange";
+    public const string GoToChangeLine = "diff.action.goToLine";
+
     public const string HelpClose = "help.action.close";
     public const string DiagnosticsClose = "diagnostics.action.close";
     public const string AboutClose = "about.action.close";

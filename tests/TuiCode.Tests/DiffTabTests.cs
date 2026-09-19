@@ -7,6 +7,7 @@ using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Tests;
 
@@ -200,23 +201,75 @@ public class DiffTabDrawTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Scrolling_moves_both_sides_and_stops_at_the_last_row()
+    public void Up_and_down_move_the_current_row_and_scroll_to_keep_it_in_view()
     {
         var saved = string.Join('\n', Enumerable.Range(1, 20).Select(i => $"line {i}"));
         var diff = Diff(saved, saved.Replace("line 20", "LINE 20"));
 
         diff.NewKeyDownEvent(Key.CursorDown);
-        Assert.Equal(1, diff.TopRow);
-        Assert.Equal("  2  line 2    │  2  line 2    ", Render(diff)[1]);
+        Assert.Equal((1, 0), (diff.CurrentRow, diff.TopRow));
 
         diff.NewKeyDownEvent(Key.End);
-        Assert.Equal(14, diff.TopRow);
+        Assert.Equal((19, 14), (diff.CurrentRow, diff.TopRow));
         Assert.Equal(" 20- line 20   │ 20+ LINE 20   ", Render(diff)[^1]);
 
         diff.NewKeyDownEvent(Key.PageUp);
-        Assert.Equal(8, diff.TopRow);
+        Assert.Equal((13, 8), (diff.CurrentRow, diff.TopRow));
+        diff.NewKeyDownEvent(Key.CursorUp);
+        Assert.Equal((12, 8), (diff.CurrentRow, diff.TopRow));
         diff.NewKeyDownEvent(Key.Home);
-        Assert.Equal(0, diff.TopRow);
+        Assert.Equal((0, 0), (diff.CurrentRow, diff.TopRow));
+    }
+
+    [Fact]
+    public void The_current_row_has_its_line_numbers_marked_on_both_sides()
+    {
+        var diff = Diff("one\ntwo\nthree", "one\nthree");
+        diff.NewKeyDownEvent(Key.CursorDown);
+
+        Render(diff);
+
+        var focus = diff.GetAttributeForRole(VisualRole.Focus);
+        Assert.Equal(focus, AttributeAt(2, 0));
+        Assert.Equal(focus, AttributeAt(2, 16));
+        Assert.NotEqual(focus, AttributeAt(2, 5));
+        Assert.NotEqual(focus, AttributeAt(1, 0));
+    }
+
+    [Fact]
+    public void Next_change_shows_the_change_below_a_little_context_and_stops_at_the_last()
+    {
+        var saved = Enumerable.Range(1, 30).Select(i => $"line {i}").ToArray();
+        var buffer = saved.ToArray();
+        buffer[9] = "LINE 10";
+        buffer[24] = "LINE 25";
+        var diff = Diff(string.Join('\n', saved), string.Join('\n', buffer));
+        Assert.Equal("2 changes", diff.ChangeStatus);
+
+        diff.NextChange();
+        Assert.Equal((9, 7), (diff.CurrentRow, diff.TopRow));
+        Assert.Equal("Change 1 of 2", diff.ChangeStatus);
+
+        diff.NextChange();
+        diff.NextChange();
+        Assert.Equal((24, 22), (diff.CurrentRow, diff.TopRow));
+        Assert.Equal("Change 2 of 2", diff.ChangeStatus);
+
+        diff.PreviousChange();
+        diff.PreviousChange();
+        Assert.Equal(9, diff.CurrentRow);
+        Assert.Equal("Change 1 of 2", diff.ChangeStatus);
+    }
+
+    [Fact]
+    public void Change_status_says_so_when_there_are_no_changes()
+    {
+        var diff = Diff("one", "one");
+
+        diff.NextChange();
+
+        Assert.Equal(0, diff.CurrentRow);
+        Assert.Equal("No changes", diff.ChangeStatus);
     }
 
     private DiffTab Diff(string saved, string buffer)
@@ -236,7 +289,9 @@ public class DiffTabDrawTests : StaticConfigurationTest
         return diff;
     }
 
-    private Color BackgroundAt(int row, int col) => _app.Driver!.Contents![row, col].Attribute!.Value.Background;
+    private Color BackgroundAt(int row, int col) => AttributeAt(row, col).Background;
+
+    private Attribute AttributeAt(int row, int col) => _app.Driver!.Contents![row, col].Attribute!.Value;
 
     private string[] Render(DiffTab view)
     {
@@ -282,8 +337,101 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         var diff = Assert.Single(group.DiffTabs);
         Assert.Equal("a.txt ↔ saved", diff.Title);
         Assert.Same(diff, group.ActiveDiffTab);
-        Assert.Equal(1, diff.TopRow);
-        Assert.Equal("a.txt ↔ saved", workbench.StatusBar.DisplayedText);
+        Assert.Equal(1, diff.CurrentRow);
+        Assert.StartsWith("a.txt ↔ saved  •  Change 1 of 1", workbench.StatusBar.DisplayedText);
+    }
+
+    private const string ThreeChangesStatus = "a.txt ↔ saved  •  Change {0} of 3  •  Alt+CursorDown next  Alt+CursorUp prev  Enter go to line";
+
+    [Fact]
+    public async Task Alt_down_and_alt_up_step_through_changes_and_stop_at_the_last()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var statuses = new List<string>();
+        void Record() => statuses.Add(workbench.StatusBar.DisplayedText);
+
+        await HostSteps.Run(host,
+            () => OpenThreeChanges(workbench, commands),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            Record,
+            () => host.App.InjectKey(Key.CursorUp.WithAlt),
+            Record,
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            Record);
+
+        Assert.Equal([string.Format(ThreeChangesStatus, 2), string.Format(ThreeChangesStatus, 1), string.Format(ThreeChangesStatus, 3)], statuses);
+        Assert.Equal(30, workbench.Editor.Group.DiffTabs[0].CurrentRow);
+    }
+
+    [Fact]
+    public async Task Enter_on_a_removed_row_goes_to_the_buffer_line_below_it_as_a_jump()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+        EditorTab? landed = null;
+        var row = -1;
+
+        await HostSteps.Run(host,
+            () => OpenThreeChanges(workbench, commands),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => host.App.InjectKey(Key.Enter),
+            () =>
+            {
+                landed = group.ActiveTab;
+                row = landed!.CursorRow;
+                commands.TryExecute(CommandIds.NavigateBack);
+            });
+
+        Assert.NotNull(landed);
+        Assert.True(landed.ContentHasFocus);
+        Assert.Equal(14, row);
+        Assert.Equal("line 16", landed.Lines[row]);
+        Assert.Equal(0, landed.CursorRow);
+    }
+
+    [Fact]
+    public async Task The_status_hint_follows_a_rebind_and_clears_when_the_diff_tab_loses_focus()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string? rebound = null;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                host.ApplyKeybindings(
+                [
+                    new KeybindingOverride(TestKeys.Chord("Alt+CursorDown"), "-" + CommandIds.NextChange),
+                    new KeybindingOverride(TestKeys.Chord("F8"), CommandIds.NextChange),
+                ]);
+                OpenThreeChanges(workbench, commands);
+            },
+            () => host.App.InjectKey(Key.F8),
+            () => { rebound = workbench.StatusBar.DisplayedText; },
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.StatusBar.DisplayedText == "a.txt ↔ saved");
+
+        Assert.Equal("a.txt ↔ saved  •  Change 1 of 3  •  F8 next  Alt+CursorUp prev  Enter go to line", rebound);
+    }
+
+    // Changes at rows 4 (modified), 14 (line 15 removed) and 30 (modified).
+    private void OpenThreeChanges(Workbench.Workbench workbench, CommandService commands)
+    {
+        var saved = Enumerable.Range(1, 40).Select(i => $"line {i}").ToList();
+        _fs.AddFile("/work/a.txt", new MockFileData(string.Join('\n', saved)));
+        workbench.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+        var buffer = saved.ToList();
+        buffer[4] = "LINE 5";
+        buffer[30] = "LINE 31";
+        buffer.RemoveAt(14);
+        workbench.Editor.Group.ActiveTab!.Content = string.Join('\n', buffer);
+        commands.TryExecute(CommandIds.CompareToSaved);
     }
 
     [Fact]

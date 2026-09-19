@@ -47,6 +47,8 @@ public static class CommandMnemonics
             [CommandIds.CloseActiveEditor] = "cf",
             [CommandIds.ChangeGrammar] = "cg",
             [CommandIds.CompareToSaved] = "cts",
+            [CommandIds.NextChange] = "nc",
+            [CommandIds.PreviousChange] = "pc",
             [CommandIds.CompareToRevision] = "ctr",
             [CommandIds.ToggleSidebar] = "ts",
             [CommandIds.ToggleGutter] = "tg",

@@ -10,7 +10,7 @@ internal sealed record KeybindingClash(KeybindingConflict Kind, KeyBinding Exist
 {
     public bool IsWarning => Existing.Scope != Candidate.Scope;
 
-    /// <summary>Same-scope clashes first, then a scope against Global. Explorer and Find bindings never clash.</summary>
+    /// <summary>Same-scope clashes first, then a scope against Global. Bindings in two different non-Global scopes never clash.</summary>
     public static KeybindingClash? Find(IEnumerable<KeyBinding> current, KeyBinding candidate)
     {
         var bindings = current.ToArray();
@@ -58,6 +58,7 @@ internal sealed record KeybindingClash(KeybindingConflict Kind, KeyBinding Exist
         CommandScope.Editor => "the editor",
         CommandScope.Explorer => "the explorer",
         CommandScope.Find => "the Find sidebar",
+        CommandScope.Diff => "a diff tab",
         _ => "anything",
     };
 }

@@ -10,4 +10,5 @@ public enum CommandScope
     Editor,
     Explorer,
     Find,
+    Diff,
 }

@@ -9,6 +9,7 @@ public sealed class StatusBarPart : View
     private string? _chord;
     private string? _hint;
     private string? _grammar;
+    private string? _diff;
     private string? _mode;
     private (int Row, int Column)? _cursor;
     private (int Carets, int? Selected) _selection = (1, null);
@@ -50,6 +51,14 @@ public sealed class StatusBarPart : View
     public void SetHint(string? hint)
     {
         _hint = hint;
+        UpdateLabel();
+    }
+
+    /// <summary>Where the focused diff tab is and its keys, shown after the message; null hides it.</summary>
+    public void SetDiffStatus(string? status)
+    {
+        if (status == _diff) return;
+        _diff = status;
         UpdateLabel();
     }
 
@@ -115,5 +124,5 @@ public sealed class StatusBarPart : View
     private void UpdateLabel() =>
         _label.Text = _chord is not null
             ? $"{_chord}…"
-            : string.Join("  •  ", new[] { _hint ?? _message, _grammar, _mode }.Where(part => part is not null));
+            : string.Join("  •  ", new[] { _hint ?? _message, _diff, _grammar, _mode }.Where(part => part is not null));
 }
