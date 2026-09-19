@@ -47,6 +47,21 @@ public class ReviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Ctrl_Shift_R_shows_the_Review_tab_and_focuses_its_file_list()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        workbench.SetSidebarVisible(false);
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.R.WithCtrl.WithShift),
+            () => workbench.Sidebar.Review.ListHasFocus);
+
+        Assert.True(workbench.IsSidebarVisible);
+        Assert.Equal(SidebarTab.Review, workbench.Sidebar.ActiveTab);
+    }
+
+    [Fact]
     public async Task Enter_on_a_modified_file_opens_it_and_a_diff_against_the_base()
     {
         using var workbench = BuildWorkbench();

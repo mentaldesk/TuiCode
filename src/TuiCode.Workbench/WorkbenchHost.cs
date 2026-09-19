@@ -418,6 +418,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Shift+F", CommandIds.FindGlobally);
         keybindings.Bind("Ctrl+Shift+H", CommandIds.ReplaceGlobally);
         keybindings.Bind("Ctrl+Shift+E", CommandIds.ShowExplorer);
+        keybindings.Bind("Ctrl+Shift+R", CommandIds.FocusReview);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
