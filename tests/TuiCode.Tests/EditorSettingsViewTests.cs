@@ -73,6 +73,23 @@ public class EditorSettingsViewTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Left_returns_to_the_categories()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var panelFocused = true;
+
+        await HostSteps.Run(host, OpenEditorSettings(host, workbench),
+            () => host.App.InjectKey(Key.Tab),
+            () => host.App.InjectKey(Key.CursorLeft),
+            () => { panelFocused = workbench.SubViews.OfType<SettingsView>().Single()
+                .SubViews.OfType<EditorSettingsView>().Single().HasFocus; },
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.False(panelFocused);
+    }
+
+    [Fact]
     public void Saved_settings_apply_to_the_editor_at_startup()
     {
         _settings.Editor = EditorSettings.Default with { IndentSize = 2 };
