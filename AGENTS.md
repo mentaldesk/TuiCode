@@ -53,6 +53,11 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `ConfigurationManager` deserializes via source-generated `JsonTypeInfo` — only knows the types its built-in scopes use. Records, arrays, even `string[]` silently fail to load. Stick to primitives or persist to a dedicated file.
 - `Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`; fully qualify when constructing.
 
+### UI controls
+
+- Build UI from TG's [built-in views](https://tui-cs.github.io/Terminal.Gui/docs/views) before writing a custom one. `LogView` is custom only because `TextView` can't scroll without moving its cursor.
+- When describing UI in an issue or PR, name the control for each element and sketch it in the mockup: `[x] Follow output`, `(•) All ( ) Running`, `Refresh: [ 2 ▲▼]s`.
+
 ## AOT
 
 - Release builds are Native AOT (`PublishAot=true` on `src/TuiCode`). `dotnet publish -c Release -r <rid>` emits a single native binary; `dotnet build`/`dotnet run` still JIT.
@@ -112,11 +117,18 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 - `EditorGutter` is a sibling view left of the `EditorTextView` inside `EditorTab`, not an adornment. It draws rows from `_text.Viewport.Y` (we never enable WordWrap, so viewport rows are model rows) and redraws on the text view's `ViewportChanged` / `UnwrappedCursorPositionChanged`. Anything that moves the text view (e.g. `SetHeader`) must move the gutter's `Y` too.
 - Change markers diff the buffer against a **baseline** — the lines at load, reset on `Save` — via the pure, TG-free `LineDiff` (Myers, after trimming common prefix/suffix). Undoing back to the saved text clears the markers, which `IsDirty` doesn't. The diff is lazy: `EditorTab.OnEdited` invalidates it and the next draw recomputes, so a hidden gutter costs nothing. Past `LineDiff.MaxEdits` it gives up and marks the whole differing region modified.
+- `AlignedDiff` (the model for the side-by-side diff tab, #61) lays `LineDiff.Hunks` out as rows: inside a hunk, lines pair as modified until the shorter side runs out, then the rest are left- or right-only. It takes its own give-up limit, since a revision can be far more than `MaxEdits` away from the buffer.
 - The diff's input comes from `LineSnapshot` (`EditorTextView.Snapshot`, shared with syntax colouring), not `EditorTextView.LineStrings` (which builds a string for every line). TG edits a line's `List<Cell>` in place, so the snapshot spots changed lines by reference plus `List<T>`'s private `_version` (read via `[UnsafeAccessor]`, AOT-safe), trims the unchanged prefix/suffix, and re-reads only the middle. Unchanged lines keep their string instances, so `LineDiff`'s comparisons against the baseline hit `string.Equals`' reference fast path. Don't use `ContentsChanged`'s row as a change range instead: TG reports the start of some multi-line edits and the end of others, and raises nothing for the kill commands.
 - Edits must reach `EditorTab.OnEdited`: `TextView.Text =` doesn't raise `ContentsChanged`, which is why the `Content` setter calls it directly.
 - Only set the gutter's `Width` when it actually changes — TG's `Width` setter schedules a full screen clear even for an equal value.
 - Visibility is `EditorGroup.GutterVisible` (on by default, applied to open and future tabs), toggled by `tg`. It isn't persisted: that waits for an editor section in Settings.
 - Gutter colours come from the token theme's VS Code `colors` (`editorLineNumber.foreground` / `activeForeground`, `editorGutter.addedBackground` / `modifiedBackground` / `deletedBackground`); TG schemes have no semantic roles for them. Without them (no highlighter, e.g. in tests) markers fall back to fixed green/blue/red and line numbers to the Editable attribute, faint except on the cursor row.
+
+## Diff tab (#61)
+
+- **Compare to saved** (`cts`, no default key) opens a read-only `DiffTab` in the editor group: the file on disk on the left, the live buffer on the right, laid out by `AlignedDiff` with `DiffTab.MaxEdits` (5,000) as the give-up limit. `DiffTab.ReadLines` splits the file with TG's own `Cell.StringToLinesOfCells`, so an unedited buffer compares equal.
+- Diff tabs sit in the same `Tabs` strip as editor tabs, so cycling, focus-by-index and closing work from `TabCollection`, not `_byPath`. `EditorGroup.ActiveTab` is null while one is active, so editor commands skip it; use `FocusActive` to focus whichever kind is showing. Closing a file's tab closes its diff tabs.
+- The diff is recomputed on `ValueChanged`, i.e. each time the tab becomes active, not on edits. The tab draws both panes itself and scrolls with its own view key bindings (arrows, PgUp/PgDn, Home/End, wheel). Tints come from the token theme's `diffEditor.removedLineBackground` / `insertedLineBackground`, which every bundled theme sets opaque (terminals can't blend VS Code's translucent ones).
 
 ## Multiple cursors and undo (#106)
 
@@ -187,6 +199,12 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Settings → Editor holds indent size (1–8, also the display width of a tab), spaces vs tabs, line endings (Auto / LF / CRLF) and insert final newline, as one `EditorSettings` record on `ISettingsService.Editor`. They persist to `TuiCode.settings.json` beside the file-icon style, each key written only when it differs from the default, and each read falling back to its default on its own. They apply on Save: `WorkbenchHost` hands them to `EditorGroup.Settings` at startup and whenever Settings closes, and the group passes them to open and future tabs, like `GutterVisible`.
 - Tab and Shift+Tab are our own commands (`EditorTextView.Indent.cs`), since TG's only insert or remove a `\t`. With spaces, Tab fills to the next tab stop and Shift+Tab removes spaces back to the previous one, just left of the caret. They run at every caret like TG's did. Neither indents or outdents whole selected lines yet.
 - LF or CRLF converts a file's endings on its next save. Only Auto preserves them.
+
+## Document info (#123)
+
+- `DocumentStats` (TG-free) counts lines, words (`wc -w`'s runs of non-whitespace) and characters for the buffer or the selections at every caret, via `EditorTab.CountDocument`/`CountSelection`. It reads `LineSnapshot` strings and splits graphemes with `StringInfo`, which has to agree with TG's cells, the unit of `Col` and of the range columns (`CountDocument_counts_characters_in_the_same_unit_as_columns`).
+- `di` (Show document info, no default key) opens `DocumentInfoView` for the active tab: its path relative to the open folder, grammar, the line ending Save will write, size on disk (read fresh), and the counts. The Selection column appears only when something is selected. The counts are taken once when it opens; it doesn't refresh live.
+- While text is selected, the status bar's position slot adds the selection's character count (`Ln 12, Col 5 (34 selected)`, or `3 selections (96 selected)` with several carets). `Workbench.ShowCursorPosition` asks for it every iteration, so `EditorTab.CountSelection` caches its result against the caret ranges and an edit counter bumped in `OnEdited`, and recounts only when either changes.
 
 ## Terminal compatibility
 

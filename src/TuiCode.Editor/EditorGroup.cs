@@ -6,6 +6,7 @@ namespace TuiCode.Editor;
 public sealed class EditorGroup : Tabs
 {
     private readonly Dictionary<string, EditorTab> _byPath = new(StringComparer.Ordinal);
+    private readonly List<DiffTab> _diffs = [];
     private readonly SyntaxHighlighter? _syntax;
 
     public event EventHandler<IFileInfo>? FileSaved;
@@ -17,11 +18,16 @@ public sealed class EditorGroup : Tabs
     /// <summary>Raised when the cursor moves in any tab, tagged with the owning file (#35).</summary>
     public event EventHandler<(IFileInfo File, int Row, int Column)>? CursorMoved;
 
+    /// <summary>The active editor tab; null while a diff tab is active, so editor commands leave it alone.</summary>
     public EditorTab? ActiveTab => Value as EditorTab;
+
+    public DiffTab? ActiveDiffTab => Value as DiffTab;
 
     public SyntaxHighlighter? Syntax => _syntax;
 
     public IReadOnlyList<EditorTab> Tabs => _byPath.Values.ToArray();
+
+    public IReadOnlyList<DiffTab> DiffTabs => _diffs.ToArray();
 
     /// <summary>Whether tabs show the line-number gutter (#23); applies to open and future tabs alike.</summary>
     public bool GutterVisible
@@ -59,7 +65,11 @@ public sealed class EditorGroup : Tabs
     public EditorGroup(SyntaxHighlighter? syntax = null)
     {
         _syntax = syntax;
-        ValueChanged += (_, _) => ActiveTabChanged?.Invoke(this, ActiveTab);
+        ValueChanged += (_, _) =>
+        {
+            ActiveDiffTab?.Refresh();
+            ActiveTabChanged?.Invoke(this, ActiveTab);
+        };
     }
 
     public EditorTab OpenOrFocus(IFileInfo file)
@@ -81,9 +91,28 @@ public sealed class EditorGroup : Tabs
         return tab;
     }
 
+    /// <summary>Returns null, opening nothing, when the buffer matches the file on disk.</summary>
+    public DiffTab? CompareToSaved(EditorTab source)
+    {
+        const string label = "saved";
+        if (DiffTab.ReadLines(source.File).SequenceEqual(source.SnapshotLines, StringComparer.Ordinal)) return null;
+
+        var tab = _diffs.FirstOrDefault(d => d.Source == source && d.LeftLabel == label);
+        if (tab is null)
+        {
+            tab = new DiffTab(source, label, () => DiffTab.ReadLines(source.File), _syntax);
+            _diffs.Add(tab);
+            Add(tab);
+        }
+        // Refreshes it, via ValueChanged, unless it's already showing.
+        if (ReferenceEquals(Value, tab)) tab.Refresh();
+        else Value = tab;
+        return tab;
+    }
+
     public void CloseActive()
     {
-        if (ActiveTab is { } tab) Close(tab);
+        if (Value is { } tab) Close(tab);
     }
 
     public IEnumerable<EditorTab> TabsUnder(string path) =>
@@ -101,42 +130,50 @@ public sealed class EditorGroup : Tabs
         var tabs = _byPath.Values.ToList();
         foreach (var tab in tabs.Where(t => FilePaths.IsSameOrUnder(t.File.FullName, from)))
             tab.Relocate(tab.File.FileSystem.FileInfo.New(FilePaths.Rebase(tab.File.FullName, from, to)));
+        foreach (var diff in _diffs)
+            diff.UpdateTitle();
 
         _byPath.Clear();
         foreach (var tab in tabs)
             _byPath[tab.File.FullName] = tab;
     }
 
-    private void Close(EditorTab tab)
+    private void Close(View tab)
     {
-        var tabs = _byPath.Values.ToList();
-        var index = tabs.IndexOf(tab);
-        var wasActive = ReferenceEquals(tab, ActiveTab);
+        List<View> closing = tab is EditorTab editor ? [.. _diffs.Where(d => d.Source == editor), tab] : [tab];
+        var strip = TabCollection.ToList();
+        var before = strip.Take(strip.IndexOf(tab)).Count(t => !closing.Contains(t));
+        var wasActive = Value is not null && closing.Contains(Value);
 
-        _byPath.Remove(tab.File.FullName);
-        Remove(tab);
-        tab.Dispose();
+        foreach (var closed in closing)
+        {
+            if (closed is EditorTab e) _byPath.Remove(e.File.FullName);
+            if (closed is DiffTab d) _diffs.Remove(d);
+            Remove(closed);
+            closed.Dispose();
+        }
 
-        if (_byPath.Count == 0)
+        var remaining = strip.Where(t => !closing.Contains(t)).ToList();
+        if (remaining.Count == 0)
         {
             ClearValue();
             return;
         }
         if (!wasActive) return;
 
-        var nextIndex = Math.Min(index, _byPath.Count - 1);
-        Value = tabs.Where(t => t != tab).ElementAt(nextIndex);
+        Value = remaining[Math.Min(before, remaining.Count - 1)];
     }
 
     /// <summary>Close every open tab — used when switching workspace folders.</summary>
     public void CloseAll()
     {
-        foreach (var tab in _byPath.Values.ToList())
+        foreach (var tab in TabCollection.ToList())
         {
             Remove(tab);
             tab.Dispose();
         }
         _byPath.Clear();
+        _diffs.Clear();
         ClearValue();
     }
 
@@ -162,16 +199,24 @@ public sealed class EditorGroup : Tabs
 
     public bool FocusByIndex(int index)
     {
-        if (index < 0 || index >= _byPath.Count) return false;
-        Value = _byPath.Values.ElementAt(index);
+        var tabs = TabCollection.ToList();
+        if (index < 0 || index >= tabs.Count) return false;
+        Value = tabs[index];
         return true;
     }
 
+    public bool FocusActive() => Value switch
+    {
+        EditorTab tab => tab.FocusContent(),
+        DiffTab diff => diff.SetFocus(),
+        _ => false,
+    };
+
     private void CycleTab(bool forward)
     {
-        if (_byPath.Count < 2 || ActiveTab is null) return;
-        var tabs = _byPath.Values.ToList();
-        var i = tabs.IndexOf(ActiveTab);
+        var tabs = TabCollection.ToList();
+        if (tabs.Count < 2 || Value is null) return;
+        var i = tabs.IndexOf(Value);
         var n = tabs.Count;
         var next = forward ? (i + 1) % n : (i - 1 + n) % n;
         Value = tabs[next];

@@ -1,3 +1,4 @@
+using System.Drawing;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using TuiCode.Abstractions;
@@ -170,9 +171,22 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
         Assert.Equal("Shortcut in use", title);
         Assert.Same(settings, dialogHost);
         Assert.InRange(width, message.Split('\n').Max(l => l.Length) + 3, innerWidthAt80);
-        Assert.True(settings!.Viewport.Width - picker!.Viewport.Width + KeybindingRows.Header.Length <= innerWidthAt80);
+        Assert.Equal(KeybindingRowsTests.WidthAt80, innerWidthAt80 - (settings!.Viewport.Width - picker!.Viewport.Width));
         Assert.Contains(picker.CurrentBindings, b => Is(b, CommandScope.Global, "Ctrl+X", CommandIds.ShowAbout));
         Assert.Contains(picker.CurrentBindings, b => Is(b, CommandScope.Explorer, "Ctrl+X", CommandIds.CutFile));
+    }
+
+    [Fact]
+    public void The_shortcuts_header_follows_the_pane_width()
+    {
+        var picker = new KeybindingsPickerView(_commands, _keybindings, new InputScopeStack());
+        var header = picker.SubViews.OfType<Label>().First();
+
+        picker.Layout(new Size(KeybindingRowsTests.WidthAt80, 20));
+        Assert.Equal(KeybindingRows.Header(KeybindingRowsTests.WidthAt80), header.Text);
+
+        picker.Layout(new Size(171, 20));
+        Assert.Equal(KeybindingRows.Header(171), header.Text);
     }
 
     private Workbench.Workbench BuildWorkbench()

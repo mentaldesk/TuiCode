@@ -72,12 +72,17 @@ public sealed class Workbench : Window
     private void ShowActiveFile(EditorTab? tab)
     {
         if (tab is not null) StatusBar.SetMessage(tab.File.FullName);
+        else if (Editor.Group.ActiveDiffTab is { } diff) StatusBar.SetMessage(diff.Title);
         StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
     }
 
-    /// <summary>Show the active tab's cursor position; the host calls this every main-loop iteration.</summary>
-    public void ShowCursorPosition() =>
-        StatusBar.SetPosition(Editor.Group.ActiveTab is { } tab ? (tab.CursorRow, tab.CursorColumn) : null);
+    /// <summary>Show the active tab's cursor position and selection; the host calls this every main-loop iteration.</summary>
+    public void ShowCursorPosition()
+    {
+        var tab = Editor.Group.ActiveTab;
+        StatusBar.SetPosition(tab is null ? null : (tab.CursorRow, tab.CursorColumn));
+        StatusBar.SetSelection(tab?.CaretCount ?? 1, tab?.CountSelection()?.Characters);
+    }
 
     /// <summary>Open a file in the editor and focus it. Shared by the explorer and the Open dialog.</summary>
     public void OpenFile(IFileInfo file)
@@ -164,7 +169,7 @@ public sealed class Workbench : Window
         var group = Editor.Group;
         _workspaceState.Save(_workspaceFolder, new WorkspaceState(
             group.Tabs.Select(t => t.File.FullName).ToList(),
-            group.ActiveTab?.File.FullName));
+            (group.ActiveTab ?? group.ActiveDiffTab?.Source)?.File.FullName));
     }
 
     protected override void Dispose(bool disposing)

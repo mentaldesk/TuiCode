@@ -17,6 +17,8 @@ public sealed class EditorTab : FrameView
     private View? _header;
     private readonly string _eol;
     private bool _dirty;
+    private int _edits;
+    private (int Edits, (System.Drawing.Point Start, System.Drawing.Point End)[] Ranges, DocumentStats Stats)? _selectionStats;
 
     public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
@@ -160,7 +162,37 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public IReadOnlyList<string> Lines => _textView.LineStrings;
 
+    /// <summary>Like <see cref="Lines"/> but cheap to re-read; later reads update the returned list in place.</summary>
+    internal IReadOnlyList<string> SnapshotLines => _textView.Snapshot.Refresh(_textView.GetAllLines());
+
     public string SelectedText => _textView.SelectedText;
+
+    public int CaretCount => _textView.CaretCount;
+
+    public DocumentStats CountDocument() => DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()));
+
+    /// <summary>The counts across every caret's selection, or null when nothing is selected. Recounted only after the carets or the buffer change.</summary>
+    public DocumentStats? CountSelection()
+    {
+        if (!_textView.IsSelecting && !_textView.HasSecondaryCarets) return null;
+        var ranges = _textView.Carets.Where(c => c.Start != c.End).Select(c => (c.Start, c.End)).ToArray();
+        if (ranges.Length == 0) return null;
+        if (_selectionStats is (var edits, var counted, var cached) && edits == _edits && counted.AsSpan().SequenceEqual(ranges)) return cached;
+
+        var stats = DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()), ranges);
+        _selectionStats = (_edits, ranges, stats);
+        SelectionCounts++;
+        return stats;
+    }
+
+    internal int SelectionCounts { get; private set; }
+
+    /// <summary>What <see cref="Save"/> will write: the Line endings setting, or on Auto the file's own.</summary>
+    public LineEnding LineEnding => Settings.LineEnding switch
+    {
+        LineEnding.Auto => _eol == "\r\n" ? LineEnding.CRLF : LineEnding.LF,
+        var chosen => chosen,
+    };
 
     public void MoveLines(LineDirection direction) => _textView.MoveLines(direction);
 
@@ -297,12 +329,7 @@ public sealed class EditorTab : FrameView
         // buffer comes back CRLF regardless of the file's real endings. Re-emit using
         // the EOL we detected on load so a file's line-ending style round-trips
         // unchanged on every OS (matches VS Code's preserve-on-save behaviour).
-        var eol = Settings.LineEnding switch
-        {
-            LineEnding.LF => "\n",
-            LineEnding.CRLF => "\r\n",
-            _ => _eol,
-        };
+        var eol = LineEnding == LineEnding.CRLF ? "\r\n" : "\n";
         var content = Normalize(_textView.Text, eol);
         if (Settings.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
             content += eol;
@@ -345,6 +372,7 @@ public sealed class EditorTab : FrameView
 
     private void OnEdited()
     {
+        _edits++;
         MarkDirty();
         _gutter.OnContentChanged();
         ContentChanged?.Invoke(this, EventArgs.Empty);

@@ -195,7 +195,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.F.WithCtrl),
             () => { foreach (var c in "foo") host.App.InjectKey(new Key(c)); },
             () => host.App.InjectKey(Key.Enter),
-            () => workbench.StatusBar.DisplayedPosition == "Ln 3, Col 6",
+            () => workbench.StatusBar.DisplayedPosition == "Ln 3, Col 6 (3 selected)",
             () => host.App.InjectKey(Key.Esc));
     }
 
