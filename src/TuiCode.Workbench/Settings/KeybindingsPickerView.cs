@@ -20,6 +20,7 @@ public sealed class KeybindingsPickerView : View
 
     private readonly IInputScopeStack _scopes;
     private readonly Dictionary<string, string> _commandLabels;        // id → label
+    private readonly Dictionary<string, CommandScope> _commandScopes;
     private readonly List<KeyBinding> _currentBindings;                 // mutable; reflects the picker's pending state
     private readonly TextField _search;
     private readonly ListView _list;
@@ -43,6 +44,7 @@ public sealed class KeybindingsPickerView : View
 
         _scopes = scopes;
         _commandLabels = commands.Registered.ToDictionary(c => c.Id, c => c.Label, StringComparer.Ordinal);
+        _commandScopes = commands.Registered.ToDictionary(c => c.Id, c => c.Scope, StringComparer.Ordinal);
         _currentBindings = initialBindings.Bindings.ToList();
 
         X = 0;
@@ -222,7 +224,7 @@ public sealed class KeybindingsPickerView : View
 
         // The captured keys ARE the canonical chord — we never round-trip them through a display
         // string, so an un-parseable chord (e.g. Ctrl+Alt+Shift++) survives the picker intact (#89).
-        var candidate = new KeyBinding(_capturedKeys.ToArray(), _capturingForCommand);
+        var candidate = new KeyBinding(_capturedKeys.ToArray(), _capturingForCommand, _commandScopes[_capturingForCommand]);
         _capturingForCommand = null;
         _capturedKeys = new();
         _footer.Text = "Enter: add binding   Delete: remove   Type to filter";
@@ -240,7 +242,7 @@ public sealed class KeybindingsPickerView : View
 
     private void TryAddBinding(KeyBinding candidate)
     {
-        var conflict = CheckConflictAgainstCurrent(candidate.Chord);
+        var conflict = CheckConflictAgainstCurrent(candidate);
         if (conflict is KeybindingConflict.PrefixOfExisting or KeybindingConflict.ExtensionOfExisting)
         {
             KeybindingConflictDialog.ShowChord(this, _scopes, candidate.Display);
@@ -248,12 +250,12 @@ public sealed class KeybindingsPickerView : View
         }
         if (conflict is KeybindingConflict.ExactMatch)
         {
-            var existingCommand = _currentBindings.First(b => string.Equals(b.CanonicalId, candidate.CanonicalId, StringComparison.Ordinal)).CommandId;
+            var existingCommand = _currentBindings.First(b => SameChord(b, candidate)).CommandId;
             var existingLabel = _commandLabels.GetValueOrDefault(existingCommand, existingCommand);
             KeybindingConflictDialog.ShowReplace(this, _scopes, candidate.Display, existingLabel, replace =>
             {
                 if (!replace) return;
-                _currentBindings.RemoveAll(b => string.Equals(b.CanonicalId, candidate.CanonicalId, StringComparison.Ordinal));
+                _currentBindings.RemoveAll(b => SameChord(b, candidate));
                 _currentBindings.Add(candidate);
                 RebuildRows();
             });
@@ -266,14 +268,14 @@ public sealed class KeybindingsPickerView : View
 
     /// <summary>
     /// Conflict check against the picker's pending state, not the live keybinding service. Mirrors
-    /// <see cref="IKeybindingService.CheckConflict(IReadOnlyList{Key})"/> but operates on
-    /// <see cref="_currentBindings"/>, comparing on canonical keycodes rather than display strings (#89).
+    /// <see cref="IKeybindingService.CheckConflict(IReadOnlyList{Key}, CommandScope)"/> but operates on
+    /// <see cref="_currentBindings"/> in the candidate's scope, comparing on canonical keycodes rather than display strings (#89).
     /// </summary>
-    private KeybindingConflict? CheckConflictAgainstCurrent(IReadOnlyList<Key> chord)
+    private KeybindingConflict? CheckConflictAgainstCurrent(KeyBinding binding)
     {
-        var candidate = Keycodes(chord);
+        var candidate = Keycodes(binding.Chord);
 
-        foreach (var b in _currentBindings)
+        foreach (var b in _currentBindings.Where(b => b.Scope == binding.Scope))
         {
             var existing = Keycodes(b.Chord);
             if (existing.SequenceEqual(candidate))
@@ -285,6 +287,9 @@ public sealed class KeybindingsPickerView : View
         }
         return null;
     }
+
+    private static bool SameChord(KeyBinding a, KeyBinding b) =>
+        a.Scope == b.Scope && string.Equals(a.CanonicalId, b.CanonicalId, StringComparison.Ordinal);
 
     private static uint[] Keycodes(IReadOnlyList<Key> chord) =>
         chord.Select(k => (uint)k.KeyCode).ToArray();

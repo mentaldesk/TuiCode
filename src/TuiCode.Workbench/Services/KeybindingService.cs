@@ -5,18 +5,20 @@ namespace TuiCode.Workbench.Services;
 public sealed class KeybindingService : IKeybindingService
 {
     private readonly ICommandService _commands;
-    private readonly ChordNode _root = new();
-    private ChordNode _current;
+    private readonly Dictionary<CommandScope, ChordNode> _roots = new();
+    // Where the chord in flight has got to, in the scope it started in; null when idle.
+    private ChordNode? _current;
     private readonly List<Key> _chordSoFar = new();
 
     public KeybindingService(ICommandService commands)
     {
         _commands = commands;
-        _current = _root;
     }
 
     public string? CurrentChord { get; private set; }
     public event EventHandler<string?>? ChordChanged;
+
+    public Func<CommandScope> FocusedScope { get; set; } = () => CommandScope.Global;
 
     public void Bind(string keySequence, string commandId) =>
         Bind(ParseSequence(keySequence), commandId);
@@ -27,7 +29,7 @@ public sealed class KeybindingService : IKeybindingService
         if (chord.Count == 0) throw new ArgumentException("A chord needs at least one key.", nameof(chord));
         ArgumentException.ThrowIfNullOrEmpty(commandId);
 
-        var node = _root;
+        var node = Root(_commands.ScopeOf(commandId));
         foreach (var key in chord)
         {
             var normalized = Normalize(key);
@@ -41,15 +43,16 @@ public sealed class KeybindingService : IKeybindingService
         node.CommandId = commandId;
     }
 
-    public bool Unbind(string keySequence) => Unbind(ParseSequence(keySequence));
+    public bool Unbind(string keySequence, CommandScope scope = CommandScope.Global) =>
+        Unbind(ParseSequence(keySequence), scope);
 
-    public bool Unbind(IReadOnlyList<Key> keys)
+    public bool Unbind(IReadOnlyList<Key> keys, CommandScope scope = CommandScope.Global)
     {
         ArgumentNullException.ThrowIfNull(keys);
         if (keys.Count == 0) throw new ArgumentException("A chord needs at least one key.", nameof(keys));
 
+        if (!_roots.TryGetValue(scope, out var node)) return false;
         var path = new List<(ChordNode parent, Key key, ChordNode child)>(keys.Count);
-        var node = _root;
         foreach (var key in keys)
         {
             var normalized = Normalize(key);
@@ -74,20 +77,19 @@ public sealed class KeybindingService : IKeybindingService
 
     public void Reset()
     {
-        _root.Children.Clear();
-        _root.CommandId = null;
+        _roots.Clear();
         ResetChord();
     }
 
-    public KeybindingConflict? CheckConflict(string keySequence) =>
-        CheckConflict(ParseSequence(keySequence));
+    public KeybindingConflict? CheckConflict(string keySequence, CommandScope scope = CommandScope.Global) =>
+        CheckConflict(ParseSequence(keySequence), scope);
 
-    public KeybindingConflict? CheckConflict(IReadOnlyList<Key> keys)
+    public KeybindingConflict? CheckConflict(IReadOnlyList<Key> keys, CommandScope scope = CommandScope.Global)
     {
         ArgumentNullException.ThrowIfNull(keys);
         if (keys.Count == 0) throw new ArgumentException("A chord needs at least one key.", nameof(keys));
 
-        var node = _root;
+        if (!_roots.TryGetValue(scope, out var node)) return null;
         for (var i = 0; i < keys.Count; i++)
         {
             var normalized = Normalize(keys[i]);
@@ -114,20 +116,21 @@ public sealed class KeybindingService : IKeybindingService
         get
         {
             var stack = new List<Key>();
-            foreach (var binding in Walk(_root, stack))
+            foreach (var (scope, root) in _roots)
+            foreach (var binding in Walk(scope, root, stack))
                 yield return binding;
         }
     }
 
-    private static IEnumerable<KeyBinding> Walk(ChordNode node, List<Key> stack)
+    private static IEnumerable<KeyBinding> Walk(CommandScope scope, ChordNode node, List<Key> stack)
     {
         if (node.CommandId is not null)
-            yield return new KeyBinding(stack.ToArray(), node.CommandId);
+            yield return new KeyBinding(stack.ToArray(), node.CommandId, scope);
 
         foreach (var (key, child) in node.Children)
         {
             stack.Add(key);
-            foreach (var b in Walk(child, stack))
+            foreach (var b in Walk(scope, child, stack))
                 yield return b;
             stack.RemoveAt(stack.Count - 1);
         }
@@ -137,39 +140,66 @@ public sealed class KeybindingService : IKeybindingService
     {
         var normalized = Normalize(key);
 
-        // Esc cancels an in-flight chord and is consumed silently.
-        if (_current != _root && IsEscape(normalized))
+        if (_current is not null)
+            return Continue(normalized);
+
+        var focused = FocusedScope();
+        if (focused != CommandScope.Global && Start(focused, normalized) is { } result)
+            return result;
+        return Start(CommandScope.Global, normalized) ?? KeyHandlingResult.Pass;
+    }
+
+    // The first key of a chord, looked up in one scope. Null when that scope has nothing enabled for it.
+    private KeyHandlingResult? Start(CommandScope scope, Key key)
+    {
+        if (!_roots.TryGetValue(scope, out var root) || !root.Children.TryGetValue(key, out var next))
+            return null;
+
+        if (next.CommandId is not null)
+        {
+            if (!_commands.IsEnabled(next.CommandId)) return null;
+            _commands.TryExecute(next.CommandId);
+            return KeyHandlingResult.Consumed;
+        }
+
+        return Descend(key, next);
+    }
+
+    // A later key of the chord in flight, which always finishes in the scope it started in.
+    private KeyHandlingResult Continue(Key key)
+    {
+        // Esc cancels an in-flight chord, and a stray key abandons it; both are consumed silently, as in VS Code.
+        if (IsEscape(key) || !_current!.Children.TryGetValue(key, out var next))
         {
             ResetChord();
             return KeyHandlingResult.Consumed;
         }
-
-        if (!_current.Children.TryGetValue(normalized, out var next))
-        {
-            // Unknown key. If we were in a chord, abandon it (and consume — VS Code does
-            // the same: a stray key during a chord doesn't reach the focused view).
-            if (_current != _root)
-            {
-                ResetChord();
-                return KeyHandlingResult.Consumed;
-            }
-            return KeyHandlingResult.Pass;
-        }
-
-        _chordSoFar.Add(normalized);
 
         if (next.CommandId is not null)
         {
             var commandId = next.CommandId;
             ResetChord();
-            _commands.TryExecute(commandId);
+            if (_commands.IsEnabled(commandId))
+                _commands.TryExecute(commandId);
             return KeyHandlingResult.Consumed;
         }
 
-        // Prefix match — descend and wait for the next key.
+        return Descend(key, next);
+    }
+
+    private KeyHandlingResult Descend(Key key, ChordNode next)
+    {
+        _chordSoFar.Add(key);
         _current = next;
         SetChordDisplay(string.Join(" ", _chordSoFar.Select(FormatKey)));
         return KeyHandlingResult.ChordInProgress;
+    }
+
+    private ChordNode Root(CommandScope scope)
+    {
+        if (!_roots.TryGetValue(scope, out var root))
+            _roots[scope] = root = new ChordNode();
+        return root;
     }
 
     /// <summary>
@@ -195,7 +225,7 @@ public sealed class KeybindingService : IKeybindingService
 
     private void ResetChord()
     {
-        _current = _root;
+        _current = null;
         _chordSoFar.Clear();
         SetChordDisplay(null);
     }
