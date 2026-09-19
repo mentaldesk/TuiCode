@@ -66,6 +66,29 @@ public class EditorTabStatsTests
         Assert.Equal(2, tab.CaretCount);
     }
 
+    [Fact]
+    public void CountSelection_counts_again_only_after_the_carets_or_the_buffer_change()
+    {
+        using var tab = OpenTab("alpha bravo\ncharlie\n");
+        tab.Select(new TextMatch(0, 0, 5));
+
+        tab.CountSelection();
+        tab.CountSelection();
+        var unchanged = tab.SelectionCounts;
+        tab.Select(new TextMatch(0, 0, 11));
+        tab.CountSelection();
+        tab.CountSelection();
+        var reselected = tab.SelectionCounts;
+        tab.Replace(new TextMatch(0, 6, 5), "br vo");
+        tab.Select(new TextMatch(0, 0, 11));
+        var edited = tab.CountSelection();
+
+        Assert.Equal(1, unchanged);
+        Assert.Equal(2, reselected);
+        Assert.Equal(3, tab.SelectionCounts);
+        Assert.Equal(new DocumentStats(1, 3, 11, 9), edited);
+    }
+
     [Theory]
     [InlineData(LineEnding.Auto, "a\r\nb\r\n", LineEnding.CRLF)]
     [InlineData(LineEnding.Auto, "a\nb\n", LineEnding.LF)]

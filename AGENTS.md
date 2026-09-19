@@ -186,6 +186,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 - `DocumentStats` (TG-free) counts lines, words (`wc -w`'s runs of non-whitespace) and characters for the buffer or the selections at every caret, via `EditorTab.CountDocument`/`CountSelection`. It reads `LineSnapshot` strings and splits graphemes with `StringInfo`, which has to agree with TG's cells, the unit of `Col` and of the range columns (`CountDocument_counts_characters_in_the_same_unit_as_columns`).
 - `di` (Show document info, no default key) opens `DocumentInfoView` for the active tab: its path relative to the open folder, grammar, the line ending Save will write, size on disk (read fresh), and the counts. The Selection column appears only when something is selected. The counts are taken once when it opens; it doesn't refresh live.
+- While text is selected, the status bar's position slot adds the selection's character count (`Ln 12, Col 5 (34 selected)`, or `3 selections (96 selected)` with several carets). `Workbench.ShowCursorPosition` asks for it every iteration, so `EditorTab.CountSelection` caches its result against the caret ranges and an edit counter bumped in `OnEdited`, and recounts only when either changes.
 
 ## Terminal compatibility
 

@@ -106,6 +106,54 @@ public class StatusBarPartTests
     }
 
     [Fact]
+    public void A_selection_at_one_caret_shows_its_count_after_the_position()
+    {
+        using var bar = new StatusBarPart();
+        bar.SetPosition((11, 4));
+
+        bar.SetSelection(1, 34);
+
+        Assert.Equal("Ln 12, Col 5 (34 selected)", bar.DisplayedPosition);
+    }
+
+    [Fact]
+    public void Several_carets_show_how_many_in_place_of_the_position()
+    {
+        using var bar = new StatusBarPart();
+        bar.SetPosition((11, 4));
+
+        bar.SetSelection(3, 96);
+        var selecting = bar.DisplayedPosition;
+        bar.SetSelection(3, null);
+
+        Assert.Equal("3 selections (96 selected)", selecting);
+        Assert.Equal("3 selections", bar.DisplayedPosition);
+    }
+
+    [Fact]
+    public void Clearing_the_selection_goes_back_to_the_position()
+    {
+        using var bar = new StatusBarPart();
+        bar.SetPosition((11, 4));
+        bar.SetSelection(3, 96);
+
+        bar.SetSelection(1, null);
+
+        Assert.Equal("Ln 12, Col 5", bar.DisplayedPosition);
+    }
+
+    [Fact]
+    public void The_idle_hint_shows_whatever_the_selection_while_there_is_no_position()
+    {
+        using var bar = new StatusBarPart();
+        bar.SetIdleHint("Press F1 for help");
+
+        bar.SetSelection(2, 5);
+
+        Assert.Equal("Press F1 for help", bar.DisplayedPosition);
+    }
+
+    [Fact]
     public void Position_is_right_aligned_and_a_long_message_stops_short_of_it()
     {
         using var bar = new StatusBarPart { Width = 40 };

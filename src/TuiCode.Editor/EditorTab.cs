@@ -17,6 +17,8 @@ public sealed class EditorTab : FrameView
     private View? _header;
     private readonly string _eol;
     private bool _dirty;
+    private int _edits;
+    private (int Edits, (System.Drawing.Point Start, System.Drawing.Point End)[] Ranges, DocumentStats Stats)? _selectionStats;
 
     public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
@@ -166,12 +168,21 @@ public sealed class EditorTab : FrameView
 
     public DocumentStats CountDocument() => DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()));
 
-    /// <summary>The counts across every caret's selection, or null when nothing is selected.</summary>
+    /// <summary>The counts across every caret's selection, or null when nothing is selected. Recounted only after the carets or the buffer change.</summary>
     public DocumentStats? CountSelection()
     {
+        if (!_textView.IsSelecting && !_textView.HasSecondaryCarets) return null;
         var ranges = _textView.Carets.Where(c => c.Start != c.End).Select(c => (c.Start, c.End)).ToArray();
-        return ranges.Length == 0 ? null : DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()), ranges);
+        if (ranges.Length == 0) return null;
+        if (_selectionStats is (var edits, var counted, var cached) && edits == _edits && counted.AsSpan().SequenceEqual(ranges)) return cached;
+
+        var stats = DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()), ranges);
+        _selectionStats = (_edits, ranges, stats);
+        SelectionCounts++;
+        return stats;
     }
+
+    internal int SelectionCounts { get; private set; }
 
     /// <summary>What <see cref="Save"/> will write: the Line endings setting, or on Auto the file's own.</summary>
     public LineEnding LineEnding => Settings.LineEnding switch
@@ -358,6 +369,7 @@ public sealed class EditorTab : FrameView
 
     private void OnEdited()
     {
+        _edits++;
         MarkDirty();
         _gutter.OnContentChanged();
         ContentChanged?.Invoke(this, EventArgs.Empty);

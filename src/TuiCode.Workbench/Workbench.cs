@@ -75,9 +75,13 @@ public sealed class Workbench : Window
         StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
     }
 
-    /// <summary>Show the active tab's cursor position; the host calls this every main-loop iteration.</summary>
-    public void ShowCursorPosition() =>
-        StatusBar.SetPosition(Editor.Group.ActiveTab is { } tab ? (tab.CursorRow, tab.CursorColumn) : null);
+    /// <summary>Show the active tab's cursor position and selection; the host calls this every main-loop iteration.</summary>
+    public void ShowCursorPosition()
+    {
+        var tab = Editor.Group.ActiveTab;
+        StatusBar.SetPosition(tab is null ? null : (tab.CursorRow, tab.CursorColumn));
+        StatusBar.SetSelection(tab?.CaretCount ?? 1, tab?.CountSelection()?.Characters);
+    }
 
     /// <summary>Open a file in the editor and focus it. Shared by the explorer and the Open dialog.</summary>
     public void OpenFile(IFileInfo file)

@@ -11,6 +11,7 @@ public sealed class StatusBarPart : View
     private string? _grammar;
     private string? _mode;
     private (int Row, int Column)? _cursor;
+    private (int Carets, int? Selected) _selection = (1, null);
     private string? _idleHint;
 
     public StatusBarPart()
@@ -74,6 +75,14 @@ public sealed class StatusBarPart : View
         ShowPosition();
     }
 
+    /// <summary>How many carets there are and the characters they select (null for none), shown with the position.</summary>
+    public void SetSelection(int carets, int? selected)
+    {
+        if ((carets, selected) == _selection) return;
+        _selection = (carets, selected);
+        ShowPosition();
+    }
+
     /// <summary>Shown in the position's place while no file is open; null for nothing.</summary>
     public void SetIdleHint(string? hint)
     {
@@ -81,8 +90,17 @@ public sealed class StatusBarPart : View
         ShowPosition();
     }
 
-    private void ShowPosition() =>
-        _position.Text = _cursor is var (row, column) ? $"Ln {row + 1}, Col {column + 1}" : _idleHint ?? string.Empty;
+    private void ShowPosition()
+    {
+        if (_cursor is not var (row, column))
+        {
+            _position.Text = _idleHint ?? string.Empty;
+            return;
+        }
+        var (carets, selected) = _selection;
+        var where = carets > 1 ? $"{carets} selections" : $"Ln {row + 1}, Col {column + 1}";
+        _position.Text = selected is { } count ? $"{where} ({count:N0} selected)" : where;
+    }
 
     internal string DisplayedText => _label.Text;
 
