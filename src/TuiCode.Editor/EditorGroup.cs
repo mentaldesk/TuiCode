@@ -114,13 +114,13 @@ public sealed class EditorGroup : Tabs
 
     public bool HasDiff(EditorTab source, string label) => FindDiff(source, label) is not null;
 
-    /// <summary>Focuses an open diff of <paramref name="source"/> against <paramref name="label"/>, if there is one.</summary>
-    public bool FocusDiff(EditorTab source, string label)
+    /// <summary>Focuses an open diff of <paramref name="source"/> against <paramref name="label"/>; null when there is none.</summary>
+    public DiffTab? FocusDiff(EditorTab source, string label)
     {
-        if (FindDiff(source, label) is not { } tab) return false;
+        if (FindDiff(source, label) is not { } tab) return null;
         if (ReferenceEquals(Value, tab)) tab.Refresh();
         else Value = tab;
-        return true;
+        return tab;
     }
 
     private DiffTab? FindDiff(EditorTab source, string key) =>
@@ -130,6 +130,9 @@ public sealed class EditorGroup : Tabs
     {
         if (Value is { } tab) Close(tab);
     }
+
+    /// <summary>Closes a diff tab, leaving the file's own tab open.</summary>
+    public void CloseDiff(DiffTab diff) => Close(diff);
 
     public IEnumerable<EditorTab> TabsUnder(string path) =>
         _byPath.Values.Where(t => FilePaths.IsSameOrUnder(t.File.FullName, path));

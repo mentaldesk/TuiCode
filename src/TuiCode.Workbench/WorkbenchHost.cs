@@ -276,8 +276,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo);
         // No default key (#61): users can bind one in Settings.
         _commands.Register(CommandIds.CompareToSaved, "Compare to saved", CompareToSaved);
-        _commands.Register(CommandIds.NextChange, "Next change", () => _workbench.Editor.Group.ActiveDiffTab?.NextChange(), CommandScope.Diff);
-        _commands.Register(CommandIds.PreviousChange, "Previous change", () => _workbench.Editor.Group.ActiveDiffTab?.PreviousChange(), CommandScope.Diff);
+        _commands.Register(CommandIds.NextChange, "Next change", () => MoveToChange(1), CommandScope.Diff);
+        _commands.Register(CommandIds.PreviousChange, "Previous change", () => MoveToChange(-1), CommandScope.Diff);
         _commands.Register(CommandIds.GoToChangeLine, "Go to line in file", GoToChangeLine, CommandScope.Diff);
         _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision);
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile);
@@ -1215,6 +1215,51 @@ public sealed class WorkbenchHost : IDisposable
         });
     }
 
+    private void MoveToChange(int direction)
+    {
+        if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
+        if (direction > 0 ? diff.NextChange() : diff.PreviousChange()) return;
+        StepReview(diff, direction);
+    }
+
+    /// <summary>
+    /// Past a review diff's last (or first) change, moves on to the next file the Review tab lists,
+    /// skipping any with nothing to show, and closes the diff it leaves (#181). A diff opened any other way stays put.
+    /// </summary>
+    private void StepReview(DiffTab from, int direction)
+    {
+        var view = _workbench.Sidebar.Review;
+        if (from.Review is not { } spot || view.Review is not { } review || review.MergeBase != spot.Key) return;
+
+        var files = view.ChangedFiles;
+        Step(spot.Index + direction);
+
+        void Step(int index)
+        {
+            // A deleted file has nothing to show against the working copy until #182.
+            while (index >= 0 && index < files.Count && files[index].Kind == GitChangeKind.Deleted)
+                index += direction;
+            if (index < 0 || index >= files.Count)
+            {
+                _workbench.StatusBar.SetMessage(direction > 0 ? "Last change in the review" : "First change in the review");
+                return;
+            }
+
+            var at = index;
+            ShowReviewDiff(review, files[at], at, files.Count, diff =>
+            {
+                if (diff is null)
+                {
+                    Step(at + direction);
+                    return;
+                }
+                if (direction > 0) diff.FirstChange();
+                else diff.LastChange();
+                if (!ReferenceEquals(diff, from)) _workbench.Editor.Group.CloseDiff(from);
+            });
+        }
+    }
+
     private void OpenReviewDiff(BranchReview review, GitChange change)
     {
         if (change.Kind == GitChangeKind.Deleted)
@@ -1223,13 +1268,29 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
+        var files = _workbench.Sidebar.Review.ChangedFiles;
+        var index = 0;
+        while (index < files.Count && files[index].Path != change.Path) index++;
+        ShowReviewDiff(review, change, index, files.Count, diff =>
+        {
+            if (diff is null) _workbench.StatusBar.SetMessage($"No changes against {review.Base}");
+        });
+    }
+
+    /// <summary>
+    /// Opens the file and its diff against the review's base, then hands the diff — null when the
+    /// buffer matches the base — to <paramref name="done"/>. A read error reports itself and calls nothing.
+    /// </summary>
+    private void ShowReviewDiff(BranchReview review, GitChange change, int index, int count, Action<DiffTab?> done)
+    {
+        var group = _workbench.Editor.Group;
         var fs = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
         var tab = _workbench.Editor.Open(fs.FileInfo.New(fs.Path.Combine(review.RepoRoot, change.Path)));
         var basePath = change.OldPath ?? change.Path;
         var key = $"{review.MergeBase}:{basePath}";
-        if (_workbench.Editor.Group.FocusDiff(tab, key))
+        if (group.FocusDiff(tab, key) is { } open)
         {
-            FocusEditorBody();
+            Showing(open);
             return;
         }
 
@@ -1244,11 +1305,19 @@ public sealed class WorkbenchHost : IDisposable
                 return;
             }
             var lines = content.Result.Value is { } text ? DiffTab.SplitLines(text) : [];
-            if (_workbench.Editor.Group.Compare(tab, review.Base, () => lines, key) is null)
-                _workbench.StatusBar.SetMessage($"No changes against {review.Base}");
-            else
-                FocusEditorBody();
+            Showing(group.Compare(tab, review.Base, () => lines, key));
         });
+
+        void Showing(DiffTab? diff)
+        {
+            if (diff is not null)
+            {
+                diff.Review = new ReviewSpot(review.MergeBase, index, count);
+                _workbench.Sidebar.Review.SelectFile(change.Path);
+                FocusEditorBody();
+            }
+            done(diff);
+        }
     }
 
     private async Task<GitResult<string>> ReadRevisionAsync(string name, string path, string revision)
