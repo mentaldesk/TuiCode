@@ -56,7 +56,6 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 ### UI controls
 
 - Build UI from TG's [built-in views](https://tui-cs.github.io/Terminal.Gui/docs/views) before writing a custom one. `LogView` is custom only because `TextView` can't scroll without moving its cursor.
-- Pick the control that matches the input: `CheckBox` for on/off, `OptionSelector<T>` for a few choices, `FlagSelector<T>` for several on/off flags, `NumericUpDown<T>` (with a min and max) for numbers, `DropDownList<T>` or `ListView` for longer lists, `TextField` for free text. Don't use a label that cycles through values on Space; it gives no hint that it can be changed.
 - When describing UI in an issue or PR, name the control for each element and sketch it in the mockup: `[x] Follow output`, `(•) All ( ) Running`, `Refresh: [ 2 ▲▼]s`.
 
 ## AOT
