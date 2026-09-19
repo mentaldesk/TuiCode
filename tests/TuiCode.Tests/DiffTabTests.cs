@@ -126,7 +126,7 @@ public class DiffTabGroupTests
         var diff = group.CompareToSaved(tab)!;
         _fs.File.Move("/work/a.txt", "/work/b.txt");
 
-        group.Relocate("/work/a.txt", "/work/b.txt");
+        group.Relocate(_fs.Path.GetFullPath("/work/a.txt"), _fs.Path.GetFullPath("/work/b.txt"));
 
         Assert.Equal("b.txt ↔ saved", diff.Title);
     }
