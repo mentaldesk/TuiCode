@@ -7,6 +7,8 @@
     "editorLineNumber.activeForeground": "#57FFFF",
     "editorGutter.addedBackground": "#57FF57",
     "editorGutter.modifiedBackground": "#FFA857",
-    "editorGutter.deletedBackground": "#FF5757"
+    "editorGutter.deletedBackground": "#FF5757",
+    "diffEditor.removedLineBackground": "#6B1030",
+    "diffEditor.insertedLineBackground": "#10603A"
   }
 }

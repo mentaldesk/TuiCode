@@ -162,6 +162,9 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public IReadOnlyList<string> Lines => _textView.LineStrings;
 
+    /// <summary>Like <see cref="Lines"/> but cheap to re-read; later reads update the returned list in place.</summary>
+    internal IReadOnlyList<string> SnapshotLines => _textView.Snapshot.Refresh(_textView.GetAllLines());
+
     public string SelectedText => _textView.SelectedText;
 
     public int CaretCount => _textView.CaretCount;

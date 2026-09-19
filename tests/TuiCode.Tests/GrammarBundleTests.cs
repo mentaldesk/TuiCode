@@ -85,7 +85,7 @@ public class GrammarBundleTests
     [InlineData("daylight.json")]
     [InlineData("turbo-pascal.json")]
     [InlineData("modern-borland.json")]
-    public void Our_themes_colour_the_cursor_and_gutter(string theme)
+    public void Our_themes_colour_the_cursor_gutter_and_diff(string theme)
     {
         var highlighter = new SyntaxHighlighter(Bundle);
 
@@ -95,6 +95,7 @@ public class GrammarBundleTests
                  {
                      "editorCursor.foreground", "editorLineNumber.foreground", "editorLineNumber.activeForeground",
                      "editorGutter.addedBackground", "editorGutter.modifiedBackground", "editorGutter.deletedBackground",
+                     "diffEditor.removedLineBackground", "diffEditor.insertedLineBackground",
                  })
             Assert.True(highlighter.EditorColors.ContainsKey(key), $"{theme} has no {key}");
     }
