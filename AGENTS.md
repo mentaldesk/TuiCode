@@ -182,6 +182,10 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - Tab and Shift+Tab are our own commands (`EditorTextView.Indent.cs`), since TG's only insert or remove a `\t`. With spaces, Tab fills to the next tab stop and Shift+Tab removes spaces back to the previous one, just left of the caret. They run at every caret like TG's did. Neither indents or outdents whole selected lines yet.
 - LF or CRLF converts a file's endings on its next save. Only Auto preserves them.
 
+## Document info (#123)
+
+- `DocumentStats` (TG-free) counts lines, words (`wc -w`'s runs of non-whitespace) and characters for the buffer or the selections at every caret, via `EditorTab.CountDocument`/`CountSelection`. It reads `LineSnapshot` strings and splits graphemes with `StringInfo`, which has to agree with TG's cells, the unit of `Col` and of the range columns (`CountDocument_counts_characters_in_the_same_unit_as_columns`).
+
 ## Terminal compatibility
 
 - `TerminalFlowControl` runs `stty -ixon -ixoff` on Unix so `Ctrl+S` reaches the app. Restored on dispose. Mandatory.

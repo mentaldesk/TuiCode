@@ -162,6 +162,24 @@ public sealed class EditorTab : FrameView
 
     public string SelectedText => _textView.SelectedText;
 
+    public int CaretCount => _textView.CaretCount;
+
+    public DocumentStats CountDocument() => DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()));
+
+    /// <summary>The counts across every caret's selection, or null when nothing is selected.</summary>
+    public DocumentStats? CountSelection()
+    {
+        var ranges = _textView.Carets.Where(c => c.Start != c.End).Select(c => (c.Start, c.End)).ToArray();
+        return ranges.Length == 0 ? null : DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()), ranges);
+    }
+
+    /// <summary>What <see cref="Save"/> will write: the Line endings setting, or on Auto the file's own.</summary>
+    public LineEnding LineEnding => Settings.LineEnding switch
+    {
+        LineEnding.Auto => _eol == "\r\n" ? LineEnding.CRLF : LineEnding.LF,
+        var chosen => chosen,
+    };
+
     public void MoveLines(LineDirection direction) => _textView.MoveLines(direction);
 
     public void DuplicateLines(LineDirection direction) => _textView.DuplicateLines(direction);
@@ -297,12 +315,7 @@ public sealed class EditorTab : FrameView
         // buffer comes back CRLF regardless of the file's real endings. Re-emit using
         // the EOL we detected on load so a file's line-ending style round-trips
         // unchanged on every OS (matches VS Code's preserve-on-save behaviour).
-        var eol = Settings.LineEnding switch
-        {
-            LineEnding.LF => "\n",
-            LineEnding.CRLF => "\r\n",
-            _ => _eol,
-        };
+        var eol = LineEnding == LineEnding.CRLF ? "\r\n" : "\n";
         var content = Normalize(_textView.Text, eol);
         if (Settings.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
             content += eol;

@@ -43,6 +43,8 @@ internal sealed partial class EditorTextView
 
     public bool HasSecondaryCarets => _secondary.Count > 0;
 
+    public int CaretCount => _secondary.Count + 1;
+
     /// <summary>Every caret, primary first.</summary>
     public Caret[] Carets => [PrimaryCaret, .. _secondary];
 
