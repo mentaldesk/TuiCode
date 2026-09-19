@@ -13,7 +13,7 @@ namespace TuiCode.Workbench.Git;
 public sealed class RevisionPickerView : Window
 {
     private const string LoadingHint = "Loading branches, tags and commits…";
-    private const string ReadyHint = "Type to filter · Up/Down select · Enter compare · Esc cancel";
+    private const string ReadyHint = "Type to filter · Up/Down/PgUp/PgDn · Enter compare · Esc cancel";
 
     private readonly TextField _filter;
     private readonly ListView _list;
@@ -79,11 +79,15 @@ public sealed class RevisionPickerView : Window
         _scopeCommands.Register(CommandIds.RevisionPickerConfirm, OnConfirm);
         _scopeCommands.Register(CommandIds.RevisionPickerUp, () => MoveSelection(-1));
         _scopeCommands.Register(CommandIds.RevisionPickerDown, () => MoveSelection(1));
+        _scopeCommands.Register(CommandIds.RevisionPickerPageUp, () => MoveSelection(-PageHeight));
+        _scopeCommands.Register(CommandIds.RevisionPickerPageDown, () => MoveSelection(PageHeight));
 
         _scopeKeybindings.Bind("Esc", CommandIds.RevisionPickerCancel);
         _scopeKeybindings.Bind("Enter", CommandIds.RevisionPickerConfirm);
         _scopeKeybindings.Bind("CursorUp", CommandIds.RevisionPickerUp);
         _scopeKeybindings.Bind("CursorDown", CommandIds.RevisionPickerDown);
+        _scopeKeybindings.Bind("PageUp", CommandIds.RevisionPickerPageUp);
+        _scopeKeybindings.Bind("PageDown", CommandIds.RevisionPickerPageDown);
     }
 
     private void OnCancel()
@@ -97,6 +101,8 @@ public sealed class RevisionPickerView : Window
         var revision = _list.SelectedItem is { } i && i < _visible.Count ? _visible[i].Revision : Filter.Trim();
         if (revision.Length > 0) Submitted?.Invoke(this, revision);
     }
+
+    private int PageHeight => Math.Max(1, _list.Viewport.Height);
 
     private void MoveSelection(int delta)
     {

@@ -116,6 +116,30 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task PageDown_and_PageUp_move_the_selection_a_page_at_a_time_and_stop_at_the_ends()
+    {
+        _git.Commits = Enumerable.Range(1, 40).Select(i => new GitCommit($"{i:x7}", $"Commit {i}", DateTimeOffset.UnixEpoch)).ToList();
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var selected = new List<int?>();
+        void Record() => selected.Add(Picker(workbench)!.SelectedItem);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench) is { VisibleItems.Count: > 0 },
+            () => host.App.InjectKey(Key.PageDown),
+            Record,
+            () => host.App.InjectKey(Key.PageDown),
+            () => host.App.InjectKey(Key.PageDown),
+            Record,
+            () => host.App.InjectKey(Key.PageUp),
+            Record);
+
+        Assert.Equal([16, 42, 26], selected);
+    }
+
+    [Fact]
     public async Task An_unknown_ref_shows_an_error_and_keeps_the_picker_open_with_the_text()
     {
         using var workbench = BuildWorkbench();

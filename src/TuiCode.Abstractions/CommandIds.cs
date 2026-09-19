@@ -69,6 +69,8 @@ public static class CommandIds
     public const string RevisionPickerCancel = "revisionPicker.action.cancel";
     public const string RevisionPickerUp = "revisionPicker.action.up";
     public const string RevisionPickerDown = "revisionPicker.action.down";
+    public const string RevisionPickerPageUp = "revisionPicker.action.pageUp";
+    public const string RevisionPickerPageDown = "revisionPicker.action.pageDown";
 
     public const string PathPromptConfirm = "pathPrompt.action.confirm";
     public const string PathPromptCancel = "pathPrompt.action.cancel";
