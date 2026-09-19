@@ -84,9 +84,11 @@ public sealed class DiffTab : FrameView
 
     /// <summary>The file's lines as the editor would load them.</summary>
     public static IReadOnlyList<string> ReadLines(IFileInfo file) =>
-        file.FileSystem.File.Exists(file.FullName)
-            ? Cell.StringToLinesOfCells(file.FileSystem.File.ReadAllText(file.FullName)).Select(Cell.ToString).ToArray()
-            : [];
+        file.FileSystem.File.Exists(file.FullName) ? SplitLines(file.FileSystem.File.ReadAllText(file.FullName)) : [];
+
+    /// <summary>Text split into lines as the editor would load it.</summary>
+    public static IReadOnlyList<string> SplitLines(string text) =>
+        Cell.StringToLinesOfCells(text).Select(Cell.ToString).ToArray();
 
     private bool ScrollTo(int top)
     {

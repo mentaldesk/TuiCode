@@ -12,6 +12,7 @@ using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.DocumentInfo;
 using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Find;
+using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Mnemonics;
@@ -47,6 +48,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IEnvironment _environment;
     private readonly ILogger<WorkbenchHost> _logger;
     private readonly FileIcons? _icons;
+    private readonly IGitCli _git;
     private readonly TerminalCursors _terminalCursors;
     private readonly FindController _find;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
@@ -67,6 +69,7 @@ public sealed class WorkbenchHost : IDisposable
     private OpenView? _activeOpen;
     private PathPromptView? _activePathPrompt;
     private ConfirmView? _activeConfirm;
+    private RevisionPickerView? _activeRevisionPicker;
     private bool _launchedFromExplorer;
     private bool _disposed;
 
@@ -81,7 +84,8 @@ public sealed class WorkbenchHost : IDisposable
         ITimeProvider? timeProvider = null,
         string? driverName = null,
         ILogger<WorkbenchHost>? logger = null,
-        FileIcons? icons = null)
+        FileIcons? icons = null,
+        IGitCli? git = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -118,6 +122,7 @@ public sealed class WorkbenchHost : IDisposable
         _environment = environment ?? new SystemEnvironment();
         _logger = logger ?? NullLogger<WorkbenchHost>.Instance;
         _icons = icons;
+        _git = git ?? new GitCli(new FileSystem());
 
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
@@ -265,6 +270,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo);
         // No default key (#61): users can bind one in Settings.
         _commands.Register(CommandIds.CompareToSaved, "Compare to saved", CompareToSaved);
+        _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)));
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)));
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)));
@@ -1030,6 +1036,112 @@ public sealed class WorkbenchHost : IDisposable
         }
         FocusEditorBody();
     }
+
+    private void CompareToRevision()
+    {
+        if (_activeRevisionPicker is not null) return;
+        var group = _workbench.Editor.Group;
+        if ((group.ActiveTab ?? group.ActiveDiffTab?.Source) is not { } tab)
+        {
+            _workbench.StatusBar.SetMessage("No file is open.");
+            return;
+        }
+        if (!tab.File.FileSystem.File.Exists(tab.File.FullName))
+        {
+            _workbench.StatusBar.SetMessage($"{tab.File.Name} has never been saved.");
+            return;
+        }
+
+        var path = tab.File.FullName;
+        var root = Task.Run(() => _git.GetRepoRootAsync(path));
+        WhenDone(root, () =>
+        {
+            if (root.Result.Error is { } error)
+                _workbench.StatusBar.SetMessage(error);
+            else if (root.Result.Value is null)
+                _workbench.StatusBar.SetMessage($"{tab.File.Name} isn't in a git repository.");
+            else
+                OpenRevisionPicker(tab);
+        });
+    }
+
+    private void OpenRevisionPicker(EditorTab tab)
+    {
+        if (_activeRevisionPicker is not null) return;
+        var path = tab.File.FullName;
+        var view = new RevisionPickerView(tab.File.Name);
+        var lookingUp = false;
+        view.Cancelled += (_, _) => CloseRevisionPicker(view);
+        view.Submitted += (_, revision) =>
+        {
+            if (lookingUp) return;
+            if (_workbench.Editor.Group.FocusDiff(tab, revision))
+            {
+                CloseRevisionPicker(view);
+                return;
+            }
+            lookingUp = true;
+            var content = Task.Run(() => ReadRevisionAsync(tab.File.Name, path, revision));
+            WhenDone(content, () =>
+            {
+                lookingUp = false;
+                if (!ReferenceEquals(_activeRevisionPicker, view)) return;
+                if (content.Result.Error is { } error)
+                {
+                    view.ShowError(error);
+                    return;
+                }
+                var lines = DiffTab.SplitLines(content.Result.Value);
+                var diff = _workbench.Editor.Group.Compare(tab, revision, () => lines);
+                CloseRevisionPicker(view);
+                if (diff is null) _workbench.StatusBar.SetMessage($"No changes against {revision}");
+            });
+        };
+
+        _activeRevisionPicker = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusFilter();
+
+        var refs = Task.Run(() => _git.GetRefsAsync(path));
+        var history = Task.Run(() => _git.GetFileHistoryAsync(path));
+        WhenDone(Task.WhenAll(refs, history), () =>
+        {
+            if (!ReferenceEquals(_activeRevisionPicker, view)) return;
+            view.Load(refs.Result.Value ?? [], history.Result.Value ?? []);
+            if ((refs.Result.Error ?? history.Result.Error) is { } error) view.ShowError(error);
+        });
+    }
+
+    private async Task<GitResult<string>> ReadRevisionAsync(string name, string path, string revision)
+    {
+        var resolves = await _git.ResolvesAsync(path, revision);
+        if (resolves.Error is { } resolveError) return GitResult<string>.Failure(resolveError);
+        if (!resolves.Value) return GitResult<string>.Failure($"No branch, tag or commit called '{revision}'");
+
+        var shown = await _git.ShowFileAsync(path, revision);
+        if (shown.Error is { } showError) return GitResult<string>.Failure(showError);
+        return shown.Value is { } content
+            ? GitResult<string>.Success(content)
+            : GitResult<string>.Failure($"{name} isn't in {revision}");
+    }
+
+    private void CloseRevisionPicker(RevisionPickerView view)
+    {
+        if (!ReferenceEquals(_activeRevisionPicker, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeRevisionPicker = null;
+        FocusEditorBody();
+    }
+
+    /// <summary>Runs <paramref name="then"/> on the UI thread once <paramref name="task"/> has succeeded.</summary>
+    private void WhenDone(Task task, Action then) =>
+        task.ContinueWith(t =>
+        {
+            if (t.IsCompletedSuccessfully) _app.Invoke(then);
+        }, TaskScheduler.Default);
 
     private string WorkspacePath(IFileInfo file)
     {

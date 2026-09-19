@@ -92,15 +92,17 @@ public sealed class EditorGroup : Tabs
     }
 
     /// <summary>Returns null, opening nothing, when the buffer matches the file on disk.</summary>
-    public DiffTab? CompareToSaved(EditorTab source)
-    {
-        const string label = "saved";
-        if (DiffTab.ReadLines(source.File).SequenceEqual(source.SnapshotLines, StringComparer.Ordinal)) return null;
+    public DiffTab? CompareToSaved(EditorTab source) => Compare(source, "saved", () => DiffTab.ReadLines(source.File));
 
-        var tab = _diffs.FirstOrDefault(d => d.Source == source && d.LeftLabel == label);
+    /// <summary>Opens or focuses the diff of <paramref name="readLeft"/> against the buffer; null, opening nothing, when they match.</summary>
+    public DiffTab? Compare(EditorTab source, string label, Func<IReadOnlyList<string>> readLeft)
+    {
+        if (readLeft().SequenceEqual(source.SnapshotLines, StringComparer.Ordinal)) return null;
+
+        var tab = FindDiff(source, label);
         if (tab is null)
         {
-            tab = new DiffTab(source, label, () => DiffTab.ReadLines(source.File), _syntax);
+            tab = new DiffTab(source, label, readLeft, _syntax);
             _diffs.Add(tab);
             Add(tab);
         }
@@ -109,6 +111,18 @@ public sealed class EditorGroup : Tabs
         else Value = tab;
         return tab;
     }
+
+    /// <summary>Focuses an open diff of <paramref name="source"/> against <paramref name="label"/>, if there is one.</summary>
+    public bool FocusDiff(EditorTab source, string label)
+    {
+        if (FindDiff(source, label) is not { } tab) return false;
+        if (ReferenceEquals(Value, tab)) tab.Refresh();
+        else Value = tab;
+        return true;
+    }
+
+    private DiffTab? FindDiff(EditorTab source, string label) =>
+        _diffs.FirstOrDefault(d => d.Source == source && d.LeftLabel == label);
 
     public void CloseActive()
     {

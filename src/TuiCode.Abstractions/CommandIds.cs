@@ -28,6 +28,7 @@ public static class CommandIds
     public const string ShowAbout = "workbench.action.showAbout";
     public const string ShowDocumentInfo = "workbench.action.showDocumentInfo";
     public const string CompareToSaved = "workbench.action.compareToSaved";
+    public const string CompareToRevision = "workbench.action.compareToRevision";
 
     public const string HelpClose = "help.action.close";
     public const string DiagnosticsClose = "diagnostics.action.close";
@@ -63,6 +64,13 @@ public static class CommandIds
 
     public const string OpenConfirm = "open.action.confirm";
     public const string OpenCancel = "open.action.cancel";
+
+    public const string RevisionPickerConfirm = "revisionPicker.action.confirm";
+    public const string RevisionPickerCancel = "revisionPicker.action.cancel";
+    public const string RevisionPickerUp = "revisionPicker.action.up";
+    public const string RevisionPickerDown = "revisionPicker.action.down";
+    public const string RevisionPickerPageUp = "revisionPicker.action.pageUp";
+    public const string RevisionPickerPageDown = "revisionPicker.action.pageDown";
 
     public const string PathPromptConfirm = "pathPrompt.action.confirm";
     public const string PathPromptCancel = "pathPrompt.action.cancel";
