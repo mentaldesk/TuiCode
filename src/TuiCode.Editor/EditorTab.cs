@@ -416,8 +416,7 @@ internal sealed partial class EditorTextView : TextView
     private Attribute _editable;
     private Attribute _highlight;
     private Attribute _cellAttribute;
-    private Color[] _tokenColors = [];
-    private int _tokenColorsVersion = -1;
+    private readonly TokenPalette _palette = new();
     private long _selectionStart;
     private long _selectionEnd;
 
@@ -512,11 +511,7 @@ internal sealed partial class EditorTextView : TextView
     private void PrepareSyntax()
     {
         if (Syntax is null) return;
-        if (_tokenColorsVersion != Syntax.Highlighter.ThemeVersion)
-        {
-            _tokenColors = Syntax.Highlighter.Colors.Select(hex => hex is null ? default : Color.Parse(hex)).ToArray();
-            _tokenColorsVersion = Syntax.Highlighter.ThemeVersion;
-        }
+        _palette.Sync(Syntax.Highlighter);
 
         // Refreshed every frame rather than on edit: TG doesn't report every edit (see ContentsChanged in AGENTS.md).
         Syntax.Update(Snapshot.Refresh(GetAllLines()));
@@ -548,7 +543,7 @@ internal sealed partial class EditorTextView : TextView
                     token += 2;
                 if (token != attributeToken)
                 {
-                    _cellAttribute = TokenAttribute(tokens[token + 1]);
+                    _cellAttribute = _palette.Apply(_editable, tokens[token + 1]);
                     attributeToken = token;
                 }
                 chars += text.Length;
@@ -649,25 +644,6 @@ internal sealed partial class EditorTextView : TextView
         for (var i = 0; i < idxCol; i++)
             chars += line[i].Grapheme.Length;
         return chars;
-    }
-
-    private Attribute TokenAttribute(int metadata)
-    {
-        var attribute = _editable;
-        var foreground = SyntaxHighlighter.ForegroundOf(metadata);
-        if (foreground != SyntaxHighlighter.DefaultForeground && foreground < _tokenColors.Length)
-            attribute = attribute with { Foreground = _tokenColors[foreground] };
-
-        var style = SyntaxHighlighter.StyleOf(metadata);
-        if (style == TokenStyle.None) return attribute;
-        return attribute with
-        {
-            Style = attribute.Style
-                    | (style.HasFlag(TokenStyle.Italic) ? TextStyle.Italic : TextStyle.None)
-                    | (style.HasFlag(TokenStyle.Bold) ? TextStyle.Bold : TextStyle.None)
-                    | (style.HasFlag(TokenStyle.Underline) ? TextStyle.Underline : TextStyle.None)
-                    | (style.HasFlag(TokenStyle.Strikethrough) ? TextStyle.Strikethrough : TextStyle.None),
-        };
     }
 
     // Skips base, which resolves the scheme attribute (allocating) and raises DrawNormalColor for every cell.
