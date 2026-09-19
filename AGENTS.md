@@ -183,6 +183,13 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - The Nerd Font data is `src/TuiCode.Icons/file-icons.tsv`, generated from nvim-web-devicons (MIT, listed in `THIRD-PARTY-NOTICES.md`). It has about 700 exact file names and extensions, each with a dark and a light colour. To update it, bump `commit` in `scripts/update-file-icons.cs`, then run `GITHUB_TOKEN=$(gh auth token) dotnet run scripts/update-file-icons.cs`. Lookup follows devicons: an exact file name first, then each dotted suffix from the longest down (`app.spec.ts` tries `spec.ts`, then `ts`), all case-insensitive. Folder icons and the generic file icon are fixed in `FileIcons`, because devicons has none.
 - The setting persists to `~/.tui/TuiCode.settings.json`, a flat object for settings TG doesn't own. It can't go in `TuiCode.config.json`: TG silently ignores that whole file, theme included, when it holds a key TG doesn't know.
 
+## Git (#61)
+
+- `IGitCli` (`GitCli`) shells out to `git`; no LibGit2Sharp, which would ship a native lib per platform. Each call runs with a 5 s timeout, and a missing `git`, a non-zero exit or a timeout comes back as a failed `GitResult` with a status-bar-ready message, never an exception. Null values mean "not in a repo" / "not in that revision".
+- Runs with `LC_ALL=C` so "not a git repository" can be recognised, and passes file paths as `./<name>` with `-C` set to the file's folder, so git resolves the root-relative path itself (symlinked temp dirs, Windows separators). Revisions starting with `-` are refused so a typed ref can't become an option.
+- Tests against a real repo live in `GitCliTests` and skip when `git` isn't on PATH. Anything above the wrapper should test against a fake.
+- **Compare to revision** (`ctr`, no default key) opens `RevisionPickerView` once `GetRepoRootAsync` finds a repo: a `TextField` filter over the refs and the file's last 200 commits (`RevisionList`, pure: names by CamelHumps, commits by hash prefix or subject). The list loads on a background task and fills in when ready. Up/Down and PgUp/PgDn (a page of rows) move the list's selection from the filter field; Enter takes the selected row, or the typed text when nothing matches. The host resolves the revision and reads the file at it off the UI thread (`WhenDone` marshals back with `App.Invoke`), and an unknown ref or a missing file is an error in the picker, which stays open. The diff tab is titled with the revision (a short hash for a commit) and reads it once: an open tab for the same revision is just focused.
+
 ## Filesystem
 
 - All I/O through `IFileSystem` from `System.IO.Abstractions`; never call `System.IO.File` / `Directory` directly. `IFileInfo.FileSystem` plumbs the same instance through to `EditorTab` etc.

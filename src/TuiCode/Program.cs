@@ -9,6 +9,7 @@ using TuiCode.Search;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Configuration;
+using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Icons;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
@@ -30,6 +31,7 @@ services.AddSingleton<IKeybindingService, KeybindingService>();
 services.AddSingleton<IInputScopeStack, InputScopeStack>();
 services.AddSingleton<ISettingsService, DefaultSettingsService>();
 services.AddSingleton<IEnvironment, SystemEnvironment>();
+services.AddSingleton<IGitCli>(sp => new GitCli(sp.GetRequiredService<IFileSystem>()));
 services.AddSingleton(sp =>
 {
     var fs = sp.GetRequiredService<IFileSystem>();
@@ -68,7 +70,8 @@ services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
     timeProvider: null,
     driverName: DriverSelection.Resolve(args, sp.GetRequiredService<IEnvironment>()),
     logger: sp.GetRequiredService<ILogger<WorkbenchHost>>(),
-    icons: sp.GetRequiredService<FileIcons>()));
+    icons: sp.GetRequiredService<FileIcons>(),
+    git: sp.GetRequiredService<IGitCli>()));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();

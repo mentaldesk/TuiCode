@@ -49,6 +49,7 @@ public static class CommandMnemonics
             [CommandIds.CompareToSaved] = "cts",
             [CommandIds.NextChange] = "nc",
             [CommandIds.PreviousChange] = "pc",
+            [CommandIds.CompareToRevision] = "ctr",
             [CommandIds.ToggleSidebar] = "ts",
             [CommandIds.ToggleGutter] = "tg",
             [CommandIds.ToggleColumnSelect] = "tc",
