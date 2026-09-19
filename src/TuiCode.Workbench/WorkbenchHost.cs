@@ -47,9 +47,6 @@ public sealed class WorkbenchHost : IDisposable
     private readonly ILogger<WorkbenchHost> _logger;
     private readonly FileIcons? _icons;
     private readonly TerminalCursors _terminalCursors;
-    private readonly LayeredScope _cursorScope;
-    private readonly LayeredScope _explorerScope;
-    private readonly LayeredScope _searchScope;
     private readonly FindController _find;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
     private readonly CursorLocationHistory _history = new();
@@ -125,17 +122,10 @@ public sealed class WorkbenchHost : IDisposable
         ApplyTokenTheme();
         _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
 
-        // Workbench scope is the bottom of the input stack; never popped. Esc for removing extra cursors,
-        // the explorer's file keys and the search sidebar's keys layer above it for the app's lifetime (each
-        // only engages while its view has focus); the find bar layers above those while it's open.
+        // Workbench scope is the bottom of the input stack; never popped. The find bar layers above it while it's open.
+        _keybindings.FocusedScope = FocusedScope;
         _scopes.Push(_keybindings);
-        _cursorScope = CreateCursorScope();
-        _scopes.Push(_cursorScope);
-        _explorerScope = CreateExplorerScope();
-        _scopes.Push(_explorerScope);
-        _searchScope = CreateSearchScope();
-        _scopes.Push(_searchScope);
-        _find = new FindController(_workbench.Editor.Group, _scopes, _searchScope);
+        _find = new FindController(_workbench.Editor.Group, _scopes, _keybindings);
         _find.Closed += (_, _) => FocusEditorBody();
         _find.HintChanged += (_, hint) => _workbench.StatusBar.SetHint(hint);
 
@@ -217,6 +207,14 @@ public sealed class WorkbenchHost : IDisposable
     private void OnChordChanged(object? sender, string? chord) =>
         _workbench.StatusBar.SetChord(chord);
 
+    private CommandScope FocusedScope()
+    {
+        if (_workbench.Sidebar.Search.InputsHaveFocus) return CommandScope.Find;
+        if (_workbench.Sidebar.Explorer.HasFocus) return CommandScope.Explorer;
+        if (_workbench.Editor.Group.ActiveTab is { ContentHasFocus: true }) return CommandScope.Editor;
+        return CommandScope.Global;
+    }
+
     private void RegisterDefaultCommands()
     {
         _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
@@ -239,11 +237,17 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
-        // Delete, F2, Ctrl+X and Ctrl+V are bound only while the explorer has focus (CreateExplorerScope).
-        _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete);
-        _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename);
-        _commands.Register(CommandIds.CutFile, "Cut file or folder", CutEntry);
-        _commands.Register(CommandIds.PasteFile, "Paste file or folder", PasteEntry);
+        var explorer = _workbench.Sidebar.Explorer;
+        _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
+        _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
+        _commands.Register(CommandIds.CutFile, "Cut file or folder", CutEntry, CommandScope.Explorer);
+        _commands.Register(CommandIds.PasteFile, "Paste file or folder", PasteEntry, CommandScope.Explorer);
+        _commands.Register(CommandIds.CancelCut, "Cancel cut", explorer.ClearCut, CommandScope.Explorer, () => explorer.PendingCut is not null);
+        var search = _workbench.Sidebar.Search;
+        _commands.Register(CommandIds.SearchFocusResults, "Focus find results", () => search.FocusResults(), CommandScope.Find);
+        _commands.Register(CommandIds.SearchSwitchField, "Switch find field", search.SwitchField, CommandScope.Find);
+        _commands.Register(CommandIds.SearchReplaceAll, "Replace all globally",
+            () => { if (search.ReplaceVisible) search.RequestReplaceAll(); }, CommandScope.Find);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
@@ -260,6 +264,9 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.DuplicateLinesDown, "Duplicate line down", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Down)));
         _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Up)));
         _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Down)));
+        var group = _workbench.Editor.Group;
+        _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => group.ActiveTab?.RemoveSecondaryCursors(),
+            CommandScope.Editor, () => group.ActiveTab is { HasSecondaryCursors: true });
         // No default keys (#113).
         _commands.Register(CommandIds.SelectNextOccurrence, "Select next occurrence", () => EditActiveTab(tab => tab.SelectNextOccurrence()));
         _commands.Register(CommandIds.SelectPreviousOccurrence, "Select previous occurrence", () => EditActiveTab(tab => tab.SelectPreviousOccurrence()));
@@ -273,8 +280,8 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     /// <summary>
-    /// Replace the entire workbench-scope binding set: clear, re-apply defaults, then layer on
-    /// the user's overrides. Called at startup and again when the settings UI commits a change.
+    /// Replace the entire workbench binding set: clear, re-apply defaults, then layer on the user's
+    /// overrides, each in its command's scope. Called at startup and again when the settings UI commits a change.
     /// </summary>
     public void ApplyKeybindings(IEnumerable<KeybindingOverride> overrides)
     {
@@ -290,7 +297,7 @@ public sealed class WorkbenchHost : IDisposable
             // user-supplied overrides get this tolerance. Where these logs surface is a follow-up (#92).
             try
             {
-                if (o.IsRemoval) _keybindings.Unbind(o.Keys);
+                if (o.IsRemoval) _keybindings.Unbind(o.Keys, _commands.ScopeOf(o.EffectiveCommand));
                 else _keybindings.Bind(o.Keys, o.EffectiveCommand);
             }
             catch (ArgumentException ex)
@@ -309,13 +316,13 @@ public sealed class WorkbenchHost : IDisposable
     /// </summary>
     public void ApplyEditedBindings(IEnumerable<KeyBinding> editedBindings)
     {
-        // Diff defaults against the edited set by canonical (keycode) identity, not display string —
+        // Diff defaults against the edited set by scope and canonical (keycode) identity, not display string —
         // a chord whose ToString() can't round-trip (e.g. Ctrl+Alt+Shift++) must still diff cleanly (#89).
-        var defaults = GetDefaultBindings().ToDictionary(b => b.CanonicalId, b => b, StringComparer.Ordinal);
-        var edited = editedBindings.ToDictionary(b => b.CanonicalId, b => b, StringComparer.Ordinal);
+        var defaults = GetDefaultBindings().ToDictionary(b => (b.Scope, b.CanonicalId));
+        var edited = editedBindings.ToDictionary(b => (b.Scope, b.CanonicalId));
 
         var overrides = new List<KeybindingOverride>();
-        foreach (var id in defaults.Keys.Union(edited.Keys, StringComparer.Ordinal))
+        foreach (var id in defaults.Keys.Union(edited.Keys))
         {
             var hasDefault = defaults.TryGetValue(id, out var def);
             var hasEdited = edited.TryGetValue(id, out var ed);
@@ -336,8 +343,7 @@ public sealed class WorkbenchHost : IDisposable
     /// </summary>
     public IEnumerable<KeyBinding> GetDefaultBindings()
     {
-        var commands = new CommandService();
-        var keybindings = new KeybindingService(commands);
+        var keybindings = new KeybindingService(_commands);
         BindDefaults(keybindings);
         return keybindings.Bindings.ToArray();
     }
@@ -383,6 +389,22 @@ public sealed class WorkbenchHost : IDisposable
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
+
+        keybindings.Bind("Esc", CommandIds.RemoveSecondaryCursors);
+
+        keybindings.Bind("Delete", CommandIds.DeleteFile);
+        // Our iTerm2 profile sends forward-delete as ^D (Iterm2Integration).
+        keybindings.Bind("Ctrl+D", CommandIds.DeleteFile);
+        keybindings.Bind("F2", CommandIds.RenameFile);
+        keybindings.Bind("Ctrl+X", CommandIds.CutFile);
+        keybindings.Bind("Ctrl+V", CommandIds.PasteFile);
+        keybindings.Bind("Esc", CommandIds.CancelCut);
+
+        keybindings.Bind("Enter", CommandIds.SearchFocusResults);
+        keybindings.Bind("CursorDown", CommandIds.SearchFocusResults);
+        keybindings.Bind("Tab", CommandIds.SearchSwitchField);
+        keybindings.Bind("Shift+Tab", CommandIds.SearchSwitchField);
+        keybindings.Bind("Ctrl+Enter", CommandIds.SearchReplaceAll);
     }
 
     // Flip visibility unconditionally (works from every entry point — see #85), then settle focus
@@ -434,53 +456,6 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Sidebar.ShowTab(SidebarTab.Find);
         FocusSidebar();
         _workbench.Sidebar.Search.FocusReplacement();
-    }
-
-    private LayeredScope CreateCursorScope()
-    {
-        var group = _workbench.Editor.Group;
-        var commands = new CommandService();
-        var bindings = new KeybindingService(commands);
-        commands.Register(CommandIds.RemoveSecondaryCursors, () => group.ActiveTab?.RemoveSecondaryCursors());
-        bindings.Bind("Esc", CommandIds.RemoveSecondaryCursors);
-        return new LayeredScope(bindings, _keybindings, _ => group.ActiveTab is { HasSecondaryCursors: true, ContentHasFocus: true });
-    }
-
-    private LayeredScope CreateExplorerScope()
-    {
-        var explorer = _workbench.Sidebar.Explorer;
-        var commands = new CommandService();
-        var bindings = new KeybindingService(commands);
-        commands.Register(CommandIds.DeleteFile, ConfirmDelete);
-        commands.Register(CommandIds.RenameFile, OpenRename);
-        commands.Register(CommandIds.CutFile, CutEntry);
-        commands.Register(CommandIds.PasteFile, PasteEntry);
-        commands.Register(CommandIds.CancelCut, explorer.ClearCut);
-        bindings.Bind("Delete", CommandIds.DeleteFile);
-        // Our iTerm2 profile sends forward-delete as ^D (Iterm2Integration).
-        bindings.Bind("Ctrl+D", CommandIds.DeleteFile);
-        bindings.Bind("F2", CommandIds.RenameFile);
-        bindings.Bind("Ctrl+X", CommandIds.CutFile);
-        bindings.Bind("Ctrl+V", CommandIds.PasteFile);
-        bindings.Bind("Esc", CommandIds.CancelCut);
-        return new LayeredScope(bindings, _cursorScope,
-            key => explorer.HasFocus && (key != Key.Esc || explorer.PendingCut is not null));
-    }
-
-    private LayeredScope CreateSearchScope()
-    {
-        var search = _workbench.Sidebar.Search;
-        var commands = new CommandService();
-        var bindings = new KeybindingService(commands);
-        commands.Register(CommandIds.SearchFocusResults, () => search.FocusResults());
-        commands.Register(CommandIds.SearchSwitchField, search.SwitchField);
-        commands.Register(CommandIds.SearchReplaceAll, () => { if (search.ReplaceVisible) search.RequestReplaceAll(); });
-        bindings.Bind("Enter", CommandIds.SearchFocusResults);
-        bindings.Bind("CursorDown", CommandIds.SearchFocusResults);
-        bindings.Bind("Tab", CommandIds.SearchSwitchField);
-        bindings.Bind("Shift+Tab", CommandIds.SearchSwitchField);
-        bindings.Bind("Ctrl+Enter", CommandIds.SearchReplaceAll);
-        return new LayeredScope(bindings, _explorerScope, _ => search.InputsHaveFocus);
     }
 
     private void FocusEditorBody()

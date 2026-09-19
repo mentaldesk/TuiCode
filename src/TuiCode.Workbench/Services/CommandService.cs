@@ -9,12 +9,12 @@ public sealed class CommandService : ICommandService
     public void Register(string commandId, Action handler) =>
         Register(commandId, commandId, handler);
 
-    public void Register(string commandId, string label, Action handler)
+    public void Register(string commandId, string label, Action handler, CommandScope scope = CommandScope.Global, Func<bool>? isEnabled = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(commandId);
         ArgumentException.ThrowIfNullOrEmpty(label);
         ArgumentNullException.ThrowIfNull(handler);
-        _entries[commandId] = new Entry(label, handler);
+        _entries[commandId] = new Entry(label, handler, scope, isEnabled);
     }
 
     public bool TryExecute(string commandId)
@@ -27,8 +27,14 @@ public sealed class CommandService : ICommandService
 
     public bool IsRegistered(string commandId) => _entries.ContainsKey(commandId);
 
-    public IEnumerable<CommandDescriptor> Registered =>
-        _entries.Select(kv => new CommandDescriptor(kv.Key, kv.Value.Label));
+    public CommandScope ScopeOf(string commandId) =>
+        _entries.TryGetValue(commandId, out var entry) ? entry.Scope : CommandScope.Global;
 
-    private sealed record Entry(string Label, Action Handler);
+    public bool IsEnabled(string commandId) =>
+        !_entries.TryGetValue(commandId, out var entry) || entry.IsEnabled?.Invoke() != false;
+
+    public IEnumerable<CommandDescriptor> Registered =>
+        _entries.Select(kv => new CommandDescriptor(kv.Key, kv.Value.Label, kv.Value.Scope));
+
+    private sealed record Entry(string Label, Action Handler, CommandScope Scope, Func<bool>? IsEnabled);
 }

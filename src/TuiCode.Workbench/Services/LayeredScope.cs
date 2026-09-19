@@ -5,9 +5,8 @@ namespace TuiCode.Workbench.Services;
 /// <summary>
 /// A non-modal input scope: its own bindings get first look at a key — but only while
 /// <paramref name="accepts"/> says so (typically "my panel has focus") — and everything else falls
-/// through to the scope beneath. Used by in-place panels like the find bar and the search sidebar,
-/// which need a few keys of their own (Enter, Esc, Tab) without shadowing workbench shortcuts the
-/// way a pushed modal scope does. A chord in flight in the scope beneath always finishes there.
+/// through to the scope beneath. Used by the find bar, which needs a few keys of its own (Enter, Esc,
+/// Tab) without shadowing workbench shortcuts the way a pushed modal scope does. A chord in flight in the scope beneath always finishes there.
 /// </summary>
 internal sealed class LayeredScope : IKeybindingService
 {
@@ -37,11 +36,12 @@ internal sealed class LayeredScope : IKeybindingService
 
     public void Bind(string keySequence, string commandId) => _own.Bind(keySequence, commandId);
     public void Bind(IReadOnlyList<Key> chord, string commandId) => _own.Bind(chord, commandId);
-    public bool Unbind(string keySequence) => _own.Unbind(keySequence);
-    public bool Unbind(IReadOnlyList<Key> chord) => _own.Unbind(chord);
+    public bool Unbind(string keySequence, CommandScope scope = CommandScope.Global) => _own.Unbind(keySequence, scope);
+    public bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => _own.Unbind(chord, scope);
     public void Reset() => _own.Reset();
-    public KeybindingConflict? CheckConflict(string keySequence) => _own.CheckConflict(keySequence);
-    public KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord) => _own.CheckConflict(chord);
+    public KeybindingConflict? CheckConflict(string keySequence, CommandScope scope = CommandScope.Global) => _own.CheckConflict(keySequence, scope);
+    public KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => _own.CheckConflict(chord, scope);
+    public Func<CommandScope> FocusedScope { get => _own.FocusedScope; set => _own.FocusedScope = value; }
     public IEnumerable<KeyBinding> Bindings => _own.Bindings;
 
     // Chords only ever live in the scope beneath (the layer's own bindings are single keys).

@@ -6,7 +6,7 @@ namespace TuiCode.Workbench.Settings;
 
 /// <summary>
 /// Right-pane panel for the "Keyboard Shortcuts" category. Shows one row per
-/// (command, binding) pair with a search box on top. Edit gestures:
+/// (command, binding) pair, with the command's scope, and a search box on top. Edit gestures:
 /// <list type="bullet">
 /// <item><c>Enter</c> on a row — start key capture, adds a new binding to that command.</item>
 /// <item><c>Delete</c> / <c>Backspace</c> on a row with a binding — remove it.</item>
@@ -16,16 +16,16 @@ namespace TuiCode.Workbench.Settings;
 /// </summary>
 public sealed class KeybindingsPickerView : View
 {
-    private const string Unbound = "(unbound)";
-
     private readonly IInputScopeStack _scopes;
+    private readonly CommandDescriptor[] _commands;
     private readonly Dictionary<string, string> _commandLabels;        // id → label
+    private readonly Dictionary<string, CommandScope> _commandScopes;
     private readonly List<KeyBinding> _currentBindings;                 // mutable; reflects the picker's pending state
     private readonly TextField _search;
     private readonly ListView _list;
     private readonly Label _footer;
 
-    private List<Row> _displayRows = new();
+    private IReadOnlyList<KeybindingRow> _displayRows = [];
     private KeyCaptureScope? _activeCapture;
     private string? _capturingForCommand;
     private List<Key> _capturedKeys = new();
@@ -42,7 +42,9 @@ public sealed class KeybindingsPickerView : View
         ArgumentNullException.ThrowIfNull(scopes);
 
         _scopes = scopes;
-        _commandLabels = commands.Registered.ToDictionary(c => c.Id, c => c.Label, StringComparer.Ordinal);
+        _commands = commands.Registered.ToArray();
+        _commandLabels = _commands.ToDictionary(c => c.Id, c => c.Label, StringComparer.Ordinal);
+        _commandScopes = _commands.ToDictionary(c => c.Id, c => c.Scope, StringComparer.Ordinal);
         _currentBindings = initialBindings.Bindings.ToList();
 
         X = 0;
@@ -62,10 +64,17 @@ public sealed class KeybindingsPickerView : View
         };
         _search.TextChanged += (_, _) => RebuildRows();
 
-        _list = new ListView
+        var header = new Label
         {
             X = 0,
             Y = Pos.Bottom(_search) + 1,
+            Text = KeybindingRows.Header
+        };
+
+        _list = new ListView
+        {
+            X = 0,
+            Y = Pos.Bottom(header),
             Width = Dim.Fill(),
             Height = Dim.Fill(2)
         };
@@ -81,7 +90,7 @@ public sealed class KeybindingsPickerView : View
             Text = "Enter: add binding   Delete: remove   Type to filter"
         };
 
-        Add(_search, _list, _footer);
+        Add(_search, header, _list, _footer);
         RebuildRows();
     }
 
@@ -92,42 +101,13 @@ public sealed class KeybindingsPickerView : View
 
     private void RebuildRows()
     {
-        var search = _search.Text?.ToString() ?? "";
-
-        var rows = new List<Row>();
-        foreach (var (id, label) in _commandLabels.OrderBy(kv => kv.Value, StringComparer.OrdinalIgnoreCase))
-        {
-            var bindings = _currentBindings.Where(b => string.Equals(b.CommandId, id, StringComparison.Ordinal)).ToArray();
-            if (bindings.Length == 0)
-            {
-                rows.Add(new Row(id, label, null));
-            }
-            else
-            {
-                foreach (var b in bindings)
-                    rows.Add(new Row(id, label, b));
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(search))
-            rows = rows.Where(r => Matches(r, search)).ToList();
-
+        var rows = KeybindingRows.Build(_commands, _currentBindings, _search.Text?.ToString() ?? "");
         _displayRows = rows;
-        var lines = rows.Select(FormatRow).ToList();
+        var lines = rows.Select(r => r.Display).ToList();
         _list.Source = new ListWrapper<string>(new(lines));
         if (rows.Count > 0 && (_list.SelectedItem is null || _list.SelectedItem >= rows.Count))
             _list.SelectedItem = 0;
     }
-
-    private static bool Matches(Row r, string needle) =>
-        r.Label.Contains(needle, StringComparison.OrdinalIgnoreCase)
-        || (r.Binding?.Display.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false);
-
-    private static string FormatRow(Row r) =>
-        $"{Truncate(r.Label, 40).PadRight(42)}{r.Binding?.Display ?? Unbound}";
-
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s[..(max - 1)] + "…";
 
     private void OnListKey(object? sender, Key key)
     {
@@ -222,7 +202,7 @@ public sealed class KeybindingsPickerView : View
 
         // The captured keys ARE the canonical chord — we never round-trip them through a display
         // string, so an un-parseable chord (e.g. Ctrl+Alt+Shift++) survives the picker intact (#89).
-        var candidate = new KeyBinding(_capturedKeys.ToArray(), _capturingForCommand);
+        var candidate = new KeyBinding(_capturedKeys.ToArray(), _capturingForCommand, _commandScopes[_capturingForCommand]);
         _capturingForCommand = null;
         _capturedKeys = new();
         _footer.Text = "Enter: add binding   Delete: remove   Type to filter";
@@ -240,54 +220,44 @@ public sealed class KeybindingsPickerView : View
 
     private void TryAddBinding(KeyBinding candidate)
     {
-        var conflict = CheckConflictAgainstCurrent(candidate.Chord);
-        if (conflict is KeybindingConflict.PrefixOfExisting or KeybindingConflict.ExtensionOfExisting)
+        var clash = KeybindingClash.Find(_currentBindings, candidate);
+        if (clash is null)
         {
-            KeybindingConflictDialog.ShowChord(this, _scopes, candidate.Display);
-            return;
-        }
-        if (conflict is KeybindingConflict.ExactMatch)
-        {
-            var existingCommand = _currentBindings.First(b => string.Equals(b.CanonicalId, candidate.CanonicalId, StringComparison.Ordinal)).CommandId;
-            var existingLabel = _commandLabels.GetValueOrDefault(existingCommand, existingCommand);
-            KeybindingConflictDialog.ShowReplace(this, _scopes, candidate.Display, existingLabel, replace =>
-            {
-                if (!replace) return;
-                _currentBindings.RemoveAll(b => string.Equals(b.CanonicalId, candidate.CanonicalId, StringComparison.Ordinal));
-                _currentBindings.Add(candidate);
-                RebuildRows();
-            });
+            AddBinding(candidate);
             return;
         }
 
-        _currentBindings.Add(candidate);
+        var host = SuperView ?? this;
+        var message = clash.Message(id => _commandLabels.GetValueOrDefault(id, id));
+        if (clash.IsWarning)
+        {
+            KeybindingConflictDialog.Confirm(host, _scopes, message, "Bind", bind =>
+            {
+                _list.SetFocus();
+                if (bind) AddBinding(candidate);
+            });
+        }
+        else if (clash.Kind is KeybindingConflict.ExactMatch)
+        {
+            KeybindingConflictDialog.Confirm(host, _scopes, message, "Replace", replace =>
+            {
+                _list.SetFocus();
+                if (!replace) return;
+                _currentBindings.Remove(clash.Existing);
+                AddBinding(candidate);
+            });
+        }
+        else
+        {
+            KeybindingConflictDialog.Refuse(host, _scopes, message, () => _list.SetFocus());
+        }
+    }
+
+    private void AddBinding(KeyBinding binding)
+    {
+        _currentBindings.Add(binding);
         RebuildRows();
     }
-
-    /// <summary>
-    /// Conflict check against the picker's pending state, not the live keybinding service. Mirrors
-    /// <see cref="IKeybindingService.CheckConflict(IReadOnlyList{Key})"/> but operates on
-    /// <see cref="_currentBindings"/>, comparing on canonical keycodes rather than display strings (#89).
-    /// </summary>
-    private KeybindingConflict? CheckConflictAgainstCurrent(IReadOnlyList<Key> chord)
-    {
-        var candidate = Keycodes(chord);
-
-        foreach (var b in _currentBindings)
-        {
-            var existing = Keycodes(b.Chord);
-            if (existing.SequenceEqual(candidate))
-                return KeybindingConflict.ExactMatch;
-            if (existing.Length > candidate.Length && existing.Take(candidate.Length).SequenceEqual(candidate))
-                return KeybindingConflict.PrefixOfExisting;
-            if (existing.Length < candidate.Length && candidate.Take(existing.Length).SequenceEqual(existing))
-                return KeybindingConflict.ExtensionOfExisting;
-        }
-        return null;
-    }
-
-    private static uint[] Keycodes(IReadOnlyList<Key> chord) =>
-        chord.Select(k => (uint)k.KeyCode).ToArray();
 
     private void RemoveSelected()
     {
@@ -298,6 +268,4 @@ public sealed class KeybindingsPickerView : View
         _currentBindings.RemoveAll(b => b.Equals(row.Binding));
         RebuildRows();
     }
-
-    private sealed record Row(string CommandId, string Label, KeyBinding? Binding);
 }

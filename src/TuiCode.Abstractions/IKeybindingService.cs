@@ -14,22 +14,24 @@ public enum KeyHandlingResult
 
 /// <summary>
 /// A bound chord and the command it fires. The chord is the canonical identity — a sequence of
-/// <see cref="Key"/> compared by raw <see cref="KeyCode"/>, not by display string (issue #89).
-/// <see cref="Display"/> is the human-readable label and must never be parsed back into keys.
+/// <see cref="Key"/> compared by raw <see cref="KeyCode"/>, not by display string (issue #89) — within
+/// its <see cref="Scope"/>. <see cref="Display"/> is the human-readable label and must never be parsed back into keys.
 /// </summary>
 public sealed class KeyBinding : IEquatable<KeyBinding>
 {
-    public KeyBinding(IReadOnlyList<Key> chord, string commandId)
+    public KeyBinding(IReadOnlyList<Key> chord, string commandId, CommandScope scope = CommandScope.Global)
     {
         ArgumentNullException.ThrowIfNull(chord);
         if (chord.Count == 0) throw new ArgumentException("A chord needs at least one key.", nameof(chord));
         ArgumentException.ThrowIfNullOrEmpty(commandId);
         Chord = chord;
         CommandId = commandId;
+        Scope = scope;
     }
 
     public IReadOnlyList<Key> Chord { get; }
     public string CommandId { get; }
+    public CommandScope Scope { get; }
 
     /// <summary>Parse-stable identity (keycode-based). Use for equality, dedup, and diffing.</summary>
     public string CanonicalId => KeyChord.Canonical(Chord);
@@ -39,12 +41,13 @@ public sealed class KeyBinding : IEquatable<KeyBinding>
 
     public bool Equals(KeyBinding? other) =>
         other is not null
+        && Scope == other.Scope
         && string.Equals(CommandId, other.CommandId, StringComparison.Ordinal)
         && string.Equals(CanonicalId, other.CanonicalId, StringComparison.Ordinal);
 
     public override bool Equals(object? obj) => Equals(obj as KeyBinding);
 
-    public override int GetHashCode() => HashCode.Combine(CanonicalId, CommandId);
+    public override int GetHashCode() => HashCode.Combine(Scope, CanonicalId, CommandId);
 }
 
 public enum KeybindingConflict
@@ -61,18 +64,21 @@ public enum KeybindingConflict
 
 public interface IKeybindingService
 {
-    /// <summary>Bind a chord (one key per step) to a command. This is the canonical entry point.</summary>
+    /// <summary>
+    /// Bind a chord (one key per step) to a command, in the scope the command was registered with.
+    /// This is the canonical entry point.
+    /// </summary>
     void Bind(IReadOnlyList<Key> chord, string commandId);
 
-    /// <summary>Remove the binding at <paramref name="chord"/>. Returns true if a binding was removed.</summary>
-    bool Unbind(IReadOnlyList<Key> chord);
+    /// <summary>Remove the binding at <paramref name="chord"/> in <paramref name="scope"/>. Returns true if a binding was removed.</summary>
+    bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global);
 
     /// <summary>
-    /// Report whether <paramref name="chord"/> would conflict with any existing binding, or null
-    /// if it would not. Use before <see cref="Bind(IReadOnlyList{Key}, string)"/> to decide whether
+    /// Report whether <paramref name="chord"/> would conflict with any existing binding in
+    /// <paramref name="scope"/>, or null if it would not. Use before <see cref="Bind(IReadOnlyList{Key}, string)"/> to decide whether
     /// to surface a confirm/refuse dialog.
     /// </summary>
-    KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord);
+    KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global);
 
     /// <summary>
     /// String sugar for the hardcoded defaults: parses a space-separated sequence
@@ -82,17 +88,22 @@ public interface IKeybindingService
     /// </summary>
     void Bind(string keySequence, string commandId);
 
-    /// <summary>String sugar for <see cref="Unbind(IReadOnlyList{Key})"/>; see <see cref="Bind(string, string)"/>.</summary>
-    bool Unbind(string keySequence);
+    /// <summary>String sugar for <see cref="Unbind(IReadOnlyList{Key}, CommandScope)"/>; see <see cref="Bind(string, string)"/>.</summary>
+    bool Unbind(string keySequence, CommandScope scope = CommandScope.Global);
 
     /// <summary>Clear all bindings.</summary>
     void Reset();
 
-    /// <summary>String sugar for <see cref="CheckConflict(IReadOnlyList{Key})"/>; see <see cref="Bind(string, string)"/>.</summary>
-    KeybindingConflict? CheckConflict(string keySequence);
+    /// <summary>String sugar for <see cref="CheckConflict(IReadOnlyList{Key}, CommandScope)"/>; see <see cref="Bind(string, string)"/>.</summary>
+    KeybindingConflict? CheckConflict(string keySequence, CommandScope scope = CommandScope.Global);
 
-    /// <summary>All currently-registered bindings as (chord, commandId) pairs.</summary>
+    /// <summary>All currently-registered bindings, in every scope.</summary>
     IEnumerable<KeyBinding> Bindings { get; }
+
+    /// <summary>
+    /// The scope whose bindings get first look at a key before Global's; Global when nothing more specific has focus.
+    /// </summary>
+    Func<CommandScope> FocusedScope { get; set; }
 
     /// <summary>
     /// Process a key. Returns whether the key was consumed by the binding system,
