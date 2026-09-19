@@ -224,11 +224,12 @@ public class DiffTabDrawTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Right_scrolls_both_sides_and_keeps_the_gutter_in_place()
+    public void Right_scrolls_both_sides_a_quarter_of_the_text_width_and_keeps_the_gutter_in_place()
     {
         var diff = Diff("one\nabcdefghijklmnopqrstuvwxyz", "one\nabcdefghijklmnopqrstuvwxyZ");
 
-        Press(diff, Key.CursorRight, 4);
+        Press(diff, Key.CursorRight, 2);
+        Assert.Equal(4, diff.LeftColumn);
 
         Assert.Equal(
         [
@@ -257,7 +258,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
     {
         var diff = Diff("\tabcdefghijklmn\nx日本語abcdefghijk", "\tabcdefghijklmN\nx日本語abcdefghijK");
 
-        Press(diff, Key.CursorRight, 2);
+        Press(diff, Key.CursorRight, 1);
 
         var screen = Render(diff);
         Assert.Equal("  1-   abcdefgh│  1+   abcdefgh", screen[1]);
@@ -273,7 +274,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
         diff.NewMouseEvent(new Mouse { Flags = MouseFlags.WheeledRight, Position = new System.Drawing.Point(5, 1) });
         diff.NewMouseEvent(new Mouse { Flags = MouseFlags.WheeledLeft, Position = new System.Drawing.Point(5, 1) });
 
-        Assert.Equal(1, diff.LeftColumn);
+        Assert.Equal(2, diff.LeftColumn);
     }
 
     [Fact]
@@ -292,7 +293,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
         diff.NewKeyDownEvent(Key.Home);
         diff.Refresh();
 
-        Assert.Equal(3, diff.LeftColumn);
+        Assert.Equal(6, diff.LeftColumn);
     }
 
     [Fact]
@@ -370,9 +371,9 @@ public class DiffTabDrawTests : StaticConfigurationTest
     [Fact]
     public void Syntax_colours_and_tints_stay_with_the_text_when_scrolled_sideways()
     {
-        var diff = Diff("int a; int bbbbbbbbbbbbbbbbbb;", "int a; int cccccccccccccccccc;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/a.cs");
+        var diff = Diff("int ab; int bbbbbbbbbbbbbbbbbb;", "int ab; int cccccccccccccccccc;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/a.cs");
 
-        Press(diff, Key.CursorRight, 7);
+        Press(diff, Key.CursorRight, 4);
         Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.
 
         Assert.Equal("  1- int bbbbbb│  1+ int cccccc", Render(diff)[1]);

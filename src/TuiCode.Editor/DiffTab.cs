@@ -47,8 +47,8 @@ public sealed class DiffTab : FrameView
         AddCommand(Command.End, () => MoveTo(int.MaxValue));
         AddCommand(Command.ScrollUp, () => ScrollTo(_top - 1));
         AddCommand(Command.ScrollDown, () => ScrollTo(_top + 1));
-        AddCommand(Command.ScrollLeft, () => ScrollSidewaysTo(_column - 1));
-        AddCommand(Command.ScrollRight, () => ScrollSidewaysTo(_column + 1));
+        AddCommand(Command.ScrollLeft, () => ScrollSidewaysTo(_column - SidewaysStep));
+        AddCommand(Command.ScrollRight, () => ScrollSidewaysTo(_column + SidewaysStep));
         KeyBindings.Add(Key.CursorUp, Command.Up);
         KeyBindings.Add(Key.CursorDown, Command.Down);
         KeyBindings.Add(Key.CursorLeft, Command.ScrollLeft);
@@ -198,6 +198,8 @@ public sealed class DiffTab : FrameView
     }
 
     private int NarrowerTextWidth => Math.Max(0, SideWidths().Left - Digits - 2);
+
+    private int SidewaysStep => Math.Max(1, NarrowerTextWidth / 4);
 
     protected override bool OnDrawingContent(DrawContext? context)
     {
