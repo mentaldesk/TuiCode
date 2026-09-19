@@ -6,7 +6,7 @@ internal sealed record KeybindingRow(string CommandId, string Label, CommandScop
 {
     public string Keys => Binding?.Display ?? KeybindingRows.Unbound;
 
-    public string Display => KeybindingRows.Columns(Label, Keys, Scope.ToString());
+    public string Display(int width) => KeybindingRows.Columns(Label, Keys, Scope.ToString(), width);
 }
 
 /// <summary>The Keyboard Shortcuts pane's rows (#142): one per (command, binding), or one unbound row per command, filtered.</summary>
@@ -14,12 +14,12 @@ internal static class KeybindingRows
 {
     public const string Unbound = "(unbound)";
 
-    // Fits the pane at 80 columns.
-    private const int RowWidth = 49;
-    private const int KeysWidth = 14;
+    private const int Gap = 2;
     private const int WhenWidth = 8;
+    private const int MinKeysWidth = 12;
+    private const int MinCommandWidth = 10;
 
-    public static string Header => Columns("Command", "Keys", "When");
+    public static string Header(int width) => Columns("Command", "Keys", "When", width);
 
     public static IReadOnlyList<KeybindingRow> Build(
         IEnumerable<CommandDescriptor> commands, IReadOnlyCollection<KeyBinding> bindings, string filter)
@@ -43,12 +43,14 @@ internal static class KeybindingRows
         || (r.Binding?.Display.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
         || r.Scope.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase);
 
-    internal static string Columns(string command, string keys, string when)
+    // A chord longer than the Keys column takes the room from its own row's command.
+    internal static string Columns(string command, string keys, string when, int width)
     {
-        keys = Truncate(keys, RowWidth - WhenWidth - 12);
-        var keysWidth = Math.Max(KeysWidth, keys.Length + 1);
-        var commandWidth = RowWidth - WhenWidth - keysWidth;
-        return $"{Truncate(command, commandWidth - 1).PadRight(commandWidth)}{keys.PadRight(keysWidth)}{when}";
+        var available = Math.Max(width - WhenWidth - 2 * Gap, MinCommandWidth + MinKeysWidth);
+        keys = Truncate(keys, available - MinCommandWidth);
+        var commandWidth = Math.Min(available - Math.Max(MinKeysWidth, available / 3), available - keys.Length);
+        var keysWidth = available - commandWidth;
+        return $"{Truncate(command, commandWidth).PadRight(commandWidth + Gap)}{keys.PadRight(keysWidth + Gap)}{when}";
     }
 
     private static string Truncate(string s, int max) =>

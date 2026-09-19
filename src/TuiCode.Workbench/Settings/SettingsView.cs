@@ -108,7 +108,8 @@ public sealed class SettingsView : Window
         {
             X = Pos.Right(_separator) + 1,
             Y = 1,
-            Width = Dim.Fill(2),
+            // One cell wider than the other panels, so the longest default chord fits beside its command at 80 columns.
+            Width = Dim.Fill(1),
             Height = Dim.Fill(2),
             Visible = false
         };

@@ -22,6 +22,7 @@ public sealed class KeybindingsPickerView : View
     private readonly Dictionary<string, CommandScope> _commandScopes;
     private readonly List<KeyBinding> _currentBindings;                 // mutable; reflects the picker's pending state
     private readonly TextField _search;
+    private readonly Label _header;
     private readonly ListView _list;
     private readonly Label _footer;
 
@@ -64,21 +65,24 @@ public sealed class KeybindingsPickerView : View
         };
         _search.TextChanged += (_, _) => RebuildRows();
 
-        var header = new Label
+        _header = new Label
         {
             X = 0,
             Y = Pos.Bottom(_search) + 1,
-            Text = KeybindingRows.Header
+            Width = Dim.Fill(),
+            Height = 1
         };
 
         _list = new ListView
         {
             X = 0,
-            Y = Pos.Bottom(header),
+            Y = Pos.Bottom(_header),
             Width = Dim.Fill(),
             Height = Dim.Fill(2)
         };
         _list.KeyDown += OnListKey;
+        _list.RowRender += (_, e) =>
+            e.RowAttribute = RowStripes.For(e.Row, _list.SelectedItem, _list.GetAttributeForRole(VisualRole.Normal));
         // TG doesn't auto-transfer focus on mouse click in this layout. Force it on any mouse event.
         _list.MouseEvent += (_, _) => _list.SetFocus();
         _search.MouseEvent += (_, _) => _search.SetFocus();
@@ -90,11 +94,19 @@ public sealed class KeybindingsPickerView : View
             Text = "Enter: add binding   Delete: remove   Type to filter"
         };
 
-        Add(_search, header, _list, _footer);
+        Add(_search, _header, _list, _footer);
         RebuildRows();
     }
 
     public bool FocusContent() => _list.SetFocus();
+
+    protected override void OnSubViewsLaidOut(LayoutEventArgs args)
+    {
+        base.OnSubViewsLaidOut(args);
+        var header = KeybindingRows.Header(_list.Viewport.Width);
+        if (_header.Text != header)
+            _header.Text = header;
+    }
 
     /// <summary>Hook to detect whether the picker is mid-capture (so the parent can suppress its own Esc handling).</summary>
     public bool IsCapturing => _activeCapture is not null;
@@ -103,8 +115,7 @@ public sealed class KeybindingsPickerView : View
     {
         var rows = KeybindingRows.Build(_commands, _currentBindings, _search.Text?.ToString() ?? "");
         _displayRows = rows;
-        var lines = rows.Select(r => r.Display).ToList();
-        _list.Source = new ListWrapper<string>(new(lines));
+        _list.Source = new KeybindingListSource(rows);
         if (rows.Count > 0 && (_list.SelectedItem is null || _list.SelectedItem >= rows.Count))
             _list.SelectedItem = 0;
     }
