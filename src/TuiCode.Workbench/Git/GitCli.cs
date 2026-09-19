@@ -29,9 +29,18 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         if (!IsSafeRevision(revision))
             return GitResult<string?>.Failure($"Unknown revision '{revision}'");
 
-        var directory = DirectoryOf(filePath);
         // A `./` path is relative to -C, so git works out the root-relative path even through symlinks.
-        var run = await RunAsync(directory, ["show", $"{revision}:./{fileSystem.Path.GetFileName(filePath)}"], cancellationToken);
+        return await ShowAsync(DirectoryOf(filePath), $"./{fileSystem.Path.GetFileName(filePath)}", revision, cancellationToken);
+    }
+
+    public Task<GitResult<string?>> ShowRepoFileAsync(string repoRoot, string repoPath, string revision, CancellationToken cancellationToken = default) =>
+        IsSafeRevision(revision)
+            ? ShowAsync(repoRoot, repoPath, revision, cancellationToken)
+            : Task.FromResult(GitResult<string?>.Failure($"Unknown revision '{revision}'"));
+
+    private async Task<GitResult<string?>> ShowAsync(string directory, string path, string revision, CancellationToken cancellationToken)
+    {
+        var run = await RunAsync(directory, ["show", $"{revision}:{path}"], cancellationToken);
         if (run.Failure is { } failure)
             return GitResult<string?>.Failure(failure);
         if (run.ExitCode == 0)
@@ -75,6 +84,87 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return run.Failure is null && run.ExitCode is 0 or 1
             ? GitResult<bool>.Success(run.ExitCode == 0)
             : GitResult<bool>.Failure(ErrorMessage(run));
+    }
+
+    public async Task<GitResult<string?>> GetCurrentBranchAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(DirectoryOf(path), ["symbolic-ref", "--quiet", "--short", "HEAD"], cancellationToken);
+        return run.Failure is null && run.ExitCode is 0 or 1
+            ? GitResult<string?>.Success(run.ExitCode == 0 ? run.Output.Trim() : null)
+            : GitResult<string?>.Failure(ErrorMessage(run));
+    }
+
+    public async Task<GitResult<string?>> GetDefaultBranchAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var directory = DirectoryOf(path);
+        var run = await RunAsync(directory, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cancellationToken);
+        if (run.Failure is not null || run.ExitCode is not (0 or 1))
+            return GitResult<string?>.Failure(ErrorMessage(run));
+        if (run.ExitCode == 0)
+            return GitResult<string?>.Success(run.Output.Trim());
+
+        foreach (var branch in (string[])["main", "master"])
+        {
+            var resolves = await ResolvesAsync(directory, branch, cancellationToken);
+            if (!resolves.Succeeded)
+                return GitResult<string?>.Failure(resolves.Error!);
+            if (resolves.Value)
+                return GitResult<string?>.Success(branch);
+        }
+        return GitResult<string?>.Success(null);
+    }
+
+    public async Task<GitResult<string?>> GetMergeBaseAsync(string path, string first, string second, CancellationToken cancellationToken = default)
+    {
+        foreach (var revision in (string[])[first, second])
+            if (!IsSafeRevision(revision))
+                return GitResult<string?>.Failure($"Unknown revision '{revision}'");
+
+        var run = await RunAsync(DirectoryOf(path), ["merge-base", first, second], cancellationToken);
+        return run.Failure is null && run.ExitCode is 0 or 1
+            ? GitResult<string?>.Success(run.ExitCode == 0 ? run.Output.Trim() : null)
+            : GitResult<string?>.Failure(ErrorMessage(run));
+    }
+
+    public async Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default)
+    {
+        if (!IsSafeRevision(revision))
+            return GitResult<IReadOnlyList<GitChange>>.Failure($"Unknown revision '{revision}'");
+
+        var run = await RunAsync(DirectoryOf(path),
+            ["diff", "--name-status", "-z", "-M", "--no-ext-diff", revision, "--"], cancellationToken);
+        return run.Failure is null && run.ExitCode == 0
+            ? GitResult<IReadOnlyList<GitChange>>.Success(ParseChanges(run.Output))
+            : GitResult<IReadOnlyList<GitChange>>.Failure(ErrorMessage(run));
+    }
+
+    /// <summary>Reads <c>--name-status -z</c>: a status, then one path, or two for a rename or copy. A copy counts as added.</summary>
+    internal static IReadOnlyList<GitChange> ParseChanges(string output)
+    {
+        var fields = output.Split('\0');
+        var changes = new List<GitChange>();
+        for (var i = 0; i + 1 < fields.Length; i += 2)
+        {
+            var status = fields[i];
+            if (status.Length == 0)
+                break;
+            if (status[0] is 'R' or 'C' && i + 2 < fields.Length)
+            {
+                changes.Add(status[0] == 'R'
+                    ? new GitChange(GitChangeKind.Renamed, fields[i + 2], fields[i + 1])
+                    : new GitChange(GitChangeKind.Added, fields[i + 2]));
+                i++;
+                continue;
+            }
+            var kind = status[0] switch
+            {
+                'A' => GitChangeKind.Added,
+                'D' => GitChangeKind.Deleted,
+                _ => GitChangeKind.Modified,
+            };
+            changes.Add(new GitChange(kind, fields[i + 1]));
+        }
+        return changes;
     }
 
     internal static IReadOnlyList<GitRef> ParseRefs(string output)

@@ -18,6 +18,7 @@ using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 using TuiCode.Workbench.Themes;
@@ -147,6 +148,7 @@ public sealed class WorkbenchHost : IDisposable
         // history's own heuristic decides which of these count as navigable jumps.
         _workbench.Editor.Group.CursorMoved += OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged += OnActiveTabChanged;
+        _workbench.Sidebar.Review.FileActivated += (_, e) => OpenReviewDiff(e.Review, e.Change);
     }
 
     private void ApplyTokenTheme()
@@ -238,6 +240,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ToggleSidebarTab(SidebarTab.Explorer));
         _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleSidebarTab(SidebarTab.Find));
         _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", ReplaceGlobally);
+        // No default key (#180).
+        _commands.Register(CommandIds.FocusReview, "Focus review", FocusReview);
         _commands.Register(CommandIds.FindInFile, "Find in file", () => _find.Open(replace: false));
         _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => _find.Open(replace: true));
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
@@ -481,6 +485,14 @@ public sealed class WorkbenchHost : IDisposable
         }
         _workbench.Sidebar.ShowTab(tab);
         FocusSidebar();
+    }
+
+    private void FocusReview()
+    {
+        var showing = _workbench.IsSidebarVisible && _workbench.Sidebar.ActiveTab == SidebarTab.Review;
+        _workbench.Sidebar.ShowTab(SidebarTab.Review);
+        FocusSidebar();
+        if (showing) _workbench.Sidebar.Review.Refresh();
     }
 
     private void ReplaceGlobally()
@@ -942,10 +954,12 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (!_workbench.IsSidebarVisible)
             _workbench.SetSidebarVisible(true);
-        if (_workbench.Sidebar.ActiveTab == SidebarTab.Find)
-            _workbench.Sidebar.Search.FocusQuery();
-        else
-            _workbench.Sidebar.Explorer.SetFocus();
+        switch (_workbench.Sidebar.ActiveTab)
+        {
+            case SidebarTab.Find: _workbench.Sidebar.Search.FocusQuery(); break;
+            case SidebarTab.Review: _workbench.Sidebar.Review.FocusList(); break;
+            default: _workbench.Sidebar.Explorer.SetFocus(); break;
+        }
         _focusLevel = FocusLevel.Sidebar;
     }
 
@@ -1191,6 +1205,42 @@ public sealed class WorkbenchHost : IDisposable
             if (!ReferenceEquals(_activeRevisionPicker, view)) return;
             view.Load(refs.Result.Value ?? [], history.Result.Value ?? []);
             if ((refs.Result.Error ?? history.Result.Error) is { } error) view.ShowError(error);
+        });
+    }
+
+    private void OpenReviewDiff(BranchReview review, GitChange change)
+    {
+        if (change.Kind == GitChangeKind.Deleted)
+        {
+            _workbench.StatusBar.SetMessage("Deleted in this branch");
+            return;
+        }
+
+        var fs = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
+        var tab = _workbench.Editor.Open(fs.FileInfo.New(fs.Path.Combine(review.RepoRoot, change.Path)));
+        var basePath = change.OldPath ?? change.Path;
+        var key = $"{review.MergeBase}:{basePath}";
+        if (_workbench.Editor.Group.FocusDiff(tab, key))
+        {
+            FocusEditorBody();
+            return;
+        }
+
+        var content = change.Kind == GitChangeKind.Added
+            ? Task.FromResult(GitResult<string?>.Success(null))
+            : Task.Run(() => _git.ShowRepoFileAsync(review.RepoRoot, basePath, review.MergeBase));
+        WhenDone(content, () =>
+        {
+            if (content.Result.Error is { } error)
+            {
+                _workbench.StatusBar.SetMessage(error);
+                return;
+            }
+            var lines = content.Result.Value is { } text ? DiffTab.SplitLines(text) : [];
+            if (_workbench.Editor.Group.Compare(tab, review.Base, () => lines, key) is null)
+                _workbench.StatusBar.SetMessage($"No changes against {review.Base}");
+            else
+                FocusEditorBody();
         });
     }
 
