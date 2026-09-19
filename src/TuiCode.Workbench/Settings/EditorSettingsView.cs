@@ -2,18 +2,28 @@ using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Settings;
 
-/// <summary>Settings → Editor (#14). Enter or Space steps the selected setting to its next value; <see cref="SettingsView"/> applies them on save.</summary>
+/// <summary>Settings → Editor (#14). <see cref="SettingsView"/> applies <see cref="Current"/> on save.</summary>
 public sealed class EditorSettingsView : View
 {
-    private static readonly LineEnding[] LineEndings = [LineEnding.Auto, LineEnding.LF, LineEnding.CRLF];
+    private const int ControlColumn = 15;
 
-    private readonly ListView _list;
+    private readonly EditorSettings _original;
+    private readonly NumericUpDown<int> _indentSize;
+    private readonly CheckBox _insertSpaces;
+    private readonly OptionSelector<LineEnding> _lineEnding;
+    private readonly CheckBox _insertFinalNewline;
 
-    public EditorSettings Current { get; private set; }
+    public EditorSettings Current => _original with
+    {
+        IndentSize = _indentSize.Value,
+        InsertSpaces = _insertSpaces.Value == CheckState.Checked,
+        LineEnding = _lineEnding.Value ?? LineEnding.Auto,
+        InsertFinalNewline = _insertFinalNewline.Value == CheckState.Checked,
+    };
 
     public EditorSettingsView(EditorSettings settings)
     {
-        Current = settings;
+        _original = settings;
         X = 0;
         Y = 0;
         Width = Dim.Fill();
@@ -21,67 +31,45 @@ public sealed class EditorSettingsView : View
         // Required: TG only allows focus on a descendant if every ancestor has CanFocus = true.
         CanFocus = true;
 
-        _list = new ListView
+        var indentSizeLabel = new Label { X = 0, Y = 0, Text = "Indent size" };
+        _indentSize = new NumericUpDown<int> { X = ControlColumn, Y = 0, Value = settings.IndentSize };
+        _indentSize.ValueChanging += (_, e) =>
+            e.Handled = e.NewValue is < EditorSettings.MinIndentSize or > EditorSettings.MaxIndentSize;
+
+        _insertSpaces = new CheckBox { X = 0, Y = 2, Text = "Indent with spaces", Value = Check(settings.InsertSpaces) };
+
+        var lineEndingLabel = new Label { X = 0, Y = 4, Text = "Line endings" };
+        _lineEnding = new OptionSelector<LineEnding>
+        {
+            X = ControlColumn,
+            Y = 4,
+            Orientation = Orientation.Horizontal,
+            TabBehavior = TabBehavior.NoStop,
+            Labels = ["Keep each file's", "LF", "CRLF"],
+            Value = settings.LineEnding,
+        };
+
+        _insertFinalNewline = new CheckBox
         {
             X = 0,
-            Y = 0,
-            Width = Dim.Fill(),
-            Height = 4,
-        };
-        _list.KeyDown += OnListKey;
-        // TG doesn't auto-transfer focus on mouse click in this layout. Force it on any mouse event.
-        _list.MouseEvent += (_, _) => _list.SetFocus();
-
-        var hint = new Label
-        {
-            X = 0,
-            Y = Pos.Bottom(_list) + 1,
-            Width = Dim.Fill(),
-            Text = "Enter or Space: change the selected setting",
+            Y = 6,
+            Text = "Insert final newline",
+            Value = Check(settings.InsertFinalNewline),
         };
 
-        Add(_list, hint);
-        ShowRows();
+        Add(indentSizeLabel, _indentSize, _insertSpaces, lineEndingLabel, _lineEnding, _insertFinalNewline);
+        KeyDown += OnKey;
     }
 
-    public bool FocusContent() => _list.SetFocus();
+    public bool FocusContent() => _indentSize.SetFocus();
 
-    private void ShowRows()
-    {
-        var selected = _list.SelectedItem ?? 0;
-        _list.Source = new ListWrapper<string>(new(
-        [
-            $"Indent size           {Current.IndentSize}",
-            $"Indent with           {(Current.InsertSpaces ? "Spaces" : "Tabs")}",
-            $"Line endings          {Current.LineEnding switch { LineEnding.Auto => "Keep each file's", var e => e.ToString() }}",
-            $"Insert final newline  {(Current.InsertFinalNewline ? "On" : "Off")}",
-        ]));
-        _list.SelectedItem = selected;
-    }
+    private static CheckState Check(bool value) => value ? CheckState.Checked : CheckState.UnChecked;
 
-    private void Step(int row)
-    {
-        Current = row switch
-        {
-            0 => Current with { IndentSize = Current.IndentSize % EditorSettings.MaxIndentSize + 1 },
-            1 => Current with { InsertSpaces = !Current.InsertSpaces },
-            2 => Current with { LineEnding = LineEndings[(Array.IndexOf(LineEndings, Current.LineEnding) + 1) % LineEndings.Length] },
-            3 => Current with { InsertFinalNewline = !Current.InsertFinalNewline },
-            _ => Current,
-        };
-        ShowRows();
-    }
-
-    private void OnListKey(object? sender, Key key)
+    private void OnKey(object? sender, Key key)
     {
         if (key == Key.CursorLeft && SuperView is SettingsView settings)
         {
             settings.FocusCategories();
-            key.Handled = true;
-        }
-        else if ((key == Key.Enter || key == Key.Space) && _list.SelectedItem is { } row)
-        {
-            Step(row);
             key.Handled = true;
         }
     }

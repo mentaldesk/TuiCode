@@ -19,15 +19,42 @@ public class EditorSettingsViewTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
 
         await HostSteps.Run(host, OpenEditorSettings(host, workbench),
-            () => host.App.InjectKey(Key.Enter),
-            () => host.App.InjectKey(Key.CursorDown),
+            () => host.App.InjectKey(Key.CursorUp),
+            () => host.App.InjectKey(Key.Tab),
+            () => host.App.InjectKey(Key.Space),
+            () => host.App.InjectKey(Key.Tab),
+            () => host.App.InjectKey(Key.CursorRight),
+            () => host.App.InjectKey(Key.Space),
+            () => host.App.InjectKey(Key.Tab),
             () => host.App.InjectKey(Key.Space),
             () => host.App.InjectKey(Key.Enter.WithCtrl));
 
-        var expected = EditorSettings.Default with { IndentSize = 5, InsertSpaces = false };
+        var expected = new EditorSettings
+        {
+            IndentSize = 5,
+            InsertSpaces = false,
+            LineEnding = LineEnding.LF,
+            InsertFinalNewline = false,
+        };
         Assert.Equal(expected, _settings.Editor);
         Assert.Equal(expected, workbench.Editor.Group.Settings);
         Assert.Equal(1, _settings.SaveCount);
+    }
+
+    [Theory]
+    [InlineData(EditorSettings.MaxIndentSize, "CursorUp")]
+    [InlineData(EditorSettings.MinIndentSize, "CursorDown")]
+    public async Task Indent_size_stays_within_its_limits(int indentSize, string key)
+    {
+        _settings.Editor = EditorSettings.Default with { IndentSize = indentSize };
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host, OpenEditorSettings(host, workbench),
+            () => host.App.InjectKey(TestKeys.Chord(key)[0]),
+            () => host.App.InjectKey(Key.Enter.WithCtrl));
+
+        Assert.Equal(indentSize, _settings.Editor.IndentSize);
     }
 
     [Fact]
@@ -37,7 +64,7 @@ public class EditorSettingsViewTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
 
         await HostSteps.Run(host, OpenEditorSettings(host, workbench),
-            () => host.App.InjectKey(Key.Enter),
+            () => host.App.InjectKey(Key.CursorUp),
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Empty(workbench.SubViews.OfType<SettingsView>());
