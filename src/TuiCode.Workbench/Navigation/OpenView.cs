@@ -247,11 +247,12 @@ public sealed class OpenView : Window
 
         public void Bind(string keySequence, string commandId) => inner.Bind(keySequence, commandId);
         public void Bind(IReadOnlyList<Key> chord, string commandId) => inner.Bind(chord, commandId);
-        public bool Unbind(string keySequence) => inner.Unbind(keySequence);
-        public bool Unbind(IReadOnlyList<Key> chord) => inner.Unbind(chord);
+        public bool Unbind(string keySequence, CommandScope scope = CommandScope.Global) => inner.Unbind(keySequence, scope);
+        public bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => inner.Unbind(chord, scope);
         public void Reset() => inner.Reset();
-        public KeybindingConflict? CheckConflict(string keySequence) => inner.CheckConflict(keySequence);
-        public KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord) => inner.CheckConflict(chord);
+        public KeybindingConflict? CheckConflict(string keySequence, CommandScope scope = CommandScope.Global) => inner.CheckConflict(keySequence, scope);
+        public KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => inner.CheckConflict(chord, scope);
+        public Func<CommandScope> FocusedScope { get => inner.FocusedScope; set => inner.FocusedScope = value; }
         public IEnumerable<KeyBinding> Bindings => inner.Bindings;
         public string? CurrentChord => inner.CurrentChord;
 
