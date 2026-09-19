@@ -95,14 +95,14 @@ public sealed class EditorGroup : Tabs
     public DiffTab? CompareToSaved(EditorTab source) => Compare(source, "saved", () => DiffTab.ReadLines(source.File));
 
     /// <summary>Opens or focuses the diff of <paramref name="readLeft"/> against the buffer; null, opening nothing, when they match.</summary>
-    public DiffTab? Compare(EditorTab source, string label, Func<IReadOnlyList<string>> readLeft)
+    public DiffTab? Compare(EditorTab source, string label, Func<IReadOnlyList<string>> readLeft, string? key = null)
     {
         if (readLeft().SequenceEqual(source.SnapshotLines, StringComparer.Ordinal)) return null;
 
-        var tab = FindDiff(source, label);
+        var tab = FindDiff(source, key ?? label);
         if (tab is null)
         {
-            tab = new DiffTab(source, label, readLeft, _syntax);
+            tab = new DiffTab(source, label, readLeft, _syntax, key);
             _diffs.Add(tab);
             Add(tab);
         }
@@ -121,8 +121,8 @@ public sealed class EditorGroup : Tabs
         return true;
     }
 
-    private DiffTab? FindDiff(EditorTab source, string label) =>
-        _diffs.FirstOrDefault(d => d.Source == source && d.LeftLabel == label);
+    private DiffTab? FindDiff(EditorTab source, string key) =>
+        _diffs.FirstOrDefault(d => d.Source == source && d.LeftKey == key);
 
     public void CloseActive()
     {

@@ -24,10 +24,11 @@ public sealed class DiffTab : FrameView
     private int _top;
     private int _current;
 
-    public DiffTab(EditorTab source, string leftLabel, Func<IReadOnlyList<string>> readLeft, SyntaxHighlighter? syntax = null)
+    public DiffTab(EditorTab source, string leftLabel, Func<IReadOnlyList<string>> readLeft, SyntaxHighlighter? syntax = null, string? leftKey = null)
     {
         Source = source;
         LeftLabel = leftLabel;
+        LeftKey = leftKey ?? leftLabel;
         _readLeft = readLeft;
         _syntax = syntax;
         BorderStyle = LineStyle.None;
@@ -59,6 +60,9 @@ public sealed class DiffTab : FrameView
 
     /// <summary>What the left side is, e.g. <c>saved</c>.</summary>
     public string LeftLabel { get; }
+
+    /// <summary>Identifies the left side among the source's diffs, e.g. a file's full path.</summary>
+    public string LeftKey { get; }
 
     public AlignedDiff Diff { get; private set; }
 
