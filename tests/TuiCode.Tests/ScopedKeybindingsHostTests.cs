@@ -1,3 +1,4 @@
+using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using KeyBinding = TuiCode.Abstractions.KeyBinding;
@@ -138,31 +139,38 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, new InMemorySettingsService());
         KeybindingsPickerView? picker = null;
-        Dialog? dialog = null;
+        SettingsView? settings = null;
+        (string Title, View? Host, int Width, string Message)? dialog = null;
 
         await HostSteps.Run(host,
-            () =>
-            {
-                host.App.Driver!.SetScreenSize(80, 25);
-                host.App.InjectKey(new Key(',').WithCtrl);
-            },
+            () => host.App.InjectKey(new Key(',').WithCtrl),
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.CursorRight),
             () =>
             {
                 picker = workbench.SubViewsDeep().OfType<KeybindingsPickerView>().Single();
+                settings = (SettingsView)picker.SuperView!;
                 host.App.InjectKey(Key.Enter); // "About TuiCode", Global and unbound
             },
             () => host.App.InjectKey(Key.X.WithCtrl),
             () => host.App.InjectKey(Key.Enter),
-            () => (dialog = workbench.SubViewsDeep().OfType<Dialog>().SingleOrDefault()) is not null,
+            () =>
+            {
+                if (workbench.SubViewsDeep().OfType<Dialog>().SingleOrDefault() is not { } d) return false;
+                dialog = (d.Title, d.SuperView, d.Frame.Width, d.SubViews.OfType<Label>().Single().Text);
+                return true;
+            },
             () => host.App.InjectKey(Key.Tab.WithShift),
             () => host.App.InjectKey(Key.Enter),
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal("Shortcut in use", dialog!.Title);
-        Assert.InRange(dialog.FrameToScreen().Right, 0, 80);
-        Assert.True(picker!.Viewport.Width >= KeybindingRows.Header.Length, $"picker is {picker.Viewport.Width} wide");
+        // The screen size isn't settable on Windows CI, so check against the settings view's 78 columns inside its border at 80.
+        const int innerWidthAt80 = 78;
+        var (title, dialogHost, width, message) = dialog!.Value;
+        Assert.Equal("Shortcut in use", title);
+        Assert.Same(settings, dialogHost);
+        Assert.InRange(width, message.Split('\n').Max(l => l.Length) + 3, innerWidthAt80);
+        Assert.True(settings!.Viewport.Width - picker!.Viewport.Width + KeybindingRows.Header.Length <= innerWidthAt80);
         Assert.Contains(picker.CurrentBindings, b => Is(b, CommandScope.Global, "Ctrl+X", CommandIds.ShowAbout));
         Assert.Contains(picker.CurrentBindings, b => Is(b, CommandScope.Explorer, "Ctrl+X", CommandIds.CutFile));
     }
