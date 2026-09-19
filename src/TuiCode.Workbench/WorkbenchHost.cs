@@ -153,6 +153,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_workbench.Editor.Group.Syntax is not { } syntax) return;
         syntax.UseTheme(BundledThemes.TokenThemeFor(_settings.Theme));
+        foreach (var diff in _workbench.Editor.Group.DiffTabs) diff.SetNeedsDraw();
         // OSC 12 sets the terminal's cursor colour, which no TG scheme covers; terminals without it ignore the sequence.
         if (syntax.EditorColors.TryGetValue("editorCursor.foreground", out var hex) && Color.TryParse(hex, out Color? cursor))
             WriteToTerminal($"\x1b]12;#{cursor.Value.R:X2}{cursor.Value.G:X2}{cursor.Value.B:X2}\x07");
