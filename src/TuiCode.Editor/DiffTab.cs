@@ -78,6 +78,9 @@ public sealed class DiffTab : FrameView
     /// <summary>Identifies the left side among the source's diffs, e.g. a file's full path.</summary>
     public string LeftKey { get; }
 
+    /// <summary>Which file of a review this diff shows (#181); null when it was opened any other way.</summary>
+    public ReviewSpot? Review { get; set; }
+
     public AlignedDiff Diff { get; private set; }
 
     public int TopRow => _top;
@@ -111,24 +114,24 @@ public sealed class DiffTab : FrameView
         var (count, current) => $"Change {current} of {count}",
     };
 
-    /// <summary>Stops at the last change rather than wrapping.</summary>
-    public void NextChange()
-    {
-        var start = Diff.ChangeBlocks.FirstOrDefault(s => s > _current, -1);
-        if (start >= 0) ShowChange(start);
-    }
+    /// <summary>Stops at the last change rather than wrapping; false when it's already there.</summary>
+    public bool NextChange() => ShowChange(Diff.ChangeBlocks.FirstOrDefault(s => s > _current, -1));
 
-    /// <summary>Stops at the first change rather than wrapping.</summary>
-    public void PreviousChange()
-    {
-        var start = Diff.ChangeBlocks.LastOrDefault(s => s < _current, -1);
-        if (start >= 0) ShowChange(start);
-    }
+    /// <summary>Stops at the first change rather than wrapping; false when it's already there.</summary>
+    public bool PreviousChange() => ShowChange(Diff.ChangeBlocks.LastOrDefault(s => s < _current, -1));
 
-    private void ShowChange(int start)
+    /// <summary>Puts the first change in view; false when there are none.</summary>
+    public bool FirstChange() => ShowChange(Diff.ChangeBlocks.FirstOrDefault(-1));
+
+    /// <summary>Puts the last change in view; false when there are none.</summary>
+    public bool LastChange() => ShowChange(Diff.ChangeBlocks.LastOrDefault(-1));
+
+    private bool ShowChange(int start)
     {
+        if (start < 0) return false;
         _current = start;
         ScrollTo(start - ChangeContext);
+        return true;
     }
 
     private int PageHeight => Math.Max(1, Viewport.Height - 1);

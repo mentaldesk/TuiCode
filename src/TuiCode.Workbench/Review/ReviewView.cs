@@ -24,6 +24,9 @@ public sealed class ReviewView : View
 
     public bool ListHasFocus => _files.HasFocus;
 
+    /// <summary>The changed files in the order the tab lists them (#181).</summary>
+    public IReadOnlyList<GitChange> ChangedFiles => [.. AllFiles().Select(f => f.Change)];
+
     internal TreeView<ReviewNode> Files => _files;
 
     public ReviewView(IGitCli? git = null)
@@ -59,6 +62,16 @@ public sealed class ReviewView : View
         if (!_files.Visible) return SetFocus();
         _files.SelectedObject ??= FirstFile();
         return _files.SetFocus();
+    }
+
+    /// <summary>Moves the selection to <paramref name="path"/> without taking focus; false when it isn't listed.</summary>
+    public bool SelectFile(string path)
+    {
+        if (FindFile(path) is not { } file) return false;
+        _files.SelectedObject = file;
+        _files.EnsureVisible(file);
+        SetNeedsDraw();
+        return true;
     }
 
     /// <summary>Re-reads the branch's changes. The task completes once they're shown, or at once when hosted.</summary>
