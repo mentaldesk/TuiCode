@@ -2,7 +2,7 @@ namespace TuiCode.Workbench.Parts;
 
 public sealed class StatusBarPart : View
 {
-    private const string DefaultMessage = "TuiCode  •  F1 help  •  Ctrl+Q quit";
+    internal const string DefaultMessage = "TuiCode  •  F1 help  •  Ctrl+Q quit";
     private readonly Label _label;
     private readonly Label _position;
     private string _message = DefaultMessage;
@@ -34,6 +34,12 @@ public sealed class StatusBarPart : View
     {
         _message = message;
         UpdateLabel();
+    }
+
+    /// <summary>Revert to the default message, unless something else has replaced <paramref name="message"/> since.</summary>
+    public void ClearMessage(string message)
+    {
+        if (_message == message) SetMessage(DefaultMessage);
     }
 
     /// <summary>

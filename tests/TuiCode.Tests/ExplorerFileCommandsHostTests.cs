@@ -313,6 +313,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 
         Assert.True(_fs.File.Exists("/work/src/a.txt"));
         Assert.Null(workbench.Sidebar.Explorer.PendingCut);
+        Assert.Equal(StatusBarPart.DefaultMessage, workbench.StatusBar.DisplayedText);
     }
 
     [Fact]
@@ -331,6 +332,49 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 
         Assert.Null(workbench.Sidebar.Explorer.PendingCut);
         Assert.True(workbench.Sidebar.Explorer.HasFocus);
+        Assert.Equal(StatusBarPart.DefaultMessage, workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_cut_keeps_a_message_that_replaced_the_cut_message()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("a"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "a.txt"),
+            () => host.App.InjectKey(Key.X.WithCtrl),
+            () => workbench.StatusBar.SetMessage("Saved: /work/b.txt"),
+            () => SelectInExplorer(workbench, "a.txt"),
+            () => host.App.InjectKey(Key.Esc),
+            () => { });
+
+        Assert.Null(workbench.Sidebar.Explorer.PendingCut);
+        Assert.Equal("Saved: /work/b.txt", workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task Deleting_the_folder_holding_a_cut_item_clears_the_cut_message()
+    {
+        _fs.AddFile("/work/src/a.txt", new MockFileData("a"));
+        _fs.AddFile("/work/b.txt", new MockFileData("b"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "src/a.txt"),
+            () => host.App.InjectKey(Key.X.WithCtrl),
+            () => SelectInExplorer(workbench, "src"),
+            () => host.App.InjectKey(Key.Delete),
+            () => Confirm(workbench) is not null,
+            () => host.App.InjectKey(Key.Tab),
+            () => Confirm(workbench)!.ConfirmHasFocus,
+            () => host.App.InjectKey(Key.Enter),
+            () => Confirm(workbench) is null);
+
+        Assert.Null(workbench.Sidebar.Explorer.PendingCut);
+        Assert.StartsWith("Deleted: ", workbench.StatusBar.DisplayedText);
     }
 
     [Fact]

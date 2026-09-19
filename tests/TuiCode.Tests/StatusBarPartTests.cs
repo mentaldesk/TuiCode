@@ -31,6 +31,19 @@ public class StatusBarPartTests
     }
 
     [Fact]
+    public void ClearMessage_reverts_to_the_default_only_while_that_message_shows()
+    {
+        using var bar = new StatusBarPart();
+        bar.SetMessage("Cut: /work/a.txt");
+
+        bar.ClearMessage("Cut: /work/b.txt");
+        Assert.Equal("Cut: /work/a.txt", bar.DisplayedText);
+
+        bar.ClearMessage("Cut: /work/a.txt");
+        Assert.Equal(StatusBarPart.DefaultMessage, bar.DisplayedText);
+    }
+
+    [Fact]
     public void The_grammar_follows_the_message_after_a_separator()
     {
         using var bar = new StatusBarPart();
