@@ -29,6 +29,7 @@ public class ReviewStepHostTests : StaticConfigurationTest
         _git.RepoFiles["b45e:a.txt"] = "a1\na2\na3\n";
         _git.RepoFiles["b45e:b.txt"] = "b1\nb2\n";
         _git.RepoFiles["b45e:c.txt"] = "c1\nc2\nc3\n";
+        _git.RepoFiles["b45e:d.txt"] = "d1\nd2\n";
     }
 
     [Fact]
@@ -41,10 +42,10 @@ public class ReviewStepHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
         [
             .. OpenDiff(host, workbench, commands, rowsDown: 0),
-            () => group.ActiveDiffTab?.Source.File.Name == "a.txt",
+            () => group.ActiveDiffTab?.File.Name == "a.txt",
             () => commands.TryExecute(CommandIds.NextChange),
             () => commands.TryExecute(CommandIds.NextChange),
-            () => group.ActiveDiffTab?.Source.File.Name == "c.txt",
+            () => group.ActiveDiffTab?.File.Name == "c.txt",
         ]);
 
         var diff = Assert.Single(group.DiffTabs);
@@ -64,9 +65,9 @@ public class ReviewStepHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
         [
             .. OpenDiff(host, workbench, commands, rowsDown: 2),
-            () => group.ActiveDiffTab?.Source.File.Name == "c.txt",
+            () => group.ActiveDiffTab?.File.Name == "c.txt",
             () => commands.TryExecute(CommandIds.PreviousChange),
-            () => group.ActiveDiffTab?.Source.File.Name == "a.txt",
+            () => group.ActiveDiffTab?.File.Name == "a.txt",
         ]);
 
         var diff = Assert.Single(group.DiffTabs);
@@ -83,16 +84,57 @@ public class ReviewStepHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
         [
-            .. OpenDiff(host, workbench, commands, rowsDown: 2),
-            () => group.ActiveDiffTab?.Source.File.Name == "c.txt",
-            () => commands.TryExecute(CommandIds.NextChange),
+            .. OpenDiff(host, workbench, commands, rowsDown: 3),
+            () => group.ActiveDiffTab?.File.Name == "d.txt",
             () => commands.TryExecute(CommandIds.NextChange),
             () => workbench.StatusBar.DisplayedText.StartsWith("Last change in the review", StringComparison.Ordinal),
         ]);
 
         var diff = Assert.Single(group.DiffTabs);
-        Assert.Equal("c.txt", diff.Source.File.Name);
+        Assert.Equal("d.txt", diff.File.Name);
         Assert.Equal("Change 1 of 1", diff.ChangeStatus);
+    }
+
+    [Fact]
+    public async Task Stepping_from_a_modified_file_into_a_deleted_one_and_on_back_out()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+
+        await HostSteps.Run(host,
+        [
+            .. OpenDiff(host, workbench, commands, rowsDown: 2),
+            () => group.ActiveDiffTab?.File.Name == "c.txt",
+            () => commands.TryExecute(CommandIds.NextChange),
+            () => commands.TryExecute(CommandIds.NextChange),
+            () => group.ActiveDiffTab is { IsDeleted: true },
+            () => commands.TryExecute(CommandIds.PreviousChange),
+            () => group.ActiveDiffTab?.File.Name == "c.txt",
+        ]);
+
+        var diff = Assert.Single(group.DiffTabs);
+        Assert.False(diff.IsDeleted);
+        // The deleted file never gets an editor tab, unlike the ones stepped through on the way.
+        Assert.Equal(["c.txt"], group.Tabs.Select(t => t.File.Name));
+    }
+
+    [Fact]
+    public async Task The_status_bar_counts_a_deleted_file_among_the_review_s_files()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+
+        await HostSteps.Run(host,
+        [
+            .. OpenDiff(host, workbench, commands, rowsDown: 3),
+            () => group.ActiveDiffTab is { IsDeleted: true, IsFocused: true },
+            () => workbench.StatusBar.DisplayedText.Contains("File 4 of 4  \u2022  Change 1 of 1", StringComparison.Ordinal),
+        ]);
+
+        var selected = Assert.IsType<ReviewFileNode>(workbench.Sidebar.Review.Files.SelectedObject);
+        Assert.Equal("d.txt", selected.Change.Path);
     }
 
     [Fact]
@@ -105,13 +147,13 @@ public class ReviewStepHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
         [
             .. OpenDiff(host, workbench, commands, rowsDown: 0),
-            () => group.ActiveDiffTab?.Source.File.Name == "a.txt",
+            () => group.ActiveDiffTab?.File.Name == "a.txt",
             () => commands.TryExecute(CommandIds.PreviousChange),
             () => workbench.StatusBar.DisplayedText.StartsWith("First change in the review", StringComparison.Ordinal),
         ]);
 
         var diff = Assert.Single(group.DiffTabs);
-        Assert.Equal("a.txt", diff.Source.File.Name);
+        Assert.Equal("a.txt", diff.File.Name);
     }
 
     [Fact]
@@ -124,10 +166,10 @@ public class ReviewStepHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
         [
             .. OpenDiff(host, workbench, commands, rowsDown: 0),
-            () => group.ActiveDiffTab?.Source.File.Name == "a.txt",
+            () => group.ActiveDiffTab?.File.Name == "a.txt",
             () => commands.TryExecute(CommandIds.NextChange),
             () => commands.TryExecute(CommandIds.NextChange),
-            () => group.ActiveDiffTab?.Source.File.Name == "c.txt",
+            () => group.ActiveDiffTab?.File.Name == "c.txt",
             () => workbench.StatusBar.DisplayedText.Contains("File 3 of 4  •  Change 1 of 1", StringComparison.Ordinal),
         ]);
 

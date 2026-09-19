@@ -135,6 +135,34 @@ public class DiffTabGroupTests
     }
 
     [Fact]
+    public void CompareDeleted_opens_a_diff_with_no_source_and_no_editor_tab()
+    {
+        using var group = new EditorGroup();
+
+        var diff = group.CompareDeleted(_fs.FileInfo.New("/work/gone.txt"), "main", () => ["alpha"], "b45e:gone.txt");
+
+        Assert.True(diff.IsDeleted);
+        Assert.Equal("gone.txt \u2194 main (deleted)", diff.Title);
+        Assert.Same(diff, group.ActiveDiffTab);
+        Assert.Empty(group.Tabs);
+    }
+
+    [Fact]
+    public void CompareDeleted_again_for_the_same_file_focuses_the_open_diff_tab()
+    {
+        using var group = new EditorGroup();
+        var file = _fs.FileInfo.New("/work/gone.txt");
+        var first = group.CompareDeleted(file, "main", () => ["alpha"], "b45e:gone.txt");
+        group.OpenOrFocus(OpenEdited(group, "/work/a.txt").File);
+
+        var second = group.CompareDeleted(file, "main", () => ["alpha"], "b45e:gone.txt");
+
+        Assert.Same(first, second);
+        Assert.Single(group.DiffTabs);
+        Assert.Same(first, group.ActiveDiffTab);
+    }
+
+    [Fact]
     public void ReadLines_splits_the_file_as_the_editor_does()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one\r\ntwo\n\nthree\n"));
@@ -451,6 +479,77 @@ public class DiffTabDrawTests : StaticConfigurationTest
         Assert.NotNull(diff.RightTokens!.TokensFor(5));
         Assert.Null(diff.RightTokens.TokensFor(6));
         Assert.Null(diff.LeftTokens!.TokensFor(6));
+    }
+
+    [Fact]
+    public void A_deleted_file_shows_the_base_on_the_left_and_nothing_on_the_right()
+    {
+        var diff = DeletedDiff("one\ntwo");
+
+        var screen = Render(diff);
+
+        Assert.Equal("gone.txt \u2194 main (deleted)", diff.Title);
+        Assert.Equal(
+        [
+            " main          \u2502 deleted       ",
+            "  1- one       \u2502               ",
+            "  2- two       \u2502               ",
+            "               \u2502               ",
+            "               \u2502               ",
+            "               \u2502               ",
+            "               \u2502               ",
+        ], screen);
+    }
+
+    [Fact]
+    public void Every_row_of_a_deleted_file_is_tinted_as_removed()
+    {
+        var diff = DeletedDiff("one\ntwo");
+
+        Render(diff);
+
+        var normal = diff.GetAttributeForRole(VisualRole.Editable);
+        var removed = BackgroundAt(1, 5);
+        Assert.NotEqual(normal.Background, removed);
+        Assert.Equal(removed, BackgroundAt(2, 5));
+        Assert.Equal(normal.Background, BackgroundAt(1, 21));
+    }
+
+    [Fact]
+    public void A_deleted_file_is_one_change_block_of_left_only_rows()
+    {
+        var diff = DeletedDiff("one\ntwo");
+
+        Assert.All(diff.Diff.Rows, r => Assert.Equal(DiffRowKind.LeftOnly, r.Kind));
+        Assert.Equal("Change 1 of 1", diff.ChangeStatus);
+        Assert.True(diff.LastChange());
+    }
+
+    [Fact]
+    public void A_deleted_file_keeps_its_syntax_colours()
+    {
+        var diff = DeletedDiff("int a;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/gone.cs");
+
+        Render(diff);
+        Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.
+
+        Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(1, 5).Foreground);
+    }
+
+    // A file deleted in this branch (#182): the base version on the left, no editor tab at all.
+    private DiffTab DeletedDiff(string baseText, SyntaxHighlighter? syntax = null, string path = "/work/gone.txt")
+    {
+        var diff = new DiffTab(_fs.FileInfo.New(path), "main", () => DiffTab.SplitLines(baseText), syntax)
+        {
+            App = _app,
+            Width = 31,
+            Height = 7,
+        };
+        diff.BeginInit();
+        diff.EndInit();
+        diff.Layout();
+        diff.Refresh();
+        return diff;
     }
 
     private DiffTab Diff(string saved, string buffer, SyntaxHighlighter? syntax = null, string path = "/work/a.txt")
