@@ -13,8 +13,8 @@ internal static class KeybindingConflictDialog
     {
         var dialog = Create("Shortcut in use", message);
 
-        var yes = new Button { Text = confirmText, X = Pos.Center() - 12, Y = Pos.AnchorEnd(2), IsDefault = true };
-        var no = new Button { Text = "Cancel", X = Pos.Center() + 2, Y = Pos.AnchorEnd(2) };
+        var yes = new Button { Text = confirmText, X = Pos.Center() - 12, Y = Pos.AnchorEnd(2) };
+        var no = new Button { Text = "Cancel", X = Pos.Center() + 2, Y = Pos.AnchorEnd(2), IsDefault = true };
 
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
