@@ -413,39 +413,4 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git);
     }
-
-    private sealed class FakeGitCli : IGitCli
-    {
-        private const string NoGit = "git isn't installed or isn't on PATH";
-
-        public string? Root { get; set; }
-        public bool Missing { get; set; }
-        public IReadOnlyList<GitRef> Refs { get; set; } = [];
-        public IReadOnlyList<GitCommit> Commits { get; set; } = [];
-        public Dictionary<string, string> Files { get; } = new(StringComparer.Ordinal);
-        public HashSet<string> Resolvable { get; } = new(StringComparer.Ordinal);
-        public Task RefsGate { get; set; } = Task.CompletedTask;
-        public int ShowCount { get; private set; }
-
-        public Task<GitResult<string?>> GetRepoRootAsync(string path, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Missing ? GitResult<string?>.Failure(NoGit) : GitResult<string?>.Success(Root));
-
-        public Task<GitResult<string?>> ShowFileAsync(string filePath, string revision, CancellationToken cancellationToken = default)
-        {
-            ShowCount++;
-            return Task.FromResult(GitResult<string?>.Success(Files.GetValueOrDefault(revision)));
-        }
-
-        public async Task<GitResult<IReadOnlyList<GitRef>>> GetRefsAsync(string path, CancellationToken cancellationToken = default)
-        {
-            await RefsGate;
-            return GitResult<IReadOnlyList<GitRef>>.Success(Refs);
-        }
-
-        public Task<GitResult<IReadOnlyList<GitCommit>>> GetFileHistoryAsync(string filePath, CancellationToken cancellationToken = default) =>
-            Task.FromResult(GitResult<IReadOnlyList<GitCommit>>.Success(Commits));
-
-        public Task<GitResult<bool>> ResolvesAsync(string path, string revision, CancellationToken cancellationToken = default) =>
-            Task.FromResult(GitResult<bool>.Success(Resolvable.Contains(revision)));
-    }
 }

@@ -56,6 +56,29 @@ public class GitCliTests
         Assert.False((await git.GetRefsAsync("/repo/a.cs", ct)).Succeeded);
         Assert.False((await git.GetFileHistoryAsync("/repo/a.cs", ct)).Succeeded);
         Assert.False((await git.ResolvesAsync("/repo/a.cs", "main", ct)).Succeeded);
+        Assert.False((await git.GetCurrentBranchAsync("/repo", ct)).Succeeded);
+        Assert.False((await git.GetDefaultBranchAsync("/repo", ct)).Succeeded);
+        Assert.False((await git.GetMergeBaseAsync("/repo", "HEAD", "main", ct)).Succeeded);
+        Assert.False((await git.GetChangedFilesAsync("/repo", "main", ct)).Succeeded);
+        Assert.False((await git.ShowRepoFileAsync("/repo", "a.cs", "main", ct)).Succeeded);
+    }
+
+    [Fact]
+    public void ParseChanges_reads_statuses_and_both_paths_of_a_rename()
+    {
+        var output = "M\0src/a.cs\0R087\0old dir/b.cs\0new dir/b.cs\0A\0c.cs\0D\0d.cs\0C100\0e.cs\0f.cs\0T\0g\0";
+
+        var changes = GitCli.ParseChanges(output);
+
+        Assert.Equal(
+        [
+            new GitChange(GitChangeKind.Modified, "src/a.cs"),
+            new GitChange(GitChangeKind.Renamed, "new dir/b.cs", "old dir/b.cs"),
+            new GitChange(GitChangeKind.Added, "c.cs"),
+            new GitChange(GitChangeKind.Deleted, "d.cs"),
+            new GitChange(GitChangeKind.Added, "f.cs"),
+            new GitChange(GitChangeKind.Modified, "g"),
+        ], changes);
     }
 
     [Fact]
@@ -107,6 +130,80 @@ public class GitCliTests
     }
 
     [Fact]
+    public async Task Lists_a_branch_changes_against_its_merge_base_with_the_default_branch()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("keep.cs", "same\n", "Base");
+        repo.Commit("src/mod.cs", "one\n", "Add mod");
+        repo.Commit("src/gone.cs", "bye\n", "Add gone");
+        repo.Commit("old/moved.cs", "a file long enough for git to spot the rename\n", "Add moved");
+        repo.Git("checkout", "-q", "-b", "feature");
+        repo.Commit("src/mod.cs", "two\n", "Change mod");
+        repo.Commit("src/new.cs", "new\n", "Add new");
+        repo.Git("rm", "-q", "src/gone.cs");
+        repo.Git("mv", "old/moved.cs", "moved.cs");
+        repo.Write("staged.cs", "staged\n");
+        repo.Git("add", "staged.cs");
+        repo.Write("keep.cs", "edited, not staged\n");
+        repo.Write("untracked.cs", "not added\n");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.Equal("feature", (await git.GetCurrentBranchAsync(repo.Path, ct)).Value);
+        Assert.Equal("main", (await git.GetDefaultBranchAsync(repo.Path, ct)).Value);
+        var mergeBase = (await git.GetMergeBaseAsync(repo.Path, "HEAD", "main", ct)).Value!;
+        var changes = (await git.GetChangedFilesAsync(repo.Path, mergeBase, ct)).Value;
+
+        Assert.Equal(
+        [
+            new GitChange(GitChangeKind.Modified, "keep.cs"),
+            new GitChange(GitChangeKind.Renamed, "moved.cs", "old/moved.cs"),
+            new GitChange(GitChangeKind.Deleted, "src/gone.cs"),
+            new GitChange(GitChangeKind.Modified, "src/mod.cs"),
+            new GitChange(GitChangeKind.Added, "src/new.cs"),
+            new GitChange(GitChangeKind.Added, "staged.cs"),
+        ], changes.OrderBy(c => c.Path, StringComparer.Ordinal));
+        Assert.Equal("a file long enough for git to spot the rename\n", (await git.ShowRepoFileAsync(repo.Path, "old/moved.cs", mergeBase, ct)).Value);
+        Assert.Null((await git.ShowRepoFileAsync(repo.Path, "src/new.cs", mergeBase, ct)).Value);
+    }
+
+    [Fact]
+    public async Task The_default_branch_is_origin_HEAD_then_main_then_master()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Git("checkout", "-q", "-b", "master");
+        repo.Commit("a.cs", "a\n", "First");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.Equal("master", (await git.GetDefaultBranchAsync(repo.Path, ct)).Value);
+        repo.Git("branch", "main");
+        Assert.Equal("main", (await git.GetDefaultBranchAsync(repo.Path, ct)).Value);
+        repo.Git("update-ref", "refs/remotes/origin/trunk", "HEAD");
+        repo.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk");
+        Assert.Equal("origin/trunk", (await git.GetDefaultBranchAsync(repo.Path, ct)).Value);
+
+        repo.Git("checkout", "-q", "--detach");
+        Assert.Null((await git.GetCurrentBranchAsync(repo.Path, ct)).Value);
+    }
+
+    [Fact]
+    public async Task Unrelated_histories_have_no_merge_base()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "a\n", "First");
+        repo.Git("checkout", "-q", "--orphan", "other");
+        repo.Commit("b.cs", "b\n", "Unrelated");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var mergeBase = await git.GetMergeBaseAsync(repo.Path, "HEAD", "main", ct);
+
+        Assert.True(mergeBase.Succeeded);
+        Assert.Null(mergeBase.Value);
+    }
+
+    [Fact]
     [UnsupportedOSPlatform("windows")]
     public async Task A_git_that_hangs_times_out_with_a_failure()
     {
@@ -138,10 +235,15 @@ public class GitCliTests
 
         public string File(string relative) => System.IO.Path.Combine(Path, relative);
 
-        public void Commit(string relative, string content, string message)
+        public void Write(string relative, string content)
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(File(relative))!);
             System.IO.File.WriteAllText(File(relative), content);
+        }
+
+        public void Commit(string relative, string content, string message)
+        {
+            Write(relative, content);
             Git("add", relative);
             Git("-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false",
                 "commit", "-q", "-m", message);
