@@ -215,6 +215,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Sidebar.Search.InputsHaveFocus) return CommandScope.Find;
         if (_workbench.Sidebar.Explorer.HasFocus) return CommandScope.Explorer;
         if (_workbench.Editor.Group.ActiveTab is { ContentHasFocus: true }) return CommandScope.Editor;
+        if (_focusLevel != FocusLevel.EditorTabStrip && _workbench.Editor.Group.ActiveDiffTab is { IsFocused: true }) return CommandScope.Diff;
         return CommandScope.Global;
     }
 
@@ -265,6 +266,9 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo);
         // No default key (#61): users can bind one in Settings.
         _commands.Register(CommandIds.CompareToSaved, "Compare to saved", CompareToSaved);
+        _commands.Register(CommandIds.NextChange, "Next change", () => _workbench.Editor.Group.ActiveDiffTab?.NextChange(), CommandScope.Diff);
+        _commands.Register(CommandIds.PreviousChange, "Previous change", () => _workbench.Editor.Group.ActiveDiffTab?.PreviousChange(), CommandScope.Diff);
+        _commands.Register(CommandIds.GoToChangeLine, "Go to line in file", GoToChangeLine, CommandScope.Diff);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)));
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)));
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)));
@@ -315,7 +319,16 @@ public sealed class WorkbenchHost : IDisposable
 
         var help = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ShowHelp);
         _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
+        _workbench.DiffKeysHint = string.Join("  ", new[]
+        {
+            KeyHint(CommandIds.NextChange, "next"),
+            KeyHint(CommandIds.PreviousChange, "prev"),
+            KeyHint(CommandIds.GoToChangeLine, "go to line"),
+        }.OfType<string>());
     }
+
+    private string? KeyHint(string commandId, string label) =>
+        _keybindings.Bindings.FirstOrDefault(b => b.CommandId == commandId) is { } binding ? $"{binding.Display} {label}" : null;
 
     /// <summary>
     /// Take the picker's edited binding set, compute the diff against defaults, persist as the
@@ -406,6 +419,10 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+X", CommandIds.CutFile);
         keybindings.Bind("Ctrl+V", CommandIds.PasteFile);
         keybindings.Bind("Esc", CommandIds.CancelCut);
+
+        keybindings.Bind("F7", CommandIds.NextChange);
+        keybindings.Bind("Shift+F7", CommandIds.PreviousChange);
+        keybindings.Bind("Enter", CommandIds.GoToChangeLine);
 
         keybindings.Bind("Enter", CommandIds.SearchFocusResults);
         keybindings.Bind("CursorDown", CommandIds.SearchFocusResults);
@@ -1029,6 +1046,22 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
         FocusEditorBody();
+    }
+
+    private void GoToChangeLine()
+    {
+        if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
+        var tab = diff.Source;
+        var line = diff.CurrentBufferLine;
+        _suppressHistory = true;
+        try
+        {
+            _workbench.Editor.Group.OpenOrFocus(tab.File);
+            tab.MoveCursor(line, 0);
+        }
+        finally { _suppressHistory = false; }
+        FocusEditorBody();
+        _history.Visit(new CursorLocation(tab.File.FullName, line, 0), explicitJump: true);
     }
 
     private string WorkspacePath(IFileInfo file)

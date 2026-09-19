@@ -12,6 +12,7 @@ public sealed class DiffTab : FrameView
     public const int MaxEdits = 5_000;
 
     private const int MinDigits = 3;
+    private const int ChangeContext = 2;
 
     private static readonly Color DefaultRemoved = new(0x5A, 0x1E, 0x1E);
     private static readonly Color DefaultInserted = new(0x1E, 0x4A, 0x28);
@@ -21,6 +22,7 @@ public sealed class DiffTab : FrameView
     private IReadOnlyList<string> _left = [];
     private IReadOnlyList<string> _right = [];
     private int _top;
+    private int _current;
 
     public DiffTab(EditorTab source, string leftLabel, Func<IReadOnlyList<string>> readLeft, SyntaxHighlighter? syntax = null)
     {
@@ -32,12 +34,12 @@ public sealed class DiffTab : FrameView
         CanFocus = true;
         Diff = AlignedDiff.Compute([], []);
 
-        AddCommand(Command.Up, () => ScrollTo(_top - 1));
-        AddCommand(Command.Down, () => ScrollTo(_top + 1));
-        AddCommand(Command.PageUp, () => ScrollTo(_top - PageHeight));
-        AddCommand(Command.PageDown, () => ScrollTo(_top + PageHeight));
-        AddCommand(Command.Start, () => ScrollTo(0));
-        AddCommand(Command.End, () => ScrollTo(int.MaxValue));
+        AddCommand(Command.Up, () => MoveTo(_current - 1));
+        AddCommand(Command.Down, () => MoveTo(_current + 1));
+        AddCommand(Command.PageUp, () => { ScrollTo(_top - PageHeight); return MoveTo(_current - PageHeight); });
+        AddCommand(Command.PageDown, () => { ScrollTo(_top + PageHeight); return MoveTo(_current + PageHeight); });
+        AddCommand(Command.Start, () => MoveTo(0));
+        AddCommand(Command.End, () => MoveTo(int.MaxValue));
         AddCommand(Command.ScrollUp, () => ScrollTo(_top - 1));
         AddCommand(Command.ScrollDown, () => ScrollTo(_top + 1));
         KeyBindings.Add(Key.CursorUp, Command.Up);
@@ -62,6 +64,45 @@ public sealed class DiffTab : FrameView
 
     public int TopRow => _top;
 
+    // Focus sits in the tab header, and HasFocus stays true after it moves on, so ask the app what's focused.
+    public bool IsFocused => App?.Navigation?.GetFocused() is { } focused && IsInHierarchy(this, focused, includeAdornments: true);
+
+    public int CurrentRow => _current;
+
+    /// <summary>The buffer line <see cref="CurrentRow"/> maps to.</summary>
+    public int CurrentBufferLine => Diff.BufferLine(_current);
+
+    /// <summary>The 1-based change block <see cref="CurrentRow"/> is in or below; 0 above the first.</summary>
+    public int CurrentChange => Diff.ChangeBlocks.Count(start => start <= _current);
+
+    public string ChangeStatus => (Diff.ChangeBlocks.Count, CurrentChange) switch
+    {
+        (0, _) => "No changes",
+        (1, 0) => "1 change",
+        (var count, 0) => $"{count} changes",
+        var (count, current) => $"Change {current} of {count}",
+    };
+
+    /// <summary>Stops at the last change rather than wrapping.</summary>
+    public void NextChange()
+    {
+        var start = Diff.ChangeBlocks.FirstOrDefault(s => s > _current, -1);
+        if (start >= 0) ShowChange(start);
+    }
+
+    /// <summary>Stops at the first change rather than wrapping.</summary>
+    public void PreviousChange()
+    {
+        var start = Diff.ChangeBlocks.LastOrDefault(s => s < _current, -1);
+        if (start >= 0) ShowChange(start);
+    }
+
+    private void ShowChange(int start)
+    {
+        _current = start;
+        ScrollTo(start - ChangeContext);
+    }
+
     private int PageHeight => Math.Max(1, Viewport.Height - 1);
 
     /// <summary>Re-read both sides and recompute the diff.</summary>
@@ -72,7 +113,7 @@ public sealed class DiffTab : FrameView
         Diff = AlignedDiff.Compute(_left, _right, MaxEdits);
         UpdateTitle();
         ScrollTo(_top);
-        SetNeedsDraw();
+        MoveTo(_current);
     }
 
     internal void UpdateTitle()
@@ -87,6 +128,15 @@ public sealed class DiffTab : FrameView
         file.FileSystem.File.Exists(file.FullName)
             ? Cell.StringToLinesOfCells(file.FileSystem.File.ReadAllText(file.FullName)).Select(Cell.ToString).ToArray()
             : [];
+
+    private bool MoveTo(int row)
+    {
+        _current = Math.Clamp(row, 0, Math.Max(0, Diff.Rows.Count - 1));
+        if (_current < _top) ScrollTo(_current);
+        else if (_current >= _top + PageHeight) ScrollTo(_current - PageHeight + 1);
+        SetNeedsDraw();
+        return true;
+    }
 
     private bool ScrollTo(int top)
     {
@@ -107,6 +157,7 @@ public sealed class DiffTab : FrameView
         var rightWidth = Math.Max(0, width - rightX);
         var digits = Math.Max(MinDigits, Math.Max(_left.Count, _right.Count).ToString().Length);
 
+        var current = GetAttributeForRole(VisualRole.Focus);
         var header = normal with { Style = normal.Style | TextStyle.Bold };
         DrawText(0, 0, leftWidth, " " + LeftLabel, header);
         DrawSeparator(leftWidth, 0, normal);
@@ -117,25 +168,21 @@ public sealed class DiffTab : FrameView
             var index = _top + y - 1;
             DiffRow? row = index < Diff.Rows.Count ? Diff.Rows[index] : null;
             var changed = row?.Kind is DiffRowKind.Modified or DiffRowKind.LeftOnly or DiffRowKind.RightOnly;
-            DrawSide(0, y, leftWidth, row?.Left, _left, digits, changed ? '-' : ' ', changed ? removed : normal, normal);
+            Attribute? marked = row is not null && index == _current ? current : null;
+            DrawSide(0, y, leftWidth, row?.Left, _left, digits, changed ? '-' : ' ', changed ? removed : normal, normal, marked);
             DrawSeparator(leftWidth, y, normal);
-            DrawSide(rightX, y, rightWidth, row?.Right, _right, digits, changed ? '+' : ' ', changed ? inserted : normal, normal);
+            DrawSide(rightX, y, rightWidth, row?.Right, _right, digits, changed ? '+' : ' ', changed ? inserted : normal, normal, marked);
         }
         return true;
     }
 
-    private void DrawSide(int x, int y, int width, int? line, IReadOnlyList<string> lines, int digits, char marker, Attribute tint, Attribute normal)
+    private void DrawSide(int x, int y, int width, int? line, IReadOnlyList<string> lines, int digits, char marker, Attribute tint, Attribute normal, Attribute? current)
     {
-        if (line is not { } i)
-        {
-            DrawText(x, y, width, "", normal);
-            return;
-        }
-        var prefix = $"{(i + 1).ToString().PadLeft(digits)}{marker} ";
-        var number = tint with { Style = tint.Style | TextStyle.Faint };
+        var prefix = line is { } i ? $"{(i + 1).ToString().PadLeft(digits)}{marker} " : new string(' ', digits + 2);
+        var number = marker == ' ' ? tint with { Style = tint.Style | TextStyle.Faint } : tint;
         var used = Math.Min(width, prefix.Length);
-        DrawText(x, y, used, prefix, marker == ' ' ? number : tint);
-        DrawText(x + used, y, width - used, lines[i], tint);
+        DrawText(x, y, used, prefix, current ?? (line is null ? normal : number));
+        DrawText(x + used, y, width - used, line is { } l ? lines[l] : "", line is null ? normal : tint);
     }
 
     private void DrawSeparator(int x, int y, Attribute attribute)

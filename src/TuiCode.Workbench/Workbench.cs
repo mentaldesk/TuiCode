@@ -76,12 +76,18 @@ public sealed class Workbench : Window
         StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
     }
 
+    /// <summary>The diff tab's keys, e.g. <c>F7 next  Shift+F7 prev</c>, from the live bindings.</summary>
+    public string DiffKeysHint { get; set; } = string.Empty;
+
     /// <summary>Show the active tab's cursor position and selection; the host calls this every main-loop iteration.</summary>
     public void ShowCursorPosition()
     {
         var tab = Editor.Group.ActiveTab;
         StatusBar.SetPosition(tab is null ? null : (tab.CursorRow, tab.CursorColumn));
         StatusBar.SetSelection(tab?.CaretCount ?? 1, tab?.CountSelection()?.Characters);
+        StatusBar.SetDiffStatus(Editor.Group.ActiveDiffTab is { IsFocused: true } diff
+            ? string.Join("  •  ", new[] { diff.ChangeStatus, DiffKeysHint }.Where(part => part.Length > 0))
+            : null);
     }
 
     /// <summary>Open a file in the editor and focus it. Shared by the explorer and the Open dialog.</summary>
