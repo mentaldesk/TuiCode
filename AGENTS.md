@@ -53,6 +53,11 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `ConfigurationManager` deserializes via source-generated `JsonTypeInfo` — only knows the types its built-in scopes use. Records, arrays, even `string[]` silently fail to load. Stick to primitives or persist to a dedicated file.
 - `Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`; fully qualify when constructing.
 
+### UI controls
+
+- Build UI from TG's [built-in views](https://tui-cs.github.io/Terminal.Gui/docs/views) before writing a custom one. `LogView` is custom only because `TextView` can't scroll without moving its cursor.
+- When describing UI in an issue or PR, name the control for each element and sketch it in the mockup: `[x] Follow output`, `(•) All ( ) Running`, `Refresh: [ 2 ▲▼]s`.
+
 ## AOT
 
 - Release builds are Native AOT (`PublishAot=true` on `src/TuiCode`). `dotnet publish -c Release -r <rid>` emits a single native binary; `dotnet build`/`dotnet run` still JIT.
