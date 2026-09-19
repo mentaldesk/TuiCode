@@ -224,11 +224,11 @@ public class DiffTabDrawTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Right_scrolls_both_sides_a_quarter_of_the_text_width_and_keeps_the_gutter_in_place()
+    public void Right_scrolls_both_sides_one_column_and_keeps_the_gutter_in_place()
     {
         var diff = Diff("one\nabcdefghijklmnopqrstuvwxyz", "one\nabcdefghijklmnopqrstuvwxyZ");
 
-        Press(diff, Key.CursorRight, 2);
+        Press(diff, Key.CursorRight, 4);
         Assert.Equal(4, diff.LeftColumn);
 
         Assert.Equal(
@@ -237,6 +237,18 @@ public class DiffTabDrawTests : StaticConfigurationTest
             "  1            │  1            ",
             "  2- efghijklmn│  2+ efghijklmn",
         ], Render(diff)[..3]);
+    }
+
+    [Fact]
+    public void Shift_left_and_right_scroll_a_quarter_of_the_narrower_text_width()
+    {
+        var diff = Diff("one\nabcdefghijklmnopqrstuvwxyz", "one\nabcdefghijklmnopqrstuvwxyZ");
+
+        Press(diff, Key.CursorRight.WithShift, 3);
+        Assert.Equal(6, diff.LeftColumn);
+
+        Press(diff, Key.CursorLeft.WithShift, 1);
+        Assert.Equal(4, diff.LeftColumn);
     }
 
     [Fact]
@@ -258,7 +270,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
     {
         var diff = Diff("\tabcdefghijklmn\nx日本語abcdefghijk", "\tabcdefghijklmN\nx日本語abcdefghijK");
 
-        Press(diff, Key.CursorRight, 1);
+        Press(diff, Key.CursorRight, 2);
 
         var screen = Render(diff);
         Assert.Equal("  1-   abcdefgh│  1+   abcdefgh", screen[1]);
@@ -274,7 +286,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
         diff.NewMouseEvent(new Mouse { Flags = MouseFlags.WheeledRight, Position = new System.Drawing.Point(5, 1) });
         diff.NewMouseEvent(new Mouse { Flags = MouseFlags.WheeledLeft, Position = new System.Drawing.Point(5, 1) });
 
-        Assert.Equal(2, diff.LeftColumn);
+        Assert.Equal(1, diff.LeftColumn);
     }
 
     [Fact]
@@ -285,7 +297,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
         buffer[9] = "A LONG LINE NUMBER 10";
         buffer[24] = "A LONG LINE NUMBER 25";
         var diff = Diff(string.Join('\n', saved), string.Join('\n', buffer));
-        Press(diff, Key.CursorRight, 3);
+        Press(diff, Key.CursorRight.WithShift, 3);
 
         diff.NextChange();
         diff.PreviousChange();
@@ -373,7 +385,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
     {
         var diff = Diff("int ab; int bbbbbbbbbbbbbbbbbb;", "int ab; int cccccccccccccccccc;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/a.cs");
 
-        Press(diff, Key.CursorRight, 4);
+        Press(diff, Key.CursorRight.WithShift, 4);
         Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.
 
         Assert.Equal("  1- int bbbbbb│  1+ int cccccc", Render(diff)[1]);
