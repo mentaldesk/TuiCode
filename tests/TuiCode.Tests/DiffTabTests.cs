@@ -341,10 +341,10 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         Assert.StartsWith("a.txt ↔ saved  •  Change 1 of 1", workbench.StatusBar.DisplayedText);
     }
 
-    private const string ThreeChangesStatus = "a.txt ↔ saved  •  Change {0} of 3  •  F7 next  Shift+F7 prev  Enter go to line";
+    private const string ThreeChangesStatus = "a.txt ↔ saved  •  Change {0} of 3  •  Alt+CursorDown next  Alt+CursorUp prev  Enter go to line";
 
     [Fact]
-    public async Task F7_and_shift_F7_step_through_changes_and_stop_at_the_last()
+    public async Task Alt_down_and_alt_up_step_through_changes_and_stop_at_the_last()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -353,14 +353,14 @@ public class CompareToSavedHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => OpenThreeChanges(workbench, commands),
-            () => host.App.InjectKey(Key.F7),
-            () => host.App.InjectKey(Key.F7),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
             Record,
-            () => host.App.InjectKey(Key.F7.WithShift),
+            () => host.App.InjectKey(Key.CursorUp.WithAlt),
             Record,
-            () => host.App.InjectKey(Key.F7),
-            () => host.App.InjectKey(Key.F7),
-            () => host.App.InjectKey(Key.F7),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
             Record);
 
         Assert.Equal([string.Format(ThreeChangesStatus, 2), string.Format(ThreeChangesStatus, 1), string.Format(ThreeChangesStatus, 3)], statuses);
@@ -378,8 +378,8 @@ public class CompareToSavedHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => OpenThreeChanges(workbench, commands),
-            () => host.App.InjectKey(Key.F7),
-            () => host.App.InjectKey(Key.F7),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.Enter),
             () =>
             {
@@ -407,7 +407,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             {
                 host.ApplyKeybindings(
                 [
-                    new KeybindingOverride(TestKeys.Chord("F7"), "-" + CommandIds.NextChange),
+                    new KeybindingOverride(TestKeys.Chord("Alt+CursorDown"), "-" + CommandIds.NextChange),
                     new KeybindingOverride(TestKeys.Chord("F8"), CommandIds.NextChange),
                 ]);
                 OpenThreeChanges(workbench, commands);
@@ -417,7 +417,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusSidebar),
             () => workbench.StatusBar.DisplayedText == "a.txt ↔ saved");
 
-        Assert.Equal("a.txt ↔ saved  •  Change 1 of 3  •  F8 next  Shift+F7 prev  Enter go to line", rebound);
+        Assert.Equal("a.txt ↔ saved  •  Change 1 of 3  •  F8 next  Alt+CursorUp prev  Enter go to line", rebound);
     }
 
     // Changes at rows 4 (modified), 14 (line 15 removed) and 30 (modified).

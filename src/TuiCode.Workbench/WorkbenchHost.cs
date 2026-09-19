@@ -420,8 +420,8 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+V", CommandIds.PasteFile);
         keybindings.Bind("Esc", CommandIds.CancelCut);
 
-        keybindings.Bind("F7", CommandIds.NextChange);
-        keybindings.Bind("Shift+F7", CommandIds.PreviousChange);
+        keybindings.Bind("Alt+CursorDown", CommandIds.NextChange);
+        keybindings.Bind("Alt+CursorUp", CommandIds.PreviousChange);
         keybindings.Bind("Enter", CommandIds.GoToChangeLine);
 
         keybindings.Bind("Enter", CommandIds.SearchFocusResults);
