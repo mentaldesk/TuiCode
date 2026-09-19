@@ -31,6 +31,8 @@ internal sealed class InMemorySettingsService : ISettingsService
 
     public FileIconStyle FileIcons { get; set; }
 
+    public EditorSettings Editor { get; set; } = EditorSettings.Default;
+
     public int SaveCount { get; private set; }
     public void Save() => SaveCount++;
 

@@ -238,6 +238,43 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         Assert.Equal(FileIconStyle.Auto, new DefaultSettingsService(fs).FileIcons);
     }
 
+    [Fact]
+    public void Editor_settings_round_trip_through_the_settings_file()
+    {
+        var fs = new MockFileSystem();
+        var editor = new EditorSettings { IndentSize = 2, InsertSpaces = false, LineEnding = LineEnding.CRLF, InsertFinalNewline = false };
+        var svc = new DefaultSettingsService(fs) { Editor = editor };
+
+        svc.Save();
+
+        Assert.Equal(editor, new DefaultSettingsService(fs).Editor);
+    }
+
+    [Fact]
+    public void Default_editor_settings_are_not_written()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{ \"IndentSize\": 2 }"));
+        var svc = new DefaultSettingsService(fs) { Editor = EditorSettings.Default };
+
+        svc.Save();
+
+        Assert.False(fs.File.Exists(SettingsPath(fs)));
+    }
+
+    [Fact]
+    public void A_bad_editor_setting_loads_as_its_default_without_losing_the_others()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData(
+            "{ \"IndentSize\": 40, \"InsertSpaces\": \"no\", \"LineEnding\": \"LF\", \"InsertFinalNewline\": false, \"FileIcons\": \"Off\" }"));
+
+        var svc = new DefaultSettingsService(fs);
+
+        Assert.Equal(EditorSettings.Default with { LineEnding = LineEnding.LF, InsertFinalNewline = false }, svc.Editor);
+        Assert.Equal(FileIconStyle.Off, svc.FileIcons);
+    }
+
     private static string SettingsPath(MockFileSystem fs)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

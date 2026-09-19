@@ -65,6 +65,7 @@ public sealed class EditorTab : FrameView
             Text = initial,
             Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
         };
+        Settings = EditorSettings.Default;
         _gutter = new EditorGutter(_textView, syntax) { X = 0, Y = 0, Height = Dim.Fill() };
         _textView.X = Pos.Right(_gutter);
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
@@ -77,6 +78,17 @@ public sealed class EditorTab : FrameView
         Add(_gutter, _textView);
 
         UpdateTitle();
+    }
+
+    public EditorSettings Settings
+    {
+        get;
+        set
+        {
+            field = value;
+            _textView.TabWidth = value.IndentSize;
+            _textView.InsertSpaces = value.InsertSpaces;
+        }
     }
 
     public bool GutterVisible
@@ -285,9 +297,15 @@ public sealed class EditorTab : FrameView
         // buffer comes back CRLF regardless of the file's real endings. Re-emit using
         // the EOL we detected on load so a file's line-ending style round-trips
         // unchanged on every OS (matches VS Code's preserve-on-save behaviour).
-        var content = Normalize(_textView.Text, _eol);
-        if (content.Length > 0 && !content.EndsWith(_eol, StringComparison.Ordinal))
-            content += _eol;
+        var eol = Settings.LineEnding switch
+        {
+            LineEnding.LF => "\n",
+            LineEnding.CRLF => "\r\n",
+            _ => _eol,
+        };
+        var content = Normalize(_textView.Text, eol);
+        if (Settings.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
+            content += eol;
         File.FileSystem.File.WriteAllText(File.FullName, content);
         _gutter.ResetBaseline();
         if (_dirty)

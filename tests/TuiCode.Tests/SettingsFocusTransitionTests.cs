@@ -50,6 +50,7 @@ public class SettingsFocusTransitionTests : StaticConfigurationTest
                 case 2:
                     overlay = workbench.SubViews.OfType<SettingsView>().FirstOrDefault();
                     if (overlay is null) { failureReason = "settings overlay didn't appear"; Quit(); return; }
+                    InjectKey("CursorDown");
                     InjectKey("CursorDown"); // move category to "Keyboard Shortcuts"
                     break;
                 case 3:

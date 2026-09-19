@@ -34,6 +34,9 @@ public interface ISettingsService
     /// <summary>How files and folders are decorated (#119). Stages the change in memory; <see cref="Save"/> persists it.</summary>
     FileIconStyle FileIcons { get; set; }
 
+    /// <summary>Indentation and line endings (#14). Stages the change in memory; <see cref="Save"/> persists it.</summary>
+    EditorSettings Editor { get; set; }
+
     /// <summary>Persist the current settings to disk, writing only values that differ from defaults.</summary>
     void Save();
 

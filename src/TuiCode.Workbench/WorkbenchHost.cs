@@ -119,6 +119,7 @@ public sealed class WorkbenchHost : IDisposable
 
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
+        _workbench.Editor.Group.Settings = _settings.Editor;
         ApplyTokenTheme();
         _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
 
@@ -509,6 +510,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeSettings = null;
+        _workbench.Editor.Group.Settings = _settings.Editor;
         FocusEditorBody();
     }
 

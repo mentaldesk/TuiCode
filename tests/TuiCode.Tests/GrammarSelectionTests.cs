@@ -196,7 +196,7 @@ public class GrammarHostTests : StaticConfigurationTest
             () => { tab = workbench.Editor.Open(_fs.FileInfo.New("/work/todo.notes")); },
             () => { _commands.TryExecute(CommandIds.OpenSettings); },
             () => workbench.SubViews.OfType<SettingsView>().Any(),
-            () => { host.App.InjectKey(Key.CursorDown); host.App.InjectKey(Key.CursorDown); },
+            () => { host.App.InjectKey(Key.CursorDown); host.App.InjectKey(Key.CursorDown); host.App.InjectKey(Key.CursorDown); },
             () => { host.App.InjectKey(Key.CursorRight); },
             () => { foreach (var c in ".notes") host.App.InjectKey(new Key(c)); },
             () => { host.App.InjectKey(Key.Enter); },
