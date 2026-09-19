@@ -4,9 +4,11 @@ using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
+using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
+using TuiCode.Workbench.Themes;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Tests;
@@ -272,11 +274,86 @@ public class DiffTabDrawTests : StaticConfigurationTest
         Assert.Equal("No changes", diff.ChangeStatus);
     }
 
-    private DiffTab Diff(string saved, string buffer)
+    private const string DarkKeyword = "#569CD6";
+    private const string LightKeyword = "#0000FF";
+
+    [Fact]
+    public void Both_sides_colour_keywords_and_changed_rows_keep_their_tint()
     {
-        _fs.AddFile("/work/a.txt", new MockFileData(saved));
-        var source = new EditorTab(_fs.FileInfo.New("/work/a.txt")) { Content = buffer };
-        var diff = new DiffTab(source, "saved", () => DiffTab.ReadLines(source.File))
+        var diff = Diff("int a;\nint b;", "int a;\nint c;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/a.cs");
+
+        Render(diff);
+
+        var normal = diff.GetAttributeForRole(VisualRole.Editable);
+        foreach (var col in new[] { 5, 21 })
+        {
+            Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(1, col).Foreground);
+            Assert.Equal(normal.Background, BackgroundAt(1, col));
+            Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(2, col).Foreground);
+            Assert.Equal(BackgroundAt(2, col - 5), BackgroundAt(2, col));
+            Assert.NotEqual(normal.Background, BackgroundAt(2, col));
+        }
+    }
+
+    [Fact]
+    public void Both_sides_follow_a_grammar_pinned_on_the_source_tab()
+    {
+        var syntax = new SyntaxHighlighter(GrammarBundle.Load());
+        var diff = Diff("int a;", "int b;", syntax, "/work/a.txt");
+        diff.Source.SetGrammar(syntax.LanguageById("csharp"));
+        diff.Refresh();
+
+        Render(diff);
+
+        Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(1, 5).Foreground);
+        Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(1, 21).Foreground);
+    }
+
+    [Fact]
+    public void A_file_with_no_grammar_is_drawn_plain()
+    {
+        var diff = Diff("int a;", "int b;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/a.unknown");
+
+        Render(diff);
+
+        var normal = diff.GetAttributeForRole(VisualRole.Editable);
+        Assert.Equal(normal.Foreground, AttributeAt(1, 5).Foreground);
+        Assert.Equal(normal.Foreground, AttributeAt(1, 21).Foreground);
+    }
+
+    [Fact]
+    public void Switching_theme_recolours_both_sides()
+    {
+        var syntax = new SyntaxHighlighter(GrammarBundle.Load());
+        var diff = Diff("int a;", "int b;", syntax, "/work/a.cs");
+        Render(diff);
+
+        syntax.UseTheme(GrammarBundle.LightTheme);
+        Render(diff);
+
+        Assert.Equal(Color.Parse(LightKeyword), AttributeAt(1, 5).Foreground);
+        Assert.Equal(Color.Parse(LightKeyword), AttributeAt(1, 21).Foreground);
+    }
+
+    [Fact]
+    public void Only_the_lines_in_view_are_lexed()
+    {
+        var saved = string.Join('\n', Enumerable.Range(1, 1_000).Select(i => $"int a{i};"));
+        var syntax = new SyntaxHighlighter(GrammarBundle.Load());
+        var diff = Diff(saved, saved.Replace("a1;", "b1;"), syntax, "/work/a.cs");
+
+        Render(diff);
+
+        Assert.NotNull(diff.RightTokens!.TokensFor(5));
+        Assert.Null(diff.RightTokens.TokensFor(6));
+        Assert.Null(diff.LeftTokens!.TokensFor(6));
+    }
+
+    private DiffTab Diff(string saved, string buffer, SyntaxHighlighter? syntax = null, string path = "/work/a.txt")
+    {
+        _fs.AddFile(path, new MockFileData(saved));
+        var source = new EditorTab(_fs.FileInfo.New(path), syntax) { Content = buffer };
+        var diff = new DiffTab(source, "saved", () => DiffTab.ReadLines(source.File), syntax)
         {
             App = _app,
             Width = 31,
@@ -456,6 +533,33 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         Assert.Empty(group.TabCollection);
     }
 
+    [Fact]
+    public async Task Switching_theme_redraws_the_diff_tab()
+    {
+        _fs.AddFile("/work/a.cs", new MockFileData("int a;\n"));
+        var settings = new InMemorySettingsService();
+        using var workbench = BuildWorkbench(new SyntaxHighlighter(GrammarBundle.Load()));
+        using var host = BuildHost(workbench, out var commands, settings);
+        var group = workbench.Editor.Group;
+        var redrawn = false;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                workbench.OpenFile(_fs.FileInfo.New("/work/a.cs"));
+                group.ActiveTab!.Content = "int b;\n";
+                commands.TryExecute(CommandIds.CompareToSaved);
+            },
+            () => group.ActiveDiffTab is { NeedsDraw: false },
+            () =>
+            {
+                settings.Theme = BundledThemes.Daylight;
+                redrawn = group.ActiveDiffTab!.NeedsDraw;
+            });
+
+        Assert.True(redrawn);
+    }
+
     [Theory]
     [InlineData("unchanged", "No changes against saved")]
     [InlineData("deleted", "a.txt has never been saved.")]
@@ -478,18 +582,18 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         Assert.Equal(message, workbench.StatusBar.DisplayedText);
     }
 
-    private Workbench.Workbench BuildWorkbench()
+    private Workbench.Workbench BuildWorkbench(SyntaxHighlighter? syntax = null)
     {
-        var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());
+        var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(syntax), new StatusBarPart());
         _fs.AddDirectory("/work");
         workbench.Sidebar.Explorer.Open(_fs.DirectoryInfo.New("/work"));
         return workbench;
     }
 
-    private static WorkbenchHost BuildHost(Workbench.Workbench workbench, out CommandService commands)
+    private static WorkbenchHost BuildHost(Workbench.Workbench workbench, out CommandService commands, InMemorySettingsService? settings = null)
     {
         commands = new CommandService();
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
-            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+            settings ?? new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
     }
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Terminal.Gui.Text;
 using TuiCode.Syntax;
@@ -19,6 +20,7 @@ public sealed class DiffTab : FrameView
 
     private readonly Func<IReadOnlyList<string>> _readLeft;
     private readonly SyntaxHighlighter? _syntax;
+    private readonly TokenPalette _palette = new();
     private IReadOnlyList<string> _left = [];
     private IReadOnlyList<string> _right = [];
     private int _top;
@@ -73,6 +75,13 @@ public sealed class DiffTab : FrameView
 
     public int CurrentRow => _current;
 
+    internal LineTokenCache? LeftTokens { get; private set; }
+
+    internal LineTokenCache? RightTokens { get; private set; }
+
+    /// <summary>Lexing time allowed per frame, across both sides; the rest continues on later iterations.</summary>
+    internal TimeSpan SyntaxBudget { get; set; } = TimeSpan.FromMilliseconds(15);
+
     /// <summary>The buffer line <see cref="CurrentRow"/> maps to.</summary>
     public int CurrentBufferLine => Diff.BufferLine(_current);
 
@@ -115,6 +124,13 @@ public sealed class DiffTab : FrameView
         _left = _readLeft();
         _right = [.. Source.SnapshotLines];
         Diff = AlignedDiff.Compute(_left, _right, MaxEdits);
+        if (!Equals(LeftTokens?.Language, Source.Grammar))
+        {
+            LeftTokens = _syntax?.CreateCache(Source.Grammar);
+            RightTokens = _syntax?.CreateCache(Source.Grammar);
+        }
+        LeftTokens?.Update(_left);
+        RightTokens?.Update(_right);
         UpdateTitle();
         ScrollTo(_top);
         MoveTo(_current);
@@ -165,6 +181,7 @@ public sealed class DiffTab : FrameView
 
         var current = GetAttributeForRole(VisualRole.Focus);
         var header = normal with { Style = normal.Style | TextStyle.Bold };
+        PrepareSyntax();
         DrawText(0, 0, leftWidth, " " + LeftLabel, header);
         DrawSeparator(leftWidth, 0, normal);
         DrawText(rightX, 0, rightWidth, " working copy", header);
@@ -175,20 +192,37 @@ public sealed class DiffTab : FrameView
             DiffRow? row = index < Diff.Rows.Count ? Diff.Rows[index] : null;
             var changed = row?.Kind is DiffRowKind.Modified or DiffRowKind.LeftOnly or DiffRowKind.RightOnly;
             Attribute? marked = row is not null && index == _current ? current : null;
-            DrawSide(0, y, leftWidth, row?.Left, _left, digits, changed ? '-' : ' ', changed ? removed : normal, normal, marked);
+            DrawSide(0, y, leftWidth, row?.Left, _left, LeftTokens, digits, changed ? '-' : ' ', changed ? removed : normal, normal, marked);
             DrawSeparator(leftWidth, y, normal);
-            DrawSide(rightX, y, rightWidth, row?.Right, _right, digits, changed ? '+' : ' ', changed ? inserted : normal, normal, marked);
+            DrawSide(rightX, y, rightWidth, row?.Right, _right, RightTokens, digits, changed ? '+' : ' ', changed ? inserted : normal, normal, marked);
         }
         return true;
     }
 
-    private void DrawSide(int x, int y, int width, int? line, IReadOnlyList<string> lines, int digits, char marker, Attribute tint, Attribute normal, Attribute? current)
+    private void PrepareSyntax()
+    {
+        if (_syntax is null || (LeftTokens is null && RightTokens is null)) return;
+        _palette.Sync(_syntax);
+        var (lastLeft, lastRight) = (-1, -1);
+        for (var i = _top; i < Math.Min(Diff.Rows.Count, _top + PageHeight); i++)
+        {
+            lastLeft = Diff.Rows[i].Left ?? lastLeft;
+            lastRight = Diff.Rows[i].Right ?? lastRight;
+        }
+        var clock = Stopwatch.StartNew();
+        var done = LeftTokens?.TokenizeThrough(lastLeft, SyntaxBudget) ?? true;
+        done &= RightTokens?.TokenizeThrough(lastRight, SyntaxBudget - clock.Elapsed) ?? true;
+        if (!done) App?.Invoke(SetNeedsDraw);
+    }
+
+    private void DrawSide(int x, int y, int width, int? line, IReadOnlyList<string> lines, LineTokenCache? tokens, int digits, char marker, Attribute tint, Attribute normal, Attribute? current)
     {
         var prefix = line is { } i ? $"{(i + 1).ToString().PadLeft(digits)}{marker} " : new string(' ', digits + 2);
         var number = marker == ' ' ? tint with { Style = tint.Style | TextStyle.Faint } : tint;
         var used = Math.Min(width, prefix.Length);
         DrawText(x, y, used, prefix, current ?? (line is null ? normal : number));
-        DrawText(x + used, y, width - used, line is { } l ? lines[l] : "", line is null ? normal : tint);
+        if (line is { } l) DrawText(x + used, y, width - used, lines[l], tint, tokens?.TokensFor(l));
+        else DrawText(x + used, y, width - used, "", normal);
     }
 
     private void DrawSeparator(int x, int y, Attribute attribute)
@@ -198,15 +232,29 @@ public sealed class DiffTab : FrameView
         AddStr(x, y, "│");
     }
 
-    // Pads to width; long lines are cut, not wrapped or scrolled.
-    private void DrawText(int x, int y, int width, string text, Attribute attribute)
+    // Pads to width; long lines are cut, not wrapped or scrolled. Token offsets are UTF-16 chars, not cells.
+    private void DrawText(int x, int y, int width, string text, Attribute attribute, int[]? tokens = null)
     {
         SetAttribute(attribute);
         var col = 0;
+        var chars = 0;
+        var token = -1;
         var elements = StringInfo.GetTextElementEnumerator(text);
         while (elements.MoveNext())
         {
             var grapheme = elements.GetTextElement();
+            if (tokens is { Length: > 0 })
+            {
+                var next = Math.Max(token, 0);
+                while (next + 2 < tokens.Length && tokens[next + 2] <= chars)
+                    next += 2;
+                if (next != token)
+                {
+                    SetAttribute(_palette.Apply(attribute, tokens[next + 1]));
+                    token = next;
+                }
+                chars += grapheme.Length;
+            }
             if (grapheme == "\t")
             {
                 var spaces = Source.Settings.IndentSize - col % Source.Settings.IndentSize;
@@ -219,6 +267,7 @@ public sealed class DiffTab : FrameView
             AddStr(x + col, y, grapheme);
             col += cols;
         }
+        SetAttribute(attribute);
         for (; col < width; col++)
             AddStr(x + col, y, " ");
     }
