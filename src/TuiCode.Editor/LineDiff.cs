@@ -26,7 +26,7 @@ public static class LineDiff
     }
 
     /// <summary>The runs of lines that differ, in order; each replaces OldCount lines of a at OldStart with NewCount lines of b at NewStart.</summary>
-    internal static List<Hunk> Hunks(IReadOnlyList<string> a, IReadOnlyList<string> b)
+    internal static List<Hunk> Hunks(IReadOnlyList<string> a, IReadOnlyList<string> b, int maxEdits = MaxEdits)
     {
         var hunks = new List<Hunk>();
 
@@ -42,7 +42,7 @@ public static class LineDiff
         var newLength = b.Count - prefix - suffix;
         if (oldLength == 0 && newLength == 0) return hunks;
 
-        if (EditScript(a, b, prefix, oldLength, newLength) is not { } edits)
+        if (EditScript(a, b, prefix, oldLength, newLength, maxEdits) is not { } edits)
         {
             hunks.Add(new Hunk(prefix, oldLength, prefix, newLength));
             return hunks;
@@ -92,10 +92,10 @@ public static class LineDiff
 
     private enum Edit { Equal, Insert, Delete }
 
-    // Myers' O(ND) diff of a[start..start+n) against b[start..start+m); null if it needs more than MaxEdits.
-    private static List<Edit>? EditScript(IReadOnlyList<string> a, IReadOnlyList<string> b, int start, int n, int m)
+    // Myers' O(ND) diff of a[start..start+n) against b[start..start+m); null if it needs more than maxEdits.
+    private static List<Edit>? EditScript(IReadOnlyList<string> a, IReadOnlyList<string> b, int start, int n, int m, int maxEdits)
     {
-        var max = Math.Min(n + m, MaxEdits);
+        var max = Math.Min(n + m, maxEdits);
         var offset = max + 1;
         var v = new int[2 * max + 3];
         var trace = new List<int[]>();
