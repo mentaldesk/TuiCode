@@ -24,6 +24,65 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
         return run.ExitCode == 0 ? ParseConversation(run.Output) : GitHubResult<GitHubConversation>.Failure(ErrorMessage(run));
     }
 
+    /// <summary>
+    /// Review threads come from GraphQL: the REST API knows nothing about whether a thread is resolved.
+    /// <c>{owner}</c> and <c>{repo}</c> are gh's own placeholders for the repo the command runs in.
+    /// </summary>
+    public async Task<GitHubResult<IReadOnlyList<GitHubReviewThread>>> GetReviewThreadsAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(repoRoot,
+            ["api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-F", $"number={number}", "-f", $"query={ThreadsQuery}"],
+            cancellationToken);
+        if (run.Missing || run.ExitCode == AuthExitCode) return GitHubResult<IReadOnlyList<GitHubReviewThread>>.NoCli();
+        if (run.Failure is { } failure) return GitHubResult<IReadOnlyList<GitHubReviewThread>>.Failure(failure);
+        return run.ExitCode == 0 ? ParseThreads(run.Output) : GitHubResult<IReadOnlyList<GitHubReviewThread>>.Failure(ErrorMessage(run));
+    }
+
+    private const string ThreadsQuery =
+        "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name)" +
+        "{pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved isOutdated path line diffSide " +
+        "comments(first:100){nodes{author{login} body createdAt}}}}}}}";
+
+    internal static GitHubResult<IReadOnlyList<GitHubReviewThread>> ParseThreads(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var nodes = document.RootElement
+                .GetProperty("data").GetProperty("repository").GetProperty("pullRequest")
+                .GetProperty("reviewThreads").GetProperty("nodes");
+            IReadOnlyList<GitHubReviewThread> threads = [.. nodes.EnumerateArray().Select(thread =>
+            {
+                // A thread on the base side names a line of the base file, which is no line of the head: outdated here too.
+                var onHead = Text(thread, "diffSide") is null or "RIGHT";
+                var line = onHead && thread.TryGetProperty("line", out var l) && l.ValueKind == JsonValueKind.Number ? l.GetInt32() : (int?)null;
+                return new GitHubReviewThread(
+                    Text(thread, "path") ?? string.Empty,
+                    line,
+                    Flag(thread, "isResolved"),
+                    line is null || Flag(thread, "isOutdated"),
+                    Comments(thread));
+            })];
+            return GitHubResult<IReadOnlyList<GitHubReviewThread>>.Success(threads);
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return GitHubResult<IReadOnlyList<GitHubReviewThread>>.Failure("gh answered with something we couldn't read");
+        }
+    }
+
+    private static bool Flag(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
+
+    private static IReadOnlyList<GitHubComment> Comments(JsonElement element)
+    {
+        if (!element.TryGetProperty("comments", out var comments)
+            || !comments.TryGetProperty("nodes", out var nodes)
+            || nodes.ValueKind != JsonValueKind.Array)
+            return [];
+        return [.. nodes.EnumerateArray().Select(c => new GitHubComment(Login(c), Date(c), Text(c, "body") ?? string.Empty))];
+    }
+
     private Task<CliRun> RunAsync(string repoRoot, string[] arguments, CancellationToken cancellationToken)
     {
         var info = new ProcessStartInfo(executable)

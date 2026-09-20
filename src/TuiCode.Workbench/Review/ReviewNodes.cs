@@ -14,9 +14,12 @@ public sealed class ReviewFolderNode(string path) : ReviewNode
     public override string ToString() => Path;
 }
 
-public sealed class ReviewFileNode(GitChange change) : ReviewNode
+public sealed class ReviewFileNode(GitChange change, int threadCount = 0) : ReviewNode
 {
     public GitChange Change { get; } = change;
+
+    /// <summary>How many review threads are on this file, outdated ones included (#186).</summary>
+    public int ThreadCount { get; } = threadCount;
 
     public string Name => Change.Path[(Change.Path.LastIndexOf('/') + 1)..];
 
@@ -31,12 +34,46 @@ public sealed class ReviewFileNode(GitChange change) : ReviewNode
     public override string ToString() => $"{Mark} {Name}";
 }
 
+internal static class ReviewRow
+{
+    /// <summary>A row as the tree shows it: its text, with a file's thread count pushed to the right of <paramref name="width"/>.</summary>
+    public static string Display(ReviewNode node, int width)
+    {
+        var text = node.ToString() ?? string.Empty;
+        if (node is not ReviewFileNode { ThreadCount: > 0 } file) return text;
+
+        // The tree draws its own expander and indent before this, so the count sits a little in from the edge.
+        var count = file.ThreadCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return text + new string(' ', Math.Max(1, width - text.Length - count.Length)) + count;
+    }
+}
+
+/// <summary>The threads on a file whose line is gone (#186), read in a tab of their own on Enter.</summary>
+public sealed class ReviewOutdatedNode(GitChange change, IReadOnlyList<GitHubReviewThread> threads) : ReviewNode
+{
+    public GitChange Change { get; } = change;
+
+    public IReadOnlyList<GitHubReviewThread> Threads { get; } = threads;
+
+    public override string ToString() => Threads.Count == 1 ? "! 1 outdated thread" : $"! {Threads.Count} outdated threads";
+}
+
 internal static class ReviewTree
 {
     /// <summary>One node per folder, by its full path, then the files at the repo root; each sorted ordinally.</summary>
-    public static IReadOnlyList<ReviewNode> Build(IReadOnlyList<GitChange> changes)
+    public static IReadOnlyList<ReviewNode> Build(IReadOnlyList<GitChange> changes, IReadOnlyList<GitHubReviewThread>? threads = null)
     {
-        var files = changes.Select(c => new ReviewFileNode(c)).ToList();
+        var byPath = (threads ?? [])
+            .GroupBy(t => t.Path, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+        var files = changes.Select(c =>
+        {
+            var on = byPath.GetValueOrDefault(c.Path) ?? [];
+            var file = new ReviewFileNode(c, on.Count);
+            if (on.Where(t => t.Outdated).ToList() is { Count: > 0 } outdated)
+                file.Children.Add(new ReviewOutdatedNode(c, outdated));
+            return file;
+        }).ToList();
         var folders = files
             .Where(f => f.Change.Path.Contains('/'))
             .GroupBy(f => f.Change.Path[..f.Change.Path.LastIndexOf('/')], StringComparer.Ordinal)

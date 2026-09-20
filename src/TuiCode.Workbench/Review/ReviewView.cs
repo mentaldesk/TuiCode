@@ -15,6 +15,7 @@ public sealed class ReviewView : View
     private readonly Label _title;
     private readonly Label _header;
     private readonly Label _checks;
+    private readonly Label _threadCounts;
     private readonly Label _hint;
     private readonly TreeView<ReviewNode> _files;
     private CancellationTokenSource? _loading;
@@ -23,6 +24,12 @@ public sealed class ReviewView : View
 
     /// <summary>Raised by Enter on the PR header (#185), for the Overview tab.</summary>
     public event EventHandler<BranchReview>? PullRequestActivated;
+
+    /// <summary>Raised by Enter on a file's outdated threads (#186), for a tab to read them in.</summary>
+    public event EventHandler<(BranchReview Review, ReviewOutdatedNode Node)>? OutdatedThreadsActivated;
+
+    /// <summary>Raised once the PR's review threads are in, so open diffs can show them (#186).</summary>
+    public event EventHandler<BranchReview>? ThreadsLoaded;
 
     public Func<IDirectoryInfo?>? RootProvider { get; set; }
 
@@ -33,6 +40,9 @@ public sealed class ReviewView : View
     public string TitleText => _title.Text;
 
     public string ChecksText => _checks.Text;
+
+    /// <summary>What the header says about the PR's review threads (#186).</summary>
+    public string ThreadsText => _threadCounts.Text;
 
     public string HintText => _hint.Text;
 
@@ -57,6 +67,7 @@ public sealed class ReviewView : View
         _title = Line();
         _header = Line();
         _checks = Line();
+        _threadCounts = Line();
         _hint = Line();
         // GetAttributeForRole isn't virtual in TG 2.1.0, so the hint is styled through its event; Handled makes the result stick.
         _hint.GettingAttributeForRole += (_, e) =>
@@ -74,7 +85,8 @@ public sealed class ReviewView : View
             Visible = false,
             TreeBuilder = new DelegateTreeBuilder<ReviewNode>(n => n.Children, n => n.Children.Count > 0),
         };
-        Add(_title, _header, _checks, _hint, _files);
+        _files.AspectGetter = node => ReviewRow.Display(node, _files.Viewport.Width);
+        Add(_title, _header, _checks, _threadCounts, _hint, _files);
 
         ViewportChanged += (_, _) => ShowTitle();
         _files.Activated += (_, _) => ActivateSelected();
@@ -155,6 +167,11 @@ public sealed class ReviewView : View
 
             var pullRequest = await Task.Run(() => BranchReview.WithPullRequestAsync(_git, _gitHub, review, cts.Token), cts.Token).ConfigureAwait(false);
             Apply(app, cts, () => ShowPullRequest(pullRequest));
+            if (pullRequest.Value?.PullRequest is not { } pr) return;
+
+            // Last, in its own step: the file list and the header are worth having before the threads are in (#186).
+            var threads = await Task.Run(() => _gitHub.GetReviewThreadsAsync(review.RepoRoot, pr.Number, cts.Token), cts.Token).ConfigureAwait(false);
+            Apply(app, cts, () => ShowThreads(threads));
         }
         catch (OperationCanceledException)
         {
@@ -182,7 +199,7 @@ public sealed class ReviewView : View
         if (result.Value is { Changes.Count: > 0 } review)
         {
             _header.Text = review.Header;
-            _files.AddObjects(ReviewTree.Build(review.Changes));
+            _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads));
             _files.ExpandAll();
             _files.SelectedObject = FindFile(selected) ?? FirstFile();
             _files.Visible = true;
@@ -196,6 +213,7 @@ public sealed class ReviewView : View
             if (refocus) SetFocus();
         }
         _checks.Text = result.Value?.ChecksLine ?? string.Empty;
+        _threadCounts.Text = result.Value?.ThreadsLine ?? string.Empty;
         ShowTitle();
     }
 
@@ -204,6 +222,20 @@ public sealed class ReviewView : View
         _hint.Text = result.Error ?? string.Empty;
         if (result.Value is { } review) Show(GitResult<BranchReview?>.Success(review));
         else LayoutHeader();
+    }
+
+    private void ShowThreads(GitHubResult<IReadOnlyList<GitHubReviewThread>> result)
+    {
+        if (Review is not { PullRequest: not null } review) return;
+        if (result.Error is { } error)
+        {
+            _hint.Text = error;
+            LayoutHeader();
+            return;
+        }
+
+        Show(GitResult<BranchReview?>.Success(review with { Threads = result.Value }));
+        if (Review is { } loaded) ThreadsLoaded?.Invoke(this, loaded);
     }
 
     private void ShowTitle()
@@ -216,7 +248,7 @@ public sealed class ReviewView : View
     private void LayoutHeader()
     {
         var row = 0;
-        foreach (var label in (Label[])[_title, _header, _checks, _hint])
+        foreach (var label in (Label[])[_title, _header, _checks, _threadCounts, _hint])
         {
             label.Visible = label.Text.Length > 0;
             if (label.Visible) label.Y = row++;
@@ -244,6 +276,9 @@ public sealed class ReviewView : View
         {
             case ReviewFileNode file when Review is { } review:
                 FileActivated?.Invoke(this, (review, file.Change));
+                break;
+            case ReviewOutdatedNode outdated when Review is { } review:
+                OutdatedThreadsActivated?.Invoke(this, (review, outdated));
                 break;
             case ReviewFolderNode folder:
                 _files.Toggle(folder);

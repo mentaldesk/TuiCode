@@ -26,6 +26,22 @@ internal sealed class FakeGitHubCli : IGitHubCli
                 Conversation ?? new GitHubConversation(number, $"#{number}", "octocat", default, string.Empty, [])));
     }
 
+    public IReadOnlyList<GitHubReviewThread> ReviewThreads { get; set; } = [];
+
+    public string? ThreadsError { get; set; }
+
+    /// <summary>Held open to keep threads pending while a test looks at the diff without them (#186).</summary>
+    public Task ThreadsGate { get; set; } = Task.CompletedTask;
+
+    public async Task<GitHubResult<IReadOnlyList<GitHubReviewThread>>> GetReviewThreadsAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
+    {
+        await ThreadsGate;
+        if (Missing) return GitHubResult<IReadOnlyList<GitHubReviewThread>>.NoCli();
+        return ThreadsError is { } error
+            ? GitHubResult<IReadOnlyList<GitHubReviewThread>>.Failure(error)
+            : GitHubResult<IReadOnlyList<GitHubReviewThread>>.Success(ReviewThreads);
+    }
+
     public Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default)
     {
         Calls++;

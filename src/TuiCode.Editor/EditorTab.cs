@@ -16,6 +16,7 @@ public sealed class EditorTab : FrameView
     private bool _grammarChosen;
     private View? _header;
     private readonly string _eol;
+    private readonly string? _title;
     private bool _dirty;
     private int _edits;
     private (int Edits, (System.Drawing.Point Start, System.Drawing.Point End)[] Ranges, DocumentStats Stats)? _selectionStats;
@@ -60,15 +61,17 @@ public sealed class EditorTab : FrameView
 
     /// <summary>
     /// A read-only document that isn't on disk (#185), like a PR's Overview: its text and grammar are
-    /// given, it can't be edited or saved, and <paramref name="file"/> only names it.
+    /// given, it can't be edited or saved, and <paramref name="file"/> only identifies it. Its tab reads
+    /// <paramref name="title"/>, or the file's name when there's none — a title can say more than a name.
     /// </summary>
-    public EditorTab(IFileInfo file, string content, SyntaxLanguage? grammar, SyntaxHighlighter? syntax = null)
-        : this(file, content, grammar, syntax, readOnly: true)
+    public EditorTab(IFileInfo file, string content, SyntaxLanguage? grammar, SyntaxHighlighter? syntax = null, string? title = null)
+        : this(file, content, grammar, syntax, readOnly: true, title)
     {
     }
 
-    private EditorTab(IFileInfo file, string initial, SyntaxLanguage? grammar, SyntaxHighlighter? syntax, bool readOnly)
+    private EditorTab(IFileInfo file, string initial, SyntaxLanguage? grammar, SyntaxHighlighter? syntax, bool readOnly, string? title = null)
     {
+        _title = title;
         File = file;
         _syntax = syntax;
         IsReadOnly = readOnly;
@@ -411,7 +414,8 @@ public sealed class EditorTab : FrameView
 
     private void UpdateTitle()
     {
-        Title = _dirty ? $"● {File.Name}" : File.Name;
+        var name = _title ?? File.Name;
+        Title = _dirty ? $"● {name}" : name;
         // TG redraws the tab header from Title only on layout, and positions headers from a cached width first.
         if (Border.View is BorderView { TitleView: ITitleView header }) header.MeasuredTabLength = 0;
         SetNeedsLayout();

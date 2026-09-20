@@ -77,8 +77,8 @@ public sealed class EditorGroup : Tabs
         Focus(file.FullName) ?? Track(new EditorTab(file, _syntax));
 
     /// <summary>Opens or focuses a read-only document that isn't on disk (#185), like a PR's Overview.</summary>
-    public EditorTab OpenOrFocusDocument(IFileInfo file, string content, SyntaxLanguage? grammar) =>
-        Focus(file.FullName) ?? Track(new EditorTab(file, content, grammar, _syntax));
+    public EditorTab OpenOrFocusDocument(IFileInfo file, string content, SyntaxLanguage? grammar, string? title = null) =>
+        Focus(file.FullName) ?? Track(new EditorTab(file, content, grammar, _syntax, title));
 
     /// <summary>Focuses the open tab for <paramref name="path"/>; null when nothing is open for it.</summary>
     public EditorTab? Focus(string path)
