@@ -74,7 +74,8 @@ services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
     driverName: DriverSelection.Resolve(args, sp.GetRequiredService<IEnvironment>()),
     logger: sp.GetRequiredService<ILogger<WorkbenchHost>>(),
     icons: sp.GetRequiredService<FileIcons>(),
-    git: sp.GetRequiredService<IGitCli>()));
+    git: sp.GetRequiredService<IGitCli>(),
+    gitHub: sp.GetRequiredService<IGitHubCli>()));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();

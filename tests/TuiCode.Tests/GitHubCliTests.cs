@@ -111,6 +111,55 @@ public class GitHubCliTests
     }
 
     [Fact]
+    public void ParseList_reads_each_open_pull_request_and_flags_the_ones_awaiting_your_review()
+    {
+        const string json = """
+        [
+          { "number": 132, "title": "Command scopes should be fixed", "author": { "login": "jamescrosswell" } },
+          { "number": 129, "title": "Delete, rename and move files", "author": { "login": "octocat" } }
+        ]
+        """;
+
+        var result = GitHubCli.ParseList(json, """[{"number":129}]""");
+
+        Assert.Equal(
+        [
+            new GitHubPullRequestSummary(132, "Command scopes should be fixed", "jamescrosswell"),
+            new GitHubPullRequestSummary(129, "Delete, rename and move files", "octocat", ReviewRequested: true),
+        ], result.Value);
+    }
+
+    [Fact]
+    public void ParseList_keeps_the_branch_of_a_pull_request_from_this_repo_and_none_from_a_fork()
+    {
+        const string json = """
+        [
+          { "number": 132, "title": "t", "author": { "login": "a" }, "headRefName": "fix-scopes", "isCrossRepository": false },
+          { "number": 129, "title": "t", "author": { "login": "b" }, "headRefName": "main", "isCrossRepository": true }
+        ]
+        """;
+
+        var result = GitHubCli.ParseList(json, "[]");
+
+        Assert.Equal(["fix-scopes", null], result.Value.Select(pr => pr.HeadBranch));
+    }
+
+    [Fact]
+    public void ParseList_of_a_pull_request_with_no_author_leaves_the_author_blank()
+    {
+        var result = GitHubCli.ParseList("""[{"number":1,"title":"t","author":null}]""", "[]");
+
+        Assert.Equal("", Assert.Single(result.Value).Author);
+    }
+
+    [Fact]
+    public void ParseList_of_something_that_isnt_a_list_fails_rather_than_throws()
+    {
+        Assert.False(GitHubCli.ParseList("not json at all", "[]").Succeeded);
+        Assert.False(GitHubCli.ParseList("[]", "not json at all").Succeeded);
+    }
+
+    [Fact]
     public void Interpret_treats_a_missing_gh_and_a_missing_login_as_the_CLI_being_unavailable()
     {
         Assert.Equal(NoCli, GitHubCli.Interpret(new CliRun(-1, "", "", "gh isn't installed or isn't on PATH", Missing: true)).Error);
@@ -148,6 +197,16 @@ public class GitHubCliTests
 
         Assert.True(result.CliUnavailable);
         Assert.Equal(NoCli, result.Error);
+    }
+
+    [Fact]
+    public async Task A_missing_gh_stops_the_list_and_the_checkout_too()
+    {
+        var gitHub = new GitHubCli(executable: "tuicode-no-such-gh");
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.True((await gitHub.ListPullRequestsAsync(Path.GetTempPath(), ct)).CliUnavailable);
+        Assert.True((await gitHub.CheckoutPullRequestAsync(Path.GetTempPath(), 1, ct)).CliUnavailable);
     }
 
     [Fact]

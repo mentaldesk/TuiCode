@@ -72,6 +72,7 @@ public sealed class WorkbenchHost : IDisposable
     private PathPromptView? _activePathPrompt;
     private ConfirmView? _activeConfirm;
     private RevisionPickerView? _activeRevisionPicker;
+    private PullRequestPickerView? _activePullRequestPicker;
     private bool _launchedFromExplorer;
     private bool _disposed;
 
@@ -256,6 +257,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
+        // No default key (#184).
+        _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         var explorer = _workbench.Sidebar.Explorer;
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
@@ -1410,6 +1413,112 @@ public sealed class WorkbenchHost : IDisposable
         return shown.Value is { } content
             ? GitResult<string>.Success(content)
             : GitResult<string>.Failure($"{name} isn't in {revision}");
+    }
+
+    /// <summary>
+    /// Open pull request (<c>opr</c>): the repo's open PRs, listed before the picker opens so a missing
+    /// <c>gh</c> is one status-bar line rather than an empty dialog.
+    /// </summary>
+    private void OpenPullRequest()
+    {
+        if (_activePullRequestPicker is not null) return;
+        if (_workbench.Sidebar.Explorer.Root is not { } root) return;
+
+        var folder = root.FullName;
+        _workbench.StatusBar.SetMessage("Loading pull requests…");
+        var repoRoot = Task.Run(() => _git.GetRepoRootAsync(folder));
+        WhenDone(repoRoot, () =>
+        {
+            if (repoRoot.Result.Error is { } error)
+            {
+                _workbench.StatusBar.SetMessage(error);
+                return;
+            }
+            if (repoRoot.Result.Value is not { } repo)
+            {
+                _workbench.StatusBar.SetMessage($"{folder} isn't in a git repository.");
+                return;
+            }
+            var listing = Task.Run(() => _gitHub.ListPullRequestsAsync(repo));
+            WhenDone(listing, () =>
+            {
+                if (listing.Result.Error is { } listError)
+                    _workbench.StatusBar.SetMessage(listError);
+                else if (listing.Result.Value.Count == 0)
+                    _workbench.StatusBar.SetMessage("No open pull requests.");
+                else
+                    OpenPullRequestPicker(root, repo, listing.Result.Value);
+            });
+        });
+    }
+
+    private void OpenPullRequestPicker(IDirectoryInfo root, string repoRoot, IReadOnlyList<GitHubPullRequestSummary> pullRequests)
+    {
+        if (_activePullRequestPicker is not null) return;
+        var fileSystem = root.FileSystem;
+        var view = new PullRequestPickerView(pullRequests);
+        var checkingOut = false;
+        view.Cancelled += (_, _) => ClosePullRequestPicker(view);
+        view.Submitted += (_, pullRequest) =>
+        {
+            if (checkingOut) return;
+            checkingOut = true;
+            view.ShowBusy(pullRequest.Number);
+
+            var checkout = Task.Run(() => PullRequestWorktreeAsync(fileSystem, repoRoot, pullRequest));
+            WhenDone(checkout, () =>
+            {
+                checkingOut = false;
+                if (!ReferenceEquals(_activePullRequestPicker, view)) return;
+                if (checkout.Result.Error is { } error)
+                {
+                    view.ShowError(error);
+                    return;
+                }
+                ClosePullRequestPicker(view);
+                _workbench.OpenFolder(fileSystem.DirectoryInfo.New(checkout.Result.Value));
+                FocusReview();
+            });
+        };
+
+        _activePullRequestPicker = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusFilter();
+    }
+
+    /// <summary>
+    /// The worktree to review the PR in: the one that already has its branch checked out, else a new one
+    /// beside the repo with the PR checked out in it. gh creates the branch there, so forks work.
+    /// </summary>
+    private async Task<GitResult<string>> PullRequestWorktreeAsync(IFileSystem fileSystem, string repoRoot, GitHubPullRequestSummary pullRequest)
+    {
+        if (pullRequest.HeadBranch is { Length: > 0 } branch)
+        {
+            var existing = await _git.FindWorktreeAsync(repoRoot, branch);
+            if (existing.Error is { } findError) return GitResult<string>.Failure(findError);
+            if (existing.Value is { } found) return GitResult<string>.Success(found);
+        }
+
+        // Next to the repo, as the pitch decided, so the current checkout and its open tabs are left alone.
+        var worktreePath = fileSystem.Path.GetFullPath(fileSystem.Path.Combine(repoRoot, "..", $"pr-{pullRequest.Number}"));
+        var worktree = await _git.AddWorktreeAsync(repoRoot, worktreePath);
+        if (worktree.Error is { } error) return GitResult<string>.Failure(error);
+
+        var checkout = await _gitHub.CheckoutPullRequestAsync(worktreePath, pullRequest.Number);
+        return checkout.Error is { } checkoutError
+            ? GitResult<string>.Failure(checkoutError)
+            : GitResult<string>.Success(worktreePath);
+    }
+
+    private void ClosePullRequestPicker(PullRequestPickerView view)
+    {
+        if (!ReferenceEquals(_activePullRequestPicker, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activePullRequestPicker = null;
+        FocusEditorBody();
     }
 
     private void CloseRevisionPicker(RevisionPickerView view)
