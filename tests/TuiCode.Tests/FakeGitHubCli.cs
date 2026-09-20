@@ -15,6 +15,13 @@ internal sealed class FakeGitHubCli : IGitHubCli
     /// <summary>The (worktree, number) pairs <see cref="CheckoutPullRequestAsync"/> was called with, in order.</summary>
     public List<(string Worktree, int Number)> Checkouts { get; } = [];
 
+    public GitHubConversation? Conversation { get; set; }
+
+    public string? ConversationError { get; set; }
+
+    /// <summary>The PR numbers <see cref="GetConversationAsync"/> was asked about, in order.</summary>
+    public List<int> ConversationCalls { get; } = [];
+
     public Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default)
     {
         Calls++;
@@ -30,6 +37,16 @@ internal sealed class FakeGitHubCli : IGitHubCli
         return Task.FromResult(Error is { } error
             ? GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Failure(error)
             : GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Success(OpenPullRequests));
+    }
+
+    public Task<GitHubResult<GitHubConversation>> GetConversationAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
+    {
+        ConversationCalls.Add(number);
+        if (Missing) return Task.FromResult(GitHubResult<GitHubConversation>.NoCli());
+        return Task.FromResult(ConversationError is { } error
+            ? GitHubResult<GitHubConversation>.Failure(error)
+            : GitHubResult<GitHubConversation>.Success(
+                Conversation ?? new GitHubConversation(number, $"#{number}", "octocat", default, string.Empty, [])));
     }
 
     public string? ReviewError { get; set; }

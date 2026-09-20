@@ -17,6 +17,7 @@ public static class CommandIds
     public const string OpenSettings = "workbench.action.openSettings";
     public const string Open = "workbench.action.open";
     public const string OpenPullRequest = "workbench.action.openPullRequest";
+    public const string PullRequestOverview = "workbench.action.pullRequestOverview";
     public const string SubmitReview = "workbench.action.submitReview";
     public const string New = "workbench.action.new";
 
