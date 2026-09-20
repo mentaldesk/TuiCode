@@ -10,13 +10,47 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
     /// <summary>gh's exit code when there's no token for the host.</summary>
     private const int AuthExitCode = 4;
 
+    /// <summary>How many open PRs the <c>opr</c> picker lists.</summary>
+    internal const int ListLimit = 100;
+
     private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromSeconds(10);
 
-    public async Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default)
+    /// <summary>A checkout fetches the PR, so it gets far longer than a query.</summary>
+    private static readonly TimeSpan CheckoutTimeout = TimeSpan.FromMinutes(2);
+
+    public async Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default) =>
+        Interpret(await RunAsync(repoRoot, ["pr", "view", "--json", "number,title,baseRefName,headRefName,statusCheckRollup"], _timeout, cancellationToken));
+
+    public async Task<GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>> ListPullRequestsAsync(string repoRoot, CancellationToken cancellationToken = default)
+    {
+        var listed = await RunAsync(repoRoot,
+            ["pr", "list", "--state", "open", "--limit", $"{ListLimit}", "--json", "number,title,author,headRefName,isCrossRepository"],
+            _timeout, cancellationToken);
+        if (Unavailable<IReadOnlyList<GitHubPullRequestSummary>>(listed) is { } failed) return failed;
+        if (listed.ExitCode != 0) return GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Failure(ErrorMessage(listed));
+
+        // `@me` in a search is resolved by gh itself, so a review requested of a team the user is in counts too.
+        var requested = await RunAsync(repoRoot,
+            ["pr", "list", "--state", "open", "--limit", $"{ListLimit}", "--search", "review-requested:@me", "--json", "number"],
+            _timeout, cancellationToken);
+        if (Unavailable<IReadOnlyList<GitHubPullRequestSummary>>(requested) is { } searchFailed) return searchFailed;
+        if (requested.ExitCode != 0) return GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Failure(ErrorMessage(requested));
+
+        return ParseList(listed.Output, requested.Output);
+    }
+
+    public async Task<GitHubResult<bool>> CheckoutPullRequestAsync(string worktreePath, int number, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(worktreePath, ["pr", "checkout", $"{number}"], CheckoutTimeout, cancellationToken);
+        if (Unavailable<bool>(run) is { } failed) return failed;
+        return run.ExitCode == 0 ? GitHubResult<bool>.Success(true) : GitHubResult<bool>.Failure(ErrorMessage(run));
+    }
+
+    private Task<CliRun> RunAsync(string workingDirectory, string[] arguments, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var info = new ProcessStartInfo(executable)
         {
-            WorkingDirectory = repoRoot,
+            WorkingDirectory = workingDirectory,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -24,22 +58,57 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var argument in (string[])["pr", "view", "--json", "number,title,baseRefName,headRefName,statusCheckRollup"])
+        foreach (var argument in arguments)
             info.ArgumentList.Add(argument);
         // Nothing here can answer a prompt, and an unanswered one would sit until the timeout.
         info.Environment["GH_PROMPT_DISABLED"] = "1";
 
-        var run = await CliProcess.RunAsync("gh", info, _timeout, cancellationToken);
-        return Interpret(run);
+        return CliProcess.RunAsync("gh", info, timeout, cancellationToken);
     }
+
+    /// <summary>The result for a run that never reached GitHub, or null when it did.</summary>
+    private static GitHubResult<T>? Unavailable<T>(CliRun run) =>
+        run.Missing || run.ExitCode == AuthExitCode ? GitHubResult<T>.NoCli()
+        : run.Failure is { } failure ? GitHubResult<T>.Failure(failure)
+        : null;
+
+    /// <summary>Open PRs as <c>gh pr list</c> gives them, flagged by the numbers the review-requested search returned.</summary>
+    internal static GitHubResult<IReadOnlyList<GitHubPullRequestSummary>> ParseList(string json, string requestedJson)
+    {
+        try
+        {
+            using var requestedDocument = JsonDocument.Parse(requestedJson);
+            var requested = requestedDocument.RootElement.EnumerateArray()
+                .Select(pr => pr.GetProperty("number").GetInt32())
+                .ToHashSet();
+
+            using var document = JsonDocument.Parse(json);
+            IReadOnlyList<GitHubPullRequestSummary> summaries = [.. document.RootElement.EnumerateArray().Select(pr =>
+            {
+                var number = pr.GetProperty("number").GetInt32();
+                var author = pr.TryGetProperty("author", out var a) ? Text(a, "login") : null;
+                return new GitHubPullRequestSummary(number, pr.GetProperty("title").GetString() ?? string.Empty, author ?? "",
+                    HeadBranch(pr), requested.Contains(number));
+            })];
+            return GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Success(summaries);
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Failure("gh answered with something we couldn't read");
+        }
+    }
+
+    /// <summary>The PR's branch, or null when it comes from a fork and so names nothing in this repo.</summary>
+    private static string? HeadBranch(JsonElement pullRequest) =>
+        pullRequest.TryGetProperty("isCrossRepository", out var fork) && fork.GetBoolean() ? null
+        : pullRequest.TryGetProperty("headRefName", out var head) ? head.GetString()
+        : null;
 
     /// <summary>gh's answer as a result: no PR, no <c>gh</c> to ask, or the PR.</summary>
     internal static GitHubResult<GitHubPullRequest?> Interpret(CliRun run)
     {
-        if (run.Missing || run.ExitCode == AuthExitCode)
-            return GitHubResult<GitHubPullRequest?>.NoCli();
-        if (run.Failure is { } failure)
-            return GitHubResult<GitHubPullRequest?>.Failure(failure);
+        if (Unavailable<GitHubPullRequest?>(run) is { } failed)
+            return failed;
         if (run.ExitCode == 0)
             return Parse(run.Output);
         // A branch with no PR, and a repo GitHub doesn't host, both mean "nothing to review against".
@@ -89,7 +158,9 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
     }
 
     private static string? Text(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static string ErrorMessage(CliRun run)
     {
