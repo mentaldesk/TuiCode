@@ -59,6 +59,7 @@ public sealed class EditorGroup : Tabs
         {
             field = value;
             foreach (var tab in _byPath.Values) tab.Settings = value;
+            foreach (var diff in _diffs) diff.Settings = value;
         }
     } = EditorSettings.Default;
 
@@ -107,6 +108,27 @@ public sealed class EditorGroup : Tabs
             Add(tab);
         }
         // Refreshes it, via ValueChanged, unless it's already showing.
+        if (ReferenceEquals(Value, tab)) tab.Refresh();
+        else Value = tab;
+        return tab;
+    }
+
+    /// <summary>Opens or focuses the diff of a file deleted in this branch (#182); there's no editor tab and nothing on the right.</summary>
+    public DiffTab CompareDeleted(IFileInfo file, string label, Func<IReadOnlyList<string>> readLeft, string key)
+    {
+        if (FocusDeletedDiff(file, key) is { } open) return open;
+
+        var tab = new DiffTab(file, label, readLeft, _syntax, key) { Settings = Settings };
+        _diffs.Add(tab);
+        Add(tab);
+        Value = tab;
+        return tab;
+    }
+
+    /// <summary>Focuses an open deleted-file diff (#182); null when there is none.</summary>
+    public DiffTab? FocusDeletedDiff(IFileInfo file, string key)
+    {
+        if (_diffs.FirstOrDefault(d => d.IsDeleted && d.LeftKey == key && d.File.FullName == file.FullName) is not { } tab) return null;
         if (ReferenceEquals(Value, tab)) tab.Refresh();
         else Value = tab;
         return tab;

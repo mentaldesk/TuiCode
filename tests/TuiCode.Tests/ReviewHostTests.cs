@@ -102,20 +102,69 @@ public class ReviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Enter_on_a_deleted_file_says_so_and_opens_nothing()
+    public async Task Enter_on_a_deleted_file_opens_its_base_version_with_nothing_on_the_right()
     {
+        _git.RepoFiles["b45e:src/gone.txt"] = "gone1\ngone2\n";
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.FocusReview),
             () => workbench.Sidebar.Review.ListHasFocus,
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.Enter),
-            () => workbench.StatusBar.DisplayedText == "Deleted in this branch");
+            () => group.ActiveDiffTab is { IsFocused: true });
 
-        Assert.Empty(workbench.Editor.Group.Tabs);
-        Assert.Empty(workbench.Editor.Group.DiffTabs);
+        var diff = Assert.Single(group.DiffTabs);
+        Assert.True(diff.IsDeleted);
+        Assert.Equal("gone.txt \u2194 main (deleted)", diff.Title);
+        Assert.All(diff.Diff.Rows, r => Assert.Equal(DiffRowKind.LeftOnly, r.Kind));
+        Assert.Empty(group.Tabs);
+    }
+
+    [Fact]
+    public async Task Go_to_line_in_a_deleted_file_s_diff_says_so_and_opens_nothing()
+    {
+        _git.RepoFiles["b45e:src/gone.txt"] = "gone1\ngone2\n";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.CursorDown),
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.StatusBar.DisplayedText.StartsWith("Deleted in this branch", StringComparison.Ordinal));
+
+        Assert.Empty(group.Tabs);
+        Assert.Same(group.DiffTabs[0], group.ActiveDiffTab);
+    }
+
+    [Fact]
+    public async Task Enter_on_a_deleted_file_again_focuses_the_diff_it_already_opened()
+    {
+        _git.RepoFiles["b45e:src/gone.txt"] = "gone1\ngone2\n";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.CursorDown),
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true },
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true });
+
+        Assert.Single(group.DiffTabs);
+        Assert.Equal(1, _git.ShowCount);
     }
 
     [Fact]
