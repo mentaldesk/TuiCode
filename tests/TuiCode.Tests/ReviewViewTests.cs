@@ -1,3 +1,4 @@
+using Terminal.Gui.Drawing;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Review;
 
@@ -8,6 +9,7 @@ public class ReviewViewTests
 {
     private readonly MockFileSystem _fs = new();
     private readonly FakeGitCli _git = new() { Root = "/work" };
+    private readonly FakeGitHubCli _gitHub = new();
 
     public ReviewViewTests() => _fs.AddDirectory("/work");
 
@@ -118,7 +120,104 @@ public class ReviewViewTests
         Assert.False(view.Files.IsExpanded(folder));
     }
 
-    private ReviewView Build() => new(_git) { RootProvider = () => _fs.DirectoryInfo.New("/work") };
+    [Fact]
+    public async Task A_pull_request_puts_its_number_title_branches_and_checks_above_the_files()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.PullRequest = new GitHubPullRequest(132, "Command scopes should be fixed", "main", "feature", new GitHubChecks(11, 1, 2));
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal("#132 Command scopes should be fixed", view.TitleText);
+        Assert.Equal("main ← feature", view.HeaderText);
+        Assert.Equal("✓ 11  ✗ 1  ● 2 checks", view.ChecksText);
+        Assert.Equal("", view.HintText);
+        Assert.True(view.Files.Visible);
+    }
+
+    [Fact]
+    public async Task Without_a_pull_request_only_the_branch_line_shows()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal("feature ← main  (no PR)", view.HeaderText);
+        Assert.Equal("", view.TitleText);
+        Assert.Equal("", view.ChecksText);
+        Assert.Equal("", view.HintText);
+    }
+
+    [Fact]
+    public async Task Without_gh_the_files_still_show_and_the_hint_says_how_to_get_pull_requests()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.Missing = true;
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal("Pull requests need the GitHub CLI: run gh auth login", view.HintText);
+        Assert.Equal("feature ← main  (no PR)", view.HeaderText);
+        Assert.True(view.Files.Visible);
+    }
+
+    [Fact]
+    public async Task The_hint_is_drawn_faint()
+    {
+        _gitHub.Missing = true;
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.True(view.Hint.GetAttributeForRole(VisualRole.Normal).Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public async Task Outside_a_git_repo_gh_is_never_asked()
+    {
+        _git.Root = null;
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal(0, _gitHub.Calls);
+    }
+
+    [Fact]
+    public async Task A_pull_request_against_another_base_lists_the_files_against_that_base()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.PullRequest = new GitHubPullRequest(9, "Fix", "release/1.0", "feature", default);
+        _git.Resolvable.Add("origin/release/1.0");
+        _git.MergeBases["origin/release/1.0"] = "cafe";
+        _git.ChangesByRevision["cafe"] = [new GitChange(GitChangeKind.Added, "b.txt")];
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal("release/1.0 ← feature", view.HeaderText);
+        Assert.Equal("origin/release/1.0", view.Review?.Base);
+        Assert.Equal("cafe", view.Review?.MergeBase);
+        Assert.Equal(["A b.txt"], Rows(view));
+    }
+
+    [Fact]
+    public async Task A_pull_request_that_gh_cant_answer_for_leaves_the_files_alone_and_says_why()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.Error = "HTTP 502: Bad gateway";
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal("HTTP 502: Bad gateway", view.HintText);
+        Assert.Equal(["M a.txt"], Rows(view));
+    }
+
+    private ReviewView Build() => new(_git, _gitHub) { RootProvider = () => _fs.DirectoryInfo.New("/work") };
 
     private static List<string> Rows(ReviewView view) =>
         view.Files.Objects!.SelectMany(n => n is ReviewFolderNode

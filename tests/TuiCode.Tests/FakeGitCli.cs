@@ -20,6 +20,12 @@ internal sealed class FakeGitCli : IGitCli
     public string? MergeBase { get; set; } = "b45e";
     public IReadOnlyList<GitChange> Changes { get; set; } = [];
 
+    /// <summary>Merge base by the revision asked about, for the tests that compare two bases; else <see cref="MergeBase"/>.</summary>
+    public Dictionary<string, string> MergeBases { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Changed files by revision, for the tests that compare two bases; else <see cref="Changes"/>.</summary>
+    public Dictionary<string, IReadOnlyList<GitChange>> ChangesByRevision { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Content by <c>revision:repoPath</c>.</summary>
     public Dictionary<string, string> RepoFiles { get; } = new(StringComparer.Ordinal);
 
@@ -51,10 +57,10 @@ internal sealed class FakeGitCli : IGitCli
         Task.FromResult(GitResult<string?>.Success(DefaultBranch));
 
     public Task<GitResult<string?>> GetMergeBaseAsync(string path, string first, string second, CancellationToken cancellationToken = default) =>
-        Task.FromResult(GitResult<string?>.Success(MergeBase));
+        Task.FromResult(GitResult<string?>.Success(MergeBases.GetValueOrDefault(second) ?? MergeBase));
 
     public Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default) =>
-        Task.FromResult(GitResult<IReadOnlyList<GitChange>>.Success(Changes));
+        Task.FromResult(GitResult<IReadOnlyList<GitChange>>.Success(ChangesByRevision.GetValueOrDefault(revision) ?? Changes));
 
     public Task<GitResult<string?>> ShowRepoFileAsync(string repoRoot, string repoPath, string revision, CancellationToken cancellationToken = default)
     {
