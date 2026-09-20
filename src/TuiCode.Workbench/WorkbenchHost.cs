@@ -279,6 +279,10 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.NextChange, "Next change", () => MoveToChange(1), CommandScope.Diff);
         _commands.Register(CommandIds.PreviousChange, "Previous change", () => MoveToChange(-1), CommandScope.Diff);
         _commands.Register(CommandIds.GoToChangeLine, "Go to line in file", GoToChangeLine, CommandScope.Diff);
+        _commands.Register(CommandIds.ScrollDiffLeft, "Scroll diff left", () => ScrollDiff(-1), CommandScope.Diff);
+        _commands.Register(CommandIds.ScrollDiffRight, "Scroll diff right", () => ScrollDiff(1), CommandScope.Diff);
+        _commands.Register(CommandIds.ScrollDiffPageLeft, "Scroll diff a page left", () => ScrollDiff(-1, page: true), CommandScope.Diff);
+        _commands.Register(CommandIds.ScrollDiffPageRight, "Scroll diff a page right", () => ScrollDiff(1, page: true), CommandScope.Diff);
         _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision);
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)));
@@ -436,6 +440,10 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Alt+CursorDown", CommandIds.NextChange);
         keybindings.Bind("Alt+CursorUp", CommandIds.PreviousChange);
         keybindings.Bind("Enter", CommandIds.GoToChangeLine);
+        keybindings.Bind("CursorLeft", CommandIds.ScrollDiffLeft);
+        keybindings.Bind("CursorRight", CommandIds.ScrollDiffRight);
+        keybindings.Bind("Shift+CursorLeft", CommandIds.ScrollDiffPageLeft);
+        keybindings.Bind("Shift+CursorRight", CommandIds.ScrollDiffPageRight);
 
         keybindings.Bind("Enter", CommandIds.SearchFocusResults);
         keybindings.Bind("CursorDown", CommandIds.SearchFocusResults);
@@ -1218,6 +1226,10 @@ public sealed class WorkbenchHost : IDisposable
             if ((refs.Result.Error ?? history.Result.Error) is { } error) view.ShowError(error);
         });
     }
+
+    // Scoped commands, not the view's own bindings: the tab header claims Left/Right first (#193).
+    private void ScrollDiff(int direction, bool page = false) =>
+        _workbench.Editor.Group.ActiveDiffTab?.ScrollSideways(direction, page);
 
     private void MoveToChange(int direction)
     {

@@ -69,6 +69,26 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Right_scrolls_a_revision_diff_sideways()
+    {
+        _fs.AddFile("/work/long.txt", new MockFileData("alpha " + new string('x', 400) + "\n"));
+        _git.Files["HEAD"] = "bravo " + new string('x', 400) + "\n";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/long.txt")),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench) is not null,
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.Editor.Group.ActiveDiffTab is not null,
+            () => host.App.InjectKey(Key.CursorRight),
+            () => host.App.InjectKey(Key.CursorRight));
+
+        Assert.Equal(2, Assert.Single(workbench.Editor.Group.DiffTabs).LeftColumn);
+    }
+
+    [Fact]
     public async Task Typing_HEAD_picks_HEAD_over_a_branch_it_also_matches()
     {
         _git.Refs = [new GitRef("feature/header", GitRefKind.Branch), .. _git.Refs];
