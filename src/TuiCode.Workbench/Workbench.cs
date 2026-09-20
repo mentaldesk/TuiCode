@@ -78,6 +78,7 @@ public sealed class Workbench : Window
     {
         if (tab is not null) StatusBar.SetMessage(tab.File.FullName);
         else if (Editor.Group.ActiveDiffTab is { } diff) StatusBar.SetMessage(diff.Title);
+        else if (Editor.Group.ActiveDocumentTab is { } document) StatusBar.SetMessage(document.Title);
         StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
     }
 
@@ -179,11 +180,9 @@ public sealed class Workbench : Window
     {
         if (_workspaceState is null || _workspaceFolder is null) return;
         var group = Editor.Group;
-        // A read-only document (#185) has no file to reopen.
-        var active = group.ActiveTab ?? group.ActiveDiffTab?.Source;
         _workspaceState.Save(_workspaceFolder, new WorkspaceState(
-            group.Tabs.Where(t => !t.IsReadOnly).Select(t => t.File.FullName).ToList(),
-            active is { IsReadOnly: false } ? active.File.FullName : null));
+            group.Tabs.Select(t => t.File.FullName).ToList(),
+            (group.ActiveTab ?? group.ActiveDiffTab?.Source)?.File.FullName));
     }
 
     protected override void Dispose(bool disposing)

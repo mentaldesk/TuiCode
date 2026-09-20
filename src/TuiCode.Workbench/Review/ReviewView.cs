@@ -16,12 +16,14 @@ public sealed class ReviewView : View
     private readonly Label _header;
     private readonly Label _checks;
     private readonly Label _hint;
+    private readonly Button _overview;
+    private readonly Line _rule;
     private readonly TreeView<ReviewNode> _files;
     private CancellationTokenSource? _loading;
 
     public event EventHandler<(BranchReview Review, GitChange Change)>? FileActivated;
 
-    /// <summary>Raised by Enter on the PR header (#185), for the Overview tab.</summary>
+    /// <summary>Raised by the Overview button (#185), for the Overview tab.</summary>
     public event EventHandler<BranchReview>? PullRequestActivated;
 
     public Func<IDirectoryInfo?>? RootProvider { get; set; }
@@ -38,8 +40,8 @@ public sealed class ReviewView : View
 
     public bool ListHasFocus => _files.HasFocus;
 
-    /// <summary>Whether the PR header is selected; Enter there opens the Overview tab (#185).</summary>
-    public bool HeaderHasFocus => _title.HasFocus;
+    /// <summary>Whether the Overview button is selected; it opens the Overview tab (#185).</summary>
+    public bool OverviewHasFocus => _overview.HasFocus;
 
     internal Label Hint => _hint;
 
@@ -65,6 +67,13 @@ public sealed class ReviewView : View
             e.Result = attribute with { Style = attribute.Style | TextStyle.Faint };
             e.Handled = true;
         };
+        _overview = new Button { X = 0, Y = 0, Height = 1, Text = "Overview", Visible = false, ShadowStyle = ShadowStyles.None };
+        _overview.Accepting += (_, e) =>
+        {
+            e.Handled = true;
+            if (Review is { PullRequest: not null } review) PullRequestActivated?.Invoke(this, review);
+        };
+        _rule = new Line { X = 0, Y = 0, Width = Dim.Fill(), Visible = false };
         _files = new TreeView<ReviewNode>
         {
             X = 0,
@@ -74,16 +83,16 @@ public sealed class ReviewView : View
             Visible = false,
             TreeBuilder = new DelegateTreeBuilder<ReviewNode>(n => n.Children, n => n.Children.Count > 0),
         };
-        Add(_title, _header, _checks, _hint, _files);
+        Add(_title, _header, _checks, _hint, _overview, _rule, _files);
 
         ViewportChanged += (_, _) => ShowTitle();
         _files.Activated += (_, _) => ActivateSelected();
         // Same TG quirk as the explorer: Enter maps to Command.Activate but doesn't raise Activated.
         _files.KeyDown += (_, key) =>
         {
-            if (key == Key.CursorUp && _title.CanFocus && ReferenceEquals(_files.SelectedObject, FirstNode()))
+            if (key == Key.CursorUp && _overview.Visible && ReferenceEquals(_files.SelectedObject, FirstNode()))
             {
-                _title.SetFocus();
+                _overview.SetFocus();
                 key.Handled = true;
                 return;
             }
@@ -91,14 +100,10 @@ public sealed class ReviewView : View
             ActivateSelected();
             key.Handled = true;
         };
-        _title.KeyDown += (_, key) =>
+        _overview.KeyDown += (_, key) =>
         {
-            if (key == Key.Enter && Review is { PullRequest: not null } review)
-                PullRequestActivated?.Invoke(this, review);
-            else if (key == Key.CursorDown && _files.Visible)
-                FocusList();
-            else
-                return;
+            if (key != Key.CursorDown || !_files.Visible) return;
+            FocusList();
             key.Handled = true;
         };
     }
@@ -221,9 +226,11 @@ public sealed class ReviewView : View
             label.Visible = label.Text.Length > 0;
             if (label.Visible) label.Y = row++;
         }
-        // Only a PR has an Overview to open, and only its title line is ever selectable.
-        _title.CanFocus = _title.Visible;
-        if (!_title.CanFocus && _title.HasFocus) FocusList();
+        _overview.Visible = Review is { PullRequest: not null };
+        if (_overview.Visible) _overview.Y = row++;
+        else if (_overview.HasFocus) FocusList();
+        _rule.Visible = row > 0 && _files.Visible;
+        if (_rule.Visible) _rule.Y = row++;
         _files.Y = row;
         SetNeedsDraw();
     }

@@ -5,8 +5,8 @@ using TuiCode.Abstractions;
 namespace TuiCode.Workbench.Review;
 
 /// <summary>
-/// The Overview tab's text (#185): a PR's description and conversation as Markdown, which is what
-/// colours it. Nothing is rendered — the source is what a reviewer reads on GitHub anyway.
+/// The Overview tab's text (#185): a PR's description and conversation as one Markdown document,
+/// which <see cref="TuiCode.Editor.DocumentTab"/> renders.
 /// </summary>
 public static class PullRequestOverview
 {
