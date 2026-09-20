@@ -62,6 +62,7 @@ public class GitCliTests
         Assert.False((await git.GetChangedFilesAsync("/repo", "main", ct)).Succeeded);
         Assert.False((await git.ShowRepoFileAsync("/repo", "a.cs", "main", ct)).Succeeded);
         Assert.False((await git.AddWorktreeAsync("/repo", "/repo/../pr-1", ct)).Succeeded);
+        Assert.False((await git.FindWorktreeAsync("/repo", "main", ct)).Succeeded);
     }
 
     [Fact]
@@ -83,11 +84,33 @@ public class GitCliTests
     }
 
     [Fact]
-    public void ParseWorktrees_reads_the_path_of_each_worktree_in_the_porcelain_listing()
+    public void ParseWorktrees_reads_the_path_and_branch_of_each_worktree_in_the_porcelain_listing()
     {
         var output = "worktree /code/TuiCode/main\nHEAD abc\nbranch refs/heads/main\n\nworktree /code/pr-184\nHEAD def\ndetached\n";
 
-        Assert.Equal(["/code/TuiCode/main", "/code/pr-184"], GitCli.ParseWorktrees(output));
+        Assert.Equal(
+        [
+            new GitCli.Worktree("/code/TuiCode/main", "main"),
+            new GitCli.Worktree("/code/pr-184", null),
+        ], GitCli.ParseWorktrees(output));
+    }
+
+    [Fact]
+    public async Task A_branch_already_checked_out_is_found_by_the_worktree_it_is_in()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        repo.Git("worktree", "add", "-q", "-b", "feature", repo.File("feature"));
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var found = await git.FindWorktreeAsync(repo.Path, "feature", ct);
+        var missing = await git.FindWorktreeAsync(repo.Path, "no-such-branch", ct);
+
+        Assert.Equal("feature", Path.GetFileName(found.Value));
+        Assert.True(File.Exists(Path.Combine(found.Value!, "a.cs")));
+        Assert.True(missing.Succeeded);
+        Assert.Null(missing.Value);
     }
 
     [Fact]

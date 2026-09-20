@@ -42,6 +42,9 @@ public interface IGitCli
     /// True when it was created, false when that path was already one of the repo's worktrees.
     /// </summary>
     Task<GitResult<bool>> AddWorktreeAsync(string repoRoot, string worktreePath, CancellationToken cancellationToken = default);
+
+    /// <summary>The worktree of <paramref name="repoRoot"/> that has <paramref name="branch"/> checked out, or null when none has.</summary>
+    Task<GitResult<string?>> FindWorktreeAsync(string repoRoot, string branch, CancellationToken cancellationToken = default);
 }
 
 public readonly record struct GitResult<T>(T Value, string? Error)

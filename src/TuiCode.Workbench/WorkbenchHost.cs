@@ -1400,20 +1400,18 @@ public sealed class WorkbenchHost : IDisposable
             checkingOut = true;
             view.ShowBusy(pullRequest.Number);
 
-            // Next to the repo, as the pitch decided, so the current checkout and its open tabs are left alone.
-            var worktree = fileSystem.Path.GetFullPath(fileSystem.Path.Combine(repoRoot, "..", $"pr-{pullRequest.Number}"));
-            var checkout = Task.Run(() => CheckOutPullRequestAsync(repoRoot, worktree, pullRequest.Number));
+            var checkout = Task.Run(() => PullRequestWorktreeAsync(fileSystem, repoRoot, pullRequest));
             WhenDone(checkout, () =>
             {
                 checkingOut = false;
                 if (!ReferenceEquals(_activePullRequestPicker, view)) return;
-                if (checkout.Result is { } error)
+                if (checkout.Result.Error is { } error)
                 {
                     view.ShowError(error);
                     return;
                 }
                 ClosePullRequestPicker(view);
-                _workbench.OpenFolder(fileSystem.DirectoryInfo.New(worktree));
+                _workbench.OpenFolder(fileSystem.DirectoryInfo.New(checkout.Result.Value));
                 FocusReview();
             });
         };
@@ -1424,12 +1422,28 @@ public sealed class WorkbenchHost : IDisposable
         view.FocusFilter();
     }
 
-    /// <summary>The worktree, then the PR in it; null once it's checked out. gh creates the branch, so forks work.</summary>
-    private async Task<string?> CheckOutPullRequestAsync(string repoRoot, string worktreePath, int number)
+    /// <summary>
+    /// The worktree to review the PR in: the one that already has its branch checked out, else a new one
+    /// beside the repo with the PR checked out in it. gh creates the branch there, so forks work.
+    /// </summary>
+    private async Task<GitResult<string>> PullRequestWorktreeAsync(IFileSystem fileSystem, string repoRoot, GitHubPullRequestSummary pullRequest)
     {
+        if (pullRequest.HeadBranch is { Length: > 0 } branch)
+        {
+            var existing = await _git.FindWorktreeAsync(repoRoot, branch);
+            if (existing.Error is { } findError) return GitResult<string>.Failure(findError);
+            if (existing.Value is { } found) return GitResult<string>.Success(found);
+        }
+
+        // Next to the repo, as the pitch decided, so the current checkout and its open tabs are left alone.
+        var worktreePath = fileSystem.Path.GetFullPath(fileSystem.Path.Combine(repoRoot, "..", $"pr-{pullRequest.Number}"));
         var worktree = await _git.AddWorktreeAsync(repoRoot, worktreePath);
-        if (worktree.Error is { } error) return error;
-        return (await _gitHub.CheckoutPullRequestAsync(worktreePath, number)).Error;
+        if (worktree.Error is { } error) return GitResult<string>.Failure(error);
+
+        var checkout = await _gitHub.CheckoutPullRequestAsync(worktreePath, pullRequest.Number);
+        return checkout.Error is { } checkoutError
+            ? GitResult<string>.Failure(checkoutError)
+            : GitResult<string>.Success(worktreePath);
     }
 
     private void ClosePullRequestPicker(PullRequestPickerView view)

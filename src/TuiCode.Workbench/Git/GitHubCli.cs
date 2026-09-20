@@ -23,7 +23,9 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
 
     public async Task<GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>> ListPullRequestsAsync(string repoRoot, CancellationToken cancellationToken = default)
     {
-        var listed = await RunAsync(repoRoot, ["pr", "list", "--state", "open", "--limit", $"{ListLimit}", "--json", "number,title,author"], _timeout, cancellationToken);
+        var listed = await RunAsync(repoRoot,
+            ["pr", "list", "--state", "open", "--limit", $"{ListLimit}", "--json", "number,title,author,headRefName,isCrossRepository"],
+            _timeout, cancellationToken);
         if (Unavailable<IReadOnlyList<GitHubPullRequestSummary>>(listed) is { } failed) return failed;
         if (listed.ExitCode != 0) return GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Failure(ErrorMessage(listed));
 
@@ -85,7 +87,8 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
             {
                 var number = pr.GetProperty("number").GetInt32();
                 var author = pr.TryGetProperty("author", out var a) ? Text(a, "login") : null;
-                return new GitHubPullRequestSummary(number, pr.GetProperty("title").GetString() ?? string.Empty, author ?? "", requested.Contains(number));
+                return new GitHubPullRequestSummary(number, pr.GetProperty("title").GetString() ?? string.Empty, author ?? "",
+                    HeadBranch(pr), requested.Contains(number));
             })];
             return GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Success(summaries);
         }
@@ -94,6 +97,12 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
             return GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Failure("gh answered with something we couldn't read");
         }
     }
+
+    /// <summary>The PR's branch, or null when it comes from a fork and so names nothing in this repo.</summary>
+    private static string? HeadBranch(JsonElement pullRequest) =>
+        pullRequest.TryGetProperty("isCrossRepository", out var fork) && fork.GetBoolean() ? null
+        : pullRequest.TryGetProperty("headRefName", out var head) ? head.GetString()
+        : null;
 
     /// <summary>gh's answer as a result: no PR, no <c>gh</c> to ask, or the PR.</summary>
     internal static GitHubResult<GitHubPullRequest?> Interpret(CliRun run)

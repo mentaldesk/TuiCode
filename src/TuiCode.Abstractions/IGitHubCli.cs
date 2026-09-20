@@ -32,8 +32,11 @@ public readonly record struct GitHubResult<T>(T Value, string? Error, bool CliUn
     public static GitHubResult<T> NoCli() => new(default!, "Pull requests need the GitHub CLI: run gh auth login", true);
 }
 
-/// <summary>A PR as the <c>opr</c> picker lists it.</summary>
-public sealed record GitHubPullRequestSummary(int Number, string Title, string Author, bool ReviewRequested = false);
+/// <summary>
+/// A PR as the <c>opr</c> picker lists it. <c>HeadBranch</c> is null for a PR from a fork, whose branch name
+/// means nothing here and can collide with an unrelated local branch.
+/// </summary>
+public sealed record GitHubPullRequestSummary(int Number, string Title, string Author, string? HeadBranch = null, bool ReviewRequested = false);
 
 public sealed record GitHubPullRequest(int Number, string Title, string BaseBranch, string HeadBranch, GitHubChecks Checks);
 

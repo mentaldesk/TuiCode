@@ -71,6 +71,21 @@ public class GitHubCliTests
     }
 
     [Fact]
+    public void ParseList_keeps_the_branch_of_a_pull_request_from_this_repo_and_none_from_a_fork()
+    {
+        const string json = """
+        [
+          { "number": 132, "title": "t", "author": { "login": "a" }, "headRefName": "fix-scopes", "isCrossRepository": false },
+          { "number": 129, "title": "t", "author": { "login": "b" }, "headRefName": "main", "isCrossRepository": true }
+        ]
+        """;
+
+        var result = GitHubCli.ParseList(json, "[]");
+
+        Assert.Equal(["fix-scopes", null], result.Value.Select(pr => pr.HeadBranch));
+    }
+
+    [Fact]
     public void ParseList_of_a_pull_request_with_no_author_leaves_the_author_blank()
     {
         var result = GitHubCli.ParseList("""[{"number":1,"title":"t","author":null}]""", "[]");

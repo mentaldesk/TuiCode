@@ -149,7 +149,7 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
                 return GitResult<bool>.Failure(ErrorMessage(listed));
 
             if (await WorktreeRootAsync(worktreePath, cancellationToken) is { } existing
-                && ParseWorktrees(listed.Output).Contains(existing, StringComparer.Ordinal))
+                && ParseWorktrees(listed.Output).Any(w => string.Equals(w.Path, existing, StringComparison.Ordinal)))
                 return GitResult<bool>.Success(false);
         }
 
@@ -158,6 +158,16 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return added.Failure is null && added.ExitCode == 0
             ? GitResult<bool>.Success(true)
             : GitResult<bool>.Failure(ErrorMessage(added));
+    }
+
+    public async Task<GitResult<string?>> FindWorktreeAsync(string repoRoot, string branch, CancellationToken cancellationToken = default)
+    {
+        var listed = await RunAsync(repoRoot, ["worktree", "list", "--porcelain"], cancellationToken);
+        if (listed.Failure is not null || listed.ExitCode != 0)
+            return GitResult<string?>.Failure(ErrorMessage(listed));
+
+        return GitResult<string?>.Success(ParseWorktrees(listed.Output)
+            .FirstOrDefault(w => string.Equals(w.Branch, branch, StringComparison.Ordinal))?.Path);
     }
 
     /// <summary>
@@ -176,11 +186,27 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return lines.Length > 1 && lines[0].Length > 0 && lines[1].Length == 0 ? lines[0] : null;
     }
 
-    internal static IEnumerable<string> ParseWorktrees(string output) =>
-        output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.TrimEnd('\r'))
-            .Where(line => line.StartsWith("worktree ", StringComparison.Ordinal))
-            .Select(line => line["worktree ".Length..]);
+    /// <summary>A worktree as <c>worktree list --porcelain</c> reports it; <see cref="Branch"/> is null when its HEAD is detached.</summary>
+    internal sealed record Worktree(string Path, string? Branch);
+
+    internal static IReadOnlyList<Worktree> ParseWorktrees(string output)
+    {
+        const string head = "worktree ", onBranch = "branch refs/heads/";
+        var worktrees = new List<Worktree>();
+        string? path = null, branch = null;
+        foreach (var line in output.Split('\n').Select(l => l.TrimEnd('\r')))
+        {
+            if (line.StartsWith(head, StringComparison.Ordinal))
+            {
+                if (path is not null) worktrees.Add(new Worktree(path, branch));
+                (path, branch) = (line[head.Length..], null);
+            }
+            else if (line.StartsWith(onBranch, StringComparison.Ordinal))
+                branch = line[onBranch.Length..];
+        }
+        if (path is not null) worktrees.Add(new Worktree(path, branch));
+        return worktrees;
+    }
 
     /// <summary>Reads <c>--name-status -z</c>: a status, then one path, or two for a rename or copy. A copy counts as added.</summary>
     internal static IReadOnlyList<GitChange> ParseChanges(string output)

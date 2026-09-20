@@ -23,8 +23,8 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
         _git.Changes = [new GitChange(GitChangeKind.Modified, "b.txt")];
         _gitHub.OpenPullRequests =
         [
-            new GitHubPullRequestSummary(132, "Command scopes should be fixed", "jamescrosswell", ReviewRequested: true),
-            new GitHubPullRequestSummary(129, "Delete, rename and move files", "octocat"),
+            new GitHubPullRequestSummary(132, "Command scopes should be fixed", "jamescrosswell", "fix-scopes", ReviewRequested: true),
+            new GitHubPullRequestSummary(129, "Delete, rename and move files", "octocat", "delete-rename"),
         ];
     }
 
@@ -67,6 +67,27 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
         Assert.Equal([worktree], _git.Worktrees);
         Assert.Equal([(worktree, 129)], _gitHub.Checkouts);
         Assert.Equal(worktree, workbench.Sidebar.Explorer.Root?.FullName);
+        Assert.Equal(SidebarTab.Review, workbench.Sidebar.ActiveTab);
+    }
+
+    [Fact]
+    public async Task A_pull_request_whose_branch_is_already_checked_out_opens_that_worktree_instead()
+    {
+        var existing = _fs.Path.GetFullPath("/opr");
+        _fs.AddFile("/opr/b.txt", new MockFileData("bravo\n"));
+        _git.BranchWorktrees["fix-scopes"] = existing;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.OpenPullRequest),
+            () => Picker(workbench) is not null,
+            () => host.App.InjectKey(Key.Enter),
+            () => Picker(workbench) is null);
+
+        Assert.Empty(_git.Worktrees);
+        Assert.Empty(_gitHub.Checkouts);
+        Assert.Equal(existing, workbench.Sidebar.Explorer.Root?.FullName);
         Assert.Equal(SidebarTab.Review, workbench.Sidebar.ActiveTab);
     }
 
