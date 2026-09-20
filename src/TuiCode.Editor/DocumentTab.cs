@@ -1,3 +1,5 @@
+using System.Drawing;
+
 namespace TuiCode.Editor;
 
 /// <summary>
@@ -16,7 +18,7 @@ public sealed class DocumentTab : FrameView
         BorderStyle = LineStyle.None;
         CanFocus = true;
 
-        _markdown = new Markdown
+        _markdown = new ScrolledMarkdown
         {
             X = 0,
             Y = 0,
@@ -35,4 +37,18 @@ public sealed class DocumentTab : FrameView
     internal int RenderedLines => _markdown.LineCount;
 
     public bool FocusContent() => _markdown.SetFocus();
+
+    /// <summary>
+    /// Reports what it drew from the viewport, not the content origin: TG 2.1.0's <see cref="Markdown"/> uses
+    /// the latter, which once scrolled sits above the view and clips the neighbouring tab's header away.
+    /// </summary>
+    private sealed class ScrolledMarkdown : Markdown
+    {
+        protected override bool OnDrawingContent(DrawContext? context)
+        {
+            base.OnDrawingContent(null);
+            context?.AddDrawnRectangle(ViewportToScreen(new Rectangle(Point.Empty, Viewport.Size)));
+            return true;
+        }
+    }
 }
