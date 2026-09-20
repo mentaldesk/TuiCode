@@ -94,7 +94,7 @@ public class ReviewThreadsHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Enter_on_a_files_outdated_threads_opens_them_in_a_read_only_tab()
+    public async Task Enter_on_a_files_outdated_threads_opens_them_in_a_document()
     {
         _gitHub.ReviewThreads = [Thread(2, "Does this hold?"), Thread(null, "Gone now.", outdated: true)];
         using var workbench = BuildWorkbench();
@@ -107,13 +107,13 @@ public class ReviewThreadsHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.Enter),
-            () => workbench.Editor.Group.ActiveTab is { Title: "#186 Outdated: src/a.txt" });
+            () => workbench.Editor.Group.ActiveDocumentTab is { Title: "#186 Outdated: src/a.txt" });
 
-        var tab = workbench.Editor.Group.ActiveTab!;
-        Assert.True(tab.IsReadOnly);
-        Assert.Equal("# #186 outdated threads on src/a.txt", tab.Lines[0]);
-        Assert.Contains("Gone now.", tab.Lines);
-        Assert.DoesNotContain("Does this hold?", tab.Lines);
+        var tab = workbench.Editor.Group.ActiveDocumentTab!;
+        Assert.StartsWith("# #186 outdated threads on src/a.txt", tab.Content);
+        Assert.Contains("Gone now.", tab.Content);
+        Assert.DoesNotContain("Does this hold?", tab.Content);
+        Assert.Empty(workbench.Editor.Group.Tabs);
     }
 
     private static GitHubReviewThread Thread(int? line, string body, int replies = 0, bool resolved = false, bool outdated = false) =>

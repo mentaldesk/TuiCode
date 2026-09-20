@@ -28,7 +28,7 @@ public class ReviewOverviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Enter_on_the_PR_header_opens_its_conversation_in_a_read_only_Markdown_tab()
+    public async Task The_Overview_button_opens_the_PRs_conversation_as_a_document()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -38,14 +38,16 @@ public class ReviewOverviewHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusReview),
             () => review.TitleText.Length > 0,
             () => host.App.InjectKey(Key.CursorUp),
-            () => review.HeaderHasFocus,
+            () => review.OverviewHasFocus,
             () => host.App.InjectKey(Key.Enter),
-            () => workbench.Editor.Group.ActiveTab is { Title: "#183 Overview" });
+            () => workbench.Editor.Group.ActiveDocumentTab is { Title: "#183 Overview" });
 
-        var tab = Assert.Single(workbench.Editor.Group.Tabs);
-        Assert.True(tab.IsReadOnly);
-        Assert.Equal("markdown", tab.Grammar?.Id);
-        Assert.Equal(["# #183 Review tab shows the PR", "", "jamescrosswell · 2026-09-20 06:54", "", "What it does.", ""], tab.Lines);
+        var tab = workbench.Editor.Group.ActiveDocumentTab!;
+        // The document is LF on every OS; a raw literal here would be CRLF in a Windows checkout.
+        Assert.Equal(
+            string.Join('\n', ["# #183 Review tab shows the PR", "", "jamescrosswell · 2026-09-20 06:54", "", "What it does.", ""]),
+            tab.Content);
+        Assert.Empty(workbench.Editor.Group.Tabs);
         Assert.Equal([183], _gitHub.ConversationCalls);
     }
 
@@ -61,19 +63,47 @@ public class ReviewOverviewHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusReview),
             () => review.TitleText.Length > 0,
             () => host.App.InjectKey(Key.CursorUp),
-            () => review.HeaderHasFocus,
+            () => review.OverviewHasFocus,
             () => host.App.InjectKey(Key.Enter),
-            () => group.ActiveTab is { Title: "#183 Overview" },
+            () => group.ActiveDocumentTab is { Title: "#183 Overview" },
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
             () => commands.TryExecute(CommandIds.FocusReview),
             () => review.ListHasFocus,
             () => host.App.InjectKey(Key.CursorUp),
-            () => review.HeaderHasFocus,
+            () => review.OverviewHasFocus,
             () => host.App.InjectKey(Key.Enter),
-            () => group.ActiveTab is { Title: "#183 Overview" });
+            () => group.ActiveDocumentTab is { Title: "#183 Overview" });
 
-        Assert.Equal(["#183 Overview", "a.txt"], group.Tabs.Select(t => t.Title));
+        Assert.Equal(["a.txt"], group.Tabs.Select(t => t.Title));
         Assert.Equal([183], _gitHub.ConversationCalls);
+    }
+
+    [Fact]
+    public async Task The_pro_mnemonic_opens_the_overview_without_the_review_tab()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.PullRequestOverview),
+            () => workbench.Editor.Group.ActiveDocumentTab is { Title: "#183 Overview" });
+
+        Assert.Equal([183], _gitHub.ConversationCalls);
+    }
+
+    [Fact]
+    public async Task Without_a_PR_the_pro_mnemonic_says_so()
+    {
+        _gitHub.PullRequest = null;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.PullRequestOverview),
+            () => workbench.StatusBar.DisplayedText == "No pull request for this branch.");
+
+        Assert.Null(workbench.Editor.Group.ActiveDocumentTab);
+        Assert.Empty(_gitHub.ConversationCalls);
     }
 
     [Fact]
@@ -82,69 +112,32 @@ public class ReviewOverviewHostTests : StaticConfigurationTest
         _gitHub.ConversationError = "GraphQL: Could not resolve to a PullRequest";
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        var review = workbench.Sidebar.Review;
 
         await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.FocusReview),
-            () => review.TitleText.Length > 0,
-            () => host.App.InjectKey(Key.CursorUp),
-            () => review.HeaderHasFocus,
-            () => host.App.InjectKey(Key.Enter),
-            () => workbench.Editor.Group.ActiveTab is { Title: "#183 Overview" });
+            () => commands.TryExecute(CommandIds.PullRequestOverview),
+            () => workbench.Editor.Group.ActiveDocumentTab is { Title: "#183 Overview" });
 
-        Assert.Equal("GraphQL: Could not resolve to a PullRequest", workbench.Editor.Group.ActiveTab!.Lines[0]);
+        Assert.Equal("GraphQL: Could not resolve to a PullRequest", workbench.Editor.Group.ActiveDocumentTab!.Content);
     }
 
     [Fact]
-    public async Task A_read_only_tab_cant_be_typed_into_and_isnt_saved_over_the_file_list()
+    public async Task A_document_cant_be_typed_into_and_isnt_saved_over_the_file_list()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        var review = workbench.Sidebar.Review;
 
         await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.FocusReview),
-            () => review.TitleText.Length > 0,
-            () => host.App.InjectKey(Key.CursorUp),
-            () => review.HeaderHasFocus,
-            () => host.App.InjectKey(Key.Enter),
-            () => workbench.Editor.Group.ActiveTab is { Title: "#183 Overview" },
+            () => commands.TryExecute(CommandIds.PullRequestOverview),
+            () => workbench.Editor.Group.ActiveDocumentTab is { Title: "#183 Overview" },
             () => host.App.InjectKey(new Key('x')),
             () => commands.TryExecute(CommandIds.SaveActiveEditor));
 
-        var tab = workbench.Editor.Group.ActiveTab!;
-        Assert.False(tab.IsDirty);
-        Assert.StartsWith("# #183 ", tab.Lines[0]);
+        Assert.StartsWith("# #183 ", workbench.Editor.Group.ActiveDocumentTab!.Content);
         Assert.False(_fs.File.Exists(_fs.Path.Combine(_git.Root!, "#183 Overview")));
     }
 
     [Fact]
-    public async Task The_overview_can_be_searched_with_Ctrl_F_but_not_replaced_in()
-    {
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands);
-        var review = workbench.Sidebar.Review;
-
-        await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.FocusReview),
-            () => review.TitleText.Length > 0,
-            () => host.App.InjectKey(Key.CursorUp),
-            () => review.HeaderHasFocus,
-            () => host.App.InjectKey(Key.Enter),
-            () => workbench.Editor.Group.ActiveTab is { Title: "#183 Overview" },
-            () => commands.TryExecute(CommandIds.ReplaceInFile),
-            () => { foreach (var c in "does") host.App.InjectKey(new Key(c)); },
-            () => workbench.Editor.Group.ActiveTab!.SelectedText == "does",
-            () => host.App.InjectKey(Key.Tab),
-            () => { foreach (var c in "did") host.App.InjectKey(new Key(c)); },
-            () => host.App.InjectKey(Key.Enter));
-
-        Assert.Equal("What it does.", workbench.Editor.Group.ActiveTab!.Lines[4]);
-        Assert.False(workbench.Editor.Group.ActiveTab!.IsDirty);
-    }
-
-    [Fact]
-    public async Task Without_a_PR_the_header_isnt_selectable()
+    public async Task Without_a_PR_there_is_no_Overview_button()
     {
         _gitHub.PullRequest = null;
         using var workbench = BuildWorkbench();
@@ -156,13 +149,13 @@ public class ReviewOverviewHostTests : StaticConfigurationTest
             () => review.ListHasFocus,
             () => host.App.InjectKey(Key.CursorUp));
 
-        Assert.False(review.HeaderHasFocus);
+        Assert.False(review.OverviewHasFocus);
         Assert.True(review.ListHasFocus);
         Assert.Empty(_gitHub.ConversationCalls);
     }
 
     [Fact]
-    public async Task Down_from_the_header_goes_back_to_the_file_list()
+    public async Task Down_from_the_Overview_button_goes_back_to_the_file_list()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -172,11 +165,11 @@ public class ReviewOverviewHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusReview),
             () => review.TitleText.Length > 0,
             () => host.App.InjectKey(Key.CursorUp),
-            () => review.HeaderHasFocus,
+            () => review.OverviewHasFocus,
             () => host.App.InjectKey(Key.CursorDown),
             () => review.ListHasFocus);
 
-        Assert.Empty(workbench.Editor.Group.Tabs);
+        Assert.Null(workbench.Editor.Group.ActiveDocumentTab);
     }
 
     private Workbench.Workbench BuildWorkbench()

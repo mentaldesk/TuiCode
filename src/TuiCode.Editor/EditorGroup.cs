@@ -7,6 +7,7 @@ public sealed class EditorGroup : Tabs
 {
     private readonly Dictionary<string, EditorTab> _byPath = new(StringComparer.Ordinal);
     private readonly List<DiffTab> _diffs = [];
+    private readonly Dictionary<string, DocumentTab> _documents = new(StringComparer.Ordinal);
     private readonly SyntaxHighlighter? _syntax;
 
     public event EventHandler<IFileInfo>? FileSaved;
@@ -22,6 +23,9 @@ public sealed class EditorGroup : Tabs
     public EditorTab? ActiveTab => Value as EditorTab;
 
     public DiffTab? ActiveDiffTab => Value as DiffTab;
+
+    /// <summary>The active read-only document (#185), or null while another kind of tab is active.</summary>
+    public DocumentTab? ActiveDocumentTab => Value as DocumentTab;
 
     public SyntaxHighlighter? Syntax => _syntax;
 
@@ -76,9 +80,25 @@ public sealed class EditorGroup : Tabs
     public EditorTab OpenOrFocus(IFileInfo file) =>
         Focus(file.FullName) ?? Track(new EditorTab(file, _syntax));
 
-    /// <summary>Opens or focuses a read-only document that isn't on disk (#185), like a PR's Overview.</summary>
-    public EditorTab OpenOrFocusDocument(IFileInfo file, string content, SyntaxLanguage? grammar, string? title = null) =>
-        Focus(file.FullName) ?? Track(new EditorTab(file, content, grammar, _syntax, title));
+    /// <summary>Opens a read-only Markdown document that isn't on disk (#185), like a PR's Overview.</summary>
+    public DocumentTab OpenDocument(IFileInfo file, string content, string? title = null)
+    {
+        if (FocusDocument(file.FullName) is { } open) return open;
+
+        var tab = new DocumentTab(file, content, title);
+        _documents[file.FullName] = tab;
+        Add(tab);
+        Value = tab;
+        return tab;
+    }
+
+    /// <summary>Focuses the open document for <paramref name="path"/>; null when there is none.</summary>
+    public DocumentTab? FocusDocument(string path)
+    {
+        if (!_documents.TryGetValue(path, out var tab)) return null;
+        Value = tab;
+        return tab;
+    }
 
     /// <summary>Focuses the open tab for <paramref name="path"/>; null when nothing is open for it.</summary>
     public EditorTab? Focus(string path)
@@ -201,6 +221,7 @@ public sealed class EditorGroup : Tabs
         {
             if (closed is EditorTab e) _byPath.Remove(e.File.FullName);
             if (closed is DiffTab d) _diffs.Remove(d);
+            if (closed is DocumentTab doc) _documents.Remove(doc.File.FullName);
             Remove(closed);
             closed.Dispose();
         }
@@ -226,6 +247,7 @@ public sealed class EditorGroup : Tabs
         }
         _byPath.Clear();
         _diffs.Clear();
+        _documents.Clear();
         ClearValue();
     }
 
@@ -261,6 +283,7 @@ public sealed class EditorGroup : Tabs
     {
         EditorTab tab => tab.FocusContent(),
         DiffTab diff => diff.SetFocus(),
+        DocumentTab document => document.FocusContent(),
         _ => false,
     };
 

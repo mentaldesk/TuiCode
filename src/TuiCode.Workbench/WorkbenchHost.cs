@@ -257,8 +257,9 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
-        // No default key (#184).
+        // No default key (#184, #185).
         _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest);
+        _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         var explorer = _workbench.Sidebar.Explorer;
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
@@ -1285,6 +1286,25 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     /// <summary>
+    /// PR overview (<c>pro</c>): the Review tab's Overview button from anywhere. The review loads
+    /// first when that tab hasn't been shown yet, so the mnemonic works from a cold start.
+    /// </summary>
+    private void ShowPullRequestOverview()
+    {
+        var review = _workbench.Sidebar.Review;
+        if (review.Review is { PullRequest: not null } loaded)
+        {
+            OpenOverview(loaded);
+            return;
+        }
+        WhenDone(review.Refresh(), () =>
+        {
+            if (review.Review is { PullRequest: not null } reloaded) OpenOverview(reloaded);
+            else _workbench.StatusBar.SetMessage("No pull request for this branch.");
+        });
+    }
+
+    /// <summary>
     /// The PR's description and conversation in a read-only Overview tab (#185). It's fetched when the
     /// tab is opened, and whatever gh says instead is shown in the tab, where it can be read in full.
     /// </summary>
@@ -1296,7 +1316,7 @@ public sealed class WorkbenchHost : IDisposable
         var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
         var title = PullRequestOverview.TitleOf(pullRequest.Number);
         var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(review.RepoRoot, title));
-        if (group.Focus(file.FullName) is not null)
+        if (group.FocusDocument(file.FullName) is not null)
         {
             FocusEditorBody();
             return;
@@ -1307,13 +1327,13 @@ public sealed class WorkbenchHost : IDisposable
         WhenDone(loading, () =>
         {
             var text = loading.Result.Error ?? PullRequestOverview.Build(loading.Result.Value);
-            group.OpenOrFocusDocument(file, text, group.Syntax?.LanguageById("markdown"));
+            group.OpenDocument(file, text);
             _workbench.StatusBar.SetMessage(title);
             FocusEditorBody();
         });
     }
 
-    /// <summary>A file's outdated threads (#186) in a read-only tab, since there's no line left to show them on.</summary>
+    /// <summary>A file's outdated threads (#186) in a document tab, since there's no line left to show them on.</summary>
     private void OpenOutdatedThreads(BranchReview review, ReviewOutdatedNode node)
     {
         if (review.PullRequest is not { } pullRequest) return;
@@ -1324,8 +1344,7 @@ public sealed class WorkbenchHost : IDisposable
         // The path only identifies the tab, so it takes neither the separators nor the colon of the title.
         var name = $"#{pullRequest.Number} outdated {node.Change.Path.Replace('/', ' ')}";
         var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(review.RepoRoot, name));
-        group.OpenOrFocusDocument(file, PullRequestOverview.BuildOutdated(pullRequest.Number, node.Change.Path, node.Threads),
-            group.Syntax?.LanguageById("markdown"), title);
+        group.OpenDocument(file, PullRequestOverview.BuildOutdated(pullRequest.Number, node.Change.Path, node.Threads), title);
         FocusEditorBody();
     }
 
