@@ -47,10 +47,10 @@ public sealed class DiffTab : FrameView
         AddCommand(Command.End, () => MoveTo(int.MaxValue));
         AddCommand(Command.ScrollUp, () => ScrollTo(_top - 1));
         AddCommand(Command.ScrollDown, () => ScrollTo(_top + 1));
-        AddCommand(Command.ScrollLeft, () => ScrollSidewaysTo(_column - 1));
-        AddCommand(Command.ScrollRight, () => ScrollSidewaysTo(_column + 1));
-        AddCommand(Command.PageLeft, () => ScrollSidewaysTo(_column - LargeSidewaysStep));
-        AddCommand(Command.PageRight, () => ScrollSidewaysTo(_column + LargeSidewaysStep));
+        AddCommand(Command.ScrollLeft, () => ScrollSideways(-1));
+        AddCommand(Command.ScrollRight, () => ScrollSideways(1));
+        AddCommand(Command.PageLeft, () => ScrollSideways(-1, page: true));
+        AddCommand(Command.PageRight, () => ScrollSideways(1, page: true));
         KeyBindings.Add(Key.CursorUp, Command.Up);
         KeyBindings.Add(Key.CursorDown, Command.Down);
         KeyBindings.Add(Key.CursorLeft, Command.ScrollLeft);
@@ -125,6 +125,10 @@ public sealed class DiffTab : FrameView
 
     /// <summary>Puts the last change in view; false when there are none.</summary>
     public bool LastChange() => ShowChange(Diff.ChangeBlocks.LastOrDefault(-1));
+
+    /// <summary>Scrolls both sides sideways by one column, or by a quarter of the narrower side.</summary>
+    public bool ScrollSideways(int direction, bool page = false) =>
+        ScrollSidewaysTo(_column + direction * (page ? LargeSidewaysStep : 1));
 
     private bool ShowChange(int start)
     {

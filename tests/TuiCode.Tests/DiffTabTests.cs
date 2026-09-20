@@ -528,6 +528,58 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         Assert.StartsWith("a.txt ↔ saved  •  Change 1 of 1", workbench.StatusBar.DisplayedText);
     }
 
+    [Fact]
+    public async Task Right_and_left_scroll_the_diff_sideways_and_stop_at_the_left_edge()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+        var columns = new List<int>();
+
+        await HostSteps.Run(host,
+            () => OpenLongLines(workbench, commands),
+            () => host.App.InjectKey(Key.CursorRight),
+            () => host.App.InjectKey(Key.CursorRight),
+            () => { columns.Add(group.ActiveDiffTab?.LeftColumn ?? -1); },
+            () => host.App.InjectKey(Key.CursorLeft),
+            () => { columns.Add(group.ActiveDiffTab?.LeftColumn ?? -1); },
+            () => host.App.InjectKey(Key.CursorLeft),
+            () => host.App.InjectKey(Key.CursorLeft),
+            () => { columns.Add(group.ActiveDiffTab?.LeftColumn ?? -1); });
+
+        Assert.Equal([2, 1, 0], columns);
+        Assert.Same(Assert.Single(group.DiffTabs), group.ActiveDiffTab);
+        Assert.Null(group.ActiveTab);
+    }
+
+    [Fact]
+    public async Task Shift_right_scrolls_a_quarter_of_the_narrower_side()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+        var stepped = 0;
+
+        await HostSteps.Run(host,
+            () => OpenLongLines(workbench, commands),
+            () => host.App.InjectKey(Key.CursorRight.WithShift),
+            () => { stepped = group.ActiveDiffTab?.LeftColumn ?? -1; },
+            () => host.App.InjectKey(Key.CursorLeft.WithShift));
+
+        Assert.True(stepped > 1, $"Shift+Right moved {stepped} columns");
+        Assert.Equal(0, group.ActiveDiffTab!.LeftColumn);
+    }
+
+    // Long enough that the sideways scroll isn't clamped away at any terminal width the tests run at.
+    private void OpenLongLines(Workbench.Workbench workbench, CommandService commands)
+    {
+        var saved = Enumerable.Range(1, 5).Select(i => $"line {i} " + new string('x', 400)).ToList();
+        _fs.AddFile("/work/a.txt", new MockFileData(string.Join('\n', saved)));
+        workbench.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+        workbench.Editor.Group.ActiveTab!.Content = string.Join('\n', saved).Replace("line 2 ", "LINE 2 ");
+        commands.TryExecute(CommandIds.CompareToSaved);
+    }
+
     private const string ThreeChangesStatus = "a.txt ↔ saved  •  Change {0} of 3  •  Alt+CursorDown next  Alt+CursorUp prev  Enter go to line";
 
     [Fact]
