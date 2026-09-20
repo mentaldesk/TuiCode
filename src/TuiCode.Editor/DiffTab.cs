@@ -33,6 +33,7 @@ public sealed class DiffTab : FrameView
     private IReadOnlyList<GitHubReviewThread> _threads = [];
     private readonly HashSet<GitHubReviewThread> _expanded = [];
     private List<Row> _rows = [];
+    private List<GitHubReviewThread> _placed = [];
     private int _top;
     private int _current;
     private int _column;
@@ -124,7 +125,7 @@ public sealed class DiffTab : FrameView
     private readonly record struct Row(int Diff, GitHubReviewThread? Thread, ThreadRow Text);
 
     /// <summary>The review threads shown under the lines they're on, top to bottom (#186).</summary>
-    public IReadOnlyList<GitHubReviewThread> Threads => [.. _rows.Select(r => r.Thread).OfType<GitHubReviewThread>().Distinct()];
+    public IReadOnlyList<GitHubReviewThread> Threads => _placed;
 
     /// <summary>The thread the current row belongs to, or null on a row of the diff itself.</summary>
     public GitHubReviewThread? CurrentThread => _current < _rows.Count ? _rows[_current].Thread : null;
@@ -268,13 +269,17 @@ public sealed class DiffTab : FrameView
         }
 
         _rows = [];
+        _placed = [];
         for (var i = 0; i < Diff.Rows.Count; i++)
         {
             _rows.Add(new Row(i, null, default));
             if (!byRow.TryGetValue(i, out var threads)) continue;
             foreach (var thread in threads)
+            {
+                _placed.Add(thread);
                 foreach (var text in ReviewThreadRows.For(thread, _expanded.Contains(thread)))
                     _rows.Add(new Row(i, thread, text));
+            }
         }
     }
 
