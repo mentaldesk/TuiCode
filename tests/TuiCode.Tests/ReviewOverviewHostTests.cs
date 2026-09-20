@@ -43,16 +43,10 @@ public class ReviewOverviewHostTests : StaticConfigurationTest
             () => workbench.Editor.Group.ActiveDocumentTab is { Title: "#183 Overview" });
 
         var tab = workbench.Editor.Group.ActiveDocumentTab!;
+        // The document is LF on every OS; a raw literal here would be CRLF in a Windows checkout.
         Assert.Equal(
-            """
-            # #183 Review tab shows the PR
-
-            jamescrosswell · 2026-09-20 06:54
-
-            What it does.
-
-            """,
-            tab.Content.ReplaceLineEndings("\n"));
+            string.Join('\n', ["# #183 Review tab shows the PR", "", "jamescrosswell · 2026-09-20 06:54", "", "What it does.", ""]),
+            tab.Content);
         Assert.Empty(workbench.Editor.Group.Tabs);
         Assert.Equal([183], _gitHub.ConversationCalls);
     }
