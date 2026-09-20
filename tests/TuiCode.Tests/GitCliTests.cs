@@ -61,6 +61,7 @@ public class GitCliTests
         Assert.False((await git.GetMergeBaseAsync("/repo", "HEAD", "main", ct)).Succeeded);
         Assert.False((await git.GetChangedFilesAsync("/repo", "main", ct)).Succeeded);
         Assert.False((await git.ShowRepoFileAsync("/repo", "a.cs", "main", ct)).Succeeded);
+        Assert.False((await git.AddWorktreeAsync("/repo", "/repo/../pr-1", ct)).Succeeded);
     }
 
     [Fact]
@@ -79,6 +80,46 @@ public class GitCliTests
             new GitChange(GitChangeKind.Added, "f.cs"),
             new GitChange(GitChangeKind.Modified, "g"),
         ], changes);
+    }
+
+    [Fact]
+    public void ParseWorktrees_reads_the_path_of_each_worktree_in_the_porcelain_listing()
+    {
+        var output = "worktree /code/TuiCode/main\nHEAD abc\nbranch refs/heads/main\n\nworktree /code/pr-184\nHEAD def\ndetached\n";
+
+        Assert.Equal(["/code/TuiCode/main", "/code/pr-184"], GitCli.ParseWorktrees(output));
+    }
+
+    [Fact]
+    public async Task A_worktree_is_created_once_and_reused_after_that()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        var worktree = repo.File("pr-184");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var created = await git.AddWorktreeAsync(repo.Path, worktree, ct);
+        var reused = await git.AddWorktreeAsync(repo.Path, worktree, ct);
+
+        Assert.True(created.Value);
+        Assert.False(reused.Value);
+        Assert.True(reused.Succeeded);
+        Assert.True(File.Exists(Path.Combine(worktree, "a.cs")));
+    }
+
+    [Fact]
+    public async Task A_worktree_over_a_path_that_is_in_the_way_fails_with_git_s_own_message()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        repo.Write("pr-184/stray.txt", "in the way\n");
+        var git = new GitCli(new FileSystem());
+
+        var result = await git.AddWorktreeAsync(repo.Path, repo.File("pr-184"), TestContext.Current.CancellationToken);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("pr-184", result.Error);
     }
 
     [Fact]

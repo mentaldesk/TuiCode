@@ -1,7 +1,7 @@
 namespace TuiCode.Abstractions;
 
 /// <summary>
-/// Read-only queries against the <c>git</c> CLI. Every call returns a <see cref="GitResult{T}"/>:
+/// The <c>git</c> CLI: read-only queries, plus the one write <c>opr</c> needs. Every call returns a <see cref="GitResult{T}"/>:
 /// a missing <c>git</c>, a non-zero exit or a timeout is a failure with a message fit for the
 /// status bar, never an exception.
 /// </summary>
@@ -36,6 +36,12 @@ public interface IGitCli
 
     /// <summary>The content of <paramref name="repoPath"/> (relative to <paramref name="repoRoot"/>) at <paramref name="revision"/>, or null when it isn't there.</summary>
     Task<GitResult<string?>> ShowRepoFileAsync(string repoRoot, string repoPath, string revision, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A worktree of <paramref name="repoRoot"/> at <paramref name="worktreePath"/>, detached at <c>HEAD</c>.
+    /// True when it was created, false when that path was already one of the repo's worktrees.
+    /// </summary>
+    Task<GitResult<bool>> AddWorktreeAsync(string repoRoot, string worktreePath, CancellationToken cancellationToken = default);
 }
 
 public readonly record struct GitResult<T>(T Value, string? Error)

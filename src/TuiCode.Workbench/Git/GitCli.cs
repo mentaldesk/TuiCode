@@ -9,6 +9,9 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
 {
     internal const int HistoryLimit = 200;
 
+    /// <summary>Writing out a worktree copies a whole checkout, so it gets far longer than a query.</summary>
+    private static readonly TimeSpan CheckoutTimeout = TimeSpan.FromMinutes(2);
+
     private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromSeconds(5);
 
     public async Task<GitResult<string?>> GetRepoRootAsync(string path, CancellationToken cancellationToken = default)
@@ -137,6 +140,48 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
             : GitResult<IReadOnlyList<GitChange>>.Failure(ErrorMessage(run));
     }
 
+    public async Task<GitResult<bool>> AddWorktreeAsync(string repoRoot, string worktreePath, CancellationToken cancellationToken = default)
+    {
+        if (fileSystem.Directory.Exists(worktreePath))
+        {
+            var listed = await RunAsync(repoRoot, ["worktree", "list", "--porcelain"], cancellationToken);
+            if (listed.Failure is not null || listed.ExitCode != 0)
+                return GitResult<bool>.Failure(ErrorMessage(listed));
+
+            if (await WorktreeRootAsync(worktreePath, cancellationToken) is { } existing
+                && ParseWorktrees(listed.Output).Contains(existing, StringComparer.Ordinal))
+                return GitResult<bool>.Success(false);
+        }
+
+        // Detached, so the PR's branch is free for gh to check out and no branch is created for a path we may reuse.
+        var added = await RunAsync(repoRoot, ["worktree", "add", "--detach", worktreePath], cancellationToken, CheckoutTimeout);
+        return added.Failure is null && added.ExitCode == 0
+            ? GitResult<bool>.Success(true)
+            : GitResult<bool>.Failure(ErrorMessage(added));
+    }
+
+    /// <summary>
+    /// The worktree <paramref name="path"/> is the root of, as git names it, or null when it's a plain
+    /// directory or only sits inside one. Only git's own answer is comparable with the listing, which
+    /// reports real paths — under macOS's <c>/var</c> symlink our spelling never matches.
+    /// </summary>
+    private async Task<string?> WorktreeRootAsync(string path, CancellationToken cancellationToken)
+    {
+        var run = await RunAsync(path, ["rev-parse", "--show-toplevel", "--show-prefix"], cancellationToken);
+        if (run.Failure is not null || run.ExitCode != 0)
+            return null;
+
+        var lines = run.Output.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+        // A second, empty line is the prefix: anything else means path is a subdirectory of that worktree.
+        return lines.Length > 1 && lines[0].Length > 0 && lines[1].Length == 0 ? lines[0] : null;
+    }
+
+    internal static IEnumerable<string> ParseWorktrees(string output) =>
+        output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => line.StartsWith("worktree ", StringComparison.Ordinal))
+            .Select(line => line["worktree ".Length..]);
+
     /// <summary>Reads <c>--name-status -z</c>: a status, then one path, or two for a rename or copy. A copy counts as added.</summary>
     internal static IReadOnlyList<GitChange> ParseChanges(string output)
     {
@@ -210,13 +255,14 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
     {
         if (run.Failure is { } failure)
             return failure;
-        var line = run.Error.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
-        if (line is null)
-            return $"git exited with code {run.ExitCode}";
-        return line.StartsWith("fatal: ", StringComparison.Ordinal) ? line["fatal: ".Length..] : line;
+        var lines = run.Error.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        // Some commands narrate on stderr before failing, so the fatal line beats the first one.
+        if (lines.FirstOrDefault(l => l.StartsWith("fatal: ", StringComparison.Ordinal)) is { } fatal)
+            return fatal["fatal: ".Length..];
+        return lines.FirstOrDefault() ?? $"git exited with code {run.ExitCode}";
     }
 
-    private Task<CliRun> RunAsync(string workingDirectory, IEnumerable<string> arguments, CancellationToken cancellationToken)
+    private Task<CliRun> RunAsync(string workingDirectory, IEnumerable<string> arguments, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         var info = new ProcessStartInfo(executable)
         {
@@ -235,6 +281,6 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         info.Environment["LC_ALL"] = "C";
         info.Environment["GIT_OPTIONAL_LOCKS"] = "0";
 
-        return CliProcess.RunAsync("git", info, _timeout, cancellationToken);
+        return CliProcess.RunAsync("git", info, timeout ?? _timeout, cancellationToken);
     }
 }
