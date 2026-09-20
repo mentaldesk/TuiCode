@@ -163,6 +163,25 @@ public class GitHubCliTests
         Assert.Null(result.Value);
     }
 
+    [Theory]
+    [InlineData(GitHubReviewVerdict.Comment, "--comment")]
+    [InlineData(GitHubReviewVerdict.Approve, "--approve")]
+    [InlineData(GitHubReviewVerdict.RequestChanges, "--request-changes")]
+    public void ReviewArguments_asks_gh_for_the_verdict_and_passes_the_summary_as_the_body(GitHubReviewVerdict verdict, string flag)
+    {
+        var arguments = GitHubCli.ReviewArguments(132, verdict, "Looks good");
+
+        Assert.Equal(["pr", "review", "132", flag, "--body", "Looks good"], arguments);
+    }
+
+    [Fact]
+    public void ReviewArguments_leaves_an_empty_summary_out()
+    {
+        var arguments = GitHubCli.ReviewArguments(132, GitHubReviewVerdict.Approve, "");
+
+        Assert.Equal(["pr", "review", "132", "--approve"], arguments);
+    }
+
     private static readonly Lazy<bool> GitHubCliAvailable = new(() =>
     {
         try

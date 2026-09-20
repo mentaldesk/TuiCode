@@ -32,6 +32,20 @@ internal sealed class FakeGitHubCli : IGitHubCli
             : GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Success(OpenPullRequests));
     }
 
+    public string? ReviewError { get; set; }
+
+    /// <summary>The reviews <see cref="SubmitReviewAsync"/> was asked to submit, in order.</summary>
+    public List<(string RepoRoot, int Number, GitHubReviewVerdict Verdict, string Summary)> Reviews { get; } = [];
+
+    public Task<GitHubResult<bool>> SubmitReviewAsync(
+        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, CancellationToken cancellationToken = default)
+    {
+        Reviews.Add((repoRoot, number, verdict, summary));
+        return Task.FromResult(ReviewError is { } error
+            ? GitHubResult<bool>.Failure(error)
+            : GitHubResult<bool>.Success(true));
+    }
+
     public Task<GitHubResult<bool>> CheckoutPullRequestAsync(string worktreePath, int number, CancellationToken cancellationToken = default)
     {
         Checkouts.Add((worktreePath, number));

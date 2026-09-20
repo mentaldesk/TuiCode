@@ -45,6 +45,7 @@ public static class CommandMnemonics
             [CommandIds.Open] = "of",
             [CommandIds.OpenSettings] = "os",
             [CommandIds.OpenPullRequest] = "opr",
+            [CommandIds.SubmitReview] = "sr",
             [CommandIds.CloseActiveEditor] = "cf",
             [CommandIds.ChangeGrammar] = "cg",
             [CommandIds.CompareToSaved] = "cts",
