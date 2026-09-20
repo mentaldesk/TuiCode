@@ -61,6 +61,8 @@ public class GitCliTests
         Assert.False((await git.GetMergeBaseAsync("/repo", "HEAD", "main", ct)).Succeeded);
         Assert.False((await git.GetChangedFilesAsync("/repo", "main", ct)).Succeeded);
         Assert.False((await git.ShowRepoFileAsync("/repo", "a.cs", "main", ct)).Succeeded);
+        Assert.False((await git.AddWorktreeAsync("/repo", "/repo/../pr-1", ct)).Succeeded);
+        Assert.False((await git.FindWorktreeAsync("/repo", "main", ct)).Succeeded);
     }
 
     [Fact]
@@ -79,6 +81,68 @@ public class GitCliTests
             new GitChange(GitChangeKind.Added, "f.cs"),
             new GitChange(GitChangeKind.Modified, "g"),
         ], changes);
+    }
+
+    [Fact]
+    public void ParseWorktrees_reads_the_path_and_branch_of_each_worktree_in_the_porcelain_listing()
+    {
+        var output = "worktree /code/TuiCode/main\nHEAD abc\nbranch refs/heads/main\n\nworktree /code/pr-184\nHEAD def\ndetached\n";
+
+        Assert.Equal(
+        [
+            new GitCli.Worktree("/code/TuiCode/main", "main"),
+            new GitCli.Worktree("/code/pr-184", null),
+        ], GitCli.ParseWorktrees(output));
+    }
+
+    [Fact]
+    public async Task A_branch_already_checked_out_is_found_by_the_worktree_it_is_in()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        repo.Git("worktree", "add", "-q", "-b", "feature", repo.File("feature"));
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var found = await git.FindWorktreeAsync(repo.Path, "feature", ct);
+        var missing = await git.FindWorktreeAsync(repo.Path, "no-such-branch", ct);
+
+        Assert.Equal("feature", Path.GetFileName(found.Value));
+        Assert.True(File.Exists(Path.Combine(found.Value!, "a.cs")));
+        Assert.True(missing.Succeeded);
+        Assert.Null(missing.Value);
+    }
+
+    [Fact]
+    public async Task A_worktree_is_created_once_and_reused_after_that()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        var worktree = repo.File("pr-184");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var created = await git.AddWorktreeAsync(repo.Path, worktree, ct);
+        var reused = await git.AddWorktreeAsync(repo.Path, worktree, ct);
+
+        Assert.True(created.Value);
+        Assert.False(reused.Value);
+        Assert.True(reused.Succeeded);
+        Assert.True(File.Exists(Path.Combine(worktree, "a.cs")));
+    }
+
+    [Fact]
+    public async Task A_worktree_over_a_path_that_is_in_the_way_fails_with_git_s_own_message()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        repo.Write("pr-184/stray.txt", "in the way\n");
+        var git = new GitCli(new FileSystem());
+
+        var result = await git.AddWorktreeAsync(repo.Path, repo.File("pr-184"), TestContext.Current.CancellationToken);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("pr-184", result.Error);
     }
 
     [Fact]

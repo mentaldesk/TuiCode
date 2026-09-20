@@ -62,6 +62,25 @@ internal sealed class FakeGitCli : IGitCli
     public Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default) =>
         Task.FromResult(GitResult<IReadOnlyList<GitChange>>.Success(ChangesByRevision.GetValueOrDefault(revision) ?? Changes));
 
+    /// <summary>Worktree paths the fake has been asked to add, in order; a path already there isn't re-created.</summary>
+    public List<string> Worktrees { get; } = [];
+
+    public string? WorktreeError { get; set; }
+
+    public Task<GitResult<bool>> AddWorktreeAsync(string repoRoot, string worktreePath, CancellationToken cancellationToken = default)
+    {
+        if (WorktreeError is { } error) return Task.FromResult(GitResult<bool>.Failure(error));
+        if (Worktrees.Contains(worktreePath)) return Task.FromResult(GitResult<bool>.Success(false));
+        Worktrees.Add(worktreePath);
+        return Task.FromResult(GitResult<bool>.Success(true));
+    }
+
+    /// <summary>The worktree path of each branch already checked out, for <see cref="FindWorktreeAsync"/>.</summary>
+    public Dictionary<string, string> BranchWorktrees { get; } = new(StringComparer.Ordinal);
+
+    public Task<GitResult<string?>> FindWorktreeAsync(string repoRoot, string branch, CancellationToken cancellationToken = default) =>
+        Task.FromResult(GitResult<string?>.Success(BranchWorktrees.GetValueOrDefault(branch)));
+
     public Task<GitResult<string?>> ShowRepoFileAsync(string repoRoot, string repoPath, string revision, CancellationToken cancellationToken = default)
     {
         ShowCount++;
