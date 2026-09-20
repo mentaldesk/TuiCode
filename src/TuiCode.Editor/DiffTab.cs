@@ -1,12 +1,16 @@
 using System.Diagnostics;
 using System.Globalization;
 using Terminal.Gui.Text;
+using TuiCode.Abstractions;
 using TuiCode.Syntax;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Editor;
 
-/// <summary>A read-only side-by-side diff of another version (left) against an editor tab's live buffer (right).</summary>
+/// <summary>
+/// A read-only side-by-side diff of another version (left) against an editor tab's live buffer (right),
+/// or, for a file deleted in this branch (#182), against nothing.
+/// </summary>
 public sealed class DiffTab : FrameView
 {
     /// <summary>A revision can be far further from the buffer than the gutter's give-up limit allows.</summary>
@@ -20,7 +24,10 @@ public sealed class DiffTab : FrameView
 
     private readonly Func<IReadOnlyList<string>> _readLeft;
     private readonly SyntaxHighlighter? _syntax;
+    private readonly SyntaxLanguage? _deletedGrammar;
     private readonly TokenPalette _palette = new();
+    private readonly IFileInfo _file;
+    private EditorSettings _settings = EditorSettings.Default;
     private IReadOnlyList<string> _left = [];
     private IReadOnlyList<string> _right = [];
     private int _top;
@@ -29,12 +36,25 @@ public sealed class DiffTab : FrameView
     private int? _widest;
 
     public DiffTab(EditorTab source, string leftLabel, Func<IReadOnlyList<string>> readLeft, SyntaxHighlighter? syntax = null, string? leftKey = null)
+        : this(source.File, source, leftLabel, readLeft, syntax, leftKey)
     {
+    }
+
+    /// <summary>A file deleted in this branch (#182): the base version on the left, nothing on the right.</summary>
+    public DiffTab(IFileInfo file, string leftLabel, Func<IReadOnlyList<string>> readLeft, SyntaxHighlighter? syntax = null, string? leftKey = null)
+        : this(file, null, leftLabel, readLeft, syntax, leftKey)
+    {
+    }
+
+    private DiffTab(IFileInfo file, EditorTab? source, string leftLabel, Func<IReadOnlyList<string>> readLeft, SyntaxHighlighter? syntax, string? leftKey)
+    {
+        _file = file;
         Source = source;
         LeftLabel = leftLabel;
         LeftKey = leftKey ?? leftLabel;
         _readLeft = readLeft;
         _syntax = syntax;
+        if (source is null) _deletedGrammar = syntax?.LanguageForFile(file.Name);
         BorderStyle = LineStyle.None;
         CanFocus = true;
         Diff = AlignedDiff.Compute([], []);
@@ -70,7 +90,21 @@ public sealed class DiffTab : FrameView
         UpdateTitle();
     }
 
-    public EditorTab Source { get; }
+    /// <summary>The file the diff is about; the deleted path when there's no <see cref="Source"/>.</summary>
+    public IFileInfo File => Source?.File ?? _file;
+
+    /// <summary>The live buffer on the right, or null for a file deleted in this branch (#182).</summary>
+    public EditorTab? Source { get; }
+
+    /// <summary>Whether this is a deleted file's diff, with nothing on the right (#182).</summary>
+    public bool IsDeleted => Source is null;
+
+    /// <summary>Indentation and line endings; a deleted file has no buffer to take them from.</summary>
+    public EditorSettings Settings
+    {
+        get => Source?.Settings ?? _settings;
+        set => _settings = value;
+    }
 
     /// <summary>What the left side is, e.g. <c>saved</c>.</summary>
     public string LeftLabel { get; }
@@ -140,13 +174,14 @@ public sealed class DiffTab : FrameView
     public void Refresh()
     {
         _left = _readLeft();
-        _right = [.. Source.SnapshotLines];
+        _right = Source is { } source ? [.. source.SnapshotLines] : [];
         Diff = AlignedDiff.Compute(_left, _right, MaxEdits);
         _widest = null;
-        if (!Equals(LeftTokens?.Language, Source.Grammar))
+        var grammar = Source?.Grammar ?? _deletedGrammar;
+        if (!Equals(LeftTokens?.Language, grammar))
         {
-            LeftTokens = _syntax?.CreateCache(Source.Grammar);
-            RightTokens = _syntax?.CreateCache(Source.Grammar);
+            LeftTokens = _syntax?.CreateCache(grammar);
+            RightTokens = _syntax?.CreateCache(grammar);
         }
         LeftTokens?.Update(_left);
         RightTokens?.Update(_right);
@@ -158,7 +193,7 @@ public sealed class DiffTab : FrameView
 
     internal void UpdateTitle()
     {
-        Title = $"{Source.File.Name} ↔ {LeftLabel}";
+        Title = IsDeleted ? $"{File.Name} ↔ {LeftLabel} (deleted)" : $"{File.Name} ↔ {LeftLabel}";
         if (Border.View is BorderView { TitleView: ITitleView header }) header.MeasuredTabLength = 0;
         SetNeedsLayout();
     }
@@ -222,7 +257,7 @@ public sealed class DiffTab : FrameView
         PrepareSyntax();
         DrawText(0, 0, leftWidth, " " + LeftLabel, header);
         DrawSeparator(leftWidth, 0, normal);
-        DrawText(rightX, 0, rightWidth, " working copy", header);
+        DrawText(rightX, 0, rightWidth, IsDeleted ? " deleted" : " working copy", header);
 
         for (var y = 1; y < Viewport.Height; y++)
         {
@@ -319,7 +354,7 @@ public sealed class DiffTab : FrameView
     }
 
     private int Columns(string grapheme, int col) => grapheme == "\t"
-        ? Source.Settings.IndentSize - col % Source.Settings.IndentSize
+        ? Settings.IndentSize - col % Settings.IndentSize
         : Math.Max(1, grapheme.GetColumns(false));
 
     private Color? ThemeColor(string key) =>

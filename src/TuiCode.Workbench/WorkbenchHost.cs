@@ -1074,7 +1074,11 @@ public sealed class WorkbenchHost : IDisposable
     private void GoToChangeLine()
     {
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
-        var tab = diff.Source;
+        if (diff.Source is not { } tab)
+        {
+            _workbench.StatusBar.SetMessage("Deleted in this branch");
+            return;
+        }
         var line = diff.CurrentBufferLine;
         _suppressHistory = true;
         try
@@ -1236,9 +1240,6 @@ public sealed class WorkbenchHost : IDisposable
 
         void Step(int index)
         {
-            // A deleted file has nothing to show against the working copy until #182.
-            while (index >= 0 && index < files.Count && files[index].Kind == GitChangeKind.Deleted)
-                index += direction;
             if (index < 0 || index >= files.Count)
             {
                 _workbench.StatusBar.SetMessage(direction > 0 ? "Last change in the review" : "First change in the review");
@@ -1262,12 +1263,6 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OpenReviewDiff(BranchReview review, GitChange change)
     {
-        if (change.Kind == GitChangeKind.Deleted)
-        {
-            _workbench.StatusBar.SetMessage("Deleted in this branch");
-            return;
-        }
-
         var files = _workbench.Sidebar.Review.ChangedFiles;
         var index = 0;
         while (index < files.Count && files[index].Path != change.Path) index++;
@@ -1280,15 +1275,17 @@ public sealed class WorkbenchHost : IDisposable
     /// <summary>
     /// Opens the file and its diff against the review's base, then hands the diff — null when the
     /// buffer matches the base — to <paramref name="done"/>. A read error reports itself and calls nothing.
+    /// A deleted file (#182) gets a diff with nothing on the right and no editor tab.
     /// </summary>
     private void ShowReviewDiff(BranchReview review, GitChange change, int index, int count, Action<DiffTab?> done)
     {
         var group = _workbench.Editor.Group;
         var fs = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
-        var tab = _workbench.Editor.Open(fs.FileInfo.New(fs.Path.Combine(review.RepoRoot, change.Path)));
+        var file = fs.FileInfo.New(fs.Path.Combine(review.RepoRoot, change.Path));
+        var tab = change.Kind == GitChangeKind.Deleted ? null : _workbench.Editor.Open(file);
         var basePath = change.OldPath ?? change.Path;
         var key = $"{review.MergeBase}:{basePath}";
-        if (group.FocusDiff(tab, key) is { } open)
+        if ((tab is null ? group.FocusDeletedDiff(file, key) : group.FocusDiff(tab, key)) is { } open)
         {
             Showing(open);
             return;
@@ -1305,7 +1302,9 @@ public sealed class WorkbenchHost : IDisposable
                 return;
             }
             var lines = content.Result.Value is { } text ? DiffTab.SplitLines(text) : [];
-            Showing(group.Compare(tab, review.Base, () => lines, key));
+            Showing(tab is null
+                ? group.CompareDeleted(file, review.Base, () => lines, key)
+                : group.Compare(tab, review.Base, () => lines, key));
         });
 
         void Showing(DiffTab? diff)
