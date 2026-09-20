@@ -52,6 +52,36 @@ public class GitHubCliTests
     }
 
     [Fact]
+    public void ParseConversation_reads_the_description_then_each_comment_in_order()
+    {
+        const string json = """
+        {
+          "number": 185, "title": "Overview", "createdAt": "2026-09-20T06:54:00Z",
+          "author": { "login": "jamescrosswell" }, "body": "What it does.",
+          "comments": [
+            { "author": { "login": "octocat" }, "createdAt": "2026-09-20T07:54:00Z", "body": "Looks good." },
+            { "author": null, "createdAt": "nonsense", "body": "" }
+          ]
+        }
+        """;
+
+        var conversation = GitHubCli.ParseConversation(json).Value;
+
+        Assert.Equal(185, conversation.Number);
+        Assert.Equal("jamescrosswell", conversation.Author);
+        Assert.Equal(new DateTimeOffset(2026, 9, 20, 6, 54, 0, TimeSpan.Zero), conversation.Date);
+        Assert.Equal("What it does.", conversation.Body);
+        Assert.Equal([("octocat", "Looks good."), ("", "")], conversation.Comments.Select(c => (c.Author, c.Body)));
+    }
+
+    [Fact]
+    public void ParseConversation_of_something_that_isnt_a_pull_request_fails_rather_than_throws()
+    {
+        Assert.False(GitHubCli.ParseConversation("not json at all").Succeeded);
+        Assert.False(GitHubCli.ParseConversation("{}").Succeeded);
+    }
+
+    [Fact]
     public void ParseList_reads_each_open_pull_request_and_flags_the_ones_awaiting_your_review()
     {
         const string json = """

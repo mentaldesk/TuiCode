@@ -78,6 +78,7 @@ public sealed class Workbench : Window
     {
         if (tab is not null) StatusBar.SetMessage(tab.File.FullName);
         else if (Editor.Group.ActiveDiffTab is { } diff) StatusBar.SetMessage(diff.Title);
+        else if (Editor.Group.ActiveDocumentTab is { } document) StatusBar.SetMessage(document.Title);
         StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
     }
 
