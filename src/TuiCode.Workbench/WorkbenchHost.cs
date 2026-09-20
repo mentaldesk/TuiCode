@@ -1318,7 +1318,9 @@ public sealed class WorkbenchHost : IDisposable
         var group = _workbench.Editor.Group;
         var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
         var title = PullRequestOverview.OutdatedTitleOf(pullRequest.Number, node.Change.Path);
-        var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(review.RepoRoot, title.Replace('/', ' ')));
+        // The path only identifies the tab, so it takes neither the separators nor the colon of the title.
+        var name = $"#{pullRequest.Number} outdated {node.Change.Path.Replace('/', ' ')}";
+        var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(review.RepoRoot, name));
         group.OpenOrFocusDocument(file, PullRequestOverview.BuildOutdated(pullRequest.Number, node.Change.Path, node.Threads),
             group.Syntax?.LanguageById("markdown"), title);
         FocusEditorBody();
