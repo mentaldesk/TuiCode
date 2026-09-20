@@ -191,7 +191,7 @@ public sealed class KeybindingService : IKeybindingService
     {
         _chordSoFar.Add(key);
         _current = next;
-        SetChordDisplay(string.Join(" ", _chordSoFar.Select(FormatKey)));
+        SetChordDisplay(KeyChord.Display(_chordSoFar));
         return KeyHandlingResult.ChordInProgress;
     }
 
@@ -220,8 +220,6 @@ public sealed class KeybindingService : IKeybindingService
         }
         return key;
     }
-
-    private static string FormatKey(Key key) => key.ToString();
 
     private void ResetChord()
     {
