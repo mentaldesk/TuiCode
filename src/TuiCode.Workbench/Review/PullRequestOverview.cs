@@ -18,19 +18,15 @@ public static class PullRequestOverview
 
     public static string Build(GitHubConversation conversation)
     {
+        // LF whatever the OS: this is a buffer to read, not a file written back to disk.
         var text = new StringBuilder()
-            .Append("# #").Append(conversation.Number).Append(' ').AppendLine(conversation.Title)
-            .AppendLine()
-            .AppendLine(Heading(conversation.Author, conversation.Date))
-            .AppendLine()
-            .AppendLine(Body(conversation.Body));
+            .Append("# #").Append(conversation.Number).Append(' ').Append(conversation.Title).Append('\n')
+            .Append('\n').Append(Heading(conversation.Author, conversation.Date)).Append('\n')
+            .Append('\n').Append(Body(conversation.Body)).Append('\n');
         foreach (var comment in conversation.Comments)
-            text.AppendLine()
-                .AppendLine(Rule)
-                .AppendLine()
-                .AppendLine(Heading(comment.Author, comment.Date))
-                .AppendLine()
-                .AppendLine(Body(comment.Body));
+            text.Append('\n').Append(Rule).Append('\n')
+                .Append('\n').Append(Heading(comment.Author, comment.Date)).Append('\n')
+                .Append('\n').Append(Body(comment.Body)).Append('\n');
         return text.ToString();
     }
 
