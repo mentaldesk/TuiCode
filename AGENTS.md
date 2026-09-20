@@ -283,6 +283,12 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - The status bar's `Ln X, Col Y` (right-aligned, #120) is polled on `IApplication.Iteration` (`Workbench.ShowCursorPosition`), not driven by `CursorMoved`: TG 2.1.0 raises `UnwrappedCursorPositionChanged` from its key/mouse paths only, so programmatic moves (find, Go-to-line, multi-caret, line moves) go unreported. `StatusBarPart.SetPosition` no-ops when unchanged, so polling costs a tuple compare. Col counts the model's grapheme cells, so a tab is one column.
 - macOS gotcha: by default Mission Control's "Move left/right a space" eats `Ctrl+Left`/`Ctrl+Right` before iTerm2 sees them. Disable in System Settings → Keyboard → Keyboard Shortcuts → Mission Control.
 
+## Versioning (#214)
+
+- Every assembly's version comes from MinVer (root `Directory.Build.props`), which reads the latest `v*` tag: on the tagged commit that's `0.0.4`, three commits past it `0.0.5-alpha.0.3`. `MinVerTagPrefix` is `v`, since MinVer defaults to unprefixed tags. About (`tui`) shows it through `WorkbenchHost.AppVersion`, so a build says which worktree it came from rather than the SDK's `1.0.0`.
+- MinVer needs the tags, so every job that builds the app checks out with `fetch-depth: 0`; without them it falls back to `0.0.0-alpha.0`.
+- **MinVer overrides a plain `-p:Version=`**, so the release publish passes the tag's version as `-p:MinVerVersionOverride=` instead. `-p:Version=` there would quietly ship an `-alpha` version in a release archive.
+
 ## Release workflow
 
 - `.github/workflows/release.yml` fires on `v*` tag push (or `workflow_dispatch` with an existing tag). Matrix builds AOT single-file binaries on native runners for each RID (Apple Silicon only on macOS — Intel Macs are EOL), archives them (`.tar.gz` on Unix, `.zip` on Windows) with a `.sha256` sidecar, and uploads to a *draft* GitHub Release — review/publish manually.

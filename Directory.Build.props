@@ -1,0 +1,12 @@
+<Project>
+
+  <!-- Every assembly carries the version MinVer derives from the latest v* tag (#214). -->
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+  </PropertyGroup>
+
+</Project>

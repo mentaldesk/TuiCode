@@ -43,6 +43,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        # Unshallow: MinVer reads the version off the latest v* tag.
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v5
         with:
@@ -69,7 +72,7 @@ jobs:
           dotnet publish src/TuiCode/TuiCode.csproj \
             -c Release \
             -r ${{ matrix.rid }} \
-            -p:Version=${{ steps.version.outputs.version }} \
+            -p:MinVerVersionOverride=${{ steps.version.outputs.version }} \
             -o publish
 
       - name: Import macOS signing cert
