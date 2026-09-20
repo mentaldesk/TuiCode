@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using TuiCode.Abstractions;
@@ -12,7 +13,18 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
 
     private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromSeconds(10);
 
-    public async Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default)
+    public async Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default) =>
+        Interpret(await RunAsync(repoRoot, ["pr", "view", "--json", "number,title,baseRefName,headRefName,statusCheckRollup"], cancellationToken));
+
+    public async Task<GitHubResult<GitHubConversation>> GetConversationAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(repoRoot, ["pr", "view", $"{number}", "--json", "number,title,author,createdAt,body,comments"], cancellationToken);
+        if (run.Missing || run.ExitCode == AuthExitCode) return GitHubResult<GitHubConversation>.NoCli();
+        if (run.Failure is { } failure) return GitHubResult<GitHubConversation>.Failure(failure);
+        return run.ExitCode == 0 ? ParseConversation(run.Output) : GitHubResult<GitHubConversation>.Failure(ErrorMessage(run));
+    }
+
+    private Task<CliRun> RunAsync(string repoRoot, string[] arguments, CancellationToken cancellationToken)
     {
         var info = new ProcessStartInfo(executable)
         {
@@ -24,13 +36,12 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var argument in (string[])["pr", "view", "--json", "number,title,baseRefName,headRefName,statusCheckRollup"])
+        foreach (var argument in arguments)
             info.ArgumentList.Add(argument);
         // Nothing here can answer a prompt, and an unanswered one would sit until the timeout.
         info.Environment["GH_PROMPT_DISABLED"] = "1";
 
-        var run = await CliProcess.RunAsync("gh", info, _timeout, cancellationToken);
-        return Interpret(run);
+        return CliProcess.RunAsync("gh", info, _timeout, cancellationToken);
     }
 
     /// <summary>gh's answer as a result: no PR, no <c>gh</c> to ask, or the PR.</summary>
@@ -67,6 +78,41 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
             return GitHubResult<GitHubPullRequest?>.Failure("gh answered with something we couldn't read");
         }
     }
+
+    internal static GitHubResult<GitHubConversation> ParseConversation(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            IReadOnlyList<GitHubComment> comments = root.TryGetProperty("comments", out var listed) && listed.ValueKind == JsonValueKind.Array
+                ? [.. listed.EnumerateArray().Select(c => new GitHubComment(Login(c), Date(c), Text(c, "body") ?? string.Empty))]
+                : [];
+            return GitHubResult<GitHubConversation>.Success(new GitHubConversation(
+                root.GetProperty("number").GetInt32(),
+                Text(root, "title") ?? string.Empty,
+                Login(root),
+                Date(root),
+                Text(root, "body") ?? string.Empty,
+                comments));
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return GitHubResult<GitHubConversation>.Failure("gh answered with something we couldn't read");
+        }
+    }
+
+    /// <summary>Who wrote it; gh reports a deleted account as a null author.</summary>
+    private static string Login(JsonElement element) =>
+        (element.TryGetProperty("author", out var author) && author.ValueKind == JsonValueKind.Object
+            ? Text(author, "login")
+            : null) ?? string.Empty;
+
+    private static DateTimeOffset Date(JsonElement element) =>
+        Text(element, "createdAt") is { } text
+        && DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            ? date
+            : default;
 
     private static GitHubChecks CountChecks(JsonElement pullRequest)
     {

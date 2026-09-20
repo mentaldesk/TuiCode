@@ -179,9 +179,11 @@ public sealed class Workbench : Window
     {
         if (_workspaceState is null || _workspaceFolder is null) return;
         var group = Editor.Group;
+        // A read-only document (#185) has no file to reopen.
+        var active = group.ActiveTab ?? group.ActiveDiffTab?.Source;
         _workspaceState.Save(_workspaceFolder, new WorkspaceState(
-            group.Tabs.Select(t => t.File.FullName).ToList(),
-            (group.ActiveTab ?? group.ActiveDiffTab?.Source)?.File.FullName));
+            group.Tabs.Where(t => !t.IsReadOnly).Select(t => t.File.FullName).ToList(),
+            active is { IsReadOnly: false } ? active.File.FullName : null));
     }
 
     protected override void Dispose(bool disposing)

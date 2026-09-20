@@ -23,6 +23,9 @@ public sealed class EditorTab : FrameView
     public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
 
+    /// <summary>Whether this tab is a read-only document rather than a file being edited (#185).</summary>
+    public bool IsReadOnly { get; }
+
     public string Content
     {
         get => _textView.Text;
@@ -51,12 +54,28 @@ public sealed class EditorTab : FrameView
     public event EventHandler? GrammarChanged;
 
     public EditorTab(IFileInfo file, SyntaxHighlighter? syntax = null)
+        : this(file, file.FileSystem.File.ReadAllText(file.FullName), syntax?.LanguageForFile(file.Name), syntax, readOnly: false)
+    {
+    }
+
+    /// <summary>
+    /// A read-only document that isn't on disk (#185), like a PR's Overview: its text and grammar are
+    /// given, it can't be edited or saved, and <paramref name="file"/> only names it.
+    /// </summary>
+    public EditorTab(IFileInfo file, string content, SyntaxLanguage? grammar, SyntaxHighlighter? syntax = null)
+        : this(file, content, grammar, syntax, readOnly: true)
+    {
+    }
+
+    private EditorTab(IFileInfo file, string initial, SyntaxLanguage? grammar, SyntaxHighlighter? syntax, bool readOnly)
     {
         File = file;
         _syntax = syntax;
+        IsReadOnly = readOnly;
+        // A document's grammar is what it was opened with, not something to re-pick from its name.
+        _grammarChosen = readOnly;
         BorderStyle = LineStyle.None;
 
-        var initial = file.FileSystem.File.ReadAllText(file.FullName);
         _eol = DetectEol(initial);
 
         _textView = new EditorTextView
@@ -65,7 +84,8 @@ public sealed class EditorTab : FrameView
             Width = Dim.Fill(),
             Height = Dim.Fill(),
             Text = initial,
-            Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
+            ReadOnly = readOnly,
+            Syntax = syntax?.CreateCache(grammar),
         };
         Settings = EditorSettings.Default;
         _gutter = new EditorGutter(_textView, syntax) { X = 0, Y = 0, Height = Dim.Fill() };
@@ -289,9 +309,10 @@ public sealed class EditorTab : FrameView
         _textView.SetNeedsDraw();
     }
 
-    /// <summary>Replace the text covered by <paramref name="match"/>, as one undo step.</summary>
+    /// <summary>Replace the text covered by <paramref name="match"/>, as one undo step. A document (#185) is left alone.</summary>
     public void Replace(TextMatch match, string replacement)
     {
+        if (IsReadOnly) return;
         Select(match);
         _textView.EditAtPrimary(() =>
         {
@@ -325,6 +346,8 @@ public sealed class EditorTab : FrameView
 
     public void Save()
     {
+        if (IsReadOnly) return;
+
         // TextView.Text joins its lines with Environment.NewLine, so on Windows the
         // buffer comes back CRLF regardless of the file's real endings. Re-emit using
         // the EOL we detected on load so a file's line-ending style round-trips

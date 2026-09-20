@@ -21,6 +21,9 @@ public sealed class ReviewView : View
 
     public event EventHandler<(BranchReview Review, GitChange Change)>? FileActivated;
 
+    /// <summary>Raised by Enter on the PR header (#185), for the Overview tab.</summary>
+    public event EventHandler<BranchReview>? PullRequestActivated;
+
     public Func<IDirectoryInfo?>? RootProvider { get; set; }
 
     public BranchReview? Review { get; private set; }
@@ -34,6 +37,9 @@ public sealed class ReviewView : View
     public string HintText => _hint.Text;
 
     public bool ListHasFocus => _files.HasFocus;
+
+    /// <summary>Whether the PR header is selected; Enter there opens the Overview tab (#185).</summary>
+    public bool HeaderHasFocus => _title.HasFocus;
 
     internal Label Hint => _hint;
 
@@ -75,8 +81,24 @@ public sealed class ReviewView : View
         // Same TG quirk as the explorer: Enter maps to Command.Activate but doesn't raise Activated.
         _files.KeyDown += (_, key) =>
         {
+            if (key == Key.CursorUp && _title.CanFocus && ReferenceEquals(_files.SelectedObject, FirstNode()))
+            {
+                _title.SetFocus();
+                key.Handled = true;
+                return;
+            }
             if (key != Key.Enter) return;
             ActivateSelected();
+            key.Handled = true;
+        };
+        _title.KeyDown += (_, key) =>
+        {
+            if (key == Key.Enter && Review is { PullRequest: not null } review)
+                PullRequestActivated?.Invoke(this, review);
+            else if (key == Key.CursorDown && _files.Visible)
+                FocusList();
+            else
+                return;
             key.Handled = true;
         };
     }
@@ -199,6 +221,9 @@ public sealed class ReviewView : View
             label.Visible = label.Text.Length > 0;
             if (label.Visible) label.Y = row++;
         }
+        // Only a PR has an Overview to open, and only its title line is ever selectable.
+        _title.CanFocus = _title.Visible;
+        if (!_title.CanFocus && _title.HasFocus) FocusList();
         _files.Y = row;
         SetNeedsDraw();
     }
@@ -207,6 +232,8 @@ public sealed class ReviewView : View
         (_files.Objects ?? []).SelectMany(n => n is ReviewFileNode file ? [file] : n.Children.OfType<ReviewFileNode>());
 
     private ReviewFileNode? FirstFile() => AllFiles().FirstOrDefault();
+
+    private ReviewNode? FirstNode() => (_files.Objects ?? []).FirstOrDefault();
 
     private ReviewFileNode? FindFile(string? path) =>
         path is null ? null : AllFiles().FirstOrDefault(f => f.Change.Path == path);

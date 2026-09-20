@@ -50,6 +50,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly ILogger<WorkbenchHost> _logger;
     private readonly FileIcons? _icons;
     private readonly IGitCli _git;
+    private readonly IGitHubCli _gitHub;
     private readonly TerminalCursors _terminalCursors;
     private readonly FindController _find;
     private FocusLevel _focusLevel = FocusLevel.EditorBody;
@@ -86,7 +87,8 @@ public sealed class WorkbenchHost : IDisposable
         string? driverName = null,
         ILogger<WorkbenchHost>? logger = null,
         FileIcons? icons = null,
-        IGitCli? git = null)
+        IGitCli? git = null,
+        IGitHubCli? gitHub = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -124,6 +126,7 @@ public sealed class WorkbenchHost : IDisposable
         _logger = logger ?? NullLogger<WorkbenchHost>.Instance;
         _icons = icons;
         _git = git ?? new GitCli(new FileSystem());
+        _gitHub = gitHub ?? new GitHubCli();
 
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
@@ -149,6 +152,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Group.CursorMoved += OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged += OnActiveTabChanged;
         _workbench.Sidebar.Review.FileActivated += (_, e) => OpenReviewDiff(e.Review, e.Change);
+        _workbench.Sidebar.Review.PullRequestActivated += (_, review) => OpenOverview(review);
     }
 
     private void ApplyTokenTheme()
@@ -1271,6 +1275,35 @@ public sealed class WorkbenchHost : IDisposable
                 if (!ReferenceEquals(diff, from)) _workbench.Editor.Group.CloseDiff(from);
             });
         }
+    }
+
+    /// <summary>
+    /// The PR's description and conversation in a read-only Overview tab (#185). It's fetched when the
+    /// tab is opened, and whatever gh says instead is shown in the tab, where it can be read in full.
+    /// </summary>
+    private void OpenOverview(BranchReview review)
+    {
+        if (review.PullRequest is not { } pullRequest) return;
+
+        var group = _workbench.Editor.Group;
+        var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
+        var title = PullRequestOverview.TitleOf(pullRequest.Number);
+        var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(review.RepoRoot, title));
+        if (group.Focus(file.FullName) is not null)
+        {
+            FocusEditorBody();
+            return;
+        }
+
+        _workbench.StatusBar.SetMessage($"Loading #{pullRequest.Number}…");
+        var loading = Task.Run(() => _gitHub.GetConversationAsync(review.RepoRoot, pullRequest.Number));
+        WhenDone(loading, () =>
+        {
+            var text = loading.Result.Error ?? PullRequestOverview.Build(loading.Result.Value);
+            group.OpenOrFocusDocument(file, text, group.Syntax?.LanguageById("markdown"));
+            _workbench.StatusBar.SetMessage(title);
+            FocusEditorBody();
+        });
     }
 
     private void OpenReviewDiff(BranchReview review, GitChange change)

@@ -73,20 +73,31 @@ public sealed class EditorGroup : Tabs
         };
     }
 
-    public EditorTab OpenOrFocus(IFileInfo file)
-    {
-        if (_byPath.TryGetValue(file.FullName, out var existing))
-        {
-            Value = existing;
-            return existing;
-        }
+    public EditorTab OpenOrFocus(IFileInfo file) =>
+        Focus(file.FullName) ?? Track(new EditorTab(file, _syntax));
 
-        var tab = new EditorTab(file, _syntax) { GutterVisible = GutterVisible, ColumnSelect = ColumnSelect, Settings = Settings };
+    /// <summary>Opens or focuses a read-only document that isn't on disk (#185), like a PR's Overview.</summary>
+    public EditorTab OpenOrFocusDocument(IFileInfo file, string content, SyntaxLanguage? grammar) =>
+        Focus(file.FullName) ?? Track(new EditorTab(file, content, grammar, _syntax));
+
+    /// <summary>Focuses the open tab for <paramref name="path"/>; null when nothing is open for it.</summary>
+    public EditorTab? Focus(string path)
+    {
+        if (!_byPath.TryGetValue(path, out var tab)) return null;
+        Value = tab;
+        return tab;
+    }
+
+    private EditorTab Track(EditorTab tab)
+    {
+        tab.GutterVisible = GutterVisible;
+        tab.ColumnSelect = ColumnSelect;
+        tab.Settings = Settings;
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         tab.GrammarChanged += (_, _) => GrammarChanged?.Invoke(this, tab);
         // Tabs selects the first tab it's given during Add, so register it first for ActiveTabChanged listeners to see.
-        _byPath[file.FullName] = tab;
+        _byPath[tab.File.FullName] = tab;
         Add(tab);
         Value = tab;
         return tab;
