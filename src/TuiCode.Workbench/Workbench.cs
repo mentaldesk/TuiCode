@@ -81,7 +81,7 @@ public sealed class Workbench : Window
         StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
     }
 
-    /// <summary>The diff tab's keys, e.g. <c>Alt+CursorDown next  Alt+CursorUp prev</c>, from the live bindings.</summary>
+    /// <summary>The diff tab's keys, e.g. <c>Alt+↓ next  Alt+↑ prev</c>, from the live bindings.</summary>
     public string DiffKeysHint { get; set; } = string.Empty;
 
     /// <summary>Show the active tab's cursor position and selection; the host calls this every main-loop iteration.</summary>

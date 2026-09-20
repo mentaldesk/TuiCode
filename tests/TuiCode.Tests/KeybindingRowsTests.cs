@@ -48,9 +48,9 @@ public class KeybindingRowsTests
     [Fact]
     public void Display_keeps_the_longest_default_chord_two_spaces_from_its_neighbours_at_80_columns()
     {
-        var row = new KeybindingRow("dup", "Duplicate line down", CommandScope.Global, Binding("Alt+Shift+CursorDown", "dup", CommandScope.Global));
+        var row = new KeybindingRow("prev", "Previous editor", CommandScope.Global, Binding("Ctrl+Shift+Tab", "prev", CommandScope.Global));
 
-        Assert.Equal("Duplicate line down  Alt+Shift+CursorDown  Global", row.Display(WidthAt80));
+        Assert.Equal("Previous editor            Ctrl+Shift+Tab  Global", row.Display(WidthAt80));
     }
 
     [Fact]
