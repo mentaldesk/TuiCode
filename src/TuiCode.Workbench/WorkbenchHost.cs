@@ -73,6 +73,7 @@ public sealed class WorkbenchHost : IDisposable
     private ConfirmView? _activeConfirm;
     private RevisionPickerView? _activeRevisionPicker;
     private PullRequestPickerView? _activePullRequestPicker;
+    private SubmitReviewView? _activeSubmitReview;
     private bool _launchedFromExplorer;
     private bool _disposed;
 
@@ -257,9 +258,10 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
-        // No default key (#184, #185).
+        // No default key (#184, #185, #187).
         _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest);
         _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview);
+        _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         var explorer = _workbench.Sidebar.Explorer;
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
@@ -1528,6 +1530,81 @@ public sealed class WorkbenchHost : IDisposable
         return checkout.Error is { } checkoutError
             ? GitResult<string>.Failure(checkoutError)
             : GitResult<string>.Success(worktreePath);
+    }
+
+    /// <summary>
+    /// Submit review (<c>sr</c>): the branch's PR is looked up before the dialog opens, so no PR and no
+    /// <c>gh</c> are both one status-bar line rather than a dialog with nothing to submit to.
+    /// </summary>
+    private void SubmitReview()
+    {
+        if (_activeSubmitReview is not null) return;
+        if (_workbench.Sidebar.Explorer.Root is not { } root) return;
+
+        var folder = root.FullName;
+        _workbench.StatusBar.SetMessage("Loading pull request…");
+        var repoRoot = Task.Run(() => _git.GetRepoRootAsync(folder));
+        WhenDone(repoRoot, () =>
+        {
+            if (repoRoot.Result.Error is { } error)
+            {
+                _workbench.StatusBar.SetMessage(error);
+                return;
+            }
+            if (repoRoot.Result.Value is not { } repo)
+            {
+                _workbench.StatusBar.SetMessage($"{folder} isn't in a git repository.");
+                return;
+            }
+            var found = Task.Run(() => _gitHub.GetPullRequestAsync(repo));
+            WhenDone(found, () =>
+            {
+                if (found.Result.Error is { } lookupError)
+                    _workbench.StatusBar.SetMessage(lookupError);
+                else if (found.Result.Value is not { } pullRequest)
+                    _workbench.StatusBar.SetMessage("No pull request for this branch.");
+                else
+                    OpenSubmitReview(repo, pullRequest.Number);
+            });
+        });
+    }
+
+    private void OpenSubmitReview(string repoRoot, int number)
+    {
+        if (_activeSubmitReview is not null) return;
+        var view = new SubmitReviewView(number);
+        view.Cancelled += (_, _) => CloseSubmitReview(view);
+        view.Submitted += (_, review) =>
+        {
+            view.ShowBusy();
+            var submitting = Task.Run(() => _gitHub.SubmitReviewAsync(repoRoot, number, review.Verdict, review.Summary));
+            WhenDone(submitting, () =>
+            {
+                if (!ReferenceEquals(_activeSubmitReview, view)) return;
+                if (submitting.Result.Error is { } error)
+                {
+                    view.ShowError(error);
+                    return;
+                }
+                CloseSubmitReview(view);
+                _workbench.StatusBar.SetMessage($"Review submitted on #{number}");
+            });
+        };
+
+        _activeSubmitReview = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusSummary();
+    }
+
+    private void CloseSubmitReview(SubmitReviewView view)
+    {
+        if (!ReferenceEquals(_activeSubmitReview, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeSubmitReview = null;
+        FocusEditorBody();
     }
 
     private void ClosePullRequestPicker(PullRequestPickerView view)

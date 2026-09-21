@@ -26,6 +26,18 @@ public interface IGitHubCli
     /// <see cref="GetPullRequestAsync"/> there finds it again. True once it's checked out.
     /// </summary>
     Task<GitHubResult<bool>> CheckoutPullRequestAsync(string worktreePath, int number, CancellationToken cancellationToken = default);
+
+    /// <summary>Submits a review on PR <paramref name="number"/>. True once GitHub has it.</summary>
+    Task<GitHubResult<bool>> SubmitReviewAsync(
+        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, CancellationToken cancellationToken = default);
+}
+
+/// <summary>What a submitted review says: the three verdicts GitHub takes.</summary>
+public enum GitHubReviewVerdict
+{
+    Comment,
+    Approve,
+    RequestChanges,
 }
 
 public readonly record struct GitHubResult<T>(T Value, string? Error, bool CliUnavailable = false)

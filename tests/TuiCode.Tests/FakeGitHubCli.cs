@@ -49,6 +49,20 @@ internal sealed class FakeGitHubCli : IGitHubCli
                 Conversation ?? new GitHubConversation(number, $"#{number}", "octocat", default, string.Empty, [])));
     }
 
+    public string? ReviewError { get; set; }
+
+    /// <summary>The reviews <see cref="SubmitReviewAsync"/> was asked to submit, in order.</summary>
+    public List<(string RepoRoot, int Number, GitHubReviewVerdict Verdict, string Summary)> Reviews { get; } = [];
+
+    public Task<GitHubResult<bool>> SubmitReviewAsync(
+        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, CancellationToken cancellationToken = default)
+    {
+        Reviews.Add((repoRoot, number, verdict, summary));
+        return Task.FromResult(ReviewError is { } error
+            ? GitHubResult<bool>.Failure(error)
+            : GitHubResult<bool>.Success(true));
+    }
+
     public IReadOnlyList<GitHubReviewThread> ReviewThreads { get; set; } = [];
 
     public string? ThreadsError { get; set; }

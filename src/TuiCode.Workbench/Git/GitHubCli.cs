@@ -112,6 +112,27 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
         return run.ExitCode == 0 ? GitHubResult<bool>.Success(true) : GitHubResult<bool>.Failure(ErrorMessage(run));
     }
 
+    public async Task<GitHubResult<bool>> SubmitReviewAsync(
+        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(repoRoot, ReviewArguments(number, verdict, summary), _timeout, cancellationToken);
+        if (Unavailable<bool>(run) is { } failed) return failed;
+        return run.ExitCode == 0 ? GitHubResult<bool>.Success(true) : GitHubResult<bool>.Failure(ErrorMessage(run));
+    }
+
+    /// <summary>An empty summary is left out rather than sent as one, which gh rejects.</summary>
+    internal static string[] ReviewArguments(int number, GitHubReviewVerdict verdict, string summary)
+    {
+        var flag = verdict switch
+        {
+            GitHubReviewVerdict.Approve => "--approve",
+            GitHubReviewVerdict.RequestChanges => "--request-changes",
+            _ => "--comment",
+        };
+        string[] review = ["pr", "review", $"{number}", flag];
+        return summary.Length == 0 ? review : [.. review, "--body", summary];
+    }
+
     private Task<CliRun> RunAsync(string workingDirectory, string[] arguments, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var info = new ProcessStartInfo(executable)

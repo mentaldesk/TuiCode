@@ -18,6 +18,7 @@ public static class CommandIds
     public const string Open = "workbench.action.open";
     public const string OpenPullRequest = "workbench.action.openPullRequest";
     public const string PullRequestOverview = "workbench.action.pullRequestOverview";
+    public const string SubmitReview = "workbench.action.submitReview";
     public const string New = "workbench.action.new";
 
     public const string SettingsSave = "settings.action.save";
@@ -90,6 +91,9 @@ public static class CommandIds
     public const string PullRequestPickerDown = "pullRequestPicker.action.down";
     public const string PullRequestPickerPageUp = "pullRequestPicker.action.pageUp";
     public const string PullRequestPickerPageDown = "pullRequestPicker.action.pageDown";
+
+    public const string SubmitReviewConfirm = "submitReview.action.confirm";
+    public const string SubmitReviewCancel = "submitReview.action.cancel";
 
     public const string PathPromptConfirm = "pathPrompt.action.confirm";
     public const string PathPromptCancel = "pathPrompt.action.cancel";
