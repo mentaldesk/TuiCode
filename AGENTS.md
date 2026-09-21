@@ -294,6 +294,15 @@ UI design rules — which control to use, hint bars, how errors are shown, icons
 - The status bar's `Ln X, Col Y` (right-aligned, #120) is polled on `IApplication.Iteration` (`Workbench.ShowCursorPosition`), not driven by `CursorMoved`: TG 2.1.0 raises `UnwrappedCursorPositionChanged` from its key/mouse paths only, so programmatic moves (find, Go-to-line, multi-caret, line moves) go unreported. `StatusBarPart.SetPosition` no-ops when unchanged, so polling costs a tuple compare. Col counts the model's grapheme cells, so a tab is one column.
 - macOS gotcha: by default Mission Control's "Move left/right a space" eats `Ctrl+Left`/`Ctrl+Right` before iTerm2 sees them. Disable in System Settings → Keyboard → Keyboard Shortcuts → Mission Control.
 
+## Focus (#227)
+
+- `FocusService` (`Workbench/Focus/`) is the single source of truth for the focused **region** — `Editor`, `Diff`, `Explorer`, `Find`, `Review` or `Tabs`. `WorkbenchHost.FocusedScope` reads it (`FocusService.ScopeOf`) instead of polling the views, and the status bar's first word and the focused pane's border both come from its `RegionChanged`. The region/transition table is slice 2's, once the transitions are settled.
+- It's TG-free and unit-tested directly, like `MnemonicResolver`: the host registers each region with a move and an ownership test, and supplies the focused view.
+- **Reconcile against the focused view, not `HasFocus`.** TG leaves `HasFocus` set on a view focus has moved on from, so `FocusService.Reconcile` re-reads the region from what TG says is focused — on every `Iteration` *and* before each key is dispatched, since a mouse click lands between iterations. `Focus` records optimistically; a move that didn't land shows up as `Unreachable` and is corrected by the next reconcile.
+- `Navigation.GetFocused()` returns the view the navigation system last focused, which can be an *ancestor* of the one holding the keyboard (a focused `SidebarPart` over the explorer inside it). Walk down with `View.MostFocused` — `DiffTab.IsFocused` gets away without it only because a `DiffTab` is itself focusable.
+- `Tabs` is a mode, not a TG focus state: the active editor tab keeps TG's focus underneath the strip. So it owns the whole editor pane, which is what keeps cycling tabs from reading as a move into the editor body or a diff, and its `CommandScope` is `Editor` — the scope those keys already fired in.
+- The border highlight is a `GettingAttributeForRole` hook on the pane's border view (`FocusBorder`), swapping `Normal`→`Focus` as the attribute is resolved. TG draws border lines in `Normal` whatever has focus; overriding the scheme instead would have to be reapplied on every theme change.
+
 ## Versioning (#214)
 
 - Every assembly's version comes from MinVer (root `Directory.Build.props`), which reads the latest `v*` tag: on the tagged commit that's `0.0.4`, three commits past it `0.0.5-alpha.0.3`. `MinVerTagPrefix` is `v`, since MinVer defaults to unprefixed tags. About (`tui`) shows it through `WorkbenchHost.AppVersion`, so a build says which worktree it came from rather than the SDK's `1.0.0`.
