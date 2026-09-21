@@ -170,6 +170,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
       tag: ${{ needs.version.outputs.tag }}
       formula: packaging/tuicode.rb
+      scoop: packaging/tuicode.json
       artifacts: tuicode-*
     secrets:
       packages-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
