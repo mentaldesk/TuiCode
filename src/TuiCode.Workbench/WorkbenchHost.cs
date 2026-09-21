@@ -62,6 +62,7 @@ public sealed class WorkbenchHost : IDisposable
     private ActionView? _activeActions;
     private HelpView? _activeHelp;
     private GoToLineView? _activeGoToLine;
+    private SymbolPickerView? _activeSymbolPicker;
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
     private AboutView? _activeAbout;
@@ -279,6 +280,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
+        // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
+        _commands.Register(CommandIds.GoToSymbol, "Go to symbol in file", OpenSymbolPicker, CommandScope.Editor);
         // No default key (#21): rarely needed, and users can bind one in Settings.
         _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker);
         _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack);
@@ -707,7 +710,58 @@ public sealed class WorkbenchHost : IDisposable
         FocusEditorBody();
     }
 
-    private void OnIteration(object? sender, EventArgs<IApplication?> e) => _workbench.ShowCursorPosition();
+    /// <summary>
+    /// Go to symbol (<c>gs</c>): the definitions in the active file. The scan is the tab's, cached against its
+    /// buffer, so a second <c>gs</c> without an edit opens on a finished list; a fresh one fills in from
+    /// <see cref="OnIteration"/>.
+    /// </summary>
+    private void OpenSymbolPicker()
+    {
+        if (_activeSymbolPicker is not null) return;
+        if (_workbench.Editor.Group.ActiveTab is not { } tab)
+        {
+            _workbench.StatusBar.SetMessage("No file open");
+            return;
+        }
+        if (tab.ScanSymbols() is not { } scan)
+        {
+            _workbench.StatusBar.SetMessage(SymbolPickerView.NoSymbols);
+            return;
+        }
+
+        var view = new SymbolPickerView(tab.File.Name, scan);
+        view.Cancelled += (_, _) => CloseSymbolPicker(view);
+        view.Submitted += (_, symbol) =>
+        {
+            CloseSymbolPicker(view);
+            // As in Go to line: drive the move ourselves so even a short hop records as a deliberate jump.
+            _suppressHistory = true;
+            try { tab.MoveCursor(symbol.Line, 0); }
+            finally { _suppressHistory = false; }
+            _history.Visit(new CursorLocation(tab.File.FullName, symbol.Line, 0), explicitJump: true);
+        };
+
+        _activeSymbolPicker = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusFilter();
+    }
+
+    private void CloseSymbolPicker(SymbolPickerView view)
+    {
+        if (!ReferenceEquals(_activeSymbolPicker, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeSymbolPicker = null;
+        FocusEditorBody();
+    }
+
+    private void OnIteration(object? sender, EventArgs<IApplication?> e)
+    {
+        _workbench.ShowCursorPosition();
+        _activeSymbolPicker?.Advance();
+    }
 
     private void OnEditorCursorMoved(object? sender, (IFileInfo File, int Row, int Column) e)
     {
