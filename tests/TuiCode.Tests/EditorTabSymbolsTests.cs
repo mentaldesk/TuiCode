@@ -43,7 +43,10 @@ public class EditorTabSymbolsTests
 
     private static IReadOnlyList<FileSymbol> Advanced(SymbolScan? scan)
     {
-        scan!.Advance(TimeSpan.MaxValue);
+        // Compiling a cold grammar's regexes can outrun the production per-line limit, which would have the
+        // scan re-read the line rather than report what it found. This test is about the caching, not that.
+        scan!.LineTimeLimit = TimeSpan.FromMinutes(1);
+        scan.Advance(TimeSpan.MaxValue);
         return scan.Symbols;
     }
 

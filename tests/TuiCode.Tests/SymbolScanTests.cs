@@ -7,6 +7,10 @@ public class SymbolScanTests
 {
     private static readonly GrammarBundle Bundle = GrammarBundle.Load();
 
+    // Compiling a cold grammar's regexes can outrun the production per-line limit, which would have the scan
+    // re-read the line and report itself unfinished. These fixtures are about what it finds, not about that.
+    private static readonly TimeSpan Patient = TimeSpan.FromMinutes(1);
+
     private readonly SyntaxHighlighter _highlighter = new(Bundle);
 
     private const string CSharp = """
@@ -185,6 +189,7 @@ public class SymbolScanTests
     public void Advance_stops_once_the_budget_is_spent_but_always_scans_a_line()
     {
         var scan = ScanFor("csharp", Enumerable.Repeat("public class A { }", 20).ToArray());
+        scan.LineTimeLimit = Patient;
 
         Assert.False(scan.Advance(TimeSpan.Zero));
 
@@ -197,6 +202,7 @@ public class SymbolScanTests
     public void Advancing_to_the_end_leaves_the_scan_done_and_costs_nothing_more()
     {
         var scan = ScanFor("csharp", CSharp.Split('\n'));
+        scan.LineTimeLimit = Patient;
 
         Assert.True(scan.Advance(TimeSpan.MaxValue));
         var scanned = scan.LinesScanned;
@@ -210,6 +216,7 @@ public class SymbolScanTests
     public void Lines_over_the_length_limit_are_skipped_rather_than_tokenized()
     {
         var scan = ScanFor("csharp", ["public class A { }", new string('x', LineTokenCache.MaxLineLength + 1), "public class B { }"]);
+        scan.LineTimeLimit = Patient;
 
         scan.Advance(TimeSpan.MaxValue);
 
@@ -250,6 +257,7 @@ public class SymbolScanTests
     private IReadOnlyList<FileSymbol> Scan(string language, string text)
     {
         var scan = ScanFor(language, text.Split('\n'));
+        scan.LineTimeLimit = Patient;
         Assert.True(scan.Advance(TimeSpan.MaxValue));
         return scan.Symbols;
     }
