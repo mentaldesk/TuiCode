@@ -63,6 +63,7 @@ public static class CommandMnemonics
             [CommandIds.FocusEditorTabStrip] = "ft",
             [CommandIds.FocusReview] = "fr",
             [CommandIds.GoToLine] = "gl",
+            [CommandIds.GoToSymbol] = "gs",
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
             [CommandIds.ShowExplorer] = "se",
