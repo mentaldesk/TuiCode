@@ -1,3 +1,5 @@
+using Terminal.Gui.ViewBase;
+using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -156,6 +158,55 @@ public class SubmitReviewHostTests : StaticConfigurationTest
         Assert.Null(Dialog(workbench));
     }
 
+    [Fact]
+    public async Task Clicking_the_submit_hint_posts_the_review()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is not null,
+            () => Type(host, "Looks good"),
+            () => Click(Hint(workbench, "Ctrl+Enter submit")),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal([(_git.Root, 187, GitHubReviewVerdict.Comment, "Looks good")], _gitHub.Reviews);
+    }
+
+    [Fact]
+    public async Task Clicking_the_cancel_hint_closes_the_dialog_without_submitting()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is not null,
+            () => Type(host, "Never mind"),
+            () => Click(Hint(workbench, "Esc cancel")),
+            () => Dialog(workbench) is null);
+
+        Assert.Empty(_gitHub.Reviews);
+    }
+
+    [Fact]
+    public async Task A_summary_too_long_for_the_dialog_wraps_but_is_posted_as_one_line()
+    {
+        var summary = string.Join(' ', Enumerable.Repeat("summary", 20));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is not null,
+            () => Type(host, summary),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal([(_git.Root, 187, GitHubReviewVerdict.Comment, summary)], _gitHub.Reviews);
+    }
+
     private static SubmitReviewView? Dialog(Workbench.Workbench workbench) =>
         workbench.SubViews.OfType<SubmitReviewView>().SingleOrDefault();
 
@@ -172,6 +223,12 @@ public class SubmitReviewHostTests : StaticConfigurationTest
         host.App.InjectKey(Key.Space);
         host.App.InjectKey(Key.Tab);
     }
+
+    private static Button Hint(Workbench.Workbench workbench, string text) =>
+        Dialog(workbench)!.SubViews.OfType<Button>().Single(button => button.Text == text);
+
+    private static void Click(View view) =>
+        view.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) });
 
     private Workbench.Workbench BuildWorkbench()
     {

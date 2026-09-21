@@ -1,11 +1,13 @@
+using System.Text;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Review;
 
 /// <summary>
-/// Modal for Submit review (<c>sr</c>): the verdict, a summary, and Submit / Cancel. The host posts it
-/// and reports back through <see cref="ShowError"/>, so a refused review keeps the dialog and its text.
+/// Modal for Submit review (<c>sr</c>): the verdict, a summary, and the two hints, which are themselves the
+/// buttons. The host posts the review and reports back through <see cref="ShowError"/>, so a refused review
+/// keeps the dialog and its text.
 /// </summary>
 public sealed class SubmitReviewView : Window
 {
@@ -51,19 +53,20 @@ public sealed class SubmitReviewView : Window
             X = 1,
             Y = 2,
             Width = Dim.Fill(1),
-            Height = Dim.Fill(4),
-            // Otherwise Tab types a tab here instead of moving on to Submit.
+            Height = Dim.Fill(3),
+            // Otherwise Tab types a tab here instead of moving on to the hints.
             TabKeyAddsTab = false,
+            WordWrap = true,
         };
 
-        _status = new Label { X = 1, Y = Pos.AnchorEnd(3), Width = Dim.Fill(1), Text = string.Empty };
-        _submit = new Button { Text = "Submit", X = Pos.Center() - 12, Y = Pos.AnchorEnd(2) };
-        var cancel = new Button { Text = "Cancel", X = Pos.Center() + 2, Y = Pos.AnchorEnd(2) };
+        _status = new Label { X = 1, Y = Pos.AnchorEnd(2), Width = Dim.Fill(1), Text = string.Empty };
+        _submit = Hint("Ctrl+Enter submit", 1);
+        var separator = new Label { X = Pos.Right(_submit) + 1, Y = Pos.AnchorEnd(1), Text = "·" };
+        var cancel = Hint("Esc cancel", Pos.Right(separator) + 1);
         _submit.Accepting += (_, e) => { e.Handled = true; OnSubmit(); };
         cancel.Accepting += (_, e) => { e.Handled = true; Cancelled?.Invoke(this, EventArgs.Empty); };
-        var hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = "Ctrl+Enter submit · Esc cancel" };
 
-        Add(_verdict, _summary, _status, _submit, cancel, hint);
+        Add(_verdict, _summary, _status, _submit, separator, cancel);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -72,6 +75,18 @@ public sealed class SubmitReviewView : Window
         _scopeKeybindings.Bind("Esc", CommandIds.SubmitReviewCancel);
         _scopeKeybindings.Bind("Ctrl+Enter", CommandIds.SubmitReviewConfirm);
     }
+
+    /// <summary>A hint that is its own button: plain text, clickable, and no hotkey of its own.</summary>
+    private static Button Hint(string text, Pos x) => new()
+    {
+        Text = text,
+        X = x,
+        Y = Pos.AnchorEnd(1),
+        NoDecorations = true,
+        NoPadding = true,
+        ShadowStyle = ShadowStyles.None,
+        HotKeySpecifier = (Rune)0xffff,
+    };
 
     public GitHubReviewVerdict Verdict => _verdict.Value ?? GitHubReviewVerdict.Comment;
 
