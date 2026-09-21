@@ -12,9 +12,9 @@ public sealed class CommentView : Window
 {
     private const string MissingBody = "A comment needs something to say.";
     private const int DialogWidth = 70;
-    private const int DialogHeight = 12;
+    private const int DialogHeight = 12 + InputView.Frame;
 
-    private readonly TextView _body;
+    private readonly InputView _body;
     private readonly System.Drawing.Point _end;
     private readonly AlertView _alert;
     private readonly Button[] _buttons;
@@ -43,15 +43,12 @@ public sealed class CommentView : Window
         CanFocus = true;
 
         var written = draft?.Body ?? string.Empty;
-        _body = new TextView
+        _body = new InputView
         {
             X = 1,
             Y = 0,
             Width = Dim.Fill(1),
             Height = Dim.Fill(2),
-            // Otherwise Tab types a tab here instead of moving on to the buttons.
-            TabKeyAddsTab = false,
-            WordWrap = true,
             Text = written,
         };
 

@@ -14,10 +14,10 @@ public sealed class SubmitReviewView : Window
 {
     private const string MissingSummary = "Comment and Request changes need a summary.";
     private const int DialogWidth = 70;
-    private const int DialogHeight = 16;
+    private const int DialogHeight = 16 + InputView.Frame;
 
     private readonly OptionSelector<GitHubReviewVerdict> _verdict;
-    private readonly TextView _summary;
+    private readonly InputView _summary;
     private readonly Label _drafts;
     private readonly View[] _hints;
     private readonly AlertView _alert;
@@ -56,15 +56,12 @@ public sealed class SubmitReviewView : Window
 
         _drafts = new Label { X = 1, Y = Pos.AnchorEnd(2), Text = DraftComments.Posting(drafts), Visible = drafts > 0 };
 
-        _summary = new TextView
+        _summary = new InputView
         {
             X = 1,
             Y = 2,
             Width = Dim.Fill(1),
             Height = Dim.Fill(Foot),
-            // Otherwise Tab types a tab here instead of moving on to the hints.
-            TabKeyAddsTab = false,
-            WordWrap = true,
         };
 
         _submit = Hint("Ctrl+Enter submit", 1);

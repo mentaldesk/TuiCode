@@ -3,6 +3,7 @@ using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
@@ -45,6 +46,23 @@ public class CreateCommentHostTests : StaticConfigurationTest
         var diff = workbench.Editor.Group.ActiveDiffTab!;
         Assert.Equal([new DraftComment("src/a.txt", 1, "Rename this?")], diff.Drafts);
         Assert.Equal("Draft review: 1 comment", workbench.Sidebar.Review.DraftReviewText);
+    }
+
+    [Fact]
+    public async Task The_comment_box_shows_it_has_focus_as_soon_as_the_dialog_opens()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var shows = false;
+
+        await OpenDiff(host, workbench, commands);
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.CreateComment),
+            () => Dialog(workbench) is not null,
+            () => { shows = Dialog(workbench)!.SubViews.OfType<InputView>().Single().ShowsFocus; },
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.True(shows);
     }
 
     [Fact]
