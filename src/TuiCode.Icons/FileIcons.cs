@@ -16,6 +16,11 @@ public sealed class FileIcons
     private static readonly FileIcon EmojiFolder = new("📁");
     private static readonly FileIcon EmojiFolderOpen = new("📂");
     private static readonly FileIcon EmojiFile = new("📄");
+    // nf-md-chat and nf-md-chat_remove_outline.
+    private static readonly FileIcon NerdThreadsOpen = new("\U000F0B79");
+    private static readonly FileIcon NerdThreadsSettled = new("\U000F1414");
+    private static readonly FileIcon EmojiThreadsOpen = new("💬");
+    private static readonly FileIcon EmojiThreadsSettled = new("💭");
 
     private readonly Lazy<FontDetection> _detection;
     private FileIconStyle _setting;
@@ -57,6 +62,14 @@ public sealed class FileIcons
     {
         FileIconStyle.NerdFont => expanded ? NerdFolderOpen : NerdFolder,
         FileIconStyle.Emoji => expanded ? EmojiFolderOpen : EmojiFolder,
+        _ => null,
+    };
+
+    /// <summary>The mark on a file with review threads on it (#186), open ones apart from settled ones.</summary>
+    public FileIcon? ForThreads(bool unresolved) => Style switch
+    {
+        FileIconStyle.NerdFont => unresolved ? NerdThreadsOpen : NerdThreadsSettled,
+        FileIconStyle.Emoji => unresolved ? EmojiThreadsOpen : EmojiThreadsSettled,
         _ => null,
     };
 }

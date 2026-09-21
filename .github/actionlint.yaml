@@ -1,0 +1,4 @@
+# actionlint's built-in runner list lags GitHub's; these are real hosted runners.
+self-hosted-runner:
+  labels:
+    - windows-11-arm

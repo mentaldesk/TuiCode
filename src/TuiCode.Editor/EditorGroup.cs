@@ -81,11 +81,11 @@ public sealed class EditorGroup : Tabs
         Focus(file.FullName) ?? Track(new EditorTab(file, _syntax));
 
     /// <summary>Opens a read-only Markdown document that isn't on disk (#185), like a PR's Overview.</summary>
-    public DocumentTab OpenDocument(IFileInfo file, string content)
+    public DocumentTab OpenDocument(IFileInfo file, string content, string? title = null)
     {
         if (FocusDocument(file.FullName) is { } open) return open;
 
-        var tab = new DocumentTab(file, content);
+        var tab = new DocumentTab(file, content, title);
         _documents[file.FullName] = tab;
         Add(tab);
         Value = tab;
