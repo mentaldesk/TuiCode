@@ -95,6 +95,7 @@ public sealed class ReviewView : View
             TreeBuilder = new DelegateTreeBuilder<ReviewNode>(n => n.Children, n => n.Children.Count > 0),
         };
         _files.AspectGetter = node => ReviewRow.Display(node, _files.Viewport.Width);
+        _files.DrawLine += (_, e) => MarkBadge(e);
         Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files);
 
         ViewportChanged += (_, _) => ShowTitle();
@@ -121,6 +122,19 @@ public sealed class ReviewView : View
     }
 
     private static Label Line() => new() { X = 0, Y = 0, Width = Dim.Fill(), Text = string.Empty, Visible = false };
+
+    /// <summary>Styles a file's thread badge where the tree has drawn it, at the right of the row (#186).</summary>
+    private void MarkBadge(DrawTreeViewLineEventArgs<ReviewNode> e)
+    {
+        if (e.Model is not ReviewFileNode { Badge: { } badge } file || e.Cells is not { } cells) return;
+
+        var end = e.IndexOfModelText + ReviewRow.Display(file, _files.Viewport.Width).Length;
+        for (var i = Math.Max(0, end - badge.Length); i < Math.Min(cells.Count, end); i++)
+        {
+            var attribute = cells[i].Attribute ?? default;
+            cells[i] = cells[i] with { Attribute = attribute with { Style = attribute.Style | file.BadgeStyle } };
+        }
+    }
 
     /// <summary>Focuses the file list, or the tab itself while there's no list to show.</summary>
     public bool FocusList()

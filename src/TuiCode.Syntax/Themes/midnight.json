@@ -9,6 +9,7 @@
     "editorGutter.modifiedBackground": "#6CB6FF",
     "editorGutter.deletedBackground": "#F85149",
     "diffEditor.removedLineBackground": "#4B2327",
-    "diffEditor.insertedLineBackground": "#1F3D2A"
+    "diffEditor.insertedLineBackground": "#1F3D2A",
+    "editorCommentsWidget.rangeBackground": "#3A2C50"
   }
 }

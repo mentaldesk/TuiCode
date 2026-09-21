@@ -14,12 +14,21 @@ public sealed class ReviewFolderNode(string path) : ReviewNode
     public override string ToString() => Path;
 }
 
-public sealed class ReviewFileNode(GitChange change, int threadCount = 0) : ReviewNode
+public sealed class ReviewFileNode(GitChange change, IReadOnlyList<GitHubReviewThread>? threads = null) : ReviewNode
 {
     public GitChange Change { get; } = change;
 
-    /// <summary>How many review threads are on this file, outdated ones included (#186).</summary>
-    public int ThreadCount { get; } = threadCount;
+    /// <summary>The review threads on this file, outdated ones included (#186).</summary>
+    public IReadOnlyList<GitHubReviewThread> Threads { get; } = threads ?? [];
+
+    public int UnresolvedCount => Threads.Count(t => !t.Resolved);
+
+    /// <summary>The mark at the right of the row: the threads still open, or all of them once they're settled.</summary>
+    public string? Badge => Threads.Count == 0 ? null
+        : UnresolvedCount > 0 ? $"● {UnresolvedCount}"
+        : $"○ {Threads.Count}";
+
+    public TextStyle BadgeStyle => UnresolvedCount > 0 ? TextStyle.Bold : TextStyle.Faint;
 
     public string Name => Change.Path[(Change.Path.LastIndexOf('/') + 1)..];
 
@@ -36,15 +45,14 @@ public sealed class ReviewFileNode(GitChange change, int threadCount = 0) : Revi
 
 internal static class ReviewRow
 {
-    /// <summary>A row as the tree shows it: its text, with a file's thread count pushed to the right of <paramref name="width"/>.</summary>
+    /// <summary>A row as the tree shows it: its text, with a file's thread badge pushed to the right of <paramref name="width"/>.</summary>
     public static string Display(ReviewNode node, int width)
     {
         var text = node.ToString() ?? string.Empty;
-        if (node is not ReviewFileNode { ThreadCount: > 0 } file) return text;
+        if (node is not ReviewFileNode { Badge: { } badge }) return text;
 
-        // The tree draws its own expander and indent before this, so the count sits a little in from the edge.
-        var count = file.ThreadCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return text + new string(' ', Math.Max(1, width - text.Length - count.Length)) + count;
+        // The tree draws its own expander and indent before this, so the badge sits a little in from the edge.
+        return text + new string(' ', Math.Max(1, width - text.Length - badge.Length)) + badge;
     }
 }
 
@@ -69,7 +77,7 @@ internal static class ReviewTree
         var files = changes.Select(c =>
         {
             var on = byPath.GetValueOrDefault(c.Path) ?? [];
-            var file = new ReviewFileNode(c, on.Count);
+            var file = new ReviewFileNode(c, on);
             if (on.Where(t => t.Outdated).ToList() is { Count: > 0 } outdated)
                 file.Children.Add(new ReviewOutdatedNode(c, outdated));
             return file;

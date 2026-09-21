@@ -11,6 +11,8 @@ public class DiffThreadTests : StaticConfigurationTest
 {
     private static readonly DateTimeOffset Posted = new(2026, 9, 20, 6, 54, 0, TimeSpan.Zero);
 
+    private const int Columns = 31;
+
     private readonly IApplication _app = Application.Create().Init(DriverRegistry.Names.ANSI);
     private readonly MockFileSystem _fs = new();
 
@@ -62,6 +64,19 @@ public class DiffThreadTests : StaticConfigurationTest
         diff.ShowThreads([Thread(2, "octocat", "Open.")]);
         Render(diff);
         Assert.False(AttributeAt(3, 0).Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public void A_thread_row_is_drawn_on_a_background_of_its_own()
+    {
+        var diff = Diff("one\ntwo", "one\nTWO");
+        diff.ShowThreads([Thread(2, "octocat", "Look here.")]);
+
+        Render(diff);
+
+        var comment = AttributeAt(3, 0).Background;
+        Assert.DoesNotContain(comment, BackgroundsOf(1));
+        Assert.DoesNotContain(comment, BackgroundsOf(2));
     }
 
     [Fact]
@@ -143,7 +158,7 @@ public class DiffThreadTests : StaticConfigurationTest
         var diff = new DiffTab(source, "saved", () => DiffTab.ReadLines(source.File))
         {
             App = _app,
-            Width = 31,
+            Width = Columns,
             Height = 9,
         };
         diff.BeginInit();
@@ -154,6 +169,9 @@ public class DiffThreadTests : StaticConfigurationTest
     }
 
     private Attribute AttributeAt(int row, int col) => _app.Driver!.Contents![row, col].Attribute!.Value;
+
+    private IEnumerable<Color> BackgroundsOf(int row) =>
+        Enumerable.Range(0, Columns).Select(col => AttributeAt(row, col).Background);
 
     private string[] Render(DiffTab view)
     {

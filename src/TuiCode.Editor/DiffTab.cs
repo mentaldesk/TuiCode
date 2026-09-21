@@ -21,6 +21,7 @@ public sealed class DiffTab : FrameView
 
     private static readonly Color DefaultRemoved = new(0x5A, 0x1E, 0x1E);
     private static readonly Color DefaultInserted = new(0x1E, 0x4A, 0x28);
+    private static readonly Color DefaultComment = new(0x3A, 0x2C, 0x50);
 
     private readonly Func<IReadOnlyList<string>> _readLeft;
     private readonly SyntaxHighlighter? _syntax;
@@ -325,6 +326,7 @@ public sealed class DiffTab : FrameView
         var normal = GetAttributeForRole(VisualRole.Editable);
         var removed = normal with { Background = ThemeColor("diffEditor.removedLineBackground") ?? DefaultRemoved };
         var inserted = normal with { Background = ThemeColor("diffEditor.insertedLineBackground") ?? DefaultInserted };
+        var comment = normal with { Background = ThemeColor("editorCommentsWidget.rangeBackground") ?? DefaultComment };
         var (leftWidth, rightWidth) = SideWidths();
         var rightX = leftWidth + 1;
         var digits = Digits;
@@ -341,8 +343,8 @@ public sealed class DiffTab : FrameView
             var index = _top + y - 1;
             if (index < _rows.Count && _rows[index] is { Thread: { } thread } threadRow)
             {
-                var faint = normal with { Style = normal.Style | TextStyle.Faint };
-                DrawThread(y, threadRow.Text, index == _current ? current : thread.Resolved ? faint : normal);
+                var resolved = comment with { Style = comment.Style | TextStyle.Faint };
+                DrawThread(y, threadRow.Text, index == _current ? current : thread.Resolved ? resolved : comment);
                 continue;
             }
             DiffRow? row = index < _rows.Count ? Diff.Rows[_rows[index].Diff] : null;

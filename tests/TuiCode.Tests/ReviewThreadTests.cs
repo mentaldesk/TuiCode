@@ -1,3 +1,4 @@
+using Terminal.Gui.Drawing;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Review;
@@ -79,34 +80,58 @@ public class ReviewThreadCountTests
     }
 
     [Fact]
-    public void A_file_carries_its_thread_count_and_outdated_threads_hang_under_it()
+    public void A_file_carries_its_threads_and_the_outdated_ones_hang_under_it()
     {
         var nodes = ReviewTree.Build([Changed], [Thread("src/a.cs"), Thread("src/a.cs", outdated: true)]);
 
         var file = Assert.IsType<ReviewFileNode>(Assert.Single(Assert.IsType<ReviewFolderNode>(Assert.Single(nodes)).Children));
-        Assert.Equal(2, file.ThreadCount);
+        Assert.Equal(2, file.Threads.Count);
         var outdated = Assert.IsType<ReviewOutdatedNode>(Assert.Single(file.Children));
         Assert.Equal("! 1 outdated thread", outdated.ToString());
     }
 
     [Fact]
-    public void A_file_with_no_threads_has_no_count_and_no_children()
+    public void A_file_with_no_threads_has_no_badge_and_no_children()
     {
         var file = Assert.IsType<ReviewFileNode>(Assert.Single(Assert.IsType<ReviewFolderNode>(Assert.Single(ReviewTree.Build([Changed]))).Children));
 
-        Assert.Equal(0, file.ThreadCount);
+        Assert.Empty(file.Threads);
         Assert.Empty(file.Children);
         Assert.Equal("M a.cs", ReviewRow.Display(file, 20));
     }
 
     [Fact]
-    public void A_files_thread_count_is_pushed_to_the_right_of_the_row()
+    public void A_files_thread_badge_is_pushed_to_the_right_of_the_row()
     {
         var nodes = ReviewTree.Build([Changed], [Thread("src/a.cs"), Thread("src/a.cs")]);
         var file = Assert.IsType<ReviewFolderNode>(Assert.Single(nodes)).Children[0];
 
-        Assert.Equal("M a.cs             2", ReviewRow.Display(file, 20));
+        Assert.Equal("M a.cs           ● 2", ReviewRow.Display(file, 20));
     }
+
+    [Fact]
+    public void A_files_badge_counts_the_threads_still_open_and_marks_the_settled_ones_apart()
+    {
+        Assert.Equal("● 1", File(Thread("src/a.cs"), Thread("src/a.cs", resolved: true)).Badge);
+        Assert.Equal("○ 2", File(Thread("src/a.cs", resolved: true), Thread("src/a.cs", resolved: true)).Badge);
+        Assert.Null(File().Badge);
+    }
+
+    [Fact]
+    public void An_outdated_thread_still_counts_towards_the_files_badge()
+    {
+        Assert.Equal("● 1", File(Thread("src/a.cs", outdated: true)).Badge);
+    }
+
+    [Fact]
+    public void A_badge_is_bold_while_a_thread_is_open_and_faint_once_they_are_all_resolved()
+    {
+        Assert.Equal(TextStyle.Bold, File(Thread("src/a.cs"), Thread("src/a.cs", resolved: true)).BadgeStyle);
+        Assert.Equal(TextStyle.Faint, File(Thread("src/a.cs", resolved: true)).BadgeStyle);
+    }
+
+    private static ReviewFileNode File(params GitHubReviewThread[] threads) =>
+        Assert.IsType<ReviewFileNode>(Assert.Single(Assert.IsType<ReviewFolderNode>(Assert.Single(ReviewTree.Build([Changed], threads))).Children));
 
     private static BranchReview Review(params GitHubReviewThread[] threads) =>
         new("/work", "feature", "main", "b45e", [Changed], new GitHubPullRequest(186, "Threads", "main", "feature", default))
