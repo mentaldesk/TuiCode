@@ -45,14 +45,11 @@ public sealed class ReviewFileNode(GitChange change, IReadOnlyList<GitHubReviewT
 
 internal static class ReviewRow
 {
-    /// <summary>A row as the tree shows it: its text, with a file's thread badge pushed to the right of <paramref name="width"/>.</summary>
-    public static string Display(ReviewNode node, int width)
+    /// <summary>A row as the tree shows it: its text, with a file's thread badge after it.</summary>
+    public static string Display(ReviewNode node)
     {
         var text = node.ToString() ?? string.Empty;
-        if (node is not ReviewFileNode { Badge: { } badge }) return text;
-
-        // The tree draws its own expander and indent before this, so the badge sits a little in from the edge.
-        return text + new string(' ', Math.Max(1, width - text.Length - badge.Length)) + badge;
+        return node is ReviewFileNode { Badge: { } badge } ? $"{text}  {badge}" : text;
     }
 }
 

@@ -82,6 +82,19 @@ public class FileIconsTests
 
         Assert.Null(icons.ForFile("Program.cs"));
         Assert.Null(icons.ForDirectory(expanded: false));
+        Assert.Null(icons.ForThreads(unresolved: true));
+    }
+
+    [Fact]
+    public void A_file_with_review_threads_gets_a_chat_icon_per_style()
+    {
+        var nerd = new FileIcons(Detected(true));
+        var emoji = new FileIcons(Detected(false));
+
+        Assert.Equal("\U000F0B79", nerd.ForThreads(unresolved: true)?.Glyph);
+        Assert.Equal("\U000F1414", nerd.ForThreads(unresolved: false)?.Glyph);
+        Assert.Equal("💬", emoji.ForThreads(unresolved: true)?.Glyph);
+        Assert.Equal("💭", emoji.ForThreads(unresolved: false)?.Glyph);
     }
 
     [Fact]

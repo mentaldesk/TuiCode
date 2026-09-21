@@ -1,4 +1,5 @@
 using TuiCode.Abstractions;
+using TuiCode.Icons;
 using TuiCode.Workbench.Git;
 
 namespace TuiCode.Workbench.Review;
@@ -12,6 +13,7 @@ public sealed class ReviewView : View
 {
     private readonly IGitCli _git;
     private readonly IGitHubCli _gitHub;
+    private readonly FileIcons? _icons;
     private readonly Label _title;
     private readonly Label _header;
     private readonly Label _checks;
@@ -60,10 +62,11 @@ public sealed class ReviewView : View
 
     internal TreeView<ReviewNode> Files => _files;
 
-    public ReviewView(IGitCli? git = null, IGitHubCli? gitHub = null)
+    public ReviewView(IGitCli? git = null, IGitHubCli? gitHub = null, FileIcons? icons = null)
     {
         _git = git ?? new GitCli(new FileSystem());
         _gitHub = gitHub ?? new GitHubCli();
+        _icons = icons;
         CanFocus = true;
 
         _title = Line();
@@ -94,8 +97,9 @@ public sealed class ReviewView : View
             Visible = false,
             TreeBuilder = new DelegateTreeBuilder<ReviewNode>(n => n.Children, n => n.Children.Count > 0),
         };
-        _files.AspectGetter = node => ReviewRow.Display(node, _files.Viewport.Width);
-        _files.DrawLine += (_, e) => MarkBadge(e);
+        _files.AspectGetter = ReviewRow.Display;
+        _files.DrawLine += (_, e) => MarkThreads(e);
+        if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
         Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files);
 
         ViewportChanged += (_, _) => ShowTitle();
@@ -123,17 +127,25 @@ public sealed class ReviewView : View
 
     private static Label Line() => new() { X = 0, Y = 0, Width = Dim.Fill(), Text = string.Empty, Visible = false };
 
-    /// <summary>Styles a file's thread badge where the tree has drawn it, at the right of the row (#186).</summary>
-    private void MarkBadge(DrawTreeViewLineEventArgs<ReviewNode> e)
+    /// <summary>Marks a file the review has threads on (#186): a chat icon before its name, and its badge styled.</summary>
+    private void MarkThreads(DrawTreeViewLineEventArgs<ReviewNode> e)
     {
         if (e.Model is not ReviewFileNode { Badge: { } badge } file || e.Cells is not { } cells) return;
 
-        var end = e.IndexOfModelText + ReviewRow.Display(file, _files.Viewport.Width).Length;
+        var at = e.IndexOfModelText;
+        var end = at + ReviewRow.Display(file).Length;
         for (var i = Math.Max(0, end - badge.Length); i < Math.Min(cells.Count, end); i++)
-        {
-            var attribute = cells[i].Attribute ?? default;
-            cells[i] = cells[i] with { Attribute = attribute with { Style = attribute.Style | file.BadgeStyle } };
-        }
+            cells[i] = Styled(cells[i], file.BadgeStyle);
+
+        if (_icons?.ForThreads(file.UnresolvedCount > 0) is not { } icon) return;
+        IconDrawing.Prepend(e, icon);
+        if (at >= 0 && at < cells.Count) cells[at] = Styled(cells[at], file.BadgeStyle);
+    }
+
+    private static Cell Styled(Cell cell, TextStyle style)
+    {
+        var attribute = cell.Attribute ?? default;
+        return cell with { Attribute = attribute with { Style = attribute.Style | style } };
     }
 
     /// <summary>Focuses the file list, or the tab itself while there's no list to show.</summary>
