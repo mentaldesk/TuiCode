@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace TuiCode.Abstractions;
 
 /// <summary>
@@ -12,6 +14,9 @@ public interface IGitHubCli
 
     /// <summary>PR <paramref name="number"/>'s description and the comments on it, oldest first (#185).</summary>
     Task<GitHubResult<GitHubConversation>> GetConversationAsync(string repoRoot, int number, CancellationToken cancellationToken = default);
+
+    /// <summary>The review threads on PR <paramref name="number"/> (#186), in the order GitHub lists them.</summary>
+    Task<GitHubResult<IReadOnlyList<GitHubReviewThread>>> GetReviewThreadsAsync(string repoRoot, int number, CancellationToken cancellationToken = default);
 
     /// <summary>The repo's open PRs, newest first, each flagged when the logged-in user's review is requested.</summary>
     Task<GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>> ListPullRequestsAsync(string repoRoot, CancellationToken cancellationToken = default);
@@ -53,7 +58,32 @@ public sealed record GitHubConversation(
     IReadOnlyList<GitHubComment> Comments);
 
 /// <summary>One comment on a PR, posted at <paramref name="Date"/>.</summary>
-public sealed record GitHubComment(string Author, DateTimeOffset Date, string Body);
+public sealed record GitHubComment(string Author, DateTimeOffset Date, string Body)
+{
+    /// <summary>How a comment is headed wherever it's read: the Overview tab (#185) and an expanded thread (#186).</summary>
+    public string Heading => HeadingFor(Author, Date);
+
+    /// <summary>The same heading for something that isn't a comment, like the PR's own description.</summary>
+    public static string HeadingFor(string author, DateTimeOffset date) =>
+        $"{author} · {date.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}";
+}
+
+/// <summary>
+/// A review thread on a PR (#186). <c>Line</c> is the line it's attached to on the head side, and is null
+/// once the thread is <c>Outdated</c> — the line it was written against is no longer in the file.
+/// </summary>
+public sealed record GitHubReviewThread(
+    string Path,
+    int? Line,
+    bool Resolved,
+    bool Outdated,
+    IReadOnlyList<GitHubComment> Comments)
+{
+    /// <summary>The comment the thread is headed by; a thread always has one.</summary>
+    public GitHubComment? First => Comments.Count > 0 ? Comments[0] : null;
+
+    public int Replies => Math.Max(0, Comments.Count - 1);
+}
 
 /// <summary>A PR's checks, counted by state.</summary>
 public readonly record struct GitHubChecks(int Passed, int Failed, int Pending)

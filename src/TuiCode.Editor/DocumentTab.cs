@@ -11,10 +11,10 @@ public sealed class DocumentTab : FrameView
 {
     private readonly Markdown _markdown;
 
-    public DocumentTab(IFileInfo file, string content)
+    public DocumentTab(IFileInfo file, string content, string? title = null)
     {
         File = file;
-        Title = file.Name;
+        Title = title ?? file.Name;
         BorderStyle = LineStyle.None;
         CanFocus = true;
 

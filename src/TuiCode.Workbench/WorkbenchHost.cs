@@ -154,6 +154,8 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Group.ActiveTabChanged += OnActiveTabChanged;
         _workbench.Sidebar.Review.FileActivated += (_, e) => OpenReviewDiff(e.Review, e.Change);
         _workbench.Sidebar.Review.PullRequestActivated += (_, review) => OpenOverview(review);
+        _workbench.Sidebar.Review.OutdatedThreadsActivated += (_, e) => OpenOutdatedThreads(e.Review, e.Node);
+        _workbench.Sidebar.Review.ThreadsLoaded += (_, review) => ShowThreadsInOpenDiffs(review);
     }
 
     private void ApplyTokenTheme()
@@ -1090,6 +1092,8 @@ public sealed class WorkbenchHost : IDisposable
     private void GoToChangeLine()
     {
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
+        // On a thread row (#186) Enter reads the thread rather than going anywhere.
+        if (diff.ToggleThread()) return;
         if (diff.Source is not { } tab)
         {
             _workbench.StatusBar.SetMessage("Deleted in this branch");
@@ -1329,6 +1333,35 @@ public sealed class WorkbenchHost : IDisposable
         });
     }
 
+    /// <summary>A file's outdated threads (#186) in a document tab, since there's no line left to show them on.</summary>
+    private void OpenOutdatedThreads(BranchReview review, ReviewOutdatedNode node)
+    {
+        if (review.PullRequest is not { } pullRequest) return;
+
+        var group = _workbench.Editor.Group;
+        var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
+        var title = PullRequestOverview.OutdatedTitleOf(pullRequest.Number, node.Change.Path);
+        // The path only identifies the tab, so it takes neither the separators nor the colon of the title.
+        var name = $"#{pullRequest.Number} outdated {node.Change.Path.Replace('/', ' ')}";
+        var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(review.RepoRoot, name));
+        group.OpenDocument(file, PullRequestOverview.BuildOutdated(pullRequest.Number, node.Change.Path, node.Threads), title);
+        FocusEditorBody();
+    }
+
+    /// <summary>Threads arrive after the diffs they belong on (#186), so the open ones are given theirs when they do.</summary>
+    private void ShowThreadsInOpenDiffs(BranchReview review)
+    {
+        var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
+        foreach (var diff in _workbench.Editor.Group.DiffTabs)
+        {
+            if (diff.Review is not { } spot || spot.Key != review.MergeBase) continue;
+            diff.ShowThreads(review.ThreadsOn(RepoPath(fileSystem, review.RepoRoot, diff.File)));
+        }
+    }
+
+    private static string RepoPath(IFileSystem fileSystem, string repoRoot, IFileInfo file) =>
+        fileSystem.Path.GetRelativePath(repoRoot, file.FullName).Replace('\\', '/');
+
     private void OpenReviewDiff(BranchReview review, GitChange change)
     {
         var files = _workbench.Sidebar.Review.ChangedFiles;
@@ -1380,6 +1413,7 @@ public sealed class WorkbenchHost : IDisposable
             if (diff is not null)
             {
                 diff.Review = new ReviewSpot(review.MergeBase, index, count);
+                diff.ShowThreads(review.ThreadsOn(change.Path));
                 _workbench.Sidebar.Review.SelectFile(change.Path);
                 FocusEditorBody();
             }

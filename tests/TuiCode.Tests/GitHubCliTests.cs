@@ -75,6 +75,35 @@ public class GitHubCliTests
     }
 
     [Fact]
+    public void ParseThreads_reads_each_thread_with_its_line_resolution_and_comments()
+    {
+        const string json = """
+        { "data": { "repository": { "pullRequest": { "reviewThreads": { "nodes": [
+          { "isResolved": true, "isOutdated": false, "path": "src/a.cs", "line": 12, "diffSide": "RIGHT",
+            "comments": { "nodes": [ { "author": { "login": "octocat" }, "createdAt": "2026-09-20T06:54:00Z", "body": "Why?" },
+                                     { "author": { "login": "hubot" }, "createdAt": "2026-09-20T07:54:00Z", "body": "Because." } ] } },
+          { "isResolved": false, "isOutdated": true, "path": "src/b.cs", "line": null, "diffSide": "RIGHT", "comments": { "nodes": [] } },
+          { "isResolved": false, "isOutdated": false, "path": "src/c.cs", "line": 3, "diffSide": "LEFT", "comments": { "nodes": [] } }
+        ] } } } } }
+        """;
+
+        var threads = GitHubCli.ParseThreads(json).Value;
+
+        Assert.Equal([12, null, null], threads.Select(t => t.Line));
+        Assert.Equal([false, true, true], threads.Select(t => t.Outdated));
+        Assert.Equal([true, false, false], threads.Select(t => t.Resolved));
+        Assert.Equal(1, threads[0].Replies);
+        Assert.Equal("octocat · 2026-09-20 06:54", threads[0].First!.Heading);
+    }
+
+    [Fact]
+    public void ParseThreads_of_an_answer_without_a_pull_request_fails_rather_than_throws()
+    {
+        Assert.False(GitHubCli.ParseThreads("not json at all").Succeeded);
+        Assert.False(GitHubCli.ParseThreads("""{"data":{"repository":null}}""").Succeeded);
+    }
+
+    [Fact]
     public void ParseConversation_of_something_that_isnt_a_pull_request_fails_rather_than_throws()
     {
         Assert.False(GitHubCli.ParseConversation("not json at all").Succeeded);

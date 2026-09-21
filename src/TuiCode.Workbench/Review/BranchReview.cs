@@ -11,6 +11,25 @@ public sealed record BranchReview(
     IReadOnlyList<GitChange> Changes,
     GitHubPullRequest? PullRequest = null)
 {
+    /// <summary>The PR's review threads (#186): empty until they've loaded, and without a PR there are none.</summary>
+    public IReadOnlyList<GitHubReviewThread> Threads { get; init; } = [];
+
+    /// <summary>The threads on one file, in the order GitHub listed them.</summary>
+    public IReadOnlyList<GitHubReviewThread> ThreadsOn(string path) =>
+        [.. Threads.Where(t => string.Equals(t.Path, path, StringComparison.Ordinal))];
+
+    /// <summary>What the header says about the threads, e.g. <c>3 threads, 1 unresolved</c>; empty when there are none.</summary>
+    public string ThreadsLine
+    {
+        get
+        {
+            if (Threads.Count == 0) return string.Empty;
+            var unresolved = Threads.Count(t => !t.Resolved);
+            var threads = Threads.Count == 1 ? "1 thread" : $"{Threads.Count} threads";
+            return unresolved == 0 ? threads : $"{threads}, {unresolved} unresolved";
+        }
+    }
+
     public string Header => PullRequest is { } pr
         ? $"{pr.BaseBranch} ← {pr.HeadBranch}"
         : $"{Branch} ← {Base}  (no PR)";
