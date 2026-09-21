@@ -23,10 +23,14 @@ public sealed class ReviewFileNode(GitChange change, IReadOnlyList<GitHubReviewT
 
     public int UnresolvedCount => Threads.Count(t => !t.Resolved);
 
-    /// <summary>The mark at the right of the row: the threads still open, or all of them once they're settled.</summary>
-    public string? Badge => Threads.Count == 0 ? null
-        : UnresolvedCount > 0 ? $"● {UnresolvedCount}"
-        : $"○ {Threads.Count}";
+    /// <summary>The threads the badge counts: the ones still open, or all of them once they're settled.</summary>
+    public int BadgeCount => UnresolvedCount > 0 ? UnresolvedCount : Threads.Count;
+
+    /// <summary>The mark after the name, with a circle standing in for the chat icon wherever none is drawn (#186).</summary>
+    public string? Badge(bool icon) => Threads.Count == 0 ? null
+        : icon ? $"{BadgeCount}"
+        : UnresolvedCount > 0 ? $"● {BadgeCount}"
+        : $"○ {BadgeCount}";
 
     public TextStyle BadgeStyle => UnresolvedCount > 0 ? TextStyle.Bold : TextStyle.Faint;
 
@@ -46,10 +50,10 @@ public sealed class ReviewFileNode(GitChange change, IReadOnlyList<GitHubReviewT
 internal static class ReviewRow
 {
     /// <summary>A row as the tree shows it: its text, with a file's thread badge after it.</summary>
-    public static string Display(ReviewNode node)
+    public static string Display(ReviewNode node, bool icon = false)
     {
         var text = node.ToString() ?? string.Empty;
-        return node is ReviewFileNode { Badge: { } badge } ? $"{text}  {badge}" : text;
+        return node is ReviewFileNode file && file.Badge(icon) is { } badge ? $"{text}  {badge}" : text;
     }
 }
 

@@ -97,7 +97,7 @@ public sealed class ReviewView : View
             Visible = false,
             TreeBuilder = new DelegateTreeBuilder<ReviewNode>(n => n.Children, n => n.Children.Count > 0),
         };
-        _files.AspectGetter = ReviewRow.Display;
+        _files.AspectGetter = node => ReviewRow.Display(node, ThreadIcon(node) is not null);
         _files.DrawLine += (_, e) => MarkThreads(e);
         if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
         Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files);
@@ -127,20 +127,22 @@ public sealed class ReviewView : View
 
     private static Label Line() => new() { X = 0, Y = 0, Width = Dim.Fill(), Text = string.Empty, Visible = false };
 
-    /// <summary>Marks a file the review has threads on (#186): a chat icon before its name, and its badge styled.</summary>
+    /// <summary>Marks a file the review has threads on (#186): a chat icon in place of the badge's circle, both styled.</summary>
     private void MarkThreads(DrawTreeViewLineEventArgs<ReviewNode> e)
     {
-        if (e.Model is not ReviewFileNode { Badge: { } badge } file || e.Cells is not { } cells) return;
+        if (e.Model is not ReviewFileNode file || e.Cells is not { } cells) return;
+        var icon = ThreadIcon(file);
+        if (file.Badge(icon is not null) is not { } badge) return;
 
-        var at = e.IndexOfModelText;
-        var end = at + ReviewRow.Display(file).Length;
-        for (var i = Math.Max(0, end - badge.Length); i < Math.Min(cells.Count, end); i++)
+        var at = e.IndexOfModelText + ReviewRow.Display(file, icon is not null).Length - badge.Length;
+        for (var i = Math.Max(0, at); i < Math.Min(cells.Count, at + badge.Length); i++)
             cells[i] = Styled(cells[i], file.BadgeStyle);
 
-        if (_icons?.ForThreads(file.UnresolvedCount > 0) is not { } icon) return;
-        IconDrawing.Prepend(e, icon);
-        if (at >= 0 && at < cells.Count) cells[at] = Styled(cells[at], file.BadgeStyle);
+        if (icon is { } chat && IconDrawing.InsertAt(e, chat, at)) cells[at] = Styled(cells[at], file.BadgeStyle);
     }
+
+    private FileIcon? ThreadIcon(ReviewNode node) =>
+        node is ReviewFileNode { Threads.Count: > 0 } file ? _icons?.ForThreads(file.UnresolvedCount > 0) : null;
 
     private static Cell Styled(Cell cell, TextStyle style)
     {

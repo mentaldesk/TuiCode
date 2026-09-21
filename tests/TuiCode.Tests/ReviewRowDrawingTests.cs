@@ -36,13 +36,15 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task A_file_with_an_open_thread_is_marked_with_a_chat_icon_and_a_badge()
+    public async Task A_file_with_an_open_thread_is_marked_with_a_chat_icon_in_place_of_the_circle()
     {
         using var view = await Review(Thread("src/a.cs"), Thread("src/a.cs", resolved: true));
 
         var rows = Render(view);
+        var row = RowWith(rows, "a.cs");
 
-        Assert.Contains($"{Chat} M a.cs  ● 1", RowWith(rows, "a.cs"));
+        Assert.Contains($"M a.cs  {Chat} 1", row);
+        Assert.DoesNotContain("●", row);
         Assert.DoesNotContain(Chat, RowWith(rows, "b.cs"));
     }
 
@@ -51,7 +53,10 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
     {
         using var view = await Review(Thread("src/a.cs", resolved: true));
 
-        Assert.Contains($"{ChatSettled} M a.cs  ○ 1", RowWith(Render(view), "a.cs"));
+        var row = RowWith(Render(view), "a.cs");
+
+        Assert.Contains($"M a.cs  {ChatSettled} 1", row);
+        Assert.DoesNotContain("○", row);
     }
 
     [Fact]
@@ -61,16 +66,16 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         var row = RowIndex(open, "a.cs");
 
         Assert.True(StyleOf(row, Chat).HasFlag(TextStyle.Bold), "icon");
-        Assert.True(StyleOf(row, "●").HasFlag(TextStyle.Bold), "badge");
+        Assert.True(StyleOf(row, "1").HasFlag(TextStyle.Bold), "count");
 
         using var settled = await Review(Thread("src/a.cs", resolved: true));
         row = RowIndex(settled, "a.cs");
         Assert.True(StyleOf(row, ChatSettled).HasFlag(TextStyle.Faint), "icon");
-        Assert.True(StyleOf(row, "○").HasFlag(TextStyle.Faint), "badge");
+        Assert.True(StyleOf(row, "1").HasFlag(TextStyle.Faint), "count");
     }
 
     [Fact]
-    public async Task With_icons_off_the_badge_still_shows()
+    public async Task With_icons_off_the_circle_stands_in_for_the_chat_icon()
     {
         _icons.Setting = FileIconStyle.Off;
         using var view = await Review(Thread("src/a.cs"));

@@ -110,17 +110,27 @@ public class ReviewThreadCountTests
     }
 
     [Fact]
+    public void A_badge_drawn_with_a_chat_icon_leaves_the_count_for_the_icon_to_head()
+    {
+        var nodes = ReviewTree.Build([Changed], [Thread("src/a.cs"), Thread("src/a.cs")]);
+        var file = Assert.IsType<ReviewFolderNode>(Assert.Single(nodes)).Children[0];
+
+        Assert.Equal("M a.cs  2", ReviewRow.Display(file, icon: true));
+    }
+
+    [Fact]
     public void A_files_badge_counts_the_threads_still_open_and_marks_the_settled_ones_apart()
     {
-        Assert.Equal("● 1", File(Thread("src/a.cs"), Thread("src/a.cs", resolved: true)).Badge);
-        Assert.Equal("○ 2", File(Thread("src/a.cs", resolved: true), Thread("src/a.cs", resolved: true)).Badge);
-        Assert.Null(File().Badge);
+        Assert.Equal("● 1", File(Thread("src/a.cs"), Thread("src/a.cs", resolved: true)).Badge(icon: false));
+        Assert.Equal("○ 2", File(Thread("src/a.cs", resolved: true), Thread("src/a.cs", resolved: true)).Badge(icon: false));
+        Assert.Null(File().Badge(icon: false));
+        Assert.Null(File().Badge(icon: true));
     }
 
     [Fact]
     public void An_outdated_thread_still_counts_towards_the_files_badge()
     {
-        Assert.Equal("● 1", File(Thread("src/a.cs", outdated: true)).Badge);
+        Assert.Equal("● 1", File(Thread("src/a.cs", outdated: true)).Badge(icon: false));
     }
 
     [Fact]
