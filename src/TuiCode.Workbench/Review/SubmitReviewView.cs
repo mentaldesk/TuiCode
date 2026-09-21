@@ -1,5 +1,6 @@
 using System.Text;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Review;
@@ -12,10 +13,13 @@ namespace TuiCode.Workbench.Review;
 public sealed class SubmitReviewView : Window
 {
     private const string MissingSummary = "Comment and Request changes need a summary.";
+    private const int DialogWidth = 70;
+    private const int DialogHeight = 16;
 
     private readonly OptionSelector<GitHubReviewVerdict> _verdict;
     private readonly TextView _summary;
-    private readonly Label _status;
+    private readonly View[] _hints;
+    private readonly AlertView _alert;
     private readonly Button _submit;
 
     private readonly ICommandService _scopeCommands;
@@ -34,8 +38,8 @@ public sealed class SubmitReviewView : Window
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
         Y = Pos.Center();
-        Width = 70;
-        Height = 16;
+        Width = DialogWidth;
+        Height = DialogHeight;
         CanFocus = true;
 
         _verdict = new OptionSelector<GitHubReviewVerdict>
@@ -53,20 +57,23 @@ public sealed class SubmitReviewView : Window
             X = 1,
             Y = 2,
             Width = Dim.Fill(1),
-            Height = Dim.Fill(3),
+            Height = Dim.Fill(2),
             // Otherwise Tab types a tab here instead of moving on to the hints.
             TabKeyAddsTab = false,
             WordWrap = true,
         };
 
-        _status = new Label { X = 1, Y = Pos.AnchorEnd(2), Width = Dim.Fill(1), Text = string.Empty };
         _submit = Hint("Ctrl+Enter submit", 1);
         var separator = new Label { X = Pos.Right(_submit) + 1, Y = Pos.AnchorEnd(1), Text = "·" };
         var cancel = Hint("Esc cancel", Pos.Right(separator) + 1);
         _submit.Accepting += (_, e) => { e.Handled = true; OnSubmit(); };
         cancel.Accepting += (_, e) => { e.Handled = true; Cancelled?.Invoke(this, EventArgs.Empty); };
+        _hints = [_submit, separator, cancel];
 
-        Add(_verdict, _summary, _status, _submit, separator, cancel);
+        // Below the hints, not beside them: the dialog grows for an alert rather than the summary shrinking.
+        _alert = new AlertView(DialogWidth - 2) { X = 0, Y = Pos.AnchorEnd() };
+
+        Add(_verdict, _summary, _submit, separator, cancel, _alert);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -92,22 +99,31 @@ public sealed class SubmitReviewView : Window
 
     public string Summary => _summary.Text ?? string.Empty;
 
-    internal string Status => _status.Text;
+    internal string Status => _alert.Message;
 
     public bool FocusSummary() => _summary.SetFocus();
 
     /// <summary>Shows why GitHub refused the review; the dialog stays open with whatever was typed.</summary>
     public void ShowError(string message)
     {
-        _status.Text = message;
+        Alert(message, AlertSeverity.Error);
         _submit.Enabled = true;
     }
 
     /// <summary>Shows what the host is doing, and refuses a second submit while it does it.</summary>
     public void ShowBusy()
     {
-        _status.Text = "Submitting…";
+        Alert("Submitting…", AlertSeverity.Info);
         _submit.Enabled = false;
+    }
+
+    private void Alert(string message, AlertSeverity severity)
+    {
+        _alert.Show(message, severity);
+        Height = DialogHeight + _alert.Lines;
+        _summary.Height = Dim.Fill(_alert.Lines + 2);
+        foreach (var hint in _hints) hint.Y = Pos.AnchorEnd(_alert.Lines + 1);
+        SetNeedsLayout();
     }
 
     private void OnSubmit()
@@ -117,7 +133,7 @@ public sealed class SubmitReviewView : Window
         var summary = Summary.Trim();
         if (summary.Length == 0 && Verdict != GitHubReviewVerdict.Approve)
         {
-            _status.Text = MissingSummary;
+            Alert(MissingSummary, AlertSeverity.Error);
             _summary.SetFocus();
             return;
         }

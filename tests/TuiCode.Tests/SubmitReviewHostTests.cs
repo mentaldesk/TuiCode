@@ -3,6 +3,7 @@ using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
@@ -115,6 +116,29 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_refusal_too_long_for_one_row_wraps_under_the_hints_rather_than_over_them()
+    {
+        _gitHub.ReviewError = "failed to create review: GraphQL: Can not approve your own pull request (addPullRequestReview)";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var alert = System.Drawing.Rectangle.Empty;
+        var hint = System.Drawing.Rectangle.Empty;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is not null,
+            () => Type(host, "Ship it"),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench)!.Status == _gitHub.ReviewError,
+            () => Alert(workbench).Frame.Height > 1,
+            () => { alert = Alert(workbench).Frame; hint = Hint(workbench, "Esc cancel").Frame; },
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.True(alert.Height > 1, $"the refusal took {alert.Height} row(s), so it never wrapped");
+        Assert.Equal(hint.Y + 1, alert.Y);
+    }
+
+    [Fact]
     public async Task Esc_cancels_without_submitting_anything()
     {
         using var workbench = BuildWorkbench();
@@ -223,6 +247,9 @@ public class SubmitReviewHostTests : StaticConfigurationTest
         host.App.InjectKey(Key.Space);
         host.App.InjectKey(Key.Tab);
     }
+
+    private static AlertView Alert(Workbench.Workbench workbench) =>
+        Dialog(workbench)!.SubViews.OfType<AlertView>().Single();
 
     private static Button Hint(Workbench.Workbench workbench, string text) =>
         Dialog(workbench)!.SubViews.OfType<Button>().Single(button => button.Text == text);
