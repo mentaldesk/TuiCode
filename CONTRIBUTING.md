@@ -13,7 +13,7 @@ For code-level conventions (branch names, key handling, AOT gotchas, test framew
 
 ## Releases
 
-A release is a `v*` git tag, a GitHub Release attaching native single-file binaries for every supported runtime, and a Homebrew formula pointing at them. It all happens from the Actions tab — nothing is done locally, and no tag is pushed by hand.
+A release is a `v*` git tag, a GitHub Release attaching native single-file binaries for every supported runtime, and a Homebrew formula and Scoop manifest pointing at them. It all happens from the Actions tab — nothing is done locally, and no tag is pushed by hand.
 
 Version-picking and publishing are [a-team's reusable workflows](https://github.com/mentaldesk/a-team), pinned to a released tag. `release.yml` keeps TuiCode's own build matrix — five RIDs, AOT, macOS signing and notarisation — and calls the shared ones on either side of it, so there's one release flow to maintain rather than two that drift.
 
@@ -50,23 +50,28 @@ flowchart TD
     Upload --> Pub["publish job<br/>a-team/release-publish.yml"]
     Pub --> Tag["gh release create v0.1.0<br/>--target $GITHUB_SHA --generate-notes"]
     Tag --> Public[("Published release<br/>10 assets, tag created")]
-    Public --> Render["render packaging/tuicode.rb<br/>version + 3 SHA256s"]
+    Public --> Render["render packaging/tuicode.rb + tuicode.json<br/>version + 5 SHA256s"]
     Render --> TapPR["PR to homebrew-tap<br/>auto-merge on"]
     TapPR -->|tap CI goes green| Brew[("brew install<br/>mentaldesk/tap/tuicode")]
+    Render --> Bucket["commit to scoop-bucket<br/>bucket/tuicode.json"]
+    Bucket --> Scoop[("scoop install<br/>mentaldesk/tuicode")]
 
     style Public fill:#e0ffe0
     style Brew fill:#e0ffe0
+    style Scoop fill:#e0ffe0
 ```
 
 The shared publish job creates the tag, so a build that fails on any platform (the matrix is `fail-fast`) leaves no tag behind and nothing to clean up. `concurrency: release` keeps two dispatches from racing for the same version. Re-running the workflow after a successful publish picks the *next* version — tags are immutable; never delete and re-push one.
 
 The release is published outright rather than as a draft: draft assets 404 for unauthenticated clients, which is what `brew install` is. The gate that used to be "publish the draft" is now the tap's own CI (`brew style`, `brew audit --strict --online`, and a full install/test/uninstall cycle on macOS arm64, Linux x64 and Linux arm64), which has to go green before auto-merge lands the formula.
 
-### The formula template
+### The packaging templates
 
-`packaging/tuicode.rb` is the tap's formula with the version and the three SHA256s replaced by `{{version}}`, `{{sha_osx_arm64}}`, `{{sha_linux_x64}}` and `{{sha_linux_arm64}}`. The shared publish job renders it from the archives it downloaded and fails the job on a placeholder nothing filled — `PackagingTemplateTests` catches a typo'd one before the release rather than during it. The formula has no `version` line: `brew audit --strict` rejects one that duplicates the URL.
+`packaging/tuicode.rb` is the tap's formula and `packaging/tuicode.json` the bucket's Scoop manifest, each with the version and its SHA256s replaced by `{{version}}` and `{{sha_<rid>}}`. The shared publish job renders both from the archives it downloaded and fails the job on a placeholder nothing filled — `PackagingTemplateTests` catches a typo'd one before the release rather than during it, and checks the manifest still parses as JSON once rendered. The formula has no `version` line: `brew audit --strict` rejects one that duplicates the URL.
 
-The tap PR is opened with `HOMEBREW_TAP_TOKEN`, a fine-grained PAT scoped to `mentaldesk/homebrew-tap` with Contents + Pull requests write. Without that secret the release still publishes and the job warns.
+Both are pushed with `HOMEBREW_TAP_TOKEN`, a fine-grained PAT with Contents + Pull requests write on `mentaldesk/homebrew-tap` and Contents write on `mentaldesk/scoop-bucket`. Without that secret the release still publishes and the job warns.
+
+The tap gets a PR its own CI gates. The bucket has no CI, so the manifest is committed straight to its default branch — a mistake in the template is live for Windows users immediately, which is what the placeholder and JSON checks are there to prevent.
 
 ### Distribution
 
@@ -76,10 +81,15 @@ flowchart LR
     Release -->|"rendered packaging/tuicode.rb"| Tap["mentaldesk/homebrew-tap<br/>Formula/tuicode.rb"]
     Tap -->|brew install| User["User's machine<br/>/opt/homebrew/bin/tuicode"]
 
+    Release -->|"rendered packaging/tuicode.json"| Bucket["mentaldesk/scoop-bucket<br/>bucket/tuicode.json"]
+    Bucket -->|scoop install| Win["Windows machine<br/>~/scoop/shims/tuicode.exe"]
+
     Release -.->|future: #75| Winget["winget"]
     Release -.->|future: #44| Linux["apt / AUR / Flatpak"]
 ```
 
 The Homebrew formula points at the release tarball URL with a pinned SHA256. Both the PR and its merge are automatic; `brew upgrade tuicode` picks up the new version once it lands, and `tuicode`'s About dialog reports the same number.
+
+The Scoop manifest is the same idea for Windows: `64bit` and `arm64` entries pointing at the release `.zip`s with pinned hashes, so `scoop update tuicode` gets the version the release just cut.
 
 For the iTerm2 dynamic profile that ships alongside `tuicode` on macOS, see the formula's `caveats` block and [#40](https://github.com/mentaldesk/TuiCode/issues/40) for the umbrella story across other terminal emulators.
