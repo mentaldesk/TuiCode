@@ -1531,13 +1531,14 @@ public sealed class WorkbenchHost : IDisposable
         return relative.StartsWith("..", StringComparison.Ordinal) ? file.FullName : relative;
     }
 
-    private static string AppVersion()
-    {
-        var version = Assembly.GetEntryAssembly()?
+    private static string AppVersion() =>
+        VersionText(Assembly.GetEntryAssembly()?
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-            .InformationalVersion;
-        return version?.Split('+')[0] ?? "unknown";
-    }
+            .InformationalVersion);
+
+    /// <summary>The version About shows: MinVer's, without the commit it appends (#214).</summary>
+    internal static string VersionText(string? informationalVersion) =>
+        informationalVersion?.Split('+')[0] ?? "unknown";
 
     private void OpenDiagnostics()
     {

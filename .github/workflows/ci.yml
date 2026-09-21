@@ -18,6 +18,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        # Unshallow: MinVer reads the version off the latest v* tag.
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v5
         with:
@@ -59,6 +62,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+        # Unshallow: MinVer reads the version off the latest v* tag.
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v5
         with:
