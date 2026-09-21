@@ -70,9 +70,15 @@ public sealed class SymbolPickerView : Window
 
     internal string Filter => _filter.Text ?? "";
 
+    /// <summary>A filter leaves rows whose containing type may be gone, so it flattens them.</summary>
+    private bool Indented => Filter.Trim().Length == 0;
+
     internal string Status => _alert.Message;
 
     internal IReadOnlyList<string> VisibleItems => [.. _visible.Select(s => s.Name)];
+
+    /// <summary>The rows as drawn: name, kind and line, indented while no filter has flattened them.</summary>
+    internal IReadOnlyList<string> Rows => SymbolList.Render(_visible, Math.Max(1, _list.Viewport.Width), Indented);
 
     internal int? SelectedItem => _list.SelectedItem;
 
@@ -131,7 +137,7 @@ public sealed class SymbolPickerView : Window
     {
         var previous = keepSelection ? _list.SelectedItem ?? 0 : 0;
         _visible = SymbolList.Filter(_scan.Symbols, Filter);
-        _list.Source = new SymbolListSource(_visible);
+        _list.Source = new SymbolListSource(_visible, Indented);
         _list.SelectedItem = _visible.Count == 0 ? null : Math.Clamp(previous, 0, _visible.Count - 1);
     }
 
@@ -161,8 +167,11 @@ public sealed class SymbolPickerView : Window
         SetNeedsLayout();
     }
 
-    private sealed class SymbolListSource(IReadOnlyList<FileSymbol> rows) : IListDataSource
+    private sealed class SymbolListSource(IReadOnlyList<FileSymbol> rows, bool indent) : IListDataSource
     {
+        private IReadOnlyList<string> _rendered = [];
+        private int _width = -1;
+
         public event NotifyCollectionChangedEventHandler? CollectionChanged { add { } remove { } }
 
         public int Count => rows.Count;
@@ -173,8 +182,13 @@ public sealed class SymbolPickerView : Window
 
         public void Render(ListView listView, bool selected, int item, int col, int row, int width, int viewportX = 0)
         {
+            if (width != _width)
+            {
+                _rendered = SymbolList.Render(rows, width, indent);
+                _width = width;
+            }
             listView.Move(col, row);
-            listView.AddStr(Truncate(rows[item].Name, width).PadRight(width));
+            listView.AddStr(_rendered[item].PadRight(width));
         }
 
         public bool IsMarked(int item) => false;
@@ -184,8 +198,5 @@ public sealed class SymbolPickerView : Window
         public IList ToList() => rows.Select(r => r.Name).ToList();
 
         public void Dispose() { }
-
-        private static string Truncate(string s, int max) =>
-            s.Length <= max ? s : max <= 1 ? s[..max] : s[..(max - 1)] + "…";
     }
 }

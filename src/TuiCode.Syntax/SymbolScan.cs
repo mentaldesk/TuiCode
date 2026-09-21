@@ -5,13 +5,17 @@ namespace TuiCode.Syntax;
 
 public enum SymbolKind
 {
-    Type,
+    Class,
+    Interface,
+    Enum,
+    Struct,
+    Trait,
     Method,
     Property,
 }
 
-/// <summary>A definition in the file: its name, what it is, and the row it's on.</summary>
-public readonly record struct FileSymbol(string Name, SymbolKind Kind, int Line);
+/// <summary>A definition in the file: its name, what it is, the row it's on, and how many types enclose it.</summary>
+public readonly record struct FileSymbol(string Name, SymbolKind Kind, int Line, int Depth);
 
 /// <summary>
 /// One buffer's definitions, read from TextMate scopes (#137) and scanned in budgeted slices so a big
@@ -21,14 +25,16 @@ public readonly record struct FileSymbol(string Name, SymbolKind Kind, int Line)
 /// <c>meta.definition.method</c>, …). Where the grammar gives a flat stack — C# methods get the same
 /// <c>entity.name.function.cs</c> for a declaration and a call — the fallback is the line's first name
 /// that isn't a type, and only on a line that has already declared something: a modifier or a type
-/// ahead of it. That last clause is what keeps <c>await DoWorkAsync(1)</c> out.
+/// ahead of it. That last clause is what keeps <c>await DoWorkAsync(1)</c> out. Each definition also
+/// carries the <see cref="FileSymbol.Depth"/> the picker indents it by (see <see cref="DepthAt"/>).
 /// </summary>
 public sealed class SymbolScan
 {
-    private static readonly string[] TypeKinds =
+    private static readonly (string Scope, SymbolKind Kind)[] TypeKinds =
     [
-        "entity.name.type.class", "entity.name.type.interface", "entity.name.type.enum",
-        "entity.name.type.struct", "entity.name.type.trait",
+        ("entity.name.type.class", SymbolKind.Class), ("entity.name.type.interface", SymbolKind.Interface),
+        ("entity.name.type.enum", SymbolKind.Enum), ("entity.name.type.struct", SymbolKind.Struct),
+        ("entity.name.type.trait", SymbolKind.Trait),
     ];
 
     // C# gives this to properties and to nothing else, so it needs no further test.
@@ -72,10 +78,13 @@ public sealed class SymbolScan
     private readonly IGrammar _grammar;
     private readonly IReadOnlyList<string> _lines;
     private readonly List<FileSymbol> _symbols = [];
+    private readonly List<int> _enclosing = [];
     private IStateStack? _state;
     private int _next;
     private int _retries;
     private bool _failed;
+    private int _lineDepth;
+    private int _onThisLine;
 
     internal SymbolScan(IGrammar grammar, IReadOnlyList<string> lines)
     {
@@ -125,6 +134,7 @@ public sealed class SymbolScan
         LinesScanned++;
         // Minified lines cost more to tokenize than the rest of the file put together, as in LineTokenCache.
         if (text.Length > LineTokenCache.MaxLineLength) return LineResult.Scanned;
+        _onThisLine = 0;
         IToken[] tokens;
         try
         {
@@ -144,6 +154,7 @@ public sealed class SymbolScan
             return LineResult.Failed;
         }
 
+        var indent = Indent(text);
         var declared = false;
         var named = false;
         foreach (var token in tokens)
@@ -153,21 +164,50 @@ public sealed class SymbolScan
             var scopes = token.Scopes;
             if (Any(scopes, NeverNames)) continue;
 
-            if (Any(scopes, TypeKinds)) { Add(name, SymbolKind.Type); named = true; continue; }
-            if (Any(scopes, PropertyNames)) { Add(name, SymbolKind.Property); named = true; continue; }
+            if (TypeKind(scopes) is { } type) { Add(name, type, indent); named = true; continue; }
+            if (Any(scopes, PropertyNames)) { Add(name, SymbolKind.Property, indent); named = true; continue; }
             if (Any(scopes, Declarators)) { declared = true; continue; }
 
             var kind = Any(scopes, MethodNames) ? SymbolKind.Method
                 : Any(scopes, MemberNames) ? SymbolKind.Property
                 : (SymbolKind?)null;
             if (kind is { } member && (DefinedHere(scopes) || IsFlat(scopes) && declared && !named && member == SymbolKind.Method))
-                Add(name, member);
+                Add(name, member, indent);
             if (kind is not null || Any(scopes, OtherNames)) named = true;
         }
         return LineResult.Scanned;
     }
 
-    private void Add(string name, SymbolKind kind) => _symbols.Add(new FileSymbol(name, kind, _next));
+    private void Add(string name, SymbolKind kind, int indent) => _symbols.Add(new FileSymbol(name, kind, _next, DepthAt(indent)));
+
+    /// <summary>
+    /// How many definitions enclose this one, from the line's indent rather than the scope stack — C# nests
+    /// nothing where TypeScript nests everything, so layout is the one signal every grammar shares. A
+    /// definition on the same line as the one before it (<c>interface Thing { a: number }</c>) sits inside it.
+    /// </summary>
+    private int DepthAt(int indent)
+    {
+        if (_onThisLine++ > 0) return _lineDepth + 1;
+        while (_enclosing.Count > 0 && _enclosing[^1] >= indent) _enclosing.RemoveAt(_enclosing.Count - 1);
+        _lineDepth = _enclosing.Count;
+        _enclosing.Add(indent);
+        return _lineDepth;
+    }
+
+    private static int Indent(string text)
+    {
+        var i = 0;
+        while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
+        return i;
+    }
+
+    private static SymbolKind? TypeKind(IReadOnlyList<string> scopes)
+    {
+        foreach (var (scope, kind) in TypeKinds)
+            if (scopes.Any(s => Matches(s, scope)))
+                return kind;
+        return null;
+    }
 
     private static bool DefinedHere(IReadOnlyList<string> scopes) => Any(scopes, Definitions) && !Any(scopes, Uses);
 
