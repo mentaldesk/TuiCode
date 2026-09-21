@@ -57,6 +57,14 @@ public static class CommandIds
     public const string GoToLineConfirm = "goToLine.action.confirm";
     public const string GoToLineCancel = "goToLine.action.cancel";
 
+    public const string GoToSymbol = "workbench.action.goToSymbol";
+    public const string SymbolPickerConfirm = "symbolPicker.action.confirm";
+    public const string SymbolPickerCancel = "symbolPicker.action.cancel";
+    public const string SymbolPickerUp = "symbolPicker.action.up";
+    public const string SymbolPickerDown = "symbolPicker.action.down";
+    public const string SymbolPickerPageUp = "symbolPicker.action.pageUp";
+    public const string SymbolPickerPageDown = "symbolPicker.action.pageDown";
+
     public const string NavigateBack = "workbench.action.navigateBack";
     public const string NavigateForward = "workbench.action.navigateForward";
 

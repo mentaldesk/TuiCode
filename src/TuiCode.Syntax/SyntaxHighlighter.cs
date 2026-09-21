@@ -87,6 +87,21 @@ public sealed class SyntaxHighlighter
         }
     }
 
+    /// <summary>The definitions in <paramref name="lines"/>, to scan in slices; null when the file has no grammar.</summary>
+    public SymbolScan? CreateSymbolScan(SyntaxLanguage? language, IReadOnlyList<string> lines)
+    {
+        if (language is null) return null;
+        try
+        {
+            return _registry.LoadGrammar(language.ScopeName) is { } grammar ? new SymbolScan(grammar, lines) : null;
+        }
+        // As in CreateCache: a user grammar can be broken in ways TextMateSharp only finds while loading it.
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     public static int ForegroundOf(int metadata) => EncodedTokenAttributes.GetForeground(metadata);
 
     public static TokenStyle StyleOf(int metadata) => (TokenStyle)EncodedTokenAttributes.GetFontStyle(metadata);

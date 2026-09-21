@@ -19,6 +19,7 @@ public sealed class EditorTab : FrameView
     private bool _dirty;
     private int _edits;
     private (int Edits, (System.Drawing.Point Start, System.Drawing.Point End)[] Ranges, DocumentStats Stats)? _selectionStats;
+    private (int Edits, SyntaxLanguage? Grammar, SymbolScan? Scan)? _symbols;
 
     public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
@@ -170,6 +171,15 @@ public sealed class EditorTab : FrameView
     public int CaretCount => _textView.CaretCount;
 
     public DocumentStats CountDocument() => DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()));
+
+    /// <summary>The file's definitions, scanned in slices; the same scan comes back until the buffer or the grammar changes.</summary>
+    public SymbolScan? ScanSymbols()
+    {
+        if (_symbols is (var edits, var grammar, var scan) && edits == _edits && Equals(grammar, Grammar)) return scan;
+        var fresh = _syntax?.CreateSymbolScan(Grammar, Lines);
+        _symbols = (_edits, Grammar, fresh);
+        return fresh;
+    }
 
     /// <summary>The counts across every caret's selection, or null when nothing is selected. Recounted only after the carets or the buffer change.</summary>
     public DocumentStats? CountSelection()
