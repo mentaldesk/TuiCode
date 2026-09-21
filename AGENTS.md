@@ -291,7 +291,10 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 ## Release workflow
 
-- `.github/workflows/release.yml` fires on `v*` tag push (or `workflow_dispatch` with an existing tag). Matrix builds AOT single-file binaries on native runners for each RID (Apple Silicon only on macOS — Intel Macs are EOL), archives them (`.tar.gz` on Unix, `.zip` on Windows) with a `.sha256` sidecar, and uploads to a *draft* GitHub Release — review/publish manually.
+- `.github/workflows/release.yml` runs from the Actions tab only (`workflow_dispatch`, with a `bump` choice) — see [CONTRIBUTING.md § Cutting a release](CONTRIBUTING.md#cutting-a-release). It calls a-team's reusable `release-version.yml` for the next version, matrix-builds AOT single-file binaries on native runners for each RID (Apple Silicon only on macOS — Intel Macs are EOL), archives them (`.tar.gz` on Unix, `.zip` on Windows) with a `.sha256` sidecar, then calls `release-publish.yml`, which tags the commit, publishes the release and opens the Homebrew tap PR.
+- Both shared workflows are pinned to a released a-team tag (`@v0.0.5`), never a branch. Anything missing from them gets fixed on `mentaldesk/a-team` and re-pinned here, not forked into this repo.
+- **A called workflow doesn't inherit the caller's permissions**, so the `version` job declares `contents: read` + `pull-requests: read` and `publish` declares `contents: write`. `HOMEBREW_TAP_TOKEN` is handed over as `secrets: packages-token`, not `secrets: inherit`.
+- Shared `publish` creates the tag itself (`gh release create --target $GITHUB_SHA`), so the caller must never tag, and the build matrix is `fail-fast: true`: a platform that fails leaves no tag behind to clean up. `concurrency: release` stops two dispatches racing for the same version.
 - macOS signing + notarization auto-enables when these secrets exist; without them the macOS tarballs ship unsigned (Gatekeeper quarantines on download):
   - `APPLE_CERT_BASE64` — Developer ID Application `.p12`, base64-encoded.
   - `APPLE_CERT_PASSWORD` — password for the `.p12`.
@@ -301,7 +304,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - The **Libraries** section of `THIRD-PARTY-NOTICES.md` is maintained by hand: when a package that ends up in the binary is added (check `src/TuiCode/obj/project.assets.json` for runtime assets), add its LICENSE text. The **Grammars** section between the markers is generated (see Syntax highlighting); don't edit it.
 - A bare Mach-O can't carry a stapled notarization ticket, so we notarize the tarball; users pick up the ticket via the Gatekeeper cache on first launch.
 - Linux/Windows arm64 use the public `ubuntu-24.04-arm` / `windows-11-arm` runners — native, no cross-compile.
-- `.github/workflows/bump-tap.yml` listens for `release: published` and opens a PR against [mentaldesk/homebrew-tap](https://github.com/mentaldesk/homebrew-tap) rewriting the three `url` + `sha256` pairs in `Formula/tuicode.rb`. The formula has no `version` line — `brew audit --strict` rejects one that duplicates the URL. Uses `HOMEBREW_TAP_TOKEN` (a fine-grained PAT scoped to the tap with Contents + Pull requests write). Prereleases skipped. Re-runs idempotently force-push the same `bump-tuicode-X.Y.Z` branch.
+- `packaging/tuicode.rb` is [the tap's formula](https://github.com/mentaldesk/homebrew-tap/blob/main/Formula/tuicode.rb) with the version and the three SHA256s replaced by `{{version}}` and `{{sha_<rid>}}`, which shared `publish` fills from the archives it downloaded. It fails the job on a placeholder no archive matched, and `PackagingTemplateTests` checks every placeholder against the build matrix so a typo surfaces in CI instead of mid-release. The formula has no `version` line — `brew audit --strict` rejects one that duplicates the URL.
 
 ## Conventions
 

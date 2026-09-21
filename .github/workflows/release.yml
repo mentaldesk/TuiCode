@@ -1,20 +1,34 @@
 name: Release
 
+# One click from the Actions tab: picks the next version, builds every RID, then tags, publishes
+# the release and opens the tap PR. See CONTRIBUTING.md § Cutting a release.
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Tag to release as (e.g. v0.1.0). Tag must already exist.'
-        required: true
+      bump:
+        description: Part of the version to bump. "auto" reads the labels of PRs merged since the last release (breaking = major, enhancement = minor, otherwise patch).
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency: release
 
 jobs:
+  version:
+    uses: mentaldesk/a-team/.github/workflows/release-version.yml@v0.0.5
+    # A called workflow doesn't inherit the caller's permissions.
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      bump: ${{ inputs.bump }}
+
   build:
     name: Build ${{ matrix.rid }}
+    needs: version
     runs-on: ${{ matrix.runner }}
     # Surface secret presence (not value) for `if:` gating; signing/notarization
     # auto-enable once these are configured. Empty string when unset.
@@ -22,7 +36,8 @@ jobs:
       HAVE_SIGNING_CERT: ${{ secrets.APPLE_CERT_BASE64 != '' && 'yes' || '' }}
       HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' && 'yes' || '' }}
     strategy:
-      fail-fast: false
+      # One platform failing should stop the rest: a partial build can't be released.
+      fail-fast: true
       matrix:
         include:
           - rid: osx-arm64
@@ -51,32 +66,17 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Resolve version
-        id: version
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            version="0.0.0-pr${{ github.event.pull_request.number }}"
-            tag="dry-run"
-          else
-            ref="${{ github.event.inputs.tag || github.ref_name }}"
-            version="${ref#v}"
-            tag="$ref"
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
       - name: Publish
         shell: bash
         run: |
           dotnet publish src/TuiCode/TuiCode.csproj \
             -c Release \
             -r ${{ matrix.rid }} \
-            -p:MinVerVersionOverride=${{ steps.version.outputs.version }} \
+            -p:MinVerVersionOverride=${{ needs.version.outputs.version }} \
             -o publish
 
       - name: Import macOS signing cert
-        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes'
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -93,11 +93,12 @@ jobs:
             -P "$APPLE_CERT_PASSWORD" \
             -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          # shellcheck disable=SC2046  # the existing keychain list has to split into separate args
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/cert.p12"
 
       - name: Codesign macOS binary
-        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
@@ -111,7 +112,7 @@ jobs:
         id: archive
         shell: bash
         run: |
-          name="tuicode-${{ steps.version.outputs.version }}-${{ matrix.rid }}"
+          name="tuicode-${{ needs.version.outputs.version }}-${{ matrix.rid }}"
           mkdir -p dist
           if [ "${{ matrix.archive }}" = "zip" ]; then
             archive="dist/${name}.zip"
@@ -124,7 +125,7 @@ jobs:
           echo "name=$(basename "$archive")" >> "$GITHUB_OUTPUT"
 
       - name: Notarize macOS archive
-        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request' && env.HAVE_NOTARY == 'yes'
+        if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && env.HAVE_NOTARY == 'yes'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -140,7 +141,7 @@ jobs:
             --wait
 
       - name: Gatekeeper smoke
-        if: matrix.rid == 'osx-arm64' && env.HAVE_SIGNING_CERT == 'yes' && github.event_name != 'pull_request'
+        if: matrix.rid == 'osx-arm64' && env.HAVE_SIGNING_CERT == 'yes'
         run: spctl --assess --type execute --verbose publish/TuiCode
 
       - name: Checksum
@@ -159,32 +160,16 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  release:
-    name: Publish GitHub Release
-    needs: build
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: Resolve tag
-        id: tag
-        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
-
-      - name: Create or update release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag="${{ steps.tag.outputs.tag }}"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/* --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$tag" dist/* \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "$tag" \
-              --generate-notes \
-              --draft
-          fi
+  publish:
+    needs: [version, build]
+    uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.0.5
+    permissions:
+      contents: write
+    with:
+      name: tuicode
+      version: ${{ needs.version.outputs.version }}
+      tag: ${{ needs.version.outputs.tag }}
+      formula: packaging/tuicode.rb
+      artifacts: tuicode-*
+    secrets:
+      packages-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
