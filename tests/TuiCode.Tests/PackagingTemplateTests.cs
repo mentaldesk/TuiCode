@@ -10,7 +10,7 @@ public class PackagingTemplateTests
         var root = RepoRoot();
 
         var rids = Regex
-            .Matches(File.ReadAllText(Path.Combine(root, ".github", "workflows", "release.yml")), @"^\s*- rid: (\S+)$", RegexOptions.Multiline)
+            .Matches(File.ReadAllText(Path.Combine(root, ".github", "workflows", "release.yml")), @"^\s*- rid: (\S+)\s*$", RegexOptions.Multiline)
             .Select(m => m.Groups[1].Value)
             .ToArray();
         Assert.NotEmpty(rids);
