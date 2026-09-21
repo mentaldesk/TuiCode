@@ -48,10 +48,10 @@ public class DraftCommentsTests
         var drafts = Open("/work", 188);
         drafts.Add("src/a.cs", 12, "On 188");
 
-        drafts.Open("/work", 189);
+        Switch(drafts, "/work", 189);
 
         Assert.Empty(drafts.All);
-        drafts.Open("/work", 188);
+        Switch(drafts, "/work", 188);
         Assert.Equal(["On 188"], drafts.All.Select(d => d.Body));
     }
 
@@ -112,7 +112,10 @@ public class DraftCommentsTests
     private DraftComments Open(string repoRoot, int number)
     {
         var drafts = new DraftComments(_fs, "/drafts");
-        drafts.Open(_fs.Path.GetFullPath(repoRoot), number);
+        Switch(drafts, repoRoot, number);
         return drafts;
     }
+
+    private void Switch(DraftComments drafts, string repoRoot, int number) =>
+        drafts.Open(_fs.Path.GetFullPath(repoRoot), number);
 }
