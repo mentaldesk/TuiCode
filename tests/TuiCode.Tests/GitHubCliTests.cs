@@ -14,6 +14,7 @@ public class GitHubCliTests
         {
           "baseRefName": "main",
           "headRefName": "a-team/scopes",
+          "headRefOid": "9a4f2c1",
           "number": 132,
           "title": "Command scopes should be fixed",
           "statusCheckRollup": [
@@ -30,7 +31,7 @@ public class GitHubCliTests
         var result = GitHubCli.Parse(json);
 
         Assert.Equal(
-            new GitHubPullRequest(132, "Command scopes should be fixed", "main", "a-team/scopes", new GitHubChecks(2, 2, 2)),
+            new GitHubPullRequest(132, "Command scopes should be fixed", "main", "a-team/scopes", new GitHubChecks(2, 2, 2), "9a4f2c1"),
             result.Value);
     }
 
@@ -239,6 +240,26 @@ public class GitHubCliTests
         var arguments = GitHubCli.ReviewArguments(132, GitHubReviewVerdict.Approve, "");
 
         Assert.Equal(["pr", "review", "132", "--approve"], arguments);
+    }
+
+    [Fact]
+    public void ReviewBody_posts_the_drafts_on_the_head_side_with_the_verdict_and_the_summary()
+    {
+        var body = GitHubCli.ReviewBody(GitHubReviewVerdict.RequestChanges, "Nearly there",
+            [new DraftComment("src/a.cs", 12, "Rename this?")]);
+
+        Assert.Equal(
+            """{"event":"REQUEST_CHANGES","comments":[{"path":"src/a.cs","line":12,"side":"RIGHT","body":"Rename this?"}],"body":"Nearly there"}""",
+            body);
+    }
+
+    [Fact]
+    public void ReviewBody_leaves_an_empty_summary_out()
+    {
+        var body = GitHubCli.ReviewBody(GitHubReviewVerdict.Approve, "", [new DraftComment("src/a.cs", 12, "Rename this?")]);
+
+        Assert.DoesNotContain("\"body\":\"\"", body);
+        Assert.Contains("\"event\":\"APPROVE\"", body);
     }
 
     private static readonly Lazy<bool> GitHubCliAvailable = new(() =>

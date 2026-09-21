@@ -19,6 +19,7 @@ public sealed class ReviewView : View
     private readonly Label _checks;
     private readonly Label _threadCounts;
     private readonly Label _hint;
+    private readonly Label _draftReview;
     private readonly Button _overview;
     private readonly Line _rule;
     private readonly TreeView<ReviewNode> _files;
@@ -50,6 +51,9 @@ public sealed class ReviewView : View
 
     public string HintText => _hint.Text;
 
+    /// <summary>What the foot says about the drafted line comments (#188); empty while there are none.</summary>
+    public string DraftReviewText => _draftReview.Text;
+
     public bool ListHasFocus => _files.HasFocus;
 
     /// <summary>Whether the Overview button is selected; it opens the Overview tab (#185).</summary>
@@ -74,6 +78,7 @@ public sealed class ReviewView : View
         _checks = Line();
         _threadCounts = Line();
         _hint = Line();
+        _draftReview = new Label { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Text = string.Empty, Visible = false };
         // GetAttributeForRole isn't virtual in TG 2.1.0, so the hint is styled through its event; Handled makes the result stick.
         _hint.GettingAttributeForRole += (_, e) =>
         {
@@ -100,7 +105,7 @@ public sealed class ReviewView : View
         _files.AspectGetter = node => ReviewRow.Display(node, ThreadIcon(node) is not null);
         _files.DrawLine += (_, e) => MarkThreads(e);
         if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
-        Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files);
+        Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files, _draftReview);
 
         ViewportChanged += (_, _) => ShowTitle();
         _files.Activated += (_, _) => ActivateSelected();
@@ -148,6 +153,15 @@ public sealed class ReviewView : View
     {
         var attribute = cell.Attribute ?? default;
         return cell with { Attribute = attribute with { Style = attribute.Style | style } };
+    }
+
+    /// <summary>Shows what the review carries in drafts (#188), at the foot of the tab under the file list.</summary>
+    public void ShowDraftReview(string line)
+    {
+        _draftReview.Text = line;
+        _draftReview.Visible = line.Length > 0;
+        _files.Height = _draftReview.Visible ? Dim.Fill(1) : Dim.Fill();
+        SetNeedsDraw();
     }
 
     /// <summary>Focuses the file list, or the tab itself while there's no list to show.</summary>

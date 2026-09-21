@@ -54,10 +54,15 @@ internal sealed class FakeGitHubCli : IGitHubCli
     /// <summary>The reviews <see cref="SubmitReviewAsync"/> was asked to submit, in order.</summary>
     public List<(string RepoRoot, int Number, GitHubReviewVerdict Verdict, string Summary)> Reviews { get; } = [];
 
+    /// <summary>The draft comments submitted with each of those reviews, in the same order.</summary>
+    public List<IReadOnlyList<DraftComment>> ReviewComments { get; } = [];
+
     public Task<GitHubResult<bool>> SubmitReviewAsync(
-        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, CancellationToken cancellationToken = default)
+        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, IReadOnlyList<DraftComment> comments,
+        CancellationToken cancellationToken = default)
     {
         Reviews.Add((repoRoot, number, verdict, summary));
+        ReviewComments.Add(comments);
         return Task.FromResult(ReviewError is { } error
             ? GitHubResult<bool>.Failure(error)
             : GitHubResult<bool>.Success(true));
