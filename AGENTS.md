@@ -56,9 +56,11 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 ### UI controls
 
-- Build UI from TG's [built-in views](https://tui-cs.github.io/Terminal.Gui/docs/views) before writing a custom one. `LogView` is custom only because `TextView` can't scroll without moving its cursor.
-- When describing UI in an issue or PR, name the control for each element and sketch it in the mockup: `[x] Follow output`, `(•) All ( ) Running`, `Refresh: [ 2 ▲▼]s`.
-- A message a dialog only has after the fact (a refusal, what it's busy doing) goes in an `AlertView` (`Workbench/Controls/`) across its foot, **under** the hints — not a `Label` beside them, which draws straight over whatever sits below it as soon as its text outgrows its one row (#208). The alert wraps the message and reports the rows it needs (`Lines`); the dialog grows by that many and moves its hints up (`SubmitReviewView.Alert`). `AlertSeverity.Error` draws it in the theme's `Error` scheme, `Info` in `Accent`. `sr` is the only user so far — `PathPromptView`, `RevisionPickerView` and `PullRequestPickerView` still have the one-row `Label`.
+UI design rules — which control to use, hint bars, how errors are shown, icons, and what a UI requirement has to say — live in the [MentalDesk TUI style guide](https://github.com/mentaldesk/tui-style-guide). Read it before describing UI in an issue or PR, and before building one. It's shared with a-team, so rules that keep coming back in review go there, not here. What follows is only how TuiCode implements it.
+
+- `LogView` is the one custom view: `TextView` can't scroll without moving its cursor.
+- `AlertView` (`Workbench/Controls/`) is the guide's message block. It wraps the message and reports the rows it needs (`Lines`); the dialog grows by that many and moves its hints up (`SubmitReviewView.Alert`). `AlertSeverity.Error` draws it in the theme's `Error` scheme, `Info` in `Accent`. `sr` is the only user so far — `PathPromptView`, `RevisionPickerView` and `PullRequestPickerView` still have the one-row `Label` (#208).
+- `SubmitReviewView.Hint` is the guide's clickable hint: a `Button` with `NoDecorations`, `NoPadding`, no shadow and no hotkey of its own.
 
 ## AOT
 
