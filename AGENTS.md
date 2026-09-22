@@ -297,9 +297,27 @@ UI design rules — which control to use, hint bars, how errors are shown, icons
 - The status bar's `Ln X, Col Y` (right-aligned, #120) is polled on `IApplication.Iteration` (`Workbench.ShowCursorPosition`), not driven by `CursorMoved`: TG 2.1.0 raises `UnwrappedCursorPositionChanged` from its key/mouse paths only, so programmatic moves (find, Go-to-line, multi-caret, line moves) go unreported. `StatusBarPart.SetPosition` no-ops when unchanged, so polling costs a tuple compare. Col counts the model's grapheme cells, so a tab is one column.
 - macOS gotcha: by default Mission Control's "Move left/right a space" eats `Ctrl+Left`/`Ctrl+Right` before iTerm2 sees them. Disable in System Settings → Keyboard → Keyboard Shortcuts → Mission Control.
 
-## Focus (#227)
+## Focus (#227, #228)
 
-- `FocusService` (`Workbench/Focus/`) is the single source of truth for the focused **region** — `Editor`, `Diff`, `Explorer`, `Find`, `Review` or `Tabs`. `WorkbenchHost.FocusedScope` reads it (`FocusService.ScopeOf`) instead of polling the views, and the status bar's first word and the focused pane's border both come from its `RegionChanged`. The region/transition table is slice 2's, once the transitions are settled.
+- `FocusService` (`Workbench/Focus/`) is the single source of truth for the focused **region** — `Editor`, `Diff`, `Explorer`, `Find`, `Review` or `Tabs`. `WorkbenchHost.FocusedScope` reads it (`FocusService.ScopeOf`) instead of polling the views, and the status bar's first word and the focused pane's border both come from its `RegionChanged`.
+- **Nothing moves focus but the service.** Every workbench-level move goes through `WorkbenchHost.MoveFocus`, which says so in the status bar (`Nothing to focus in <region>`) when the move can't land, rather than going quiet. A view focusing its own parts — the explorer tree, a tab's text view, the review pane's Overview button — is the region's own business; what may not happen is a view deciding which *region* has the keys. `Workbench.OpenFile` used to focus the tab it opened; it raises `FileOpened` instead and the host makes the move.
+
+| From | Key or event | To |
+|---|---|---|
+| Anywhere | `Esc` | `Editor`, or `Diff` when the active tab is a diff |
+| `Editor` | `ft` (`FocusEditorTabStrip`), `Up` past the first line (#237) | `Tabs` |
+| `Tabs` | `Enter`, `Down` | `Editor` |
+| Anywhere | `fs` / `ts` / a sidebar tab's shortcut | the sidebar's active tab: `Explorer`, `Find` or `Review` |
+| Anywhere | `fr` (`FocusReview`) | `Review` |
+| `Review` | `Enter` on a file | `Diff` |
+| Anywhere | opening a file, a diff, a document or a history jump | `Editor` or `Diff` |
+| Any region | opening a modal | unchanged — no region owns a modal |
+| A modal | `Esc`, or the dialog finishing | the region it was opened from (`FocusCallingRegion`); the editor if that region has gone since |
+| `Explorer` / `Find` / `Review` | hiding the sidebar | `Editor` or `Diff` |
+| Any region | a review refresh, a late PR header, a save, showing the sidebar | unchanged (`SettleFocusAfterRedraw`) |
+
+- **A redraw must not take the keys.** `ReviewView.Show` moves no focus at all; it raises `Refreshed`, and the host puts the keys back where the record says they were. A region that still holds them keeps them — except the bare review pane, whose file list a rebuild takes them off and can't give back. The same rule covers the PR header arriving from `gh` seconds after you've moved to the diff (#196).
+- **Clear a stale `HasFocus` before taking the keyboard.** TG 2.1.0's `SetFocus` is a no-op on a view that believes it still has focus, so the diff — which keeps the flag after the sidebar takes the keys — could never be focused again: the reported "no way back without restarting" (#197). `WorkbenchHost.Take` drops the flag when the keyboard is demonstrably elsewhere, then moves.
 - It's TG-free and unit-tested directly, like `MnemonicResolver`: the host registers each region with a move and an ownership test, and supplies the focused view.
 - **Reconcile against the focused view, not `HasFocus`.** TG leaves `HasFocus` set on a view focus has moved on from, so `FocusService.Reconcile` re-reads the region from what TG says is focused — on every `Iteration` *and* before each key is dispatched, since a mouse click lands between iterations. `Focus` records optimistically; a move that didn't land shows up as `Unreachable` and is corrected by the next reconcile.
 - `Navigation.GetFocused()` returns the view the navigation system last focused, which can be an *ancestor* of the one holding the keyboard (a focused `SidebarPart` over the explorer inside it). Walk down with `View.MostFocused` — `DiffTab.IsFocused` gets away without it only because a `DiffTab` is itself focusable.

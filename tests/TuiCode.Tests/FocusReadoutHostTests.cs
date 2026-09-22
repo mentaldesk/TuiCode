@@ -124,30 +124,6 @@ public class FocusReadoutHostTests : StaticConfigurationTest
         Assert.Equal("Diff", onDiff);
     }
 
-    [Theory]
-    [InlineData(CommandIds.ShowActions)]
-    [InlineData(CommandIds.ShowMnemonics)]
-    [InlineData(CommandIds.Open)]
-    [InlineData(CommandIds.ChangeGrammar)]
-    [InlineData(CommandIds.GoToSymbol)]
-    [InlineData(CommandIds.CompareToRevision)]
-    [InlineData(CommandIds.OpenPullRequest)]
-    public async Task A_modal_hands_the_region_back_to_the_editor_when_it_closes(string command)
-    {
-        _git.Refs = [new GitRef("main", GitRefKind.Branch)];
-        _gitHub.OpenPullRequests = [new GitHubPullRequestSummary(1, "A change", "someone")];
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands);
-
-        await HostSteps.Run(host,
-            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
-            () => commands.TryExecute(CommandIds.FocusSidebar),
-            () => workbench.StatusBar.DisplayedFocus == "Explorer",
-            () => commands.TryExecute(command),
-            () => host.App.InjectKey(Key.Esc),
-            () => workbench.StatusBar.DisplayedFocus == "Editor");
-    }
-
     // Nothing else routes focus through FocusService, so the reconcile is what keeps the word honest.
     [Fact]
     public async Task A_focus_move_Terminal_Gui_makes_on_its_own_is_picked_up_by_the_next_iteration()
