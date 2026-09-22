@@ -178,8 +178,8 @@ public sealed class WorkbenchHost : IDisposable
         _focus.Register(FocusRegion.Diff, () => group.ActiveDiffTab?.SetFocus() ?? false,
             focused => group.ActiveDiffTab is { } diff && Owns(diff, focused));
         _focus.Register(FocusRegion.Editor, group.FocusActive,
-            focused => group.ActiveDiffTab is null && Owns(_workbench.Editor, focused));
-        // A mode with no focus move of its own; owning the whole editor pane is what keeps cycling tabs in it.
+            focused => group.ActiveDiffTab is null && Owns(_workbench.Editor, focused) && !OnTabStrip(group, focused));
+        // Reached by ft and by TG's own navigation (#237); owning the editor pane is what keeps cycling tabs in it.
         _focus.Register(FocusRegion.Tabs, () => true, focused => Owns(_workbench.Editor, focused));
 
         _focus.RegionChanged += (_, region) =>
@@ -195,6 +195,11 @@ public sealed class WorkbenchHost : IDisposable
 
     private static bool Owns(View region, object? focused) =>
         focused is View view && View.IsInHierarchy(region, view, includeAdornments: true);
+
+    // TG draws each tab's header in that tab's border, so a header holding the keyboard is in the tab's hierarchy but not its content.
+    private static bool OnTabStrip(EditorGroup group, object? focused) =>
+        group.Value is { } tab && focused is View view && !ReferenceEquals(view, tab)
+            && !View.IsInHierarchy(tab, view, includeAdornments: false);
 
     private void ApplyTokenTheme()
     {
