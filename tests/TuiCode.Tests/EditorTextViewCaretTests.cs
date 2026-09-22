@@ -443,7 +443,7 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Every_caret_underlines_the_next_character_in_place_of_the_terminal_cursor()
+    public void Every_caret_is_a_bar_in_place_of_the_terminal_cursor()
     {
         var view = View("abcdef", "abcdef");
         view.SetCarets([At(0, 0), Selecting(1, 1, 3)]);
@@ -452,8 +452,8 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
         view.Draw();
 
         var contents = _app.Driver!.Contents!;
-        Assert.True(contents[1, 3].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
-        Assert.True(contents[0, 0].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
+        Assert.Equal(CaretTextView.Bar, contents[1, 3].Grapheme);
+        Assert.Equal(CaretTextView.Bar, contents[0, 0].Grapheme);
         Assert.Equal(CursorStyle.Hidden, view.Cursor.Style);
         Assert.Equal(view.GetAttributeForRole(VisualRole.Active), contents[1, 1].Attribute);
         Assert.Equal(view.GetAttributeForRole(VisualRole.Editable), contents[1, 4].Attribute);
@@ -472,7 +472,7 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
         view.SetNeedsDraw();
         view.Draw();
 
-        Assert.False(_app.Driver!.Contents![1, 3].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
+        Assert.Equal("d", _app.Driver!.Contents![1, 3].Grapheme);
         Assert.Equal(TextView.DefaultCursorStyle, view.Cursor.Style);
     }
 
@@ -487,7 +487,7 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
         Render(view);
 
         Assert.Equal(TextView.DefaultCursorStyle, view.Cursor.Style);
-        Assert.False(_app.Driver!.Contents![0, 0].Attribute!.Value.Style.HasFlag(TextStyle.Underline));
+        Assert.Equal("a", _app.Driver!.Contents![0, 0].Grapheme);
     }
 
     [Fact]

@@ -3,8 +3,8 @@ using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
+using TuiCode.Editor;
 using TuiCode.Workbench.Controls;
-using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Tests;
 
@@ -35,17 +35,16 @@ public class InputViewCaretTests : StaticConfigurationTest
     {
         CaretAt(2);
 
-        Assert.Equal(" ", At(2, 0).Grapheme);
-        Assert.Equal(Underlined(At(0, 0)), At(2, 0).Attribute);
+        Assert.Equal(CaretTextView.Bar, At(2, 0).Grapheme);
     }
 
     [Fact]
-    public void The_caret_keeps_the_character_it_sits_on()
+    public void The_caret_is_a_bar_down_the_cell_it_sits_before()
     {
         CaretAt(1);
 
-        Assert.Equal("i", At(1, 0).Grapheme);
-        Assert.Equal(Underlined(At(0, 0)), At(1, 0).Attribute);
+        Assert.Equal(CaretTextView.Bar, At(1, 0).Grapheme);
+        Assert.Equal("H", At(0, 0).Grapheme);
     }
 
     [Fact]
@@ -55,8 +54,7 @@ public class InputViewCaretTests : StaticConfigurationTest
 
         CaretAt(0);
 
-        Assert.Equal(" ", At(0, 0).Grapheme);
-        Assert.Equal(Underlined(At(1, 0)), At(0, 0).Attribute);
+        Assert.Equal(CaretTextView.Bar, At(0, 0).Grapheme);
     }
 
     [Fact]
@@ -70,8 +68,8 @@ public class InputViewCaretTests : StaticConfigurationTest
         // Without this the caret stays where it was painted until the next edit forces a frame.
         Assert.True(_input.NeedsDraw);
         Render();
-        Assert.Equal(Underlined(At(0, 0)), At(1, 0).Attribute);
-        Assert.Equal(At(0, 0).Attribute, At(2, 0).Attribute);
+        Assert.Equal(CaretTextView.Bar, At(1, 0).Grapheme);
+        Assert.Equal(" ", At(2, 0).Grapheme);
     }
 
     [Fact]
@@ -91,7 +89,7 @@ public class InputViewCaretTests : StaticConfigurationTest
         Render();
 
         Assert.Equal(TextView.DefaultCursorStyle, _input.Cursor.Style);
-        Assert.Equal(At(0, 0).Attribute, At(2, 0).Attribute);
+        Assert.Equal(" ", At(2, 0).Grapheme);
     }
 
     /// <summary>Focuses the box with its caret at <paramref name="column"/>, drawn. The caret only holds once it's laid out.</summary>
@@ -102,9 +100,6 @@ public class InputViewCaretTests : StaticConfigurationTest
         _input.InsertionPoint = new System.Drawing.Point(column, 0);
         Render();
     }
-
-    private static Attribute Underlined(Cell cell) =>
-        cell.Attribute!.Value with { Style = cell.Attribute!.Value.Style | TextStyle.Underline };
 
     /// <summary>A cell of the box's text, in its own viewport coordinates.</summary>
     private Cell At(int x, int y)

@@ -5,11 +5,14 @@ using Point = System.Drawing.Point;
 namespace TuiCode.Editor;
 
 /// <summary>
-/// A <see cref="TextView"/> that can paint its own carets, underlining the cell each one is before, for the
+/// A <see cref="TextView"/> that can paint its own carets, a bar down the cell each one is before, for the
 /// carets a terminal won't show a cursor on: the editor's secondary ones (#106) and a dialog field's (#223).
 /// </summary>
 public abstract class CaretTextView : TextView
 {
+    /// <summary>What a painted caret looks like: the terminal's own bar, at the left edge of the cell it's before.</summary>
+    public const string Bar = "\u258f";
+
     protected CaretTextView() =>
         UnwrappedCursorPositionChanged += (_, _) =>
         {
@@ -29,15 +32,12 @@ public abstract class CaretTextView : TextView
         if (Cursor.Style != style) Cursor = Cursor with { Style = style };
         if (!PaintsCarets) return;
 
-        var editable = GetAttributeForRole(VisualRole.Editable);
-        var attribute = editable with { Style = editable.Style | TextStyle.Underline };
+        var attribute = GetAttributeForRole(VisualRole.Editable);
         foreach (var caret in CaretPositions)
         {
             if (ViewportPosition(caret) is not { } point) continue;
-            var line = GetLine(caret.Y);
-            var grapheme = caret.X < line.Count && line[caret.X].Grapheme != "\t" ? line[caret.X].Grapheme : " ";
             SetAttribute(attribute);
-            AddStr(point.X, point.Y, grapheme);
+            AddStr(point.X, point.Y, Bar);
         }
     }
 
