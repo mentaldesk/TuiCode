@@ -6,6 +6,8 @@ using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Icons;
+using TuiCode.Syntax;
+using TuiCode.Workbench.Navigation;
 
 namespace TuiCode.Tests;
 
@@ -13,6 +15,8 @@ public class FileIconDrawingTests : StaticConfigurationTest
 {
     private const string Folder = "\uf07c";
     private const string CSharp = "\U000f031b";
+    private const string SymbolClass = "\ueb5b";
+    private const string SymbolMethod = "\uea8c";
 
     private readonly IApplication _app = Application.Create().Init(DriverRegistry.Names.ANSI);
     private readonly FileIcons _icons = new(() => new FontDetection(true, "test"));
@@ -113,6 +117,41 @@ public class FileIconDrawingTests : StaticConfigurationTest
 
         Assert.Equal("📁 src/", Row(0).TrimEnd());
         Assert.Equal("📄 notes", Row(1).TrimEnd());
+    }
+
+    [Fact]
+    public void Outline_rows_show_the_kind_icon_after_the_indent_and_ahead_of_the_name()
+    {
+        IReadOnlyList<FileSymbol> outline = [new("Widget", SymbolKind.Class, 0, 0), new("Go", SymbolKind.Method, 2, 1)];
+        var list = new ListView
+        {
+            App = _app,
+            Width = 20,
+            Height = 2,
+            Source = new SymbolListSource(outline, indent: true, FileIconStyle.NerdFont),
+        };
+
+        Render(list);
+
+        Assert.Equal($"{SymbolClass} Widget    class  1", Row(0));
+        Assert.Equal($"  {SymbolMethod} Go     method  3", Row(1));
+    }
+
+    [Fact]
+    public void Outline_rows_with_icons_off_start_at_the_name()
+    {
+        IReadOnlyList<FileSymbol> outline = [new("Widget", SymbolKind.Class, 0, 0), new("Go", SymbolKind.Method, 2, 1)];
+        var list = new ListView
+        {
+            App = _app,
+            Width = 20,
+            Height = 2,
+            Source = new SymbolListSource(outline, indent: true, FileIconStyle.Off),
+        };
+
+        Render(list);
+
+        Assert.Equal("Widget      class  1", Row(0));
     }
 
     private FileExplorerView Explorer(string file = "Program.cs")

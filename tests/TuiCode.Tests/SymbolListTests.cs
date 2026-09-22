@@ -96,6 +96,28 @@ public class SymbolListTests
     }
 
     [Fact]
+    public void Kind_icons_keep_a_column_of_their_own_ahead_of_each_name()
+    {
+        Assert.Equal(
+            [
+                "  WorkbenchHost              class    31",
+                "    ActiveGroup           property    84",
+                "    CompareToSaved          method  1061",
+            ],
+            SymbolList.Render(Outline, 40, indent: true, iconWidth: 2));
+    }
+
+    [Fact]
+    public void An_icon_goes_after_the_indent_and_only_while_the_name_has_room_for_it()
+    {
+        Assert.Equal(0, SymbolList.IconColumn(Outline[0], indent: true));
+        Assert.Equal(2, SymbolList.IconColumn(Outline[1], indent: true));
+        Assert.Equal(0, SymbolList.IconColumn(Outline[1], indent: false));
+        Assert.Equal(24, SymbolList.NameWidth(Outline, 40));
+        Assert.Equal(0, SymbolList.NameWidth(Outline, 10));
+    }
+
+    [Fact]
     public void Nothing_to_show_renders_no_rows()
     {
         Assert.Empty(SymbolList.Render([], 40, indent: true));
