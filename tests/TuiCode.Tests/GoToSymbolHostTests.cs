@@ -20,6 +20,16 @@ public class GoToSymbolHostTests : StaticConfigurationTest
         }
         """;
 
+    private const string Guide = """
+        # Agent guide
+
+        ## Audience and scope
+
+        ## Quick start
+
+        ### Solution map
+        """;
+
     private static readonly SyntaxHighlighter Syntax = new(GrammarBundle.Load());
 
     private readonly MockFileSystem _fs = new();
@@ -27,6 +37,7 @@ public class GoToSymbolHostTests : StaticConfigurationTest
     public GoToSymbolHostTests()
     {
         _fs.AddFile("/work/Widget.cs", new MockFileData(Widget));
+        _fs.AddFile("/work/AGENTS.md", new MockFileData(Guide));
         _fs.AddFile("/work/notes.txt", new MockFileData("public class NotCode { }"));
         _fs.AddFile("/work/data.json", new MockFileData("""{ "name": "tuicode" }"""));
     }
@@ -214,6 +225,30 @@ public class GoToSymbolHostTests : StaticConfigurationTest
         Assert.StartsWith("  DoWorkAsync ", outline[2], StringComparison.Ordinal);
 
         Assert.StartsWith("DoWorkAsync ", Assert.Single(filtered), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Gs_in_a_markdown_file_is_a_document_outline_a_filter_jumps_through()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        IReadOnlyList<string> outline = [];
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "AGENTS.md"); },
+            () => { commands.TryExecute(CommandIds.GoToSymbol); },
+            () => Picker(workbench) is { Scanned: true },
+            () => { outline = Picker(workbench)!.Rows; },
+            () => Type(host, "qs"),
+            () => Picker(workbench)!.VisibleItems.SequenceEqual(["Quick start"]),
+            () => host.App.InjectKey(Key.Enter),
+            () => Picker(workbench) is null);
+
+        Assert.StartsWith("Agent guide ", outline[0], StringComparison.Ordinal);
+        Assert.EndsWith("heading  1", outline[0], StringComparison.Ordinal);
+        Assert.StartsWith("  Audience and scope ", outline[1], StringComparison.Ordinal);
+        Assert.StartsWith("    Solution map ", outline[3], StringComparison.Ordinal);
+        Assert.Equal(4, Tab(workbench).CursorRow);
     }
 
     [Fact]

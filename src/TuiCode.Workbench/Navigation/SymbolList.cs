@@ -63,6 +63,9 @@ internal static class SymbolList
         SymbolKind.Struct => "struct",
         SymbolKind.Trait => "trait",
         SymbolKind.Method => "method",
+        SymbolKind.Field => "field",
+        SymbolKind.EnumMember => "enum member",
+        SymbolKind.Heading => "heading",
         _ => "property",
     };
 

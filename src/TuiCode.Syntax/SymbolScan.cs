@@ -12,6 +12,9 @@ public enum SymbolKind
     Trait,
     Method,
     Property,
+    Field,
+    EnumMember,
+    Heading,
 }
 
 /// <summary>A definition in the file: its name, what it is, the row it's on, and how many types enclose it.</summary>
@@ -25,8 +28,9 @@ public readonly record struct FileSymbol(string Name, SymbolKind Kind, int Line,
 /// <c>meta.definition.method</c>, …). Where the grammar gives a flat stack — C# methods get the same
 /// <c>entity.name.function.cs</c> for a declaration and a call — the fallback is the line's first name
 /// that isn't a type, and only on a line that has already declared something: a modifier or a type
-/// ahead of it. That last clause is what keeps <c>await DoWorkAsync(1)</c> out. Each definition also
-/// carries the <see cref="FileSymbol.Depth"/> the picker indents it by (see <see cref="DepthAt"/>).
+/// ahead of it. That last clause is what keeps <c>await DoWorkAsync(1)</c> out. Markdown has no
+/// definitions but headings, which are read whole lines at a time (see <see cref="AddHeading"/>). Each
+/// definition also carries the <see cref="FileSymbol.Depth"/> the picker indents it by (see <see cref="DepthAt"/>).
 /// </summary>
 public sealed class SymbolScan
 {
@@ -37,11 +41,15 @@ public sealed class SymbolScan
         ("entity.name.type.trait", SymbolKind.Trait),
     ];
 
-    // C# gives this to properties and to nothing else, so it needs no further test.
+    // C# names a property, a field and an enum member outright, so these need no further test.
     private static readonly string[] PropertyNames = ["entity.name.variable.property"];
+    private static readonly string[] FieldNames = ["entity.name.variable.field"];
+    private static readonly string[] EnumMemberNames = ["entity.name.variable.enum-member", "variable.other.enummember"];
 
     // TS/JS mark a class field this way, but only its meta.definition.property says it's the declaration.
     private static readonly string[] MemberNames = ["variable.object.property"];
+    private static readonly string[] FieldDeclarations = ["meta.field.declaration"];
+    private static readonly string[] Interfaces = ["meta.interface"];
 
     private static readonly string[] MethodNames = ["entity.name.function", "support.function"];
 
@@ -65,6 +73,9 @@ public sealed class SymbolScan
     [
         "entity.name.type", "support.type", "keyword.type", "storage.type", "storage.modifier",
     ];
+
+    // Markdown's heading text. The level is in a sibling scope (heading.2, markup.heading.setext.2).
+    private static readonly string[] HeadingNames = ["entity.name.section"];
 
     private static readonly string[] NeverNames = ["comment", "string", "punctuation"];
 
@@ -154,6 +165,8 @@ public sealed class SymbolScan
             return LineResult.Failed;
         }
 
+        if (AddHeading(text, tokens)) return LineResult.Scanned;
+
         var indent = Indent(text);
         var declared = false;
         var named = false;
@@ -166,10 +179,12 @@ public sealed class SymbolScan
 
             if (TypeKind(scopes) is { } type) { Add(name, type, indent); named = true; continue; }
             if (Any(scopes, PropertyNames)) { Add(name, SymbolKind.Property, indent); named = true; continue; }
+            if (Any(scopes, FieldNames)) { Add(name, SymbolKind.Field, indent); named = true; continue; }
+            if (Any(scopes, EnumMemberNames)) { Add(name, SymbolKind.EnumMember, indent); named = true; continue; }
             if (Any(scopes, Declarators)) { declared = true; continue; }
 
             var kind = Any(scopes, MethodNames) ? SymbolKind.Method
-                : Any(scopes, MemberNames) ? SymbolKind.Property
+                : Any(scopes, MemberNames) ? MemberKind(scopes)
                 : (SymbolKind?)null;
             if (kind is { } member && (DefinedHere(scopes) || IsFlat(scopes) && declared && !named && member == SymbolKind.Method))
                 Add(name, member, indent);
@@ -177,6 +192,51 @@ public sealed class SymbolScan
         }
         return LineResult.Scanned;
     }
+
+    /// <summary>
+    /// Markdown headings, which are read from the line rather than token by token: inline code or a link
+    /// splits one heading's text over several tokens, and a setext heading's text is the line above its
+    /// underline. They nest by heading level, which stands in for the indent every other grammar nests by.
+    /// </summary>
+    private bool AddHeading(string text, IToken[] tokens)
+    {
+        if (HeadingLevel(tokens, "markup.heading.setext") is { } underlined)
+        {
+            var title = _next > 0 ? _lines[_next - 1].Trim() : "";
+            if (title.Length == 0) return false;
+            _symbols.Add(new FileSymbol(title, SymbolKind.Heading, _next - 1, DepthAt(underlined)));
+            return true;
+        }
+        if (HeadingLevel(tokens, "heading") is not { } level) return false;
+
+        // Between the first and the last token of the heading's own text: past the opening #s and any closing run.
+        var named = tokens.Where(token => Any(token.Scopes, HeadingNames)).ToArray();
+        if (named.Length == 0) return false;
+        var start = Math.Clamp(named[0].StartIndex, 0, text.Length);
+        var end = Math.Clamp(named[^1].EndIndex, start, text.Length);
+        var name = text[start..end].Trim();
+        if (name.Length == 0) return false;
+        _symbols.Add(new FileSymbol(name, SymbolKind.Heading, _next, DepthAt(level)));
+        return true;
+    }
+
+    /// <summary>The number in <c>heading.2</c> or <c>markup.heading.setext.2</c>, or null on a line that isn't one.</summary>
+    private static int? HeadingLevel(IToken[] tokens, string prefix)
+    {
+        foreach (var token in tokens)
+            foreach (var scope in token.Scopes)
+            {
+                if (!scope.StartsWith(prefix, StringComparison.Ordinal) || scope.Length <= prefix.Length || scope[prefix.Length] != '.') continue;
+                var rest = scope.AsSpan(prefix.Length + 1);
+                var dot = rest.IndexOf('.');
+                if (int.TryParse(dot < 0 ? rest : rest[..dot], out var level)) return level;
+            }
+        return null;
+    }
+
+    // TS gives a class field and an interface's property the same scopes; only the type around them differs.
+    private static SymbolKind MemberKind(IReadOnlyList<string> scopes) =>
+        Any(scopes, FieldDeclarations) && !Any(scopes, Interfaces) ? SymbolKind.Field : SymbolKind.Property;
 
     private void Add(string name, SymbolKind kind, int indent) => _symbols.Add(new FileSymbol(name, kind, _next, DepthAt(indent)));
 
