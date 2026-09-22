@@ -191,7 +191,8 @@ public class FocusHostTests : StaticConfigurationTest
             () => { foreach (var c in "two") host.App.InjectKey(new Key(c)); },
             () => bar!.Query == "two");
 
-        Assert.Equal("one\ntwo\n", workbench.Editor.Group.ActiveTab!.Content);
+        // TG joins the lines with Environment.NewLine, so the buffer reads back CRLF on Windows.
+        Assert.Equal("one\ntwo\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
     }
 
     // #196's background lookup returns seconds later, by which time the keys have moved on.
