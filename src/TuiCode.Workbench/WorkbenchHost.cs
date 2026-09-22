@@ -165,6 +165,9 @@ public sealed class WorkbenchHost : IDisposable
         // The review pane rebuilds on a save, a sidebar switch and each stage of its background load, which
         // can take Terminal.Gui's focus with it; nobody asked it to, so the keys go back (#228).
         _workbench.Sidebar.Review.Refreshed += (_, _) => SettleFocusAfterRedraw();
+        // Opening a file is a move into the Editor region, so the service makes it: the tab it opens may
+        // still be carrying a stale HasFocus, which its own SetFocus would no-op on (#228).
+        _workbench.FileOpened += (_, _) => MoveFocus(FocusRegion.Editor);
     }
 
     private void RegisterFocusRegions()

@@ -117,6 +117,32 @@ public class FocusHostTests : StaticConfigurationTest
         Assert.Equal("Editor", workbench.StatusBar.DisplayedFocus);
     }
 
+    // #228 review: with a file already open, its tab kept a stale HasFocus, so the tab the dialog
+    // opened could not take the keyboard and the explorer kept the keys while the readout said Editor.
+    [Fact]
+    public async Task Opening_a_file_over_one_already_open_leaves_you_typing_in_it()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        OpenView? dialog = null;
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => host.App.InjectKey(Key.O.WithCtrl),
+            () => (dialog = workbench.SubViews.OfType<OpenView>().SingleOrDefault()) is not null,
+            () => { foreach (var c in "b.t") host.App.InjectKey(new Key(c)); },
+            () => dialog!.VisibleItems.SequenceEqual(["b.txt"]),
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.Editor.Group.ActiveTab?.File.Name == "b.txt",
+            () => host.App.InjectKey(new Key('X')),
+            () => workbench.Editor.Group.ActiveTab!.Content.StartsWith('X'));
+
+        Assert.Equal("Editor", workbench.StatusBar.DisplayedFocus);
+    }
+
     // Every modal the workbench opens, cancelled from the explorer: the keys go back to the explorer.
     [Theory]
     [InlineData(CommandIds.ShowActions)]

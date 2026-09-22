@@ -300,7 +300,7 @@ UI design rules — which control to use, hint bars, how errors are shown, icons
 ## Focus (#227, #228)
 
 - `FocusService` (`Workbench/Focus/`) is the single source of truth for the focused **region** — `Editor`, `Diff`, `Explorer`, `Find`, `Review` or `Tabs`. `WorkbenchHost.FocusedScope` reads it (`FocusService.ScopeOf`) instead of polling the views, and the status bar's first word and the focused pane's border both come from its `RegionChanged`.
-- **Nothing moves focus but the service.** Every workbench-level move goes through `WorkbenchHost.MoveFocus`, which says so in the status bar (`Nothing to focus in <region>`) when the move can't land, rather than going quiet. A view focusing its own parts — the explorer tree, a tab's text view, the review pane's Overview button — is the region's own business; what may not happen is a view deciding which *region* has the keys.
+- **Nothing moves focus but the service.** Every workbench-level move goes through `WorkbenchHost.MoveFocus`, which says so in the status bar (`Nothing to focus in <region>`) when the move can't land, rather than going quiet. A view focusing its own parts — the explorer tree, a tab's text view, the review pane's Overview button — is the region's own business; what may not happen is a view deciding which *region* has the keys. `Workbench.OpenFile` used to focus the tab it opened; it raises `FileOpened` instead and the host makes the move.
 
 | From | Key or event | To |
 |---|---|---|
