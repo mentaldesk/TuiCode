@@ -24,6 +24,9 @@ public sealed class FocusService(Func<object?> focusedView)
     /// <summary>The last region a move couldn't reach, cleared by the next move that lands.</summary>
     public FocusRegion? Unreachable { get; private set; }
 
+    /// <summary>Whether the view Terminal.Gui has the keyboard on is still in <see cref="Region"/>.</summary>
+    public bool Holds => _targets.FirstOrDefault(t => t.Region == Region) is { } target && target.Owns(focusedView());
+
     public event EventHandler<FocusRegion>? RegionChanged;
 
     /// <param name="move">Moves focus into the region; false when there was nothing to focus.</param>

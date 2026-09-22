@@ -22,13 +22,17 @@ internal sealed class FakeGitHubCli : IGitHubCli
     /// <summary>The PR numbers <see cref="GetConversationAsync"/> was asked about, in order.</summary>
     public List<int> ConversationCalls { get; } = [];
 
-    public Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default)
+    /// <summary>Set to hold the PR lookup until the test lets it finish, as a slow <c>gh</c> does (#228).</summary>
+    public TaskCompletionSource? HoldPullRequest { get; set; }
+
+    public async Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default)
     {
         Calls++;
-        if (Missing) return Task.FromResult(GitHubResult<GitHubPullRequest?>.NoCli());
-        return Task.FromResult(Error is { } error
+        if (HoldPullRequest is { } held) await held.Task.ConfigureAwait(false);
+        if (Missing) return GitHubResult<GitHubPullRequest?>.NoCli();
+        return Error is { } error
             ? GitHubResult<GitHubPullRequest?>.Failure(error)
-            : GitHubResult<GitHubPullRequest?>.Success(PullRequest));
+            : GitHubResult<GitHubPullRequest?>.Success(PullRequest);
     }
 
     public Task<GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>> ListPullRequestsAsync(string repoRoot, CancellationToken cancellationToken = default)
