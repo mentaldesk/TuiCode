@@ -452,8 +452,8 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
         view.Draw();
 
         var contents = _app.Driver!.Contents!;
-        Assert.Equal(CaretTextView.Bar, contents[1, 3].Grapheme);
-        Assert.Equal(CaretTextView.Bar, contents[0, 0].Grapheme);
+        Assert.Equal(EditorTextView.Bar, contents[1, 3].Grapheme);
+        Assert.Equal(EditorTextView.Bar, contents[0, 0].Grapheme);
         Assert.Equal(CursorStyle.Hidden, view.Cursor.Style);
         Assert.Equal(view.GetAttributeForRole(VisualRole.Active), contents[1, 1].Attribute);
         Assert.Equal(view.GetAttributeForRole(VisualRole.Editable), contents[1, 4].Attribute);

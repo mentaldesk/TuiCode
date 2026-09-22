@@ -1,4 +1,6 @@
 using System.Runtime.CompilerServices;
+using Terminal.Gui.Drivers;
+using Terminal.Gui.Text;
 using Point = System.Drawing.Point;
 
 namespace TuiCode.Editor;
@@ -388,12 +390,47 @@ internal sealed partial class EditorTextView
     }
 
     internal IEnumerable<Point> SecondaryCaretsOnScreen() =>
-        _secondary.Select(caret => ViewportPosition(caret.Position)).OfType<Point>().Select(point => ViewportToScreen(point));
+        _secondary.Select(ViewportPosition).OfType<Point>().Select(point => ViewportToScreen(point));
 
-    // Where the terminal can't draw the extra carets, every caret, the primary included, is painted instead.
-    protected override bool PaintsCarets => HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
+    internal const string Bar = "\u258f";
 
-    protected override IEnumerable<Point> CaretPositions => Carets.Select(caret => caret.Position);
+    // Where the terminal can't draw the extra carets, every caret, the primary included, is painted as the bar it would have drawn.
+    private void DrawCarets()
+    {
+        var paint = HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
+        var style = paint ? CursorStyle.Hidden : DefaultCursorStyle;
+        if (Cursor.Style != style) Cursor = Cursor with { Style = style };
+        if (!paint) return;
+
+        foreach (var caret in Carets)
+        {
+            if (ViewportPosition(caret) is not { } point) continue;
+            SetAttribute(_editable);
+            AddStr(point.X, point.Y, Bar);
+        }
+    }
+
+    private Point? ViewportPosition(Caret caret)
+    {
+        var row = caret.Position.Y - Viewport.Y;
+        if (row < 0 || row >= Viewport.Height || caret.Position.Y >= Lines) return null;
+        var line = GetLine(caret.Position.Y);
+        var x = ColumnsBefore(line, Math.Min(caret.Position.X, line.Count)) - Viewport.X;
+        return x < 0 || x >= Viewport.Width ? null : new Point(x, row);
+    }
+
+    private int ColumnsBefore(List<Cell> line, int column)
+    {
+        var columns = 0;
+        for (var i = 0; i < column; i++)
+        {
+            var grapheme = line[i].Grapheme;
+            columns += grapheme == "\t"
+                ? TabWidth > 0 ? TabWidth - columns % TabWidth : 0
+                : Math.Max(grapheme.GetColumns(), 1);
+        }
+        return columns;
+    }
 
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_columnTrack")]
     private static extern ref int ColumnTrack(TextView view);

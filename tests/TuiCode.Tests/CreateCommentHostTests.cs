@@ -1,3 +1,4 @@
+using Terminal.Gui.Drivers;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using TuiCode.Abstractions;
@@ -63,6 +64,32 @@ public class CreateCommentHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(shows);
+    }
+
+    [Fact]
+    public async Task The_terminal_cursor_lands_in_the_comment_box_where_typing_goes()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        Cursor? cursor = null;
+        var expected = System.Drawing.Point.Empty;
+
+        await OpenDiff(host, workbench, commands);
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.CreateComment),
+            () => Dialog(workbench) is not null,
+            () => Type(host, "Hi"),
+            () => { },
+            () =>
+            {
+                cursor = host.App.Driver!.GetCursor();
+                expected = Dialog(workbench)!.SubViews.OfType<InputView>().Single()
+                    .ViewportToScreen(new System.Drawing.Point(2, 0));
+            },
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.Equal(expected, cursor!.Position);
+        Assert.Equal(TextView.DefaultCursorStyle, cursor.Style);
     }
 
     [Fact]

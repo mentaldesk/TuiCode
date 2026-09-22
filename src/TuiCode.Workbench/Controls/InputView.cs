@@ -1,14 +1,11 @@
-using TuiCode.Editor;
-using Point = System.Drawing.Point;
-
 namespace TuiCode.Workbench.Controls;
 
 /// <summary>
 /// A dialog's multi-line field. It draws its own box, heavy while it has focus and single while it hasn't,
-/// and paints its caret the way the editor paints the carets a terminal can't draw, which a terminal profile
-/// or a pale theme can otherwise leave invisible (#223).
+/// so a glance says which control the keys go to (#223). Where they land inside it is the terminal's own
+/// cursor, as it is in the editor.
 /// </summary>
-public sealed class InputView : CaretTextView
+public sealed class InputView : TextView
 {
     private const LineStyle Focused = LineStyle.Heavy;
     private const LineStyle Idle = LineStyle.Single;
@@ -27,20 +24,9 @@ public sealed class InputView : CaretTextView
     /// <summary>Whether the box is drawn as the one taking keys.</summary>
     public bool ShowsFocus => BorderStyle == Focused;
 
-    protected override bool PaintsCarets => HasFocus;
-
-    protected override IEnumerable<Point> CaretPositions => [InsertionPoint];
-
     protected override void OnHasFocusChanged(bool newHasFocus, View? previousFocused, View? focused)
     {
         BorderStyle = newHasFocus ? Focused : Idle;
         base.OnHasFocusChanged(newHasFocus, previousFocused, focused);
-    }
-
-    protected override bool OnDrawingContent(DrawContext? context)
-    {
-        var handled = base.OnDrawingContent(context);
-        DrawCarets();
-        return handled;
     }
 }
