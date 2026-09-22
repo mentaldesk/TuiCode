@@ -190,6 +190,33 @@ public class GoToSymbolHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task The_picker_indents_members_under_their_type_until_a_filter_flattens_them()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        IReadOnlyList<string> outline = [];
+        IReadOnlyList<string> filtered = [];
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Widget.cs"); },
+            () => { commands.TryExecute(CommandIds.GoToSymbol); },
+            () => Picker(workbench) is { Scanned: true },
+            () => { outline = Picker(workbench)!.Rows; },
+            () => Type(host, "dwa"),
+            () => Picker(workbench)!.VisibleItems.SequenceEqual(["DoWorkAsync"]),
+            () => { filtered = Picker(workbench)!.Rows; },
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.StartsWith("Widget ", outline[0], StringComparison.Ordinal);
+        Assert.EndsWith("class  1", outline[0], StringComparison.Ordinal);
+        Assert.StartsWith("  Count ", outline[1], StringComparison.Ordinal);
+        Assert.EndsWith("property  3", outline[1], StringComparison.Ordinal);
+        Assert.StartsWith("  DoWorkAsync ", outline[2], StringComparison.Ordinal);
+
+        Assert.StartsWith("DoWorkAsync ", Assert.Single(filtered), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Gs_is_in_the_command_palette_and_the_mnemonics_with_no_default_key()
     {
         using var workbench = BuildWorkbench();

@@ -1,5 +1,4 @@
 using TuiCode.Syntax;
-using TuiCode.Workbench.Navigation;
 
 namespace TuiCode.Tests;
 
@@ -37,13 +36,13 @@ public class SymbolScanTests
     {
         Assert.Equal(
             [
-                new FileSymbol("Widget", SymbolKind.Type, 0),
-                new FileSymbol("Count", SymbolKind.Property, 2),
-                new FileSymbol("DoWorkAsync", SymbolKind.Method, 4),
-                new FileSymbol("Name", SymbolKind.Property, 11),
-                new FileSymbol("IThing", SymbolKind.Type, 13),
-                new FileSymbol("Colour", SymbolKind.Type, 14),
-                new FileSymbol("Point", SymbolKind.Type, 15),
+                new FileSymbol("Widget", SymbolKind.Class, 0, 0),
+                new FileSymbol("Count", SymbolKind.Property, 2, 1),
+                new FileSymbol("DoWorkAsync", SymbolKind.Method, 4, 1),
+                new FileSymbol("Name", SymbolKind.Property, 11, 1),
+                new FileSymbol("IThing", SymbolKind.Interface, 13, 0),
+                new FileSymbol("Colour", SymbolKind.Enum, 14, 0),
+                new FileSymbol("Point", SymbolKind.Struct, 15, 0),
             ],
             Scan("csharp", CSharp));
     }
@@ -53,7 +52,7 @@ public class SymbolScanTests
     {
         var symbols = Scan("csharp", CSharp);
 
-        Assert.Equal(new FileSymbol("DoWorkAsync", SymbolKind.Method, 4), Assert.Single(symbols, s => s.Name == "DoWorkAsync"));
+        Assert.Equal(new FileSymbol("DoWorkAsync", SymbolKind.Method, 4, 1), Assert.Single(symbols, s => s.Name == "DoWorkAsync"));
         Assert.DoesNotContain(symbols, s => s.Name is "WriteLine" or "Console" or "Compute");
         Assert.DoesNotContain(symbols, s => s.Name == "Task");
     }
@@ -85,14 +84,14 @@ public class SymbolScanTests
     {
         Assert.Equal(
             [
-                new FileSymbol("Widget", SymbolKind.Type, 0),
-                new FileSymbol("name", SymbolKind.Property, 1),
-                new FileSymbol("label", SymbolKind.Method, 2),
-                new FileSymbol("doWork", SymbolKind.Method, 3),
-                new FileSymbol("Thing", SymbolKind.Type, 8),
-                new FileSymbol("a", SymbolKind.Property, 8),
-                new FileSymbol("Colour", SymbolKind.Type, 9),
-                new FileSymbol("topLevel", SymbolKind.Method, 10),
+                new FileSymbol("Widget", SymbolKind.Class, 0, 0),
+                new FileSymbol("name", SymbolKind.Property, 1, 1),
+                new FileSymbol("label", SymbolKind.Method, 2, 1),
+                new FileSymbol("doWork", SymbolKind.Method, 3, 1),
+                new FileSymbol("Thing", SymbolKind.Interface, 8, 0),
+                new FileSymbol("a", SymbolKind.Property, 8, 1),
+                new FileSymbol("Colour", SymbolKind.Enum, 9, 0),
+                new FileSymbol("topLevel", SymbolKind.Method, 10, 0),
             ],
             Scan("typescript", """
                 export class Widget {
@@ -114,11 +113,11 @@ public class SymbolScanTests
     {
         Assert.Equal(
             [
-                new FileSymbol("Widget", SymbolKind.Type, 0),
-                new FileSymbol("__init__", SymbolKind.Method, 1),
-                new FileSymbol("do_work", SymbolKind.Method, 3),
-                new FileSymbol("label", SymbolKind.Method, 7),
-                new FileSymbol("top_level", SymbolKind.Method, 9),
+                new FileSymbol("Widget", SymbolKind.Class, 0, 0),
+                new FileSymbol("__init__", SymbolKind.Method, 1, 1),
+                new FileSymbol("do_work", SymbolKind.Method, 3, 1),
+                new FileSymbol("label", SymbolKind.Method, 7, 1),
+                new FileSymbol("top_level", SymbolKind.Method, 9, 0),
             ],
             Scan("python", """
                 class Widget:
@@ -157,15 +156,50 @@ public class SymbolScanTests
 
         Assert.Equal(
             [
-                new FileSymbol("Widget", SymbolKind.Type, 0),
-                new FileSymbol("Thing", SymbolKind.Type, 3),
-                new FileSymbol("describe", SymbolKind.Method, 4),
-                new FileSymbol("do_work", SymbolKind.Method, 7),
-                new FileSymbol("Colour", SymbolKind.Type, 12),
-                new FileSymbol("top_level", SymbolKind.Method, 13),
+                new FileSymbol("Widget", SymbolKind.Struct, 0, 0),
+                new FileSymbol("Thing", SymbolKind.Trait, 3, 0),
+                new FileSymbol("describe", SymbolKind.Method, 4, 1),
+                new FileSymbol("do_work", SymbolKind.Method, 7, 1),
+                new FileSymbol("Colour", SymbolKind.Enum, 12, 0),
+                new FileSymbol("top_level", SymbolKind.Method, 13, 0),
             ],
             symbols);
         Assert.DoesNotContain(symbols, s => s.Name is "i32" or "str" or "String" or "println!");
+    }
+
+    [Fact]
+    public void A_nested_type_sits_a_level_in_and_its_members_two()
+    {
+        Assert.Equal(
+            [
+                new FileSymbol("Widget", SymbolKind.Class, 0, 0),
+                new FileSymbol("Count", SymbolKind.Property, 2, 1),
+                new FileSymbol("Inner", SymbolKind.Class, 3, 1),
+                new FileSymbol("Deep", SymbolKind.Method, 5, 2),
+                new FileSymbol("Free", SymbolKind.Method, 8, 0),
+            ],
+            Scan("csharp", """
+                public class Widget
+                {
+                    public int Count { get; set; }
+                    private class Inner
+                    {
+                        public void Deep() { }
+                    }
+                }
+                public static void Free() { }
+                """));
+    }
+
+    [Fact]
+    public void A_definition_on_the_same_line_as_the_one_before_it_sits_inside_it()
+    {
+        Assert.Equal(
+            [
+                new FileSymbol("Thing", SymbolKind.Interface, 0, 0),
+                new FileSymbol("a", SymbolKind.Property, 0, 1),
+            ],
+            Scan("typescript", "export interface Thing { a: number }"));
     }
 
     [Fact]
@@ -235,23 +269,6 @@ public class SymbolScanTests
 
         Assert.True(scan.Advance(TimeSpan.MaxValue));
         Assert.Equal(["A", "B"], scan.Symbols.Select(s => s.Name));
-    }
-
-    [Theory]
-    [InlineData("dwa", new[] { "DoWorkAsync", "DoWarnAboutStaleCache" })]
-    [InlineData("stale", new[] { "DoWarnAboutStaleCache" })]
-    [InlineData("", new[] { "DoWorkAsync", "DoWarnAboutStaleCache", "Count" })]
-    [InlineData("zz", new string[0])]
-    public void Filtering_keeps_file_order(string filter, string[] expected)
-    {
-        IReadOnlyList<FileSymbol> symbols =
-        [
-            new("DoWorkAsync", SymbolKind.Method, 3),
-            new("DoWarnAboutStaleCache", SymbolKind.Method, 7),
-            new("Count", SymbolKind.Property, 9),
-        ];
-
-        Assert.Equal(expected, SymbolList.Filter(symbols, filter).Select(s => s.Name));
     }
 
     private IReadOnlyList<FileSymbol> Scan(string language, string text)

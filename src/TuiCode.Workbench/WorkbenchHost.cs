@@ -767,7 +767,7 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var view = new SymbolPickerView(tab.File.Name, scan);
+        var view = new SymbolPickerView(tab.File.Name, scan, _icons);
         view.Cancelled += (_, _) => CloseSymbolPicker(view);
         view.Submitted += (_, symbol) =>
         {
