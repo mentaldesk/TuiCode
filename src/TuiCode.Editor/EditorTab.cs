@@ -409,7 +409,7 @@ public sealed class EditorTab : FrameView
 /// TextView that paints syntax colours (#21) and find-in-file match highlights (#33), raises
 /// <see cref="TextView.ContentsChanged"/> only for edits that change the text, and keeps the content-width cache across edits.
 /// </summary>
-internal sealed partial class EditorTextView : TextView
+internal sealed partial class EditorTextView : CaretTextView
 {
     private static readonly Command[] KillCommands =
         [Command.CutToEndOfLine, Command.CutToStartOfLine, Command.KillWordLeft, Command.KillWordRight];
@@ -508,7 +508,7 @@ internal sealed partial class EditorTextView : TextView
         var row = 0;
         for (var idxRow = Viewport.Y; idxRow < Lines && row < bottom; idxRow++, row++)
             DrawRow(GetLine(idxRow), idxRow, row, right);
-        DrawCaretUnderlines();
+        DrawCarets();
 
         if (row < bottom)
         {

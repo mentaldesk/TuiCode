@@ -1,6 +1,4 @@
 using System.Runtime.CompilerServices;
-using Terminal.Gui.Drivers;
-using Terminal.Gui.Text;
 using Point = System.Drawing.Point;
 
 namespace TuiCode.Editor;
@@ -390,48 +388,12 @@ internal sealed partial class EditorTextView
     }
 
     internal IEnumerable<Point> SecondaryCaretsOnScreen() =>
-        _secondary.Select(ViewportPosition).OfType<Point>().Select(point => ViewportToScreen(point));
+        _secondary.Select(caret => ViewportPosition(caret.Position)).OfType<Point>().Select(point => ViewportToScreen(point));
 
-    // Where the terminal can't draw the extra carets, every caret, the primary included, underlines the character it's before.
-    private void DrawCaretUnderlines()
-    {
-        var underline = HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
-        var style = underline ? CursorStyle.Hidden : DefaultCursorStyle;
-        if (Cursor.Style != style) Cursor = Cursor with { Style = style };
-        if (!underline) return;
+    // Where the terminal can't draw the extra carets, every caret, the primary included, is painted instead.
+    protected override bool PaintsCarets => HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
 
-        var attribute = _editable with { Style = _editable.Style | TextStyle.Underline };
-        foreach (var caret in Carets)
-        {
-            if (ViewportPosition(caret) is not { } point) continue;
-            var line = GetLine(caret.Position.Y);
-            var grapheme = caret.Position.X < line.Count && line[caret.Position.X].Grapheme != "\t" ? line[caret.Position.X].Grapheme : " ";
-            SetAttribute(attribute);
-            AddStr(point.X, point.Y, grapheme);
-        }
-    }
-
-    private Point? ViewportPosition(Caret caret)
-    {
-        var row = caret.Position.Y - Viewport.Y;
-        if (row < 0 || row >= Viewport.Height || caret.Position.Y >= Lines) return null;
-        var line = GetLine(caret.Position.Y);
-        var x = ColumnsBefore(line, Math.Min(caret.Position.X, line.Count)) - Viewport.X;
-        return x < 0 || x >= Viewport.Width ? null : new Point(x, row);
-    }
-
-    private int ColumnsBefore(List<Cell> line, int column)
-    {
-        var columns = 0;
-        for (var i = 0; i < column; i++)
-        {
-            var grapheme = line[i].Grapheme;
-            columns += grapheme == "\t"
-                ? TabWidth > 0 ? TabWidth - columns % TabWidth : 0
-                : Math.Max(grapheme.GetColumns(), 1);
-        }
-        return columns;
-    }
+    protected override IEnumerable<Point> CaretPositions => Carets.Select(caret => caret.Position);
 
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_columnTrack")]
     private static extern ref int ColumnTrack(TextView view);

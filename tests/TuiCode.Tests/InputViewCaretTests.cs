@@ -1,5 +1,6 @@
 using Terminal.Gui.Drawing;
 using Terminal.Gui.Drivers;
+using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using TuiCode.Workbench.Controls;
@@ -35,7 +36,7 @@ public class InputViewCaretTests : StaticConfigurationTest
         CaretAt(2);
 
         Assert.Equal(" ", At(2, 0).Grapheme);
-        Assert.Equal(Reversed(At(1, 0)), At(2, 0).Attribute);
+        Assert.Equal(Underlined(At(0, 0)), At(2, 0).Attribute);
     }
 
     [Fact]
@@ -44,7 +45,7 @@ public class InputViewCaretTests : StaticConfigurationTest
         CaretAt(1);
 
         Assert.Equal("i", At(1, 0).Grapheme);
-        Assert.Equal(Reversed(At(0, 0)), At(1, 0).Attribute);
+        Assert.Equal(Underlined(At(0, 0)), At(1, 0).Attribute);
     }
 
     [Fact]
@@ -55,7 +56,22 @@ public class InputViewCaretTests : StaticConfigurationTest
         CaretAt(0);
 
         Assert.Equal(" ", At(0, 0).Grapheme);
-        Assert.Equal(Reversed(At(1, 0)), At(0, 0).Attribute);
+        Assert.Equal(Underlined(At(1, 0)), At(0, 0).Attribute);
+    }
+
+    [Fact]
+    public void Moving_the_caret_asks_for_the_repaint_that_moves_it()
+    {
+        CaretAt(2);
+        Assert.False(_input.NeedsDraw);
+
+        _input.NewKeyDownEvent(Key.CursorLeft);
+
+        // Without this the caret stays where it was painted until the next edit forces a frame.
+        Assert.True(_input.NeedsDraw);
+        Render();
+        Assert.Equal(Underlined(At(0, 0)), At(1, 0).Attribute);
+        Assert.Equal(At(0, 0).Attribute, At(2, 0).Attribute);
     }
 
     [Fact]
@@ -75,7 +91,7 @@ public class InputViewCaretTests : StaticConfigurationTest
         Render();
 
         Assert.Equal(TextView.DefaultCursorStyle, _input.Cursor.Style);
-        Assert.Equal(At(1, 0).Attribute, At(2, 0).Attribute);
+        Assert.Equal(At(0, 0).Attribute, At(2, 0).Attribute);
     }
 
     /// <summary>Focuses the box with its caret at <paramref name="column"/>, drawn. The caret only holds once it's laid out.</summary>
@@ -87,8 +103,8 @@ public class InputViewCaretTests : StaticConfigurationTest
         Render();
     }
 
-    private static Attribute Reversed(Cell cell) =>
-        new(cell.Attribute!.Value.Background, cell.Attribute!.Value.Foreground, cell.Attribute!.Value.Style);
+    private static Attribute Underlined(Cell cell) =>
+        cell.Attribute!.Value with { Style = cell.Attribute!.Value.Style | TextStyle.Underline };
 
     /// <summary>A cell of the box's text, in its own viewport coordinates.</summary>
     private Cell At(int x, int y)
@@ -99,16 +115,21 @@ public class InputViewCaretTests : StaticConfigurationTest
 
     private void Render()
     {
+        Initialize();
+        var driver = _app.Driver!;
+        driver.ClearContents();
+        driver.Clip = new Region(driver.Screen);
+        _host.SetNeedsDraw();
+        _host.Draw();
+    }
+
+    private void Initialize()
+    {
         if (!_host.IsInitialized)
         {
             _host.BeginInit();
             _host.EndInit();
         }
         _host.Layout();
-        var driver = _app.Driver!;
-        driver.ClearContents();
-        driver.Clip = new Region(driver.Screen);
-        _host.SetNeedsDraw();
-        _host.Draw();
     }
 }
