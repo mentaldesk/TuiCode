@@ -60,7 +60,7 @@ UI design rules — which control to use, hint bars, how errors are shown, icons
 
 - `LogView` is the one custom view: `TextView` can't scroll without moving its cursor.
 - `AlertView` (`Workbench/Controls/`) is the guide's message block. It wraps the message and reports the rows it needs (`Lines`); the dialog grows by that many and moves its hints up (`SubmitReviewView.Alert`). `AlertSeverity.Error` draws it in the theme's `Error` scheme, `Info` in `Accent`. `sr`, `gs` and `cc` use it — `PathPromptView`, `RevisionPickerView` and `PullRequestPickerView` still have the one-row `Label` (#208).
-- `InputView` (`Workbench/Controls/`) is the guide's bordered multi-line field, used by `sr` and `cc`. It draws its box heavy while it has focus and single while it hasn't: the terminal cursor is the only other sign of where typing goes, and a terminal profile or a pale theme can leave it invisible (#223). A dialog hosting one is `InputView.Frame` rows and columns taller for the box.
+- `InputView` (`Workbench/Controls/`) is the guide's bordered multi-line field, used by `sr` and `cc`. It draws its box heavy while it has focus and single while it hasn't, and paints its own caret — the cell at the insertion point in the field's colours swapped — hiding the terminal cursor while it has focus (#223). The terminal cursor is the only other sign of where typing goes and it doesn't reliably show in a dialog, so the box says it instead, as the editor paints the carets a terminal can't draw. A dialog hosting one is `InputView.Frame` rows and columns taller for the box.
 - `SubmitReviewView.Hint` is the guide's clickable hint: a `Button` with `NoDecorations`, `NoPadding`, no shadow and no hotkey of its own.
 
 ## AOT
