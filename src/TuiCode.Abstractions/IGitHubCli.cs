@@ -27,9 +27,10 @@ public interface IGitHubCli
     /// </summary>
     Task<GitHubResult<bool>> CheckoutPullRequestAsync(string worktreePath, int number, CancellationToken cancellationToken = default);
 
-    /// <summary>Submits a review on PR <paramref name="number"/>. True once GitHub has it.</summary>
+    /// <summary>Submits a review on PR <paramref name="number"/>, with its draft line comments (#188). True once GitHub has it.</summary>
     Task<GitHubResult<bool>> SubmitReviewAsync(
-        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, CancellationToken cancellationToken = default);
+        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, IReadOnlyList<DraftComment> comments,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>What a submitted review says: the three verdicts GitHub takes.</summary>
@@ -58,7 +59,14 @@ public readonly record struct GitHubResult<T>(T Value, string? Error, bool CliUn
 /// </summary>
 public sealed record GitHubPullRequestSummary(int Number, string Title, string Author, string? HeadBranch = null, bool ReviewRequested = false);
 
-public sealed record GitHubPullRequest(int Number, string Title, string BaseBranch, string HeadBranch, GitHubChecks Checks);
+/// <summary><c>HeadSha</c> is the commit the PR's branch is at on GitHub: what a line comment's lines have to match (#188).</summary>
+public sealed record GitHubPullRequest(int Number, string Title, string BaseBranch, string HeadBranch, GitHubChecks Checks, string HeadSha = "");
+
+/// <summary>
+/// A line comment drafted on a PR (#188) and not yet posted: <c>Line</c> is the line on the head side,
+/// as GitHub numbers it, and <c>Path</c> is repo-relative.
+/// </summary>
+public sealed record DraftComment(string Path, int Line, string Body);
 
 /// <summary>A PR as the Overview tab reads it (#185): what it says it does, then what's been said about it.</summary>
 public sealed record GitHubConversation(

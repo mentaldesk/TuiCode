@@ -32,9 +32,11 @@ public sealed class DiffTab : FrameView
     private IReadOnlyList<string> _left = [];
     private IReadOnlyList<string> _right = [];
     private IReadOnlyList<GitHubReviewThread> _threads = [];
+    private IReadOnlyList<DraftComment> _drafts = [];
     private readonly HashSet<GitHubReviewThread> _expanded = [];
     private List<Row> _rows = [];
     private List<GitHubReviewThread> _placed = [];
+    private List<DraftComment> _placedDrafts = [];
     private int _top;
     private int _current;
     private int _column;
@@ -122,14 +124,38 @@ public sealed class DiffTab : FrameView
 
     public AlignedDiff Diff { get; private set; }
 
-    /// <summary>A row on screen: a row of the diff, or a row of a review thread sitting under one (#186).</summary>
-    private readonly record struct Row(int Diff, GitHubReviewThread? Thread, ThreadRow Text);
+    /// <summary>A row on screen: a row of the diff, or a row of a thread (#186) or draft (#188) sitting under one.</summary>
+    private readonly record struct Row(int Diff, GitHubReviewThread? Thread, DraftComment? Draft, ThreadRow Text)
+    {
+        public bool IsComment => Thread is not null || Draft is not null;
+    }
 
     /// <summary>The review threads shown under the lines they're on, top to bottom (#186).</summary>
     public IReadOnlyList<GitHubReviewThread> Threads => _placed;
 
     /// <summary>The thread the current row belongs to, or null on a row of the diff itself.</summary>
     public GitHubReviewThread? CurrentThread => _current < _rows.Count ? _rows[_current].Thread : null;
+
+    /// <summary>The draft comments shown under the lines they're on (#188).</summary>
+    public IReadOnlyList<DraftComment> Drafts => _placedDrafts;
+
+    /// <summary>The draft on the current row, or null when it isn't a draft row (#188).</summary>
+    public DraftComment? CurrentDraft => _current < _rows.Count ? _rows[_current].Draft : null;
+
+    /// <summary>
+    /// The line the current row is on as GitHub numbers the head side (#188), or null on a row that's
+    /// only on the left. A thread or draft row takes the line it sits under.
+    /// </summary>
+    public int? CurrentHeadLine =>
+        _current < _rows.Count && Diff.Rows[_rows[_current].Diff].Right is { } right ? right + 1 : null;
+
+    /// <summary>Shows <paramref name="drafts"/> under the lines they're on (#188).</summary>
+    public void ShowDrafts(IReadOnlyList<DraftComment> drafts)
+    {
+        _drafts = drafts;
+        BuildRows();
+        MoveTo(_current);
+    }
 
     /// <summary>
     /// Shows <paramref name="threads"/> under the lines they're on (#186). A thread whose line is gone
@@ -209,8 +235,8 @@ public sealed class DiffTab : FrameView
     private bool ShowChange(int start)
     {
         if (start < 0) return false;
-        // Change blocks count rows of the diff; thread rows (#186) sit between them and are stepped over.
-        _current = Math.Max(0, _rows.FindIndex(r => r.Diff == start && r.Thread is null));
+        // Change blocks count rows of the diff; comment rows (#186, #188) sit between them and are stepped over.
+        _current = Math.Max(0, _rows.FindIndex(r => r.Diff == start && !r.IsComment));
         ScrollTo(_current - ChangeContext);
         return true;
     }
@@ -269,17 +295,32 @@ public sealed class DiffTab : FrameView
             threads.Add(thread);
         }
 
+        var draftsByRow = new Dictionary<int, List<DraftComment>>();
+        foreach (var draft in _drafts)
+        {
+            if (!rightRows.TryGetValue(draft.Line - 1, out var row)) continue;
+            if (!draftsByRow.TryGetValue(row, out var drafts)) draftsByRow[row] = drafts = [];
+            drafts.Add(draft);
+        }
+
         _rows = [];
         _placed = [];
+        _placedDrafts = [];
         for (var i = 0; i < Diff.Rows.Count; i++)
         {
-            _rows.Add(new Row(i, null, default));
-            if (!byRow.TryGetValue(i, out var threads)) continue;
-            foreach (var thread in threads)
+            _rows.Add(new Row(i, null, null, default));
+            if (byRow.TryGetValue(i, out var threads))
+                foreach (var thread in threads)
+                {
+                    _placed.Add(thread);
+                    foreach (var text in ReviewThreadRows.For(thread, _expanded.Contains(thread)))
+                        _rows.Add(new Row(i, thread, null, text));
+                }
+            if (!draftsByRow.TryGetValue(i, out var onRow)) continue;
+            foreach (var draft in onRow)
             {
-                _placed.Add(thread);
-                foreach (var text in ReviewThreadRows.For(thread, _expanded.Contains(thread)))
-                    _rows.Add(new Row(i, thread, text));
+                _placedDrafts.Add(draft);
+                _rows.Add(new Row(i, null, draft, ReviewThreadRows.ForDraft(draft)));
             }
         }
     }
@@ -341,10 +382,12 @@ public sealed class DiffTab : FrameView
         for (var y = 1; y < Viewport.Height; y++)
         {
             var index = _top + y - 1;
-            if (index < _rows.Count && _rows[index] is { Thread: { } thread } threadRow)
+            if (index < _rows.Count && _rows[index] is { IsComment: true } commentRow)
             {
                 var resolved = comment with { Style = comment.Style | TextStyle.Faint };
-                DrawThread(y, threadRow.Text, index == _current ? current : thread.Resolved ? resolved : comment);
+                DrawThread(y, commentRow.Text, index == _current ? current
+                    : commentRow.Thread is { Resolved: true } ? resolved
+                    : comment);
                 continue;
             }
             DiffRow? row = index < _rows.Count ? Diff.Rows[_rows[index].Diff] : null;

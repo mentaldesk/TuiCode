@@ -14,10 +14,11 @@ public sealed class SubmitReviewView : Window
 {
     private const string MissingSummary = "Comment and Request changes need a summary.";
     private const int DialogWidth = 70;
-    private const int DialogHeight = 16;
+    private const int DialogHeight = 16 + InputView.Frame;
 
     private readonly OptionSelector<GitHubReviewVerdict> _verdict;
-    private readonly TextView _summary;
+    private readonly InputView _summary;
+    private readonly Label _drafts;
     private readonly View[] _hints;
     private readonly AlertView _alert;
     private readonly Button _submit;
@@ -32,7 +33,8 @@ public sealed class SubmitReviewView : Window
     /// <summary>The review to post; the host does the work and closes the dialog once GitHub has it.</summary>
     public event EventHandler<(GitHubReviewVerdict Verdict, string Summary)>? Submitted;
 
-    public SubmitReviewView(int number)
+    /// <param name="drafts">Draft line comments (#188) that go with the review; said so above the hints.</param>
+    public SubmitReviewView(int number, int drafts = 0)
     {
         Title = $"Submit review on #{number}";
         BorderStyle = LineStyle.Single;
@@ -52,15 +54,14 @@ public sealed class SubmitReviewView : Window
             Value = GitHubReviewVerdict.Comment,
         };
 
-        _summary = new TextView
+        _drafts = new Label { X = 1, Y = Pos.AnchorEnd(2), Text = DraftComments.Posting(drafts), Visible = drafts > 0 };
+
+        _summary = new InputView
         {
             X = 1,
             Y = 2,
             Width = Dim.Fill(1),
-            Height = Dim.Fill(2),
-            // Otherwise Tab types a tab here instead of moving on to the hints.
-            TabKeyAddsTab = false,
-            WordWrap = true,
+            Height = Dim.Fill(Foot),
         };
 
         _submit = Hint("Ctrl+Enter submit", 1);
@@ -73,7 +74,7 @@ public sealed class SubmitReviewView : Window
         // Below the hints, not beside them: the dialog grows for an alert rather than the summary shrinking.
         _alert = new AlertView(DialogWidth - 2) { X = 0, Y = Pos.AnchorEnd() };
 
-        Add(_verdict, _summary, _submit, separator, cancel, _alert);
+        Add(_verdict, _summary, _drafts, _submit, separator, cancel, _alert);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -101,6 +102,8 @@ public sealed class SubmitReviewView : Window
 
     internal string Status => _alert.Message;
 
+    internal string DraftsText => _drafts.Text;
+
     public bool FocusSummary() => _summary.SetFocus();
 
     /// <summary>Shows why GitHub refused the review; the dialog stays open with whatever was typed.</summary>
@@ -117,12 +120,16 @@ public sealed class SubmitReviewView : Window
         _submit.Enabled = false;
     }
 
+    /// <summary>Rows under the summary: the hints, and the drafts line when there is one.</summary>
+    private int Foot => _drafts.Visible ? 3 : 2;
+
     private void Alert(string message, AlertSeverity severity)
     {
         _alert.Show(message, severity);
         Height = DialogHeight + _alert.Lines;
-        _summary.Height = Dim.Fill(_alert.Lines + 2);
+        _summary.Height = Dim.Fill(_alert.Lines + Foot);
         foreach (var hint in _hints) hint.Y = Pos.AnchorEnd(_alert.Lines + 1);
+        if (_drafts.Visible) _drafts.Y = Pos.AnchorEnd(_alert.Lines + 2);
         SetNeedsLayout();
     }
 

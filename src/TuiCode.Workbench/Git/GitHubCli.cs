@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Git;
@@ -20,7 +21,7 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
     private static readonly TimeSpan CheckoutTimeout = TimeSpan.FromMinutes(2);
 
     public async Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default) =>
-        Interpret(await RunAsync(repoRoot, ["pr", "view", "--json", "number,title,baseRefName,headRefName,statusCheckRollup"], _timeout, cancellationToken));
+        Interpret(await RunAsync(repoRoot, ["pr", "view", "--json", "number,title,baseRefName,headRefName,headRefOid,statusCheckRollup"], _timeout, cancellationToken));
 
     public async Task<GitHubResult<GitHubConversation>> GetConversationAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
     {
@@ -113,11 +114,42 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
     }
 
     public async Task<GitHubResult<bool>> SubmitReviewAsync(
-        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, CancellationToken cancellationToken = default)
+        string repoRoot, int number, GitHubReviewVerdict verdict, string summary, IReadOnlyList<DraftComment> comments,
+        CancellationToken cancellationToken = default)
     {
-        var run = await RunAsync(repoRoot, ReviewArguments(number, verdict, summary), _timeout, cancellationToken);
+        // `gh pr review` can't carry line comments, so a review with drafts (#188) goes through the endpoint that can.
+        var run = comments.Count == 0
+            ? await RunAsync(repoRoot, ReviewArguments(number, verdict, summary), _timeout, cancellationToken)
+            : await RunAsync(repoRoot, ["api", "--method", "POST", $"repos/{{owner}}/{{repo}}/pulls/{number}/reviews", "--input", "-"],
+                _timeout, cancellationToken, ReviewBody(verdict, summary, comments));
         if (Unavailable<bool>(run) is { } failed) return failed;
         return run.ExitCode == 0 ? GitHubResult<bool>.Success(true) : GitHubResult<bool>.Failure(ErrorMessage(run));
+    }
+
+    /// <summary>The review and its line comments as one request body, all on the head side.</summary>
+    internal static string ReviewBody(GitHubReviewVerdict verdict, string summary, IReadOnlyList<DraftComment> comments)
+    {
+        var onLines = new JsonArray();
+        foreach (var comment in comments)
+            onLines.Add((JsonNode)new JsonObject
+            {
+                ["path"] = comment.Path,
+                ["line"] = comment.Line,
+                ["side"] = "RIGHT",
+                ["body"] = comment.Body,
+            });
+        var body = new JsonObject
+        {
+            ["event"] = verdict switch
+            {
+                GitHubReviewVerdict.Approve => "APPROVE",
+                GitHubReviewVerdict.RequestChanges => "REQUEST_CHANGES",
+                _ => "COMMENT",
+            },
+            ["comments"] = (JsonNode)onLines,
+        };
+        if (summary.Length > 0) body["body"] = summary;
+        return body.ToJsonString();
     }
 
     /// <summary>An empty summary is left out rather than sent as one, which gh rejects.</summary>
@@ -133,7 +165,8 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
         return summary.Length == 0 ? review : [.. review, "--body", summary];
     }
 
-    private Task<CliRun> RunAsync(string workingDirectory, string[] arguments, TimeSpan timeout, CancellationToken cancellationToken)
+    private Task<CliRun> RunAsync(
+        string workingDirectory, string[] arguments, TimeSpan timeout, CancellationToken cancellationToken, string? input = null)
     {
         var info = new ProcessStartInfo(executable)
         {
@@ -142,6 +175,7 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = input is not null,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
@@ -150,7 +184,7 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
         // Nothing here can answer a prompt, and an unanswered one would sit until the timeout.
         info.Environment["GH_PROMPT_DISABLED"] = "1";
 
-        return CliProcess.RunAsync("gh", info, timeout, cancellationToken);
+        return CliProcess.RunAsync("gh", info, timeout, cancellationToken, input);
     }
 
     /// <summary>The result for a run that never reached GitHub, or null when it did.</summary>
@@ -216,7 +250,8 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
                 root.GetProperty("title").GetString() ?? string.Empty,
                 root.GetProperty("baseRefName").GetString() ?? string.Empty,
                 root.GetProperty("headRefName").GetString() ?? string.Empty,
-                CountChecks(root)));
+                CountChecks(root),
+                Text(root, "headRefOid") ?? string.Empty));
         }
         catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException)
         {

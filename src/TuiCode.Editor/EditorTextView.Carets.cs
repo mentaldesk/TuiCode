@@ -392,22 +392,21 @@ internal sealed partial class EditorTextView
     internal IEnumerable<Point> SecondaryCaretsOnScreen() =>
         _secondary.Select(ViewportPosition).OfType<Point>().Select(point => ViewportToScreen(point));
 
-    // Where the terminal can't draw the extra carets, every caret, the primary included, underlines the character it's before.
-    private void DrawCaretUnderlines()
-    {
-        var underline = HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
-        var style = underline ? CursorStyle.Hidden : DefaultCursorStyle;
-        if (Cursor.Style != style) Cursor = Cursor with { Style = style };
-        if (!underline) return;
+    internal const string Bar = "\u258f";
 
-        var attribute = _editable with { Style = _editable.Style | TextStyle.Underline };
+    // Where the terminal can't draw the extra carets, every caret, the primary included, is painted as the bar it would have drawn.
+    private void DrawCarets()
+    {
+        var paint = HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
+        var style = paint ? CursorStyle.Hidden : DefaultCursorStyle;
+        if (Cursor.Style != style) Cursor = Cursor with { Style = style };
+        if (!paint) return;
+
         foreach (var caret in Carets)
         {
             if (ViewportPosition(caret) is not { } point) continue;
-            var line = GetLine(caret.Position.Y);
-            var grapheme = caret.Position.X < line.Count && line[caret.Position.X].Grapheme != "\t" ? line[caret.Position.X].Grapheme : " ";
-            SetAttribute(attribute);
-            AddStr(point.X, point.Y, grapheme);
+            SetAttribute(_editable);
+            AddStr(point.X, point.Y, Bar);
         }
     }
 

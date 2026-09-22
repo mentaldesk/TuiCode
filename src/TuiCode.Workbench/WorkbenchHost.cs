@@ -76,6 +76,8 @@ public sealed class WorkbenchHost : IDisposable
     private RevisionPickerView? _activeRevisionPicker;
     private PullRequestPickerView? _activePullRequestPicker;
     private SubmitReviewView? _activeSubmitReview;
+    private CommentView? _activeComment;
+    private DraftComments? _draftComments;
     private bool _launchedFromExplorer;
     private bool _disposed;
 
@@ -161,7 +163,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Sidebar.Review.FileActivated += (_, e) => OpenReviewDiff(e.Review, e.Change);
         _workbench.Sidebar.Review.PullRequestActivated += (_, review) => OpenOverview(review);
         _workbench.Sidebar.Review.OutdatedThreadsActivated += (_, e) => OpenOutdatedThreads(e.Review, e.Node);
-        _workbench.Sidebar.Review.ThreadsLoaded += (_, review) => ShowThreadsInOpenDiffs(review);
+        _workbench.Sidebar.Review.ThreadsLoaded += (_, review) => ShowCommentsInOpenDiffs(review);
         // The review pane rebuilds on a save, a sidebar switch and each stage of its background load, which
         // can take Terminal.Gui's focus with it; nobody asked it to, so the keys go back (#228).
         _workbench.Sidebar.Review.Refreshed += (_, _) => SettleFocusAfterRedraw();
@@ -318,10 +320,11 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
-        // No default key (#184, #185, #187).
+        // No default key (#184, #185, #187, #188).
         _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest);
         _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview);
         _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview);
+        _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         var explorer = _workbench.Sidebar.Explorer;
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
@@ -1237,7 +1240,12 @@ public sealed class WorkbenchHost : IDisposable
     private void GoToChangeLine()
     {
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
-        // On a thread row (#186) Enter reads the thread rather than going anywhere.
+        // On a draft row (#188) Enter edits the draft, and on a thread row (#186) it reads the thread.
+        if (diff.CurrentDraft is { } draft)
+        {
+            OpenComment(diff, draft.Path, draft.Line, draft);
+            return;
+        }
         if (diff.ToggleThread()) return;
         if (diff.Source is not { } tab)
         {
@@ -1493,15 +1501,34 @@ public sealed class WorkbenchHost : IDisposable
         FocusEditorBody();
     }
 
-    /// <summary>Threads arrive after the diffs they belong on (#186), so the open ones are given theirs when they do.</summary>
-    private void ShowThreadsInOpenDiffs(BranchReview review)
+    /// <summary>Threads arrive after the diffs they belong on (#186), so the open ones are given those and their drafts (#188) when they do.</summary>
+    private void ShowCommentsInOpenDiffs(BranchReview review)
     {
+        OpenDrafts(review);
         var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
         foreach (var diff in _workbench.Editor.Group.DiffTabs)
         {
             if (diff.Review is not { } spot || spot.Key != review.MergeBase) continue;
-            diff.ShowThreads(review.ThreadsOn(RepoPath(fileSystem, review.RepoRoot, diff.File)));
+            var path = RepoPath(fileSystem, review.RepoRoot, diff.File);
+            diff.ShowThreads(review.ThreadsOn(path));
+            diff.ShowDrafts(Drafts.On(path));
         }
+    }
+
+    /// <summary>The drafts (#188) on the workspace's filesystem, so a mock one keeps a test off the real home directory.</summary>
+    private DraftComments Drafts =>
+        _draftComments ??= DraftComments.ForUser(_workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem());
+
+    private void OpenDrafts(BranchReview review)
+    {
+        if (review.PullRequest is { } pullRequest) OpenDrafts(review.RepoRoot, pullRequest.Number);
+    }
+
+    /// <summary>Reads back the PR's drafts, and says at the foot of the Review tab how many there are.</summary>
+    private void OpenDrafts(string repoRoot, int number)
+    {
+        Drafts.Open(repoRoot, number);
+        _workbench.Sidebar.Review.ShowDraftReview(Drafts.Line);
     }
 
     private static string RepoPath(IFileSystem fileSystem, string repoRoot, IFileInfo file) =>
@@ -1559,6 +1586,8 @@ public sealed class WorkbenchHost : IDisposable
             {
                 diff.Review = new ReviewSpot(review.MergeBase, index, count);
                 diff.ShowThreads(review.ThreadsOn(change.Path));
+                OpenDrafts(review);
+                diff.ShowDrafts(Drafts.On(change.Path));
                 _workbench.Sidebar.Review.SelectFile(change.Path);
                 FocusEditorBody();
             }
@@ -1707,7 +1736,10 @@ public sealed class WorkbenchHost : IDisposable
                 else if (found.Result.Value is not { } pullRequest)
                     _workbench.StatusBar.SetMessage("No pull request for this branch.");
                 else
+                {
+                    OpenDrafts(repo, pullRequest.Number);
                     OpenSubmitReview(repo, pullRequest.Number);
+                }
             });
         });
     }
@@ -1715,20 +1747,23 @@ public sealed class WorkbenchHost : IDisposable
     private void OpenSubmitReview(string repoRoot, int number)
     {
         if (_activeSubmitReview is not null) return;
-        var view = new SubmitReviewView(number);
+        var view = new SubmitReviewView(number, Drafts.Count);
         view.Cancelled += (_, _) => CloseSubmitReview(view);
         view.Submitted += (_, review) =>
         {
             view.ShowBusy();
-            var submitting = Task.Run(() => _gitHub.SubmitReviewAsync(repoRoot, number, review.Verdict, review.Summary));
+            var drafts = Drafts.All.ToArray();
+            var submitting = Task.Run(() => _gitHub.SubmitReviewAsync(repoRoot, number, review.Verdict, review.Summary, drafts));
             WhenDone(submitting, () =>
             {
                 if (!ReferenceEquals(_activeSubmitReview, view)) return;
                 if (submitting.Result.Error is { } error)
                 {
+                    // Nothing is cleared: the drafts are all that's left of a review GitHub refused (#188).
                     view.ShowError(error);
                     return;
                 }
+                ClearDrafts();
                 CloseSubmitReview(view);
                 _workbench.StatusBar.SetMessage($"Review submitted on #{number}");
             });
@@ -1738,6 +1773,102 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusSummary();
+    }
+
+    /// <summary>
+    /// Create comment (<c>cc</c>, #188): a draft on the current row of a PR's diff. The file has to match the
+    /// PR's head commit, or the comment would land on lines GitHub numbers differently.
+    /// </summary>
+    private void CreateComment()
+    {
+        if (_activeComment is not null) return;
+        if (_workbench.Editor.Group.ActiveDiffTab is not { Review: { } spot } diff
+            || _workbench.Sidebar.Review.Review is not { PullRequest: { } pullRequest } review
+            || spot.Key != review.MergeBase)
+        {
+            _workbench.StatusBar.SetMessage("Open a file from the Review tab to comment");
+            return;
+        }
+        if (diff.CurrentHeadLine is not { } line)
+        {
+            _workbench.StatusBar.SetMessage("Comment on a line on the right");
+            return;
+        }
+
+        var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
+        var path = RepoPath(fileSystem, review.RepoRoot, diff.File);
+        var head = Task.Run(() => _git.ShowRepoFileAsync(review.RepoRoot, path, pullRequest.HeadSha));
+        WhenDone(head, () =>
+        {
+            if (head.Result.Error is { } error)
+            {
+                _workbench.StatusBar.SetMessage(error);
+                return;
+            }
+            if (!MatchesHead(head.Result.Value, diff))
+            {
+                _workbench.StatusBar.SetMessage(
+                    $"This file differs from #{pullRequest.Number}'s head: comments would land on the wrong lines");
+                return;
+            }
+            OpenDrafts(review);
+            OpenComment(diff, path, line, null);
+        });
+    }
+
+    /// <summary>Whether the buffer being commented on is line for line what GitHub has at the PR's head.</summary>
+    private static bool MatchesHead(string? content, DiffTab diff) =>
+        content is { } text && diff.Source is { } source && DiffTab.SplitLines(text).SequenceEqual(source.Lines);
+
+    private void OpenComment(DiffTab diff, string path, int line, DraftComment? draft)
+    {
+        if (_activeComment is not null) return;
+        var view = new CommentView(path, line, draft);
+        view.Cancelled += (_, _) => CloseComment(view);
+        view.Added += (_, body) =>
+        {
+            if (draft is null) Drafts.Add(path, line, body);
+            else Drafts.Replace(draft, body);
+            CloseComment(view);
+            ShowDrafts(diff, path);
+        };
+        view.Deleted += (_, _) =>
+        {
+            if (draft is not null) Drafts.Remove(draft);
+            CloseComment(view);
+            ShowDrafts(diff, path);
+        };
+
+        _activeComment = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusBody();
+    }
+
+    /// <summary>Once a review is posted its drafts are GitHub's; they go from the diffs and the Review tab too.</summary>
+    private void ClearDrafts()
+    {
+        Drafts.Clear();
+        foreach (var diff in _workbench.Editor.Group.DiffTabs)
+            if (diff.Drafts.Count > 0)
+                diff.ShowDrafts([]);
+        _workbench.Sidebar.Review.ShowDraftReview(Drafts.Line);
+    }
+
+    private void ShowDrafts(DiffTab diff, string path)
+    {
+        diff.ShowDrafts(Drafts.On(path));
+        _workbench.Sidebar.Review.ShowDraftReview(Drafts.Line);
+    }
+
+    private void CloseComment(CommentView view)
+    {
+        if (!ReferenceEquals(_activeComment, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeComment = null;
+        FocusEditorBody();
     }
 
     private void CloseSubmitReview(SubmitReviewView view)

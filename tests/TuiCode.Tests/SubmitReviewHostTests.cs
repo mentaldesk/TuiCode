@@ -42,6 +42,22 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task The_summary_box_shows_it_has_focus_as_soon_as_the_dialog_opens()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var shows = false;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is not null,
+            () => { shows = Dialog(workbench)!.SubViews.OfType<InputView>().Single().ShowsFocus; },
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.True(shows);
+    }
+
+    [Fact]
     public async Task The_dialog_is_titled_with_the_branchs_pull_request()
     {
         using var workbench = BuildWorkbench();

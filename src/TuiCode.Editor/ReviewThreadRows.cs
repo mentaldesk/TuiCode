@@ -6,8 +6,8 @@ namespace TuiCode.Editor;
 public readonly record struct ThreadRow(string Text, string? Trailing = null);
 
 /// <summary>
-/// How a review thread reads in a diff tab (#186): one row while it's collapsed, every comment once
-/// it's expanded. Long lines aren't wrapped — the row is cut like any other.
+/// How a review thread reads in a diff tab (#186), and a draft comment under one (#188): one row while
+/// it's collapsed, every comment once it's expanded. Long lines aren't wrapped — the row is cut like any other.
 /// </summary>
 public static class ReviewThreadRows
 {
@@ -31,6 +31,9 @@ public static class ReviewThreadRows
         }
         return rows;
     }
+
+    /// <summary>A draft line comment's one row (#188), drawn like a thread's.</summary>
+    public static ThreadRow ForDraft(DraftComment draft) => new($"{Gutter} Draft: {FirstLine(draft.Body)}");
 
     private static string? Replies(int replies) => replies switch
     {
