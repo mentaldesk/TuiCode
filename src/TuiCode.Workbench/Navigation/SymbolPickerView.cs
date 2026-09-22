@@ -1,6 +1,5 @@
-using System.Collections;
-using System.Collections.Specialized;
 using TuiCode.Abstractions;
+using TuiCode.Icons;
 using TuiCode.Syntax;
 using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
@@ -33,6 +32,8 @@ public sealed class SymbolPickerView : Window
     private readonly IKeybindingService _scopeKeybindings;
 
     private readonly SymbolScan _scan;
+    private readonly FileIconStyle _icons;
+    private readonly int _iconWidth;
     private IReadOnlyList<FileSymbol> _visible = [];
 
     public IKeybindingService Scope => _scopeKeybindings;
@@ -42,9 +43,11 @@ public sealed class SymbolPickerView : Window
     /// <summary>The symbol to jump to; the host moves the cursor and closes the picker.</summary>
     public event EventHandler<FileSymbol>? Submitted;
 
-    public SymbolPickerView(string fileName, SymbolScan scan)
+    public SymbolPickerView(string fileName, SymbolScan scan, FileIcons? icons = null)
     {
         _scan = scan;
+        _icons = icons?.Style ?? FileIconStyle.Off;
+        _iconWidth = SymbolIcons.Width(_icons);
         Title = $"Go to symbol in {fileName}";
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
@@ -70,9 +73,16 @@ public sealed class SymbolPickerView : Window
 
     internal string Filter => _filter.Text ?? "";
 
+    /// <summary>A filter leaves rows whose containing type may be gone, so it flattens them.</summary>
+    private bool Indented => Filter.Trim().Length == 0;
+
     internal string Status => _alert.Message;
 
     internal IReadOnlyList<string> VisibleItems => [.. _visible.Select(s => s.Name)];
+
+    /// <summary>The rows as drawn: name, kind and line, indented while no filter has flattened them.</summary>
+    internal IReadOnlyList<string> Rows =>
+        SymbolList.Render(_visible, Math.Max(1, _list.Viewport.Width), Indented, _iconWidth);
 
     internal int? SelectedItem => _list.SelectedItem;
 
@@ -131,7 +141,7 @@ public sealed class SymbolPickerView : Window
     {
         var previous = keepSelection ? _list.SelectedItem ?? 0 : 0;
         _visible = SymbolList.Filter(_scan.Symbols, Filter);
-        _list.Source = new SymbolListSource(_visible);
+        _list.Source = new SymbolListSource(_visible, Indented, _icons);
         _list.SelectedItem = _visible.Count == 0 ? null : Math.Clamp(previous, 0, _visible.Count - 1);
     }
 
@@ -159,33 +169,5 @@ public sealed class SymbolPickerView : Window
         _list.Height = Dim.Fill(1);
         _hint.Y = Pos.AnchorEnd(1);
         SetNeedsLayout();
-    }
-
-    private sealed class SymbolListSource(IReadOnlyList<FileSymbol> rows) : IListDataSource
-    {
-        public event NotifyCollectionChangedEventHandler? CollectionChanged { add { } remove { } }
-
-        public int Count => rows.Count;
-
-        public int MaxItemLength => 0;
-
-        public bool SuspendCollectionChangedEvent { get; set; }
-
-        public void Render(ListView listView, bool selected, int item, int col, int row, int width, int viewportX = 0)
-        {
-            listView.Move(col, row);
-            listView.AddStr(Truncate(rows[item].Name, width).PadRight(width));
-        }
-
-        public bool IsMarked(int item) => false;
-
-        public void SetMark(int item, bool value) { }
-
-        public IList ToList() => rows.Select(r => r.Name).ToList();
-
-        public void Dispose() { }
-
-        private static string Truncate(string s, int max) =>
-            s.Length <= max ? s : max <= 1 ? s[..max] : s[..(max - 1)] + "…";
     }
 }

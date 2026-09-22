@@ -36,6 +36,9 @@ public sealed class ReviewView : View
     /// <summary>Raised once the PR's review threads are in, so open diffs can show them (#186).</summary>
     public event EventHandler<BranchReview>? ThreadsLoaded;
 
+    /// <summary>Raised after every redraw of the pane, for the workbench to settle focus (#228).</summary>
+    public event EventHandler? Refreshed;
+
     public Func<IDirectoryInfo?>? RootProvider { get; set; }
 
     public BranchReview? Review { get; private set; }
@@ -238,7 +241,6 @@ public sealed class ReviewView : View
     private void Show(GitResult<BranchReview?> result, string notARepo = "Not a git repository")
     {
         var selected = (_files.SelectedObject as ReviewFileNode)?.Change.Path;
-        var listHadFocus = _files.HasFocus;
         Review = result.Value;
         if (result.Value is null) _hint.Text = string.Empty;
 
@@ -250,18 +252,18 @@ public sealed class ReviewView : View
             _files.ExpandAll();
             _files.SelectedObject = FindFile(selected) ?? FirstFile();
             _files.Visible = true;
-            if (HasFocus && !listHadFocus) FocusList();
         }
         else
         {
             _header.Text = result.Error ?? (result.Value is { } empty ? $"No changes against {empty.Base}" : notARepo);
-            var refocus = listHadFocus;
             _files.Visible = false;
-            if (refocus) SetFocus();
         }
         _checks.Text = result.Value?.ChecksLine ?? string.Empty;
         _threadCounts.Text = result.Value?.ThreadsLine ?? string.Empty;
         ShowTitle();
+        // Rebuilding the tree can drop Terminal.Gui's focus, so the workbench settles it: a refresh that
+        // arrives while the keys are elsewhere must not pull them back here (#228).
+        Refreshed?.Invoke(this, EventArgs.Empty);
     }
 
     private void ShowPullRequest(GitHubResult<BranchReview?> result)

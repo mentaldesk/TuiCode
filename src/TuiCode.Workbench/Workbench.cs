@@ -96,21 +96,23 @@ public sealed class Workbench : Window
             : null);
     }
 
-    /// <summary>Open a file in the editor and focus it. Shared by the explorer and the Open dialog.</summary>
+    /// <summary>A file has been opened in the editor; the host moves the keys into it through the focus service (#228).</summary>
+    public event EventHandler? FileOpened;
+
+    /// <summary>Open a file in the editor. Shared by the explorer and the Open dialog.</summary>
     public void OpenFile(IFileInfo file)
     {
-        var tab = Editor.Open(file);
-        tab.FocusContent();
+        Editor.Open(file);
         StatusBar.SetMessage(file.FullName);
+        FileOpened?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Open a file with <paramref name="match"/> selected — where a search result lands.</summary>
     public void OpenMatch(IFileInfo file, TextMatch match)
     {
-        var tab = Editor.Open(file);
-        tab.Select(match);
-        tab.FocusContent();
+        Editor.Open(file).Select(match);
         StatusBar.SetMessage($"{file.FullName}:{match.Row + 1}:{match.Column + 1}");
+        FileOpened?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>

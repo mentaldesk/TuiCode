@@ -12,6 +12,7 @@ using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.DocumentInfo;
 using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Find;
+using TuiCode.Workbench.Focus;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Help;
@@ -53,7 +54,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IGitHubCli _gitHub;
     private readonly TerminalCursors _terminalCursors;
     private readonly FindController _find;
-    private FocusLevel _focusLevel = FocusLevel.EditorBody;
+    private readonly FocusService _focus;
     private readonly CursorLocationHistory _history = new();
     // Set while we drive the cursor ourselves (Back/Forward, Go-to-line) so those moves
     // don't get re-recorded as fresh jumps.
@@ -132,12 +133,15 @@ public sealed class WorkbenchHost : IDisposable
         _icons = icons;
         _git = git ?? new GitCli(new FileSystem());
         _gitHub = gitHub ?? new GitHubCli();
+        _focus = new FocusService(FocusedView);
 
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
         _workbench.Editor.Group.Settings = _settings.Editor;
         ApplyTokenTheme();
         _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
+
+        RegisterFocusRegions();
 
         // Workbench scope is the bottom of the input stack; never popped. The find bar layers above it while it's open.
         _keybindings.FocusedScope = FocusedScope;
@@ -160,7 +164,64 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Sidebar.Review.PullRequestActivated += (_, review) => OpenOverview(review);
         _workbench.Sidebar.Review.OutdatedThreadsActivated += (_, e) => OpenOutdatedThreads(e.Review, e.Node);
         _workbench.Sidebar.Review.ThreadsLoaded += (_, review) => ShowCommentsInOpenDiffs(review);
+        // The review pane rebuilds on a save, a sidebar switch and each stage of its background load, which
+        // can take Terminal.Gui's focus with it; nobody asked it to, so the keys go back (#228).
+        _workbench.Sidebar.Review.Refreshed += (_, _) => SettleFocusAfterRedraw();
+        // Opening a file is a move into the Editor region, so the service makes it: the tab it opens may
+        // still be carrying a stale HasFocus, which its own SetFocus would no-op on (#228).
+        _workbench.FileOpened += (_, _) => MoveFocus(FocusRegion.Editor);
     }
+
+    private void RegisterFocusRegions()
+    {
+        var sidebar = _workbench.Sidebar;
+        var group = _workbench.Editor.Group;
+        var sidebarBorder = new FocusBorder(sidebar);
+        var editorBorder = new FocusBorder(_workbench.Editor);
+
+        _focus.Register(FocusRegion.Find, () => Take(sidebar.Search, sidebar.Search.FocusQuery), focused => Owns(sidebar.Search, focused));
+        _focus.Register(FocusRegion.Review, () => Take(sidebar.Review, sidebar.Review.FocusList), focused => Owns(sidebar.Review, focused));
+        _focus.Register(FocusRegion.Explorer, () => Take(sidebar.Explorer), focused => Owns(sidebar.Explorer, focused));
+        _focus.Register(FocusRegion.Diff, () => Take(group.ActiveDiffTab),
+            focused => group.ActiveDiffTab is { } diff && Owns(diff, focused));
+        _focus.Register(FocusRegion.Editor, () => Take(group.Value, group.FocusActive),
+            focused => group.ActiveDiffTab is null && Owns(_workbench.Editor, focused) && !OnTabStrip(group, focused));
+        // Reached by ft and by TG's own navigation (#237); owning the editor pane is what keeps cycling tabs in it.
+        _focus.Register(FocusRegion.Tabs, () => true, focused => Owns(_workbench.Editor, focused));
+
+        _focus.RegionChanged += (_, region) =>
+        {
+            var inSidebar = region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Review;
+            _workbench.StatusBar.SetFocusRegion(FocusService.Label(region));
+            sidebarBorder.Show(inSidebar);
+            editorBorder.Show(!inSidebar);
+        };
+        _workbench.StatusBar.SetFocusRegion(FocusService.Label(_focus.Region));
+        editorBorder.Show(true);
+    }
+
+    private static bool Owns(View region, object? focused) =>
+        focused is View view && View.IsInHierarchy(region, view, includeAdornments: true);
+
+    /// <summary>
+    /// Hands the keyboard to <paramref name="view"/>. Terminal.Gui 2.1.0 leaves <c>HasFocus</c> set on a view
+    /// the keyboard has left, and its <c>SetFocus</c> is a no-op on a view that believes it still has focus —
+    /// which is what made a diff unreachable for the rest of the session (#197).
+    /// </summary>
+    private bool Take(View? view, Func<bool>? move = null)
+    {
+        if (view is null) return false;
+        if (view.HasFocus && !Owns(view, FocusedView())) view.HasFocus = false;
+        return move is null ? view.SetFocus() : move();
+    }
+
+    // GetFocused can report an ancestor of the view holding the keyboard, so walk down to it (AGENTS.md).
+    private View? FocusedView() => _app.Navigation?.GetFocused() is { } focused ? focused.MostFocused ?? focused : null;
+
+    // TG draws each tab's header in that tab's border, so a header holding the keyboard is in the tab's hierarchy but not its content.
+    private static bool OnTabStrip(EditorGroup group, object? focused) =>
+        group.Value is { } tab && focused is View view && !ReferenceEquals(view, tab)
+            && !View.IsInHierarchy(tab, view, includeAdornments: false);
 
     private void ApplyTokenTheme()
     {
@@ -205,7 +266,7 @@ public sealed class WorkbenchHost : IDisposable
         // reach the editor. (Only relevant in the workbench scope; modals
         // don't reach this path because they consume keys above.)
         if (_activeSettings is null
-            && _focusLevel == FocusLevel.EditorTabStrip
+            && _focus.Region == FocusRegion.Tabs
             && TryHandleTabStripKey(key))
             key.Handled = true;
     }
@@ -231,11 +292,9 @@ public sealed class WorkbenchHost : IDisposable
 
     private CommandScope FocusedScope()
     {
-        if (_workbench.Sidebar.Search.InputsHaveFocus) return CommandScope.Find;
-        if (_workbench.Sidebar.Explorer.HasFocus) return CommandScope.Explorer;
-        if (_workbench.Editor.Group.ActiveTab is { ContentHasFocus: true }) return CommandScope.Editor;
-        if (_focusLevel != FocusLevel.EditorTabStrip && _workbench.Editor.Group.ActiveDiffTab is { IsFocused: true }) return CommandScope.Diff;
-        return CommandScope.Global;
+        // A mouse click lands between iterations, so re-read the region rather than reuse the last one.
+        _focus.Reconcile();
+        return FocusService.ScopeOf(_focus.Region);
     }
 
     private void RegisterDefaultCommands()
@@ -275,10 +334,13 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.CancelCut, "Cancel cut", explorer.ClearCut, CommandScope.Explorer, () => explorer.PendingCut is not null);
         explorer.CutCleared += (_, item) => _workbench.StatusBar.ClearMessage(CutMessage(item));
         var search = _workbench.Sidebar.Search;
-        _commands.Register(CommandIds.SearchFocusResults, "Focus find results", () => search.FocusResults(), CommandScope.Find);
-        _commands.Register(CommandIds.SearchSwitchField, "Switch find field", search.SwitchField, CommandScope.Find);
+        // Find covers the whole pane, results list included; these keys belong to the query/replace inputs only.
+        _commands.Register(CommandIds.SearchFocusResults, "Focus find results", () => search.FocusResults(),
+            CommandScope.Find, () => search.InputsHaveFocus);
+        _commands.Register(CommandIds.SearchSwitchField, "Switch find field", search.SwitchField,
+            CommandScope.Find, () => search.InputsHaveFocus);
         _commands.Register(CommandIds.SearchReplaceAll, "Replace all globally",
-            () => { if (search.ReplaceVisible) search.RequestReplaceAll(); }, CommandScope.Find);
+            () => { if (search.ReplaceVisible) search.RequestReplaceAll(); }, CommandScope.Find, () => search.InputsHaveFocus);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
@@ -476,7 +538,7 @@ public sealed class WorkbenchHost : IDisposable
     // view. We read the focus state *before* the flip — TG doesn't clear HasFocus on hide.
     private void ToggleSidebar()
     {
-        var sidebarWasFocused = _workbench.Sidebar.HasFocus || _focusLevel == FocusLevel.Sidebar;
+        var sidebarWasFocused = _focus.Region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Review;
         _workbench.ToggleSidebar();
 
         if (_workbench.IsSidebarVisible)
@@ -529,10 +591,38 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Sidebar.Search.FocusReplacement();
     }
 
-    private void FocusEditorBody()
+    private void FocusEditorBody() =>
+        MoveFocus(_workbench.Editor.Group.ActiveDiffTab is null ? FocusRegion.Editor : FocusRegion.Diff);
+
+    /// <summary>Every focus move the workbench makes; one that can't land says so rather than going quiet (#228).</summary>
+    private bool MoveFocus(FocusRegion region)
     {
-        _workbench.Editor.Group.FocusActive();
-        _focusLevel = FocusLevel.EditorBody;
+        if (_focus.Focus(region)) return true;
+        _workbench.StatusBar.SetMessage($"Nothing to focus in {FocusService.Label(region)}");
+        return false;
+    }
+
+    /// <summary>
+    /// Re-asserts the record after something moved Terminal.Gui's focus without being asked (#228). A region
+    /// that still holds the keys keeps them, so a refresh doesn't drag them off the part of it they're on —
+    /// unless that's the bare review pane, whose file list a rebuild takes the keys off and can't give back.
+    /// </summary>
+    private void SettleFocusAfterRedraw()
+    {
+        var review = _workbench.Sidebar.Review;
+        if (_focus.Region == FocusRegion.Review && !review.ListHasFocus && !review.OverviewHasFocus)
+            _focus.Focus(FocusRegion.Review);
+        else if (!_focus.Holds)
+            _focus.Focus(_focus.Region);
+    }
+
+    /// <summary>
+    /// Where a modal was opened from: no region owns a modal, so the record still names the region that had
+    /// the keys. The editor takes them when that region has gone since, and only then is there anything to say.
+    /// </summary>
+    private void FocusCallingRegion()
+    {
+        if (!_focus.Focus(_focus.Region)) FocusEditorBody();
     }
 
     private void EditActiveTab(Action<EditorTab> edit)
@@ -544,10 +634,9 @@ public sealed class WorkbenchHost : IDisposable
 
     private void FocusEditorTabStrip()
     {
-        // Only meaningful from the editor body; from anywhere else it's a no-op.
-        if (_focusLevel != FocusLevel.EditorBody) return;
-        if (_workbench.Editor.Group.ActiveTab is null) return;
-        _focusLevel = FocusLevel.EditorTabStrip;
+        // Only meaningful from the editor body, with a file tab to cycle; from anywhere else it's a no-op.
+        if (_focus.Region != FocusRegion.Editor || _workbench.Editor.Group.ActiveTab is null) return;
+        MoveFocus(FocusRegion.Tabs);
     }
 
     private void FocusEditorAt(int zeroBasedIndex)
@@ -580,7 +669,7 @@ public sealed class WorkbenchHost : IDisposable
         view.Dispose();
         _activeSettings = null;
         _workbench.Editor.Group.Settings = _settings.Editor;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void ApplyGrammarAssociations()
@@ -611,7 +700,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeGrammarPicker = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void OpenActions()
@@ -634,7 +723,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeActions = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     // Launchers close, handing focus to the editor, before they run their command; remember whether the
@@ -674,7 +763,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeMnemonics = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void OpenGoToLine()
@@ -710,7 +799,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeGoToLine = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     /// <summary>
@@ -732,7 +821,7 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var view = new SymbolPickerView(tab.File.Name, scan);
+        var view = new SymbolPickerView(tab.File.Name, scan, _icons);
         view.Cancelled += (_, _) => CloseSymbolPicker(view);
         view.Submitted += (_, symbol) =>
         {
@@ -757,12 +846,14 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeSymbolPicker = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void OnIteration(object? sender, EventArgs<IApplication?> e)
     {
         _workbench.ShowCursorPosition();
+        // Picks up focus Terminal.Gui moved on its own, and any move that didn't land where it was asked to.
+        _focus.Reconcile();
         _activeSymbolPicker?.Advance();
     }
 
@@ -798,8 +889,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             var tab = _workbench.Editor.Group.OpenOrFocus(file);
             tab.MoveCursor(loc.Row, loc.Column);
-            tab.FocusContent();
-            _focusLevel = FocusLevel.EditorBody;
+            MoveFocus(FocusRegion.Editor);
         }
         finally { _suppressHistory = false; }
     }
@@ -836,7 +926,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeOpen = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void OpenNewPath()
@@ -955,7 +1045,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activePathPrompt = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void ConfirmDelete()
@@ -1011,7 +1101,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeConfirm = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private bool ExplorerIsContext => _launchedFromExplorer || _workbench.Sidebar.Explorer.HasFocus;
@@ -1032,13 +1122,12 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (!_workbench.IsSidebarVisible)
             _workbench.SetSidebarVisible(true);
-        switch (_workbench.Sidebar.ActiveTab)
+        MoveFocus(_workbench.Sidebar.ActiveTab switch
         {
-            case SidebarTab.Find: _workbench.Sidebar.Search.FocusQuery(); break;
-            case SidebarTab.Review: _workbench.Sidebar.Review.FocusList(); break;
-            default: _workbench.Sidebar.Explorer.SetFocus(); break;
-        }
-        _focusLevel = FocusLevel.Sidebar;
+            SidebarTab.Find => FocusRegion.Find,
+            SidebarTab.Review => FocusRegion.Review,
+            _ => FocusRegion.Explorer,
+        });
     }
 
     private static int CountLines(string text)
@@ -1070,7 +1159,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeHelp = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void OpenAbout()
@@ -1094,7 +1183,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeAbout = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void OpenDocumentInfo()
@@ -1124,7 +1213,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeDocumentInfo = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void CompareToSaved()
@@ -1789,7 +1878,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeSubmitReview = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void ClosePullRequestPicker(PullRequestPickerView view)
@@ -1799,7 +1888,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activePullRequestPicker = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private void CloseRevisionPicker(RevisionPickerView view)
@@ -1809,7 +1898,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeRevisionPicker = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     /// <summary>Runs <paramref name="then"/> on the UI thread once <paramref name="task"/> has succeeded.</summary>
@@ -1883,7 +1972,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeDiagnostics = null;
-        FocusEditorBody();
+        FocusCallingRegion();
     }
 
     private static void NeutralizeBuiltinQuitKey()
@@ -1920,6 +2009,4 @@ public sealed class WorkbenchHost : IDisposable
         WriteToTerminal("\x1b]112\x07");
         _flowControl.Dispose();
     }
-
-    private enum FocusLevel { Sidebar, EditorTabStrip, EditorBody }
 }

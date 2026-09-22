@@ -163,7 +163,7 @@ public class StatusBarPartTests
         bar.Layout(new System.Drawing.Size(40, 1));
 
         var position = bar.SubViews.Single(v => v.Text == "Ln 1, Col 1");
-        var message = bar.SubViews.Single(v => v != position);
+        var message = bar.SubViews.Single(v => v.Text == new string('x', 60));
         Assert.Equal(40 - 1, position.Frame.Right);
         Assert.Equal(position.Frame.X - 2, message.Frame.Right);
     }
