@@ -5,6 +5,8 @@ public sealed class StatusBarPart : View
     internal const string DefaultMessage = "TuiCode  •  F1 help  •  Ctrl+Q quit";
     private readonly Label _label;
     private readonly Label _position;
+    private readonly Label _focus;
+    private string _region = string.Empty;
     private string _message = DefaultMessage;
     private string? _chord;
     private string? _hint;
@@ -22,15 +24,26 @@ public sealed class StatusBarPart : View
         SchemeName = "StatusBar";
 
         _position = new Label { X = Pos.AnchorEnd() - 1, Y = 0 };
+        _focus = new Label { X = 1, Y = 0 };
         _label = new Label
         {
-            X = 1,
+            X = Pos.Right(_focus),
             Y = 0,
             Width = Dim.Fill(2, _position),
             Text = DefaultMessage
         };
-        Add(_label, _position);
+        Add(_focus, _label, _position);
     }
+
+    /// <summary>The one word for where keys will go, shown at the far left; always present (#227).</summary>
+    public void SetFocusRegion(string region)
+    {
+        if (region == _region) return;
+        _region = region;
+        _focus.Text = $"{region}  •  ";
+    }
+
+    internal string DisplayedFocus => _region;
 
     public void SetMessage(string message)
     {
