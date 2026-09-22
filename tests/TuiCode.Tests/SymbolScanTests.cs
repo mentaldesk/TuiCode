@@ -374,7 +374,8 @@ public class SymbolScanTests
 
     private IReadOnlyList<FileSymbol> Scan(string language, string text)
     {
-        var scan = ScanFor(language, text.Split('\n'));
+        // A Windows checkout gives the literals above CRLF, and a \r on a setext underline stops it scoping as one.
+        var scan = ScanFor(language, text.ReplaceLineEndings("\n").Split('\n'));
         scan.LineTimeLimit = Patient;
         Assert.True(scan.Advance(TimeSpan.MaxValue));
         return scan.Symbols;
