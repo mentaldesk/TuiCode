@@ -72,6 +72,23 @@ internal sealed class FakeGitHubCli : IGitHubCli
             : GitHubResult<bool>.Success(true));
     }
 
+    public string? ReplyError { get; set; }
+
+    /// <summary>What <see cref="ReplyToThreadAsync"/> hands back, standing in for GitHub's own record of it.</summary>
+    public GitHubComment Reply { get; set; } = new("octocat", default, "Replied");
+
+    /// <summary>The replies <see cref="ReplyToThreadAsync"/> was asked to post, in order.</summary>
+    public List<(string RepoRoot, int Number, long ReplyToId, string Body)> Replies { get; } = [];
+
+    public Task<GitHubResult<GitHubComment>> ReplyToThreadAsync(
+        string repoRoot, int number, long replyToId, string body, CancellationToken cancellationToken = default)
+    {
+        Replies.Add((repoRoot, number, replyToId, body));
+        return Task.FromResult(ReplyError is { } error
+            ? GitHubResult<GitHubComment>.Failure(error)
+            : GitHubResult<GitHubComment>.Success(Reply with { Body = body }));
+    }
+
     public IReadOnlyList<GitHubReviewThread> ReviewThreads { get; set; } = [];
 
     public string? ThreadsError { get; set; }

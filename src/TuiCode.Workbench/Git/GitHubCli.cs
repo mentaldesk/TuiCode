@@ -46,7 +46,7 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
     private const string ThreadsQuery =
         "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name)" +
         "{pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved isOutdated path line diffSide " +
-        "comments(first:100){nodes{author{login} body createdAt}}}}}}}";
+        "comments(first:100){nodes{databaseId author{login} body createdAt}}}}}}}";
 
     internal static GitHubResult<IReadOnlyList<GitHubReviewThread>> ParseThreads(string json)
     {
@@ -66,7 +66,8 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
                     line,
                     Flag(thread, "isResolved"),
                     line is null || Flag(thread, "isOutdated"),
-                    Comments(thread));
+                    Comments(thread),
+                    ReplyToId(thread));
             })];
             return GitHubResult<IReadOnlyList<GitHubReviewThread>>.Success(threads);
         }
@@ -75,6 +76,17 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
             return GitHubResult<IReadOnlyList<GitHubReviewThread>>.Failure("gh answered with something we couldn't read");
         }
     }
+
+    /// <summary>The thread's first comment as REST numbers it: replies are posted under that one (#189).</summary>
+    private static long ReplyToId(JsonElement thread) =>
+        thread.TryGetProperty("comments", out var comments)
+        && comments.TryGetProperty("nodes", out var nodes)
+        && nodes.ValueKind == JsonValueKind.Array
+        && nodes.EnumerateArray().FirstOrDefault() is { ValueKind: JsonValueKind.Object } first
+        && first.TryGetProperty("databaseId", out var id)
+        && id.ValueKind == JsonValueKind.Number
+            ? id.GetInt64()
+            : 0;
 
     private static bool Flag(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
@@ -111,6 +123,38 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
         var run = await RunAsync(worktreePath, ["pr", "checkout", $"{number}"], CheckoutTimeout, cancellationToken);
         if (Unavailable<bool>(run) is { } failed) return failed;
         return run.ExitCode == 0 ? GitHubResult<bool>.Success(true) : GitHubResult<bool>.Failure(ErrorMessage(run));
+    }
+
+    public async Task<GitHubResult<GitHubComment>> ReplyToThreadAsync(
+        string repoRoot, int number, long replyToId, string body, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(repoRoot,
+            ["api", "--method", "POST", $"repos/{{owner}}/{{repo}}/pulls/{number}/comments/{replyToId}/replies", "--input", "-"],
+            _timeout, cancellationToken, ReplyBody(body));
+        if (Unavailable<GitHubComment>(run) is { } failed) return failed;
+        return run.ExitCode == 0 ? ParseReply(run.Output) : GitHubResult<GitHubComment>.Failure(ErrorMessage(run));
+    }
+
+    internal static string ReplyBody(string body) => new JsonObject { ["body"] = body }.ToJsonString();
+
+    /// <summary>The posted reply, so the thread can show it without being refetched. REST calls the author <c>user</c>.</summary>
+    internal static GitHubResult<GitHubComment> ParseReply(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            var author = root.TryGetProperty("user", out var user) ? Text(user, "login") : null;
+            var posted = Text(root, "created_at") is { } text
+                && DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+                    ? date
+                    : default;
+            return GitHubResult<GitHubComment>.Success(new GitHubComment(author ?? string.Empty, posted, Text(root, "body") ?? string.Empty));
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return GitHubResult<GitHubComment>.Failure("gh answered with something we couldn't read");
+        }
     }
 
     public async Task<GitHubResult<bool>> SubmitReviewAsync(

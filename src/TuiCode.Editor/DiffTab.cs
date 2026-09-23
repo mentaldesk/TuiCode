@@ -169,6 +169,25 @@ public sealed class DiffTab : FrameView
         MoveTo(_current);
     }
 
+    /// <summary>
+    /// Swaps <paramref name="thread"/> for the same thread with a reply on it (#189), keeping it expanded
+    /// and current if it was. A diff that isn't showing it is left alone.
+    /// </summary>
+    public void ReplaceThread(GitHubReviewThread thread, GitHubReviewThread updated)
+    {
+        var threads = _threads.ToList();
+        var index = threads.IndexOf(thread);
+        if (index < 0) return;
+
+        var wasCurrent = ReferenceEquals(CurrentThread, thread);
+        threads[index] = updated;
+        _threads = threads;
+        if (_expanded.Remove(thread)) _expanded.Add(updated);
+        BuildRows();
+        var row = wasCurrent ? _rows.FindIndex(r => ReferenceEquals(r.Thread, updated)) : -1;
+        MoveTo(row < 0 ? _current : row);
+    }
+
     /// <summary>Whether a thread's comments are showing rather than just its first line (#186).</summary>
     public bool IsExpanded(GitHubReviewThread thread) => _expanded.Contains(thread);
 
