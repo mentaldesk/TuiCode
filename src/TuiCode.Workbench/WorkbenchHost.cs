@@ -1777,11 +1777,23 @@ public sealed class WorkbenchHost : IDisposable
 
     /// <summary>
     /// Create comment (<c>cc</c>, #188): a draft on the current row of a PR's diff. The file has to match the
-    /// PR's head commit, or the comment would land on lines GitHub numbers differently.
+    /// PR's head commit, or the comment would land on lines GitHub numbers differently. On a thread it's a
+    /// reply instead (#189), which needs no such match — a reply names the thread, not a line.
     /// </summary>
     private void CreateComment()
     {
         if (_activeComment is not null) return;
+        var tab = _workbench.Sidebar.Review;
+        if (tab.ListHasFocus && tab.SelectedThread is { } outdated)
+        {
+            OpenReply(outdated, fromReviewTab: true);
+            return;
+        }
+        if (_workbench.Editor.Group.ActiveDiffTab is { CurrentThread: { } onRow })
+        {
+            OpenReply(onRow, fromReviewTab: false);
+            return;
+        }
         if (_workbench.Editor.Group.ActiveDiffTab is not { Review: { } spot } diff
             || _workbench.Sidebar.Review.Review is not { PullRequest: { } pullRequest } review
             || spot.Key != review.MergeBase)
@@ -1814,6 +1826,55 @@ public sealed class WorkbenchHost : IDisposable
             OpenDrafts(review);
             OpenComment(diff, path, line, null);
         });
+    }
+
+    /// <summary>
+    /// Replies to <paramref name="thread"/> (#189). GitHub can't hold a reply in a pending review, so it's
+    /// posted as soon as the dialog is confirmed, and whatever it says back keeps the dialog and its text.
+    /// </summary>
+    private void OpenReply(GitHubReviewThread thread, bool fromReviewTab)
+    {
+        if (_workbench.Sidebar.Review.Review is not { PullRequest: { } pullRequest } review) return;
+        if (thread.ReplyToId == 0)
+        {
+            _workbench.StatusBar.SetMessage("GitHub didn't say what to reply to on this thread");
+            return;
+        }
+
+        var view = new CommentView(thread);
+        view.Cancelled += (_, _) => CloseComment(view, fromReviewTab);
+        view.Added += (_, body) =>
+        {
+            view.ShowBusy();
+            var posting = Task.Run(() => _gitHub.ReplyToThreadAsync(review.RepoRoot, pullRequest.Number, thread.ReplyToId, body));
+            WhenDone(posting, () =>
+            {
+                if (!ReferenceEquals(_activeComment, view)) return;
+                if (posting.Result.Error is { } error)
+                {
+                    view.ShowError(error);
+                    return;
+                }
+                // Closed first: rebuilding the Review tab under an open modal drops TG's focus, and the
+                // editor's Tabs then makes whichever tab takes it active (#191).
+                CloseComment(view, fromReviewTab);
+                ShowReply(thread, posting.Result.Value);
+                _workbench.StatusBar.SetMessage($"Replied on #{pullRequest.Number}");
+            });
+        };
+
+        _activeComment = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusBody();
+    }
+
+    /// <summary>Puts a posted reply on its thread wherever the thread is shown, rather than refetching them all.</summary>
+    private void ShowReply(GitHubReviewThread thread, GitHubComment reply)
+    {
+        var updated = thread with { Comments = [.. thread.Comments, reply] };
+        foreach (var diff in _workbench.Editor.Group.DiffTabs) diff.ReplaceThread(thread, updated);
+        _workbench.Sidebar.Review.ReplaceThread(thread, updated);
     }
 
     /// <summary>Whether the buffer being commented on is line for line what GitHub has at the PR's head.</summary>
@@ -1861,14 +1922,15 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Sidebar.Review.ShowDraftReview(Drafts.Line);
     }
 
-    private void CloseComment(CommentView view)
+    private void CloseComment(CommentView view, bool fromReviewTab = false)
     {
         if (!ReferenceEquals(_activeComment, view)) return;
         _scopes.Pop(view.Scope);
         _workbench.Remove(view);
         view.Dispose();
         _activeComment = null;
-        FocusEditorBody();
+        if (fromReviewTab) MoveFocus(FocusRegion.Review);
+        else FocusEditorBody();
     }
 
     private void CloseSubmitReview(SubmitReviewView view)

@@ -98,6 +98,48 @@ public class GitHubCliTests
     }
 
     [Fact]
+    public void ParseThreads_takes_the_reply_target_from_the_first_comment()
+    {
+        const string json = """
+        { "data": { "repository": { "pullRequest": { "reviewThreads": { "nodes": [
+          { "isResolved": false, "isOutdated": false, "path": "src/a.cs", "line": 12, "diffSide": "RIGHT",
+            "comments": { "nodes": [ { "databaseId": 4711, "author": { "login": "octocat" }, "body": "Why?" },
+                                     { "databaseId": 4712, "author": { "login": "hubot" }, "body": "Because." } ] } },
+          { "isResolved": false, "isOutdated": false, "path": "src/b.cs", "line": 3, "diffSide": "RIGHT", "comments": { "nodes": [] } }
+        ] } } } } }
+        """;
+
+        var threads = GitHubCli.ParseThreads(json).Value;
+
+        Assert.Equal([4711L, 0L], threads.Select(t => t.ReplyToId));
+    }
+
+    [Fact]
+    public void ReplyBody_sends_the_reply_as_json()
+    {
+        Assert.Equal("""{"body":"It does now."}""", GitHubCli.ReplyBody("It does now."));
+    }
+
+    [Fact]
+    public void ParseReply_reads_the_posted_reply_whose_author_REST_calls_user()
+    {
+        const string json = """
+        { "id": 4713, "user": { "login": "hubot" }, "created_at": "2026-09-20T08:54:00Z", "body": "It does now." }
+        """;
+
+        var reply = GitHubCli.ParseReply(json).Value;
+
+        Assert.Equal("hubot · 2026-09-20 08:54", reply.Heading);
+        Assert.Equal("It does now.", reply.Body);
+    }
+
+    [Fact]
+    public void ParseReply_of_something_that_isnt_a_comment_fails_rather_than_throws()
+    {
+        Assert.False(GitHubCli.ParseReply("not json at all").Succeeded);
+    }
+
+    [Fact]
     public void ParseThreads_of_an_answer_without_a_pull_request_fails_rather_than_throws()
     {
         Assert.False(GitHubCli.ParseThreads("not json at all").Succeeded);

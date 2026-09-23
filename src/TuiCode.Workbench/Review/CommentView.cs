@@ -6,11 +6,14 @@ namespace TuiCode.Workbench.Review;
 
 /// <summary>
 /// Modal for Create comment (<c>cc</c>, #188): what the draft on this line says, and the buttons to add,
-/// delete or forget it. A draft passed in is being edited, so it can be deleted as well.
+/// delete or forget it. A draft passed in is being edited, so it can be deleted as well. On a thread it's
+/// a reply instead (#189), which the host posts straight away and reports back on through
+/// <see cref="ShowError"/>, so a refused reply keeps the dialog and its text.
 /// </summary>
 public sealed class CommentView : Window
 {
     private const string MissingBody = "A comment needs something to say.";
+    private const string MissingReply = "A reply needs something to say.";
     private const int DialogWidth = 70;
     private const int DialogHeight = 12 + InputView.Frame;
 
@@ -18,6 +21,8 @@ public sealed class CommentView : Window
     private readonly System.Drawing.Point _end;
     private readonly AlertView _alert;
     private readonly Button[] _buttons;
+    private readonly Button _confirm;
+    private readonly string _missing;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
@@ -26,15 +31,27 @@ public sealed class CommentView : Window
 
     public event EventHandler? Cancelled;
 
-    /// <summary>What the draft should say; the host adds it or replaces the one being edited.</summary>
+    /// <summary>What the draft or reply should say; the host adds it, replaces the one being edited, or posts it.</summary>
     public event EventHandler<string>? Added;
 
     /// <summary>Raised by <c>[ Delete ]</c>, which only an existing draft has.</summary>
     public event EventHandler? Deleted;
 
     public CommentView(string path, int line, DraftComment? draft = null)
+        : this($"Comment on {path}:{line}", "Add", MissingBody, draft?.Body, deletable: draft is not null)
     {
-        Title = $"Comment on {path}:{line}";
+    }
+
+    /// <summary>Replying to <paramref name="thread"/> (#189): the same dialog, posted rather than drafted.</summary>
+    public CommentView(GitHubReviewThread thread)
+        : this($"Reply to {thread.First?.Author}", "Reply", MissingReply, null, deletable: false)
+    {
+    }
+
+    private CommentView(string title, string confirm, string missing, string? written, bool deletable)
+    {
+        Title = title;
+        _missing = missing;
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
         Y = Pos.Center();
@@ -42,7 +59,7 @@ public sealed class CommentView : Window
         Height = DialogHeight;
         CanFocus = true;
 
-        var written = draft?.Body ?? string.Empty;
+        written ??= string.Empty;
         _body = new InputView
         {
             X = 1,
@@ -55,10 +72,10 @@ public sealed class CommentView : Window
         var lines = written.Split('\n');
         _end = new System.Drawing.Point(lines[^1].Length, lines.Length - 1);
 
-        var add = Foot("Add", 1, OnAdd);
-        var delete = draft is null ? null : Foot("Delete", Pos.Right(add) + 1, () => Deleted?.Invoke(this, EventArgs.Empty));
-        var cancel = Foot("Cancel", Pos.Right(delete ?? add) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
-        _buttons = delete is null ? [add, cancel] : [add, delete, cancel];
+        _confirm = Foot(confirm, 1, OnAdd);
+        var delete = deletable ? Foot("Delete", Pos.Right(_confirm) + 1, () => Deleted?.Invoke(this, EventArgs.Empty)) : null;
+        var cancel = Foot("Cancel", Pos.Right(delete ?? _confirm) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
+        _buttons = delete is null ? [_confirm, cancel] : [_confirm, delete, cancel];
 
         // Below the buttons, not beside them: the dialog grows for an alert rather than the body shrinking.
         _alert = new AlertView(DialogWidth - 2) { X = 0, Y = Pos.AnchorEnd() };
@@ -93,16 +110,37 @@ public sealed class CommentView : Window
         return focused;
     }
 
+    /// <summary>Shows why GitHub refused a reply; the dialog stays open with whatever was typed (#189).</summary>
+    public void ShowError(string message)
+    {
+        Alert(message, AlertSeverity.Error);
+        _confirm.Enabled = true;
+    }
+
+    /// <summary>Shows that the reply is on its way, and refuses a second one while it is (#189).</summary>
+    public void ShowBusy()
+    {
+        Alert("Replying…", AlertSeverity.Info);
+        _confirm.Enabled = false;
+    }
+
+    private void Alert(string message, AlertSeverity severity)
+    {
+        _alert.Show(message, severity);
+        Height = DialogHeight + _alert.Lines;
+        _body.Height = Dim.Fill(_alert.Lines + 2);
+        foreach (var button in _buttons) button.Y = Pos.AnchorEnd(_alert.Lines + 1);
+        SetNeedsLayout();
+    }
+
     private void OnAdd()
     {
+        if (!_confirm.Enabled) return;
+
         var body = Body.Trim();
         if (body.Length == 0)
         {
-            _alert.Show(MissingBody, AlertSeverity.Error);
-            Height = DialogHeight + _alert.Lines;
-            _body.Height = Dim.Fill(_alert.Lines + 2);
-            foreach (var button in _buttons) button.Y = Pos.AnchorEnd(_alert.Lines + 1);
-            SetNeedsLayout();
+            Alert(_missing, AlertSeverity.Error);
             _body.SetFocus();
             return;
         }

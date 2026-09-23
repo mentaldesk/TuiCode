@@ -27,6 +27,13 @@ public interface IGitHubCli
     /// </summary>
     Task<GitHubResult<bool>> CheckoutPullRequestAsync(string worktreePath, int number, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Replies to the review thread <paramref name="replyToId"/> heads (#189), posted at once: GitHub's API
+    /// can't hold a reply in a pending review. The reply comes back as GitHub recorded it.
+    /// </summary>
+    Task<GitHubResult<GitHubComment>> ReplyToThreadAsync(
+        string repoRoot, int number, long replyToId, string body, CancellationToken cancellationToken = default);
+
     /// <summary>Submits a review on PR <paramref name="number"/>, with its draft line comments (#188). True once GitHub has it.</summary>
     Task<GitHubResult<bool>> SubmitReviewAsync(
         string repoRoot, int number, GitHubReviewVerdict verdict, string summary, IReadOnlyList<DraftComment> comments,
@@ -91,13 +98,15 @@ public sealed record GitHubComment(string Author, DateTimeOffset Date, string Bo
 /// <summary>
 /// A review thread on a PR (#186). <c>Line</c> is the line it's attached to on the head side, and is null
 /// once the thread is <c>Outdated</c> — the line it was written against is no longer in the file.
+/// <c>ReplyToId</c> is the comment a reply is posted under (#189); 0 when GitHub didn't give one.
 /// </summary>
 public sealed record GitHubReviewThread(
     string Path,
     int? Line,
     bool Resolved,
     bool Outdated,
-    IReadOnlyList<GitHubComment> Comments)
+    IReadOnlyList<GitHubComment> Comments,
+    long ReplyToId = 0)
 {
     /// <summary>The comment the thread is headed by; a thread always has one.</summary>
     public GitHubComment? First => Comments.Count > 0 ? Comments[0] : null;

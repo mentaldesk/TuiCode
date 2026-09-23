@@ -58,13 +58,36 @@ internal static class ReviewRow
 }
 
 /// <summary>The threads on a file whose line is gone (#186), read in a tab of their own on Enter.</summary>
-public sealed class ReviewOutdatedNode(GitChange change, IReadOnlyList<GitHubReviewThread> threads) : ReviewNode
+public sealed class ReviewOutdatedNode : ReviewNode
 {
-    public GitChange Change { get; } = change;
+    public ReviewOutdatedNode(GitChange change, IReadOnlyList<GitHubReviewThread> threads)
+    {
+        Change = change;
+        Threads = threads;
+        // One row each as well as the tab, so a thread with no line left is still something cc can be aimed at (#189).
+        foreach (var thread in threads) Children.Add(new ReviewThreadNode(this, thread));
+    }
 
-    public IReadOnlyList<GitHubReviewThread> Threads { get; } = threads;
+    public GitChange Change { get; }
+
+    public IReadOnlyList<GitHubReviewThread> Threads { get; }
 
     public override string ToString() => Threads.Count == 1 ? "! 1 outdated thread" : $"! {Threads.Count} outdated threads";
+}
+
+/// <summary>One outdated thread, so <c>cc</c> can reply to it from the Review tab (#189).</summary>
+public sealed class ReviewThreadNode(ReviewOutdatedNode outdated, GitHubReviewThread thread) : ReviewNode
+{
+    /// <summary>The file's outdated threads, which Enter still opens to read them all in one tab.</summary>
+    public ReviewOutdatedNode Outdated { get; } = outdated;
+
+    public GitHubReviewThread Thread { get; } = thread;
+
+    public override string ToString() => $"{Thread.First?.Author}: {FirstLine(Thread.First?.Body)}";
+
+    private static string FirstLine(string? body) =>
+        (body ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n')
+            .Split('\n').FirstOrDefault(line => line.Length > 0) ?? string.Empty;
 }
 
 internal static class ReviewTree

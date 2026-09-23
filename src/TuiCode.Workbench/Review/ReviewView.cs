@@ -59,6 +59,9 @@ public sealed class ReviewView : View
 
     public bool ListHasFocus => _files.HasFocus;
 
+    /// <summary>The outdated thread the list is on, for <c>cc</c> to reply to (#189); null on any other row.</summary>
+    public GitHubReviewThread? SelectedThread => (_files.SelectedObject as ReviewThreadNode)?.Thread;
+
     /// <summary>Whether the Overview button is selected; it opens the Overview tab (#185).</summary>
     public bool OverviewHasFocus => _overview.HasFocus;
 
@@ -238,9 +241,24 @@ public sealed class ReviewView : View
         else app.Invoke(IfCurrent);
     }
 
-    private void Show(GitResult<BranchReview?> result, string notARepo = "Not a git repository")
+    /// <summary>
+    /// Swaps a thread for the same one with a reply on it (#189), so the tab shows it without refetching;
+    /// the row the reply was written from stays selected.
+    /// </summary>
+    public void ReplaceThread(GitHubReviewThread thread, GitHubReviewThread updated)
+    {
+        if (Review is not { } review) return;
+        var threads = review.Threads.ToList();
+        var index = threads.IndexOf(thread);
+        if (index < 0) return;
+        threads[index] = updated;
+        Show(GitResult<BranchReview?>.Success(review with { Threads = threads }), selectedThread: updated);
+    }
+
+    private void Show(GitResult<BranchReview?> result, string notARepo = "Not a git repository", GitHubReviewThread? selectedThread = null)
     {
         var selected = (_files.SelectedObject as ReviewFileNode)?.Change.Path;
+        selectedThread ??= SelectedThread;
         Review = result.Value;
         if (result.Value is null) _hint.Text = string.Empty;
 
@@ -250,7 +268,7 @@ public sealed class ReviewView : View
             _header.Text = review.Header;
             _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads));
             _files.ExpandAll();
-            _files.SelectedObject = FindFile(selected) ?? FirstFile();
+            _files.SelectedObject = FindThread(selectedThread) ?? (ReviewNode?)FindFile(selected) ?? FirstFile();
             _files.Visible = true;
         }
         else
@@ -318,6 +336,12 @@ public sealed class ReviewView : View
 
     private ReviewNode? FirstNode() => (_files.Objects ?? []).FirstOrDefault();
 
+    private ReviewThreadNode? FindThread(GitHubReviewThread? thread) =>
+        thread is null ? null : AllFiles()
+            .SelectMany(f => f.Children.OfType<ReviewOutdatedNode>())
+            .SelectMany(o => o.Children.OfType<ReviewThreadNode>())
+            .FirstOrDefault(t => t.Thread.Equals(thread));
+
     private ReviewFileNode? FindFile(string? path) =>
         path is null ? null : AllFiles().FirstOrDefault(f => f.Change.Path == path);
 
@@ -330,6 +354,9 @@ public sealed class ReviewView : View
                 break;
             case ReviewOutdatedNode outdated when Review is { } review:
                 OutdatedThreadsActivated?.Invoke(this, (review, outdated));
+                break;
+            case ReviewThreadNode thread when Review is { } review:
+                OutdatedThreadsActivated?.Invoke(this, (review, thread.Outdated));
                 break;
             case ReviewFolderNode folder:
                 _files.Toggle(folder);

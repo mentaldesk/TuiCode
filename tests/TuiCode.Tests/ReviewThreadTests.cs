@@ -91,6 +91,18 @@ public class ReviewThreadCountTests
     }
 
     [Fact]
+    public void Each_outdated_thread_gets_a_row_of_its_own_to_reply_from()
+    {
+        var nodes = ReviewTree.Build([Changed], [Thread("src/a.cs", outdated: true)]);
+
+        var file = Assert.IsType<ReviewFileNode>(Assert.Single(Assert.IsType<ReviewFolderNode>(Assert.Single(nodes)).Children));
+        var outdated = Assert.IsType<ReviewOutdatedNode>(Assert.Single(file.Children));
+        var thread = Assert.IsType<ReviewThreadNode>(Assert.Single(outdated.Children));
+        Assert.Equal("octocat: Look here.", thread.ToString());
+        Assert.Same(outdated, thread.Outdated);
+    }
+
+    [Fact]
     public void A_file_with_no_threads_has_no_badge_and_no_children()
     {
         var file = Assert.IsType<ReviewFileNode>(Assert.Single(Assert.IsType<ReviewFolderNode>(Assert.Single(ReviewTree.Build([Changed]))).Children));
