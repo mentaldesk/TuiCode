@@ -872,7 +872,11 @@ public sealed class WorkbenchHost : IDisposable
             CloseSymbolPicker(view);
             // As in Go to line: drive the move ourselves so even a short hop records as a deliberate jump.
             _suppressHistory = true;
-            try { tab.MoveCursor(symbol.Line, 0); }
+            try
+            {
+                tab.MoveCursor(symbol.Line, 0);
+                tab.CenterOnCursor();
+            }
             finally { _suppressHistory = false; }
             _history.Visit(new CursorLocation(tab.File.FullName, symbol.Line, 0), explicitJump: true);
         };

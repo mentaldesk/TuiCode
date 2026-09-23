@@ -20,6 +20,16 @@ public class GoToSymbolHostTests : StaticConfigurationTest
         }
         """;
 
+    private const string Guide = """
+        # Agent guide
+
+        ## Audience and scope
+
+        ## Quick start
+
+        ### Solution map
+        """;
+
     private static readonly SyntaxHighlighter Syntax = new(GrammarBundle.Load());
 
     private readonly MockFileSystem _fs = new();
@@ -27,6 +37,7 @@ public class GoToSymbolHostTests : StaticConfigurationTest
     public GoToSymbolHostTests()
     {
         _fs.AddFile("/work/Widget.cs", new MockFileData(Widget));
+        _fs.AddFile("/work/AGENTS.md", new MockFileData(Guide));
         _fs.AddFile("/work/notes.txt", new MockFileData("public class NotCode { }"));
         _fs.AddFile("/work/data.json", new MockFileData("""{ "name": "tuicode" }"""));
     }
@@ -170,6 +181,29 @@ public class GoToSymbolHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Jumping_to_a_symbol_below_the_fold_scrolls_it_to_the_middle_of_the_view()
+    {
+        const int filler = 400;
+        string[] padding = [.. Enumerable.Repeat("// filler", filler)];
+        _fs.AddFile("/work/Long.cs", new MockFileData(
+            string.Join('\n', [.. padding, "public class Middle { }", .. padding])));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Long.cs"); },
+            () => { commands.TryExecute(CommandIds.GoToSymbol); },
+            () => Picker(workbench) is { Scanned: true },
+            () => Picker(workbench)!.VisibleItems.SequenceEqual(["Middle"]),
+            () => host.App.InjectKey(Key.Enter),
+            () => Picker(workbench) is null);
+
+        var tab = Tab(workbench);
+        Assert.Equal(filler, tab.CursorRow);
+        Assert.Equal(tab.VisibleRows / 2, tab.CursorRow - tab.TopRow);
+    }
+
+    [Fact]
     public async Task A_second_gs_without_an_edit_opens_on_the_scan_the_first_one_finished()
     {
         using var workbench = BuildWorkbench();
@@ -214,6 +248,30 @@ public class GoToSymbolHostTests : StaticConfigurationTest
         Assert.StartsWith("  DoWorkAsync ", outline[2], StringComparison.Ordinal);
 
         Assert.StartsWith("DoWorkAsync ", Assert.Single(filtered), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Gs_in_a_markdown_file_is_a_document_outline_a_filter_jumps_through()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        IReadOnlyList<string> outline = [];
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "AGENTS.md"); },
+            () => { commands.TryExecute(CommandIds.GoToSymbol); },
+            () => Picker(workbench) is { Scanned: true },
+            () => { outline = Picker(workbench)!.Rows; },
+            () => Type(host, "qs"),
+            () => Picker(workbench)!.VisibleItems.SequenceEqual(["Quick start"]),
+            () => host.App.InjectKey(Key.Enter),
+            () => Picker(workbench) is null);
+
+        Assert.StartsWith("Agent guide ", outline[0], StringComparison.Ordinal);
+        Assert.EndsWith("heading  1", outline[0], StringComparison.Ordinal);
+        Assert.StartsWith("  Audience and scope ", outline[1], StringComparison.Ordinal);
+        Assert.StartsWith("    Solution map ", outline[3], StringComparison.Ordinal);
+        Assert.Equal(4, Tab(workbench).CursorRow);
     }
 
     [Fact]

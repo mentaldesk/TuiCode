@@ -74,10 +74,48 @@ public class EditorTabCursorTests
         Assert.All(moves, move => Assert.Equal((0, 2), move));
     }
 
+    [Theory]
+    [InlineData(50, 45)]
+    [InlineData(2, 0)]
+    [InlineData(99, 90)]
+    public void CenterOnCursor_puts_the_cursors_line_in_the_middle_without_scrolling_off_either_end(int row, int top)
+    {
+        using var tab = SizedTab(string.Join('\n', Enumerable.Range(0, 100).Select(i => $"line {i}")), height: 10);
+
+        tab.MoveCursor(row, 0);
+        tab.CenterOnCursor();
+
+        Assert.Equal(top, tab.TopRow);
+        Assert.Equal(row, tab.CursorRow);
+    }
+
+    [Fact]
+    public void CenterOnCursor_leaves_a_file_that_already_fits_at_the_top()
+    {
+        using var tab = SizedTab("alpha\nbravo\ncharlie\n", height: 10);
+
+        tab.MoveCursor(2, 0);
+        tab.CenterOnCursor();
+
+        Assert.Equal(0, tab.TopRow);
+    }
+
     private static EditorTab OpenTab(string content)
     {
         var fs = new MockFileSystem();
         fs.AddFile("/work/file.txt", new MockFileData(content));
         return new EditorTab(fs.FileInfo.New("/work/file.txt"));
+    }
+
+    private static EditorTab SizedTab(string content, int height)
+    {
+        var tab = OpenTab(content);
+        tab.Width = 40;
+        tab.Height = height;
+        tab.BeginInit();
+        tab.EndInit();
+        tab.Layout();
+        Assert.Equal(height, tab.VisibleRows);
+        return tab;
     }
 }

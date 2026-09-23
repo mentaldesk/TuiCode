@@ -38,13 +38,43 @@ public class SymbolScanTests
             [
                 new FileSymbol("Widget", SymbolKind.Class, 0, 0),
                 new FileSymbol("Count", SymbolKind.Property, 2, 1),
+                new FileSymbol("_name", SymbolKind.Field, 3, 1),
                 new FileSymbol("DoWorkAsync", SymbolKind.Method, 4, 1),
                 new FileSymbol("Name", SymbolKind.Property, 11, 1),
                 new FileSymbol("IThing", SymbolKind.Interface, 13, 0),
                 new FileSymbol("Colour", SymbolKind.Enum, 14, 0),
+                new FileSymbol("Red", SymbolKind.EnumMember, 14, 1),
                 new FileSymbol("Point", SymbolKind.Struct, 15, 0),
             ],
             Scan("csharp", CSharp));
+    }
+
+    [Fact]
+    public void Csharp_finds_every_shape_of_field_and_every_enum_member_under_its_type()
+    {
+        Assert.Equal(
+            [
+                new FileSymbol("Widget", SymbolKind.Class, 0, 0),
+                new FileSymbol("Max", SymbolKind.Field, 2, 1),
+                new FileSymbol("Sizes", SymbolKind.Field, 3, 1),
+                new FileSymbol("_count", SymbolKind.Field, 4, 1),
+                new FileSymbol("Colour", SymbolKind.Enum, 6, 0),
+                new FileSymbol("Red", SymbolKind.EnumMember, 8, 1),
+                new FileSymbol("Green", SymbolKind.EnumMember, 9, 1),
+            ],
+            Scan("csharp", """
+                public class Widget
+                {
+                    public const int Max = 3;
+                    private static readonly int[] Sizes = [1];
+                    private int _count;
+                }
+                public enum Colour
+                {
+                    Red,
+                    Green = 2,
+                }
+                """));
     }
 
     [Fact]
@@ -80,17 +110,18 @@ public class SymbolScanTests
     }
 
     [Fact]
-    public void Typescript_finds_classes_interfaces_enums_methods_and_fields()
+    public void Typescript_tells_a_class_field_from_an_interfaces_property_and_finds_enum_members()
     {
         Assert.Equal(
             [
                 new FileSymbol("Widget", SymbolKind.Class, 0, 0),
-                new FileSymbol("name", SymbolKind.Property, 1, 1),
+                new FileSymbol("name", SymbolKind.Field, 1, 1),
                 new FileSymbol("label", SymbolKind.Method, 2, 1),
                 new FileSymbol("doWork", SymbolKind.Method, 3, 1),
                 new FileSymbol("Thing", SymbolKind.Interface, 8, 0),
                 new FileSymbol("a", SymbolKind.Property, 8, 1),
                 new FileSymbol("Colour", SymbolKind.Enum, 9, 0),
+                new FileSymbol("Red", SymbolKind.EnumMember, 9, 1),
                 new FileSymbol("topLevel", SymbolKind.Method, 10, 0),
             ],
             Scan("typescript", """
@@ -203,6 +234,76 @@ public class SymbolScanTests
     }
 
     [Fact]
+    public void Markdown_headings_are_an_outline_nested_by_heading_level()
+    {
+        Assert.Equal(
+            [
+                new FileSymbol("Agent guide", SymbolKind.Heading, 0, 0),
+                new FileSymbol("Audience and scope", SymbolKind.Heading, 2, 1),
+                new FileSymbol("Quick start", SymbolKind.Heading, 6, 1),
+                new FileSymbol("Quick start again", SymbolKind.Heading, 8, 2),
+                new FileSymbol("Solution map", SymbolKind.Heading, 10, 1),
+            ],
+            Scan("markdown", """
+                # Agent guide
+
+                ## Audience and scope
+
+                Some prose that isn't a heading.
+
+                ## Quick start
+
+                ### Quick start again
+
+                ## Solution map
+                """));
+    }
+
+    [Fact]
+    public void A_heading_keeps_the_text_its_inline_markup_is_written_in()
+    {
+        Assert.Equal(
+            ["A `code` heading and a [link](http://x)", "C# and the rest", "Closed off"],
+            Scan("markdown", """
+                # A `code` heading and a [link](http://x)
+                ## C# and the rest
+                ## Closed off ##
+                """).Select(s => s.Name));
+    }
+
+    [Fact]
+    public void Setext_headings_are_found_on_the_line_their_text_is_on()
+    {
+        Assert.Equal(
+            [
+                new FileSymbol("Title", SymbolKind.Heading, 0, 0),
+                new FileSymbol("Sub", SymbolKind.Heading, 3, 1),
+            ],
+            Scan("markdown", """
+                Title
+                =====
+
+                Sub
+                ---
+                """));
+    }
+
+    [Fact]
+    public void A_hash_inside_a_fenced_code_block_is_not_a_heading()
+    {
+        Assert.Equal(
+            ["Real heading"],
+            Scan("markdown", """
+                # Real heading
+
+                ```sh
+                # not a heading
+                echo hi
+                ```
+                """).Select(s => s.Name));
+    }
+
+    [Fact]
     public void A_grammar_that_yields_no_definitions_returns_an_empty_list()
     {
         Assert.Empty(Scan("json", """
@@ -273,7 +374,8 @@ public class SymbolScanTests
 
     private IReadOnlyList<FileSymbol> Scan(string language, string text)
     {
-        var scan = ScanFor(language, text.Split('\n'));
+        // A Windows checkout gives the literals above CRLF, and a \r on a setext underline stops it scoping as one.
+        var scan = ScanFor(language, text.ReplaceLineEndings("\n").Split('\n'));
         scan.LineTimeLimit = Patient;
         Assert.True(scan.Advance(TimeSpan.MaxValue));
         return scan.Symbols;

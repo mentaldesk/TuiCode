@@ -21,6 +21,9 @@ internal static class SymbolIcons
         SymbolKind.Enum => "",
         SymbolKind.Struct => "",
         SymbolKind.Method => "",
+        SymbolKind.Field => "",
+        SymbolKind.EnumMember => "",
+        SymbolKind.Heading => "",
         _ => "",
     };
 }
