@@ -24,6 +24,10 @@ public sealed class ReviewView : View
     private readonly Line _rule;
     private readonly TreeView<ReviewNode> _files;
     private CancellationTokenSource? _loading;
+    private string _headerText = string.Empty;
+    private string _checksText = string.Empty;
+    private string _threadsText = string.Empty;
+    private string _hintText = string.Empty;
 
     public event EventHandler<(BranchReview Review, GitChange Change)>? FileActivated;
 
@@ -113,7 +117,7 @@ public sealed class ReviewView : View
         if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
         Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files, _draftReview);
 
-        ViewportChanged += (_, _) => ShowTitle();
+        ViewportChanged += (_, _) => LayoutHeader();
         _files.Activated += (_, _) => ActivateSelected();
         // Same TG quirk as the explorer: Enter maps to Command.Activate but doesn't raise Activated.
         _files.KeyDown += (_, key) =>
@@ -201,9 +205,9 @@ public sealed class ReviewView : View
         }
 
         var cts = _loading = new CancellationTokenSource();
-        if (Review is null && _header.Text.Length == 0)
+        if (Review is null && _headerText.Length == 0)
         {
-            _header.Text = "Loading…";
+            _headerText = "Loading…";
             LayoutHeader();
         }
         return LoadAsync(root.FullName, cts);
@@ -260,12 +264,12 @@ public sealed class ReviewView : View
         var selected = (_files.SelectedObject as ReviewFileNode)?.Change.Path;
         selectedThread ??= SelectedThread;
         Review = result.Value;
-        if (result.Value is null) _hint.Text = string.Empty;
+        if (result.Value is null) _hintText = string.Empty;
 
         _files.ClearObjects();
         if (result.Value is { Changes.Count: > 0 } review)
         {
-            _header.Text = review.Header;
+            _headerText = review.Header;
             _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads));
             _files.ExpandAll();
             _files.SelectedObject = FindThread(selectedThread) ?? (ReviewNode?)FindFile(selected) ?? FirstFile();
@@ -273,12 +277,12 @@ public sealed class ReviewView : View
         }
         else
         {
-            _header.Text = result.Error ?? (result.Value is { } empty ? $"No changes against {empty.Base}" : notARepo);
+            _headerText = result.Error ?? (result.Value is { } empty ? $"No changes against {empty.Base}" : notARepo);
             _files.Visible = false;
         }
-        _checks.Text = result.Value?.ChecksLine ?? string.Empty;
-        _threadCounts.Text = result.Value?.ThreadsLine ?? string.Empty;
-        ShowTitle();
+        _checksText = result.Value?.ChecksLine ?? string.Empty;
+        _threadsText = result.Value?.ThreadsLine ?? string.Empty;
+        LayoutHeader();
         // Rebuilding the tree can drop Terminal.Gui's focus, so the workbench settles it: a refresh that
         // arrives while the keys are elsewhere must not pull them back here (#228).
         Refreshed?.Invoke(this, EventArgs.Empty);
@@ -286,7 +290,7 @@ public sealed class ReviewView : View
 
     private void ShowPullRequest(GitHubResult<BranchReview?> result)
     {
-        _hint.Text = result.Error ?? string.Empty;
+        _hintText = result.Error ?? string.Empty;
         if (result.Value is { } review) Show(GitResult<BranchReview?>.Success(review));
         else LayoutHeader();
     }
@@ -296,7 +300,7 @@ public sealed class ReviewView : View
         if (Review is not { PullRequest: not null } review) return;
         if (result.Error is { } error)
         {
-            _hint.Text = error;
+            _hintText = error;
             LayoutHeader();
             return;
         }
@@ -305,19 +309,24 @@ public sealed class ReviewView : View
         if (Review is { } loaded) ThreadsLoaded?.Invoke(this, loaded);
     }
 
-    private void ShowTitle()
-    {
-        _title.Text = BranchReview.Truncate(Review?.TitleLine ?? string.Empty, Viewport.Width);
-        LayoutHeader();
-    }
-
-    /// <summary>Packs whichever header lines have something to say into the rows above the file list.</summary>
+    /// <summary>
+    /// Packs whichever header lines have something to say into the rows above the file list, each cut to the
+    /// pane's width: a label wider than the sidebar word-wraps onto a row the header never draws (#244).
+    /// </summary>
     private void LayoutHeader()
     {
         var row = 0;
-        foreach (var label in (Label[])[_title, _header, _checks, _threadCounts, _hint])
+        foreach (var (label, text) in ((Label, string)[])
+                 [
+                     (_title, Review?.TitleLine ?? string.Empty),
+                     (_header, _headerText),
+                     (_checks, _checksText),
+                     (_threadCounts, _threadsText),
+                     (_hint, _hintText),
+                 ])
         {
-            label.Visible = label.Text.Length > 0;
+            label.Text = BranchReview.Truncate(text, Viewport.Width);
+            label.Visible = text.Length > 0;
             if (label.Visible) label.Y = row++;
         }
         _overview.Visible = Review is { PullRequest: not null };

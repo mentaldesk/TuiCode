@@ -217,7 +217,124 @@ public class ReviewViewTests
         Assert.Equal(["M a.txt"], Rows(view));
     }
 
+    [Fact]
+    public async Task A_header_wider_than_the_pane_keeps_the_base_and_cuts_the_branch()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.PullRequest = new GitHubPullRequest(226, "Go to symbol", "main", "milestone-226-symbol-outline", default);
+        using var view = Build(20);
+
+        await view.Refresh();
+
+        Assert.Equal("main ← milestone-22…", view.HeaderText);
+    }
+
+    [Fact]
+    public async Task Without_a_pull_request_a_branch_line_wider_than_the_pane_is_cut_too()
+    {
+        _git.Branch = "a-very-long-feature-branch-name";
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        using var view = Build(20);
+
+        await view.Refresh();
+
+        Assert.Equal("a-very-long-feature…", view.HeaderText);
+    }
+
+    [Fact]
+    public async Task The_title_and_the_checks_line_are_cut_to_the_pane_as_well()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.PullRequest = new GitHubPullRequest(132, "Command scopes should be fixed", "main", "feature", new GitHubChecks(11, 1, 2));
+        using var view = Build(20);
+
+        await view.Refresh();
+
+        Assert.Equal("#132 Command scopes…", view.TitleText);
+        Assert.Equal("✓ 11  ✗ 1  ● 2 chec…", view.ChecksText);
+    }
+
+    [Fact]
+    public async Task Thread_counts_wider_than_the_pane_are_cut()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.PullRequest = new GitHubPullRequest(186, "Threads", "main", "feature", default);
+        _gitHub.ReviewThreads =
+        [
+            Thread(resolved: true), Thread(resolved: false), Thread(resolved: false),
+        ];
+        using var view = Build(20);
+
+        await view.Refresh();
+
+        Assert.Equal("3 threads, 2 unreso…", view.ThreadsText);
+    }
+
+    [Fact]
+    public async Task A_hint_wider_than_the_pane_is_legible_as_far_as_it_goes()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.Missing = true;
+        using var view = Build(20);
+
+        await view.Refresh();
+
+        Assert.Equal("Pull requests need …", view.HintText);
+    }
+
+    [Fact]
+    public async Task Header_lines_that_fit_are_left_alone()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.PullRequest = new GitHubPullRequest(9, "Fix", "main", "feature", new GitHubChecks(1, 0, 0));
+        using var view = Build(60);
+
+        await view.Refresh();
+
+        Assert.Equal("#9 Fix", view.TitleText);
+        Assert.Equal("main ← feature", view.HeaderText);
+        Assert.Equal("✓ 1 checks", view.ChecksText);
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(12)]
+    [InlineData(26)]
+    [InlineData(80)]
+    public async Task No_header_line_is_wider_than_the_pane_at_any_width(int width)
+    {
+        const string branch = "milestone-244-review-header-truncation";
+        _git.Branch = branch;
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _gitHub.PullRequest = new GitHubPullRequest(244, "The Review tab won't tell me what I'm reviewing against", "main", branch, new GitHubChecks(11, 1, 2));
+        _gitHub.ReviewThreads = [Thread(resolved: false)];
+        using var view = Build(width);
+
+        await view.Refresh();
+
+        Assert.All(
+            (string[])[view.TitleText, view.HeaderText, view.ChecksText, view.ThreadsText, view.HintText],
+            line => Assert.True(line.Length <= width, $"'{line}' is wider than {width}"));
+    }
+
+    private static GitHubReviewThread Thread(bool resolved) =>
+        new("a.txt", 1, resolved, false, [new GitHubComment("octocat", default, "Look at this")]);
+
     private ReviewView Build() => new(_git, _gitHub) { RootProvider = () => _fs.DirectoryInfo.New("/work") };
+
+    private ReviewView Build(int width)
+    {
+        var view = new ReviewView(_git, _gitHub)
+        {
+            RootProvider = () => _fs.DirectoryInfo.New("/work"),
+            Width = width,
+            Height = 10,
+        };
+        view.BeginInit();
+        view.EndInit();
+        view.Layout();
+        return view;
+    }
 
     private static List<string> Rows(ReviewView view) =>
         view.Files.Objects!.SelectMany(n => n is ReviewFolderNode

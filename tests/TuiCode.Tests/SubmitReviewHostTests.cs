@@ -171,6 +171,24 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Sr_stops_saying_it_is_loading_once_the_dialog_is_up()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var message = "";
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is not null,
+            () => { message = workbench.StatusBar.DisplayedText; },
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal(StatusBarPart.DefaultMessage, message);
+        Assert.Equal(StatusBarPart.DefaultMessage, workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
     public async Task Without_a_pull_request_sr_says_so_in_the_status_bar_and_opens_nothing()
     {
         _gitHub.PullRequest = null;
