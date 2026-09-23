@@ -1762,7 +1762,8 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Sidebar.Explorer.Root is not { } root) return;
 
         var folder = root.FullName;
-        _workbench.StatusBar.SetMessage("Loading pull request…");
+        const string loading = "Loading pull request…";
+        _workbench.StatusBar.SetMessage(loading);
         var repoRoot = Task.Run(() => _git.GetRepoRootAsync(folder));
         WhenDone(repoRoot, () =>
         {
@@ -1785,6 +1786,7 @@ public sealed class WorkbenchHost : IDisposable
                     _workbench.StatusBar.SetMessage("No pull request for this branch.");
                 else
                 {
+                    _workbench.StatusBar.ClearMessage(loading);
                     OpenDrafts(repo, pullRequest.Number);
                     OpenSubmitReview(repo, pullRequest.Number);
                 }
