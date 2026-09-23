@@ -69,7 +69,7 @@ internal sealed class FindController : IDisposable
     internal IReadOnlyList<TextMatch> Matches => _matches;
     internal int CurrentIndex => _current;
 
-    /// <summary>Show the bar on the active tab (or re-focus it), with or without the replace row.</summary>
+    /// <summary>Show the bar on the active tab, with or without the replace row; the host then focuses it (#229).</summary>
     public void Open(bool replace)
     {
         if (_group.ActiveTab is not { } tab) return;
@@ -86,10 +86,14 @@ internal sealed class FindController : IDisposable
         if (selected.Length > 0 && !selected.Contains('\n') && !selected.Contains('\r'))
             _bar.Query = selected;
         Recompute(selectFromAnchor: true);
-
-        if (replace && _bar.Query.Length > 0) _bar.FocusReplacement();
-        else _bar.FocusQuery();
     }
+
+    /// <summary>
+    /// Takes the keyboard into the bar, selecting what's there so typing replaces it. Replace opens on the
+    /// replacement once there's something to replace, otherwise on the query.
+    /// </summary>
+    internal bool FocusInput() =>
+        _bar.ReplaceVisible && _bar.Query.Length > 0 ? _bar.FocusReplacement() : _bar.FocusQuery();
 
     public void Close()
     {

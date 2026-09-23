@@ -199,6 +199,23 @@ public class FindAndSearchHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Esc));
     }
 
+    // Ctrl+Shift+F is also how you stop replacing: the row goes away rather than staying up for good.
+    [Fact]
+    public async Task CtrlShiftF_takes_the_replace_row_off_the_find_pane_before_it_hides_the_sidebar()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("foo\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.H.WithCtrl.WithShift),
+            () => workbench.Sidebar.Search.ReplaceVisible,
+            () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+            () => !workbench.Sidebar.Search.ReplaceVisible && workbench.IsSidebarVisible,
+            () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+            () => !workbench.IsSidebarVisible);
+    }
+
     private Workbench.Workbench BuildWorkbench()
     {
         var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());

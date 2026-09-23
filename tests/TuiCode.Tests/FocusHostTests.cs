@@ -1,3 +1,4 @@
+using Terminal.Gui.Drawing;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
@@ -317,6 +318,157 @@ public class FocusHostTests : StaticConfigurationTest
             () => { afterShow = workbench.StatusBar.DisplayedFocus; });
 
         Assert.Equal("Diff", afterShow);
+    }
+
+    // #229: the one thing Ctrl+F promises is that the next thing you type is a search, from wherever the keys were.
+    [Theory]
+    [InlineData(null)]
+    [InlineData(CommandIds.FocusSidebar)]
+    [InlineData(CommandIds.FindGlobally)]
+    [InlineData(CommandIds.FocusReview)]
+    [InlineData(CommandIds.FocusEditorTabStrip)]
+    public async Task Ctrl_F_from_every_region_types_into_the_find_bar(string? from)
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        FindBarView? bar = null;
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => { if (from is not null) commands.TryExecute(from); },
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is not null,
+            () => { foreach (var c in "two") host.App.InjectKey(new Key(c)); },
+            () => bar!.Query == "two");
+
+        Assert.Equal("Find", workbench.StatusBar.DisplayedFocus);
+        // TG joins the lines with Environment.NewLine, so the buffer reads back CRLF on Windows.
+        Assert.Equal("one\ntwo\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(CommandIds.FocusSidebar)]
+    public async Task Ctrl_H_from_every_region_types_into_the_replacement_field(string? from)
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        FindBarView? bar = null;
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is not null,
+            () => { foreach (var c in "two") host.App.InjectKey(new Key(c)); },
+            () => bar!.Query == "two",
+            () => host.App.InjectKey(Key.Esc),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => { if (from is not null) commands.TryExecute(from); },
+            () => host.App.InjectKey(Key.H.WithCtrl),
+            () => bar!.ReplaceVisible,
+            () => { foreach (var c in "six") host.App.InjectKey(new Key(c)); },
+            () => bar!.Replacement == "six");
+
+        Assert.Equal("Find", workbench.StatusBar.DisplayedFocus);
+    }
+
+    [Fact]
+    public async Task Ctrl_F_in_the_search_box_re_selects_what_is_already_there()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        FindBarView? bar = null;
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is not null,
+            () => { foreach (var c in "two") host.App.InjectKey(new Key(c)); },
+            () => bar!.Query == "two",
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            // The query is selected, so the next character replaces it rather than appending to it.
+            () => host.App.InjectKey(new Key('o')),
+            () => bar!.Query == "o");
+
+        Assert.Equal("Find", workbench.StatusBar.DisplayedFocus);
+    }
+
+    [Fact]
+    public async Task Ctrl_F_on_a_diff_says_why_rather_than_doing_nothing()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => { workbench.Editor.Group.ActiveTab!.Content = "one\nTWO\n"; },
+            () => commands.TryExecute(CommandIds.CompareToSaved),
+            () => workbench.StatusBar.DisplayedFocus == "Diff",
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            () => workbench.StatusBar.DisplayedText.Contains("Nothing to find in a diff — Ctrl+F needs a file tab"));
+
+        Assert.Empty(workbench.SubViewsDeep().OfType<FindBarView>());
+        Assert.Equal("Diff", workbench.StatusBar.DisplayedFocus);
+    }
+
+    // Nothing to search in the buffer there isn't, so the promise is kept by the find pane instead.
+    [Fact]
+    public async Task Ctrl_F_with_no_tab_open_types_into_the_find_pane()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            () => workbench.StatusBar.DisplayedFocus == "Find",
+            () => { foreach (var c in "two") host.App.InjectKey(new Key(c)); },
+            () => workbench.Sidebar.Search.Query == "two");
+
+        Assert.True(workbench.Sidebar.Search.InputsHaveFocus);
+    }
+
+    [Fact]
+    public async Task Ctrl_F_still_seeds_the_search_box_from_the_editor_selection()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        FindBarView? bar = null;
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => { workbench.Editor.Group.ActiveTab!.Select(new TextMatch(1, 0, 3)); },
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is not null,
+            () => bar!.Query == "two");
+    }
+
+    // A terminal can hide the cursor, so the bar has to name the field the keys are in some other way too.
+    [Fact]
+    public async Task The_find_bar_names_the_field_the_keys_are_in()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        FindBarView? bar = null;
+        var onOpen = (Query: false, Replace: false);
+        var afterTab = (Query: false, Replace: false);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.H.WithCtrl),
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault())?.ReplaceVisible == true,
+            () =>
+            {
+                onOpen = (bar!.MarksAsFocused(replace: false), bar.MarksAsFocused(replace: true));
+                host.App.InjectKey(Key.Tab);
+            },
+            () => bar!.ReplacementHasFocus,
+            () => { afterTab = (bar!.MarksAsFocused(replace: false), bar.MarksAsFocused(replace: true)); });
+
+        Assert.NotEqual(bar!.GetAttributeForRole(VisualRole.Normal), bar.GetAttributeForRole(VisualRole.Focus));
+        Assert.Equal((Query: true, Replace: false), onOpen);
+        Assert.Equal((Query: false, Replace: true), afterTab);
     }
 
     private Workbench.Workbench BuildWorkbench()

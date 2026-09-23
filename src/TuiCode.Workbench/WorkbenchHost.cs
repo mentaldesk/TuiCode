@@ -182,12 +182,15 @@ public sealed class WorkbenchHost : IDisposable
         _focus.Register(FocusRegion.Find, () => Take(sidebar.Search, sidebar.Search.FocusQuery), focused => Owns(sidebar.Search, focused));
         _focus.Register(FocusRegion.Review, () => Take(sidebar.Review, sidebar.Review.FocusList), focused => Owns(sidebar.Review, focused));
         _focus.Register(FocusRegion.Explorer, () => Take(sidebar.Explorer), focused => Owns(sidebar.Explorer, focused));
+        // The find bar sits inside the active tab, so the editor regions have to let it through (#229).
+        _focus.Register(FocusRegion.FindBar, () => Take(_find.Bar, _find.FocusInput), OnFindBar);
         _focus.Register(FocusRegion.Diff, () => Take(group.ActiveDiffTab),
             focused => group.ActiveDiffTab is { } diff && Owns(diff, focused));
         _focus.Register(FocusRegion.Editor, () => Take(group.Value, group.FocusActive),
-            focused => group.ActiveDiffTab is null && Owns(_workbench.Editor, focused) && !OnTabStrip(group, focused));
+            focused => group.ActiveDiffTab is null && Owns(_workbench.Editor, focused)
+                && !OnTabStrip(group, focused) && !OnFindBar(focused));
         // Reached by ft and by TG's own navigation (#237); owning the editor pane is what keeps cycling tabs in it.
-        _focus.Register(FocusRegion.Tabs, () => true, focused => Owns(_workbench.Editor, focused));
+        _focus.Register(FocusRegion.Tabs, () => true, focused => Owns(_workbench.Editor, focused) && !OnFindBar(focused));
 
         _focus.RegionChanged += (_, region) =>
         {
@@ -199,6 +202,8 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.StatusBar.SetFocusRegion(FocusService.Label(_focus.Region));
         editorBorder.Show(true);
     }
+
+    private bool OnFindBar(object? focused) => Owns(_find.Bar, focused);
 
     private static bool Owns(View region, object? focused) =>
         focused is View view && View.IsInHierarchy(region, view, includeAdornments: true);
@@ -308,12 +313,12 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
         _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
         _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ToggleSidebarTab(SidebarTab.Explorer));
-        _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleSidebarTab(SidebarTab.Find));
-        _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", ReplaceGlobally);
+        _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleFindPane(replace: false));
+        _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", () => OpenFindPane(replace: true));
         // No default key (#180).
         _commands.Register(CommandIds.FocusReview, "Focus review", FocusReview);
-        _commands.Register(CommandIds.FindInFile, "Find in file", () => _find.Open(replace: false));
-        _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => _find.Open(replace: true));
+        _commands.Register(CommandIds.FindInFile, "Find in file", () => OpenFind(replace: false));
+        _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => OpenFind(replace: true));
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.ToggleGutter, "Toggle gutter", ToggleGutter);
@@ -584,11 +589,50 @@ public sealed class WorkbenchHost : IDisposable
         if (showing) _workbench.Sidebar.Review.Refresh();
     }
 
-    private void ReplaceGlobally()
+    // Ctrl+Shift+F is also how you leave a replace behind: like the bar's Ctrl+F it shows the pane with only
+    // the find row, and hides the sidebar as the other sidebar shortcuts do once that's already what's showing.
+    private void ToggleFindPane(bool replace)
     {
+        if (_workbench.IsSidebarVisible && _workbench.Sidebar.ActiveTab == SidebarTab.Find
+            && _workbench.Sidebar.Search.ReplaceVisible == replace)
+        {
+            ToggleSidebar();
+            return;
+        }
+        OpenFindPane(replace);
+    }
+
+    private void OpenFindPane(bool replace)
+    {
+        _workbench.Sidebar.Search.ShowReplace(replace);
         _workbench.Sidebar.ShowTab(SidebarTab.Find);
         FocusSidebar();
-        _workbench.Sidebar.Search.FocusReplacement();
+        if (replace) _workbench.Sidebar.Search.FocusReplacement();
+    }
+
+    /// <summary>
+    /// Find in the active file (#229). The keys land in the bar's inputs from wherever they were; with no file
+    /// tab to search they go to the find pane instead, and on a tab that can't be searched they stay put and
+    /// the status bar says why rather than the key doing nothing at all.
+    /// </summary>
+    private void OpenFind(bool replace)
+    {
+        var group = _workbench.Editor.Group;
+        if (group.ActiveTab is null)
+        {
+            if (group.Value is null)
+            {
+                OpenFindPane(replace);
+                return;
+            }
+            var what = group.ActiveDiffTab is null ? "a document" : "a diff";
+            _workbench.StatusBar.SetMessage(replace
+                ? $"Nothing to replace in {what} — Ctrl+H needs a file tab"
+                : $"Nothing to find in {what} — Ctrl+F needs a file tab");
+            return;
+        }
+        _find.Open(replace);
+        MoveFocus(FocusRegion.FindBar);
     }
 
     private void FocusEditorBody() =>
