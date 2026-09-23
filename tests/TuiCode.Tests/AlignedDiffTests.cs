@@ -158,4 +158,45 @@ public class AlignedDiffTests
         Assert.Equal(LineDiff.MaxEdits, diff.ChangeBlocks.Count);
         Assert.All(diff.Rows, row => Assert.Contains(row.Kind, new[] { DiffRowKind.Both, DiffRowKind.Modified }));
     }
+
+    [Fact]
+    public void Block_covers_a_modified_run_on_both_sides()
+    {
+        var diff = AlignedDiff.Compute(["a", "b", "c", "d"], ["a", "B", "C", "d"]);
+
+        Assert.Equal(new ChangeBlock(1, 2, 1, 2, 1, 2), diff.Block(diff.ChangeBlocks[0]));
+    }
+
+    [Fact]
+    public void Block_of_an_insertion_has_no_left_lines()
+    {
+        var diff = AlignedDiff.Compute(["a", "c"], ["a", "x", "y", "c"]);
+
+        Assert.Equal(new ChangeBlock(1, 2, 0, 0, 1, 2), diff.Block(diff.ChangeBlocks[0]));
+    }
+
+    [Fact]
+    public void Block_of_a_deletion_points_at_the_buffer_line_that_took_its_place()
+    {
+        var diff = AlignedDiff.Compute(["a", "b", "c", "d"], ["a", "d"]);
+
+        Assert.Equal(new ChangeBlock(1, 2, 1, 2, 1, 0), diff.Block(diff.ChangeBlocks[0]));
+    }
+
+    [Fact]
+    public void Block_of_a_deletion_off_the_end_points_past_the_last_buffer_line()
+    {
+        var diff = AlignedDiff.Compute(["a", "b", "c"], ["a"]);
+
+        Assert.Equal(new ChangeBlock(1, 2, 1, 2, 1, 0), diff.Block(diff.ChangeBlocks[0]));
+    }
+
+    [Fact]
+    public void Block_stops_at_the_next_unchanged_row()
+    {
+        var diff = AlignedDiff.Compute(["a", "b", "c", "d", "e"], ["a", "B", "c", "D", "e"]);
+
+        Assert.Equal([new ChangeBlock(1, 1, 1, 1, 1, 1), new ChangeBlock(3, 3, 3, 1, 3, 1)],
+            diff.ChangeBlocks.Select(diff.Block));
+    }
 }

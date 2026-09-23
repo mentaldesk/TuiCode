@@ -30,6 +30,9 @@ public sealed class WorkbenchHost : IDisposable
 {
     private const int MaxIndexedEditorBindings = 9;
 
+    // A revert bigger than a screenful can't be seen, so its message carries the way back (#245).
+    private const int LargeRevert = 50;
+
     // On Windows the Win32 console reports Ctrl+Enter as Ctrl + LineFeed (0x0A) instead of
     // Ctrl + Enter (CR, 0x0D): plain Enter yields CR, but holding Ctrl swaps the produced char
     // to LF, and TG's native WindowsDriver passes that control char straight through as the
@@ -364,6 +367,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.NextChange, "Next change", () => MoveToChange(1), CommandScope.Diff);
         _commands.Register(CommandIds.PreviousChange, "Previous change", () => MoveToChange(-1), CommandScope.Diff);
         _commands.Register(CommandIds.GoToChangeLine, "Go to line in file", GoToChangeLine, CommandScope.Diff);
+        _commands.Register(CommandIds.RevertChange, "Revert change", RevertChange, CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffLeft, "Scroll diff left", () => ScrollDiff(-1), CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffRight, "Scroll diff right", () => ScrollDiff(1), CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffPageLeft, "Scroll diff a page left", () => ScrollDiff(-1, page: true), CommandScope.Diff);
@@ -424,6 +428,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             KeyHint(CommandIds.NextChange, "next"),
             KeyHint(CommandIds.PreviousChange, "prev"),
+            KeyHint(CommandIds.RevertChange, "revert"),
             KeyHint(CommandIds.GoToChangeLine, "go to line"),
         }.OfType<string>());
     }
@@ -525,6 +530,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Alt+CursorDown", CommandIds.NextChange);
         keybindings.Bind("Alt+CursorUp", CommandIds.PreviousChange);
         keybindings.Bind("Enter", CommandIds.GoToChangeLine);
+        keybindings.Bind("Alt+CursorRight", CommandIds.RevertChange);
         keybindings.Bind("CursorLeft", CommandIds.ScrollDiffLeft);
         keybindings.Bind("CursorRight", CommandIds.ScrollDiffRight);
         keybindings.Bind("Shift+CursorLeft", CommandIds.ScrollDiffPageLeft);
@@ -1310,6 +1316,27 @@ public sealed class WorkbenchHost : IDisposable
         finally { _suppressHistory = false; }
         FocusEditorBody();
         _history.Visit(new CursorLocation(tab.File.FullName, line, 0), explicitJump: true);
+    }
+
+    /// <summary>
+    /// Puts the current change's saved lines back into the buffer (#245). Nothing is written to disk:
+    /// the tab goes dirty and one Ctrl+Z in the editor takes the whole revert back.
+    /// </summary>
+    private void RevertChange()
+    {
+        if (_workbench.Editor.Group.ActiveDiffTab is not { CanRevert: true } diff) return;
+        if (diff.Diff.ChangeBlocks.Count == 0)
+        {
+            _workbench.StatusBar.SetMessage("No changes");
+            return;
+        }
+        if (diff.RevertChange() is not { } lines)
+        {
+            _workbench.StatusBar.SetMessage("No change here — Alt+↓ for the next one");
+            return;
+        }
+        var undo = lines > LargeRevert ? " — Ctrl+Z to undo" : string.Empty;
+        _workbench.StatusBar.SetMessage($"Reverted {lines:N0} line{(lines == 1 ? string.Empty : "s")} from {diff.LeftLabel}{undo}");
     }
 
     private void CompareToRevision()

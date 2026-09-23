@@ -189,6 +189,51 @@ public class EditorTextViewLineEditTests
         view.SelectionStartColumn = anchor.Column;
     }
 
+    [Fact]
+    public void ReplaceLines_swaps_a_run_of_lines_for_a_shorter_one()
+    {
+        var view = View("one", "two", "three", "four");
+
+        view.ReplaceLines(1, 2, ["TWO"]);
+
+        Assert.Equal(["one", "TWO", "four"], view.LineStrings);
+    }
+
+    [Fact]
+    public void ReplaceLines_inserts_when_it_replaces_no_lines()
+    {
+        var view = View("one", "four");
+
+        view.ReplaceLines(1, 0, ["two", "three"]);
+
+        Assert.Equal(["one", "two", "three", "four"], view.LineStrings);
+    }
+
+    [Fact]
+    public void ReplaceLines_removes_when_given_no_lines()
+    {
+        var view = View("one", "two", "three");
+
+        view.ReplaceLines(1, 1, []);
+
+        Assert.Equal(["one", "three"], view.LineStrings);
+    }
+
+    [Fact]
+    public void ReplaceLines_is_undone_in_one_step_with_the_cursor_where_it_was()
+    {
+        var view = View("one", "two", "three", "four");
+        view.InsertionPoint = new Point(2, 3);
+
+        view.ReplaceLines(1, 2, ["TWO", "THREE", "AND A HALF"]);
+        Assert.Equal(["one", "TWO", "THREE", "AND A HALF", "four"], view.LineStrings);
+
+        view.Undo();
+
+        Assert.Equal(["one", "two", "three", "four"], view.LineStrings);
+        Assert.Equal(new Point(2, 3), view.InsertionPoint);
+    }
+
     private static EditorTextView View(params string[] lines)
     {
         var view = new EditorTextView { Width = 80, Height = 10, Text = string.Join("\n", lines) };

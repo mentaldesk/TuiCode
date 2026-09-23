@@ -39,6 +39,7 @@ public sealed class DiffTab : FrameView
     private List<DraftComment> _placedDrafts = [];
     private int _top;
     private int _current;
+    private (int Start, int End)? _reverted;
     private int _column;
     private int? _widest;
 
@@ -121,6 +122,9 @@ public sealed class DiffTab : FrameView
 
     /// <summary>Which file of a review this diff shows (#181); null when it was opened any other way.</summary>
     public ReviewSpot? Review { get; set; }
+
+    /// <summary>Whether a change can be reverted into the buffer (#245); only compare-to-saved so far.</summary>
+    public bool CanRevert { get; set; }
 
     public AlignedDiff Diff { get; private set; }
 
@@ -247,6 +251,21 @@ public sealed class DiffTab : FrameView
     /// <summary>Puts the last change in view; false when there are none.</summary>
     public bool LastChange() => ShowChange(Diff.ChangeBlocks.LastOrDefault(-1));
 
+    /// <summary>
+    /// Replaces the current change's buffer lines with the left side's, as one undo step, and recomputes
+    /// the diff; the number of lines it touched, or null when there's nothing to revert here (#245).
+    /// </summary>
+    public int? RevertChange()
+    {
+        if (!CanRevert || Source is not { } source || CurrentChange == 0) return null;
+
+        var block = Diff.Block(Diff.ChangeBlocks[CurrentChange - 1]);
+        source.ReplaceLines(block.RightStart, block.RightCount, [.. _left.Skip(block.LeftStart).Take(block.LeftCount)]);
+        Refresh();
+        _reverted = (block.RightStart, block.RightStart + block.LeftCount);
+        return Math.Max(block.LeftCount, block.RightCount);
+    }
+
     /// <summary>Scrolls both sides sideways by one column, or by a quarter of the narrower side.</summary>
     public bool ScrollSideways(int direction, bool page = false) =>
         ScrollSidewaysTo(_column + direction * (page ? LargeSidewaysStep : 1));
@@ -254,6 +273,7 @@ public sealed class DiffTab : FrameView
     private bool ShowChange(int start)
     {
         if (start < 0) return false;
+        _reverted = null;
         // Change blocks count rows of the diff; comment rows (#186, #188) sit between them and are stepped over.
         _current = Math.Max(0, _rows.FindIndex(r => r.Diff == start && !r.IsComment));
         ScrollTo(_current - ChangeContext);
@@ -265,6 +285,7 @@ public sealed class DiffTab : FrameView
     /// <summary>Re-read both sides and recompute the diff.</summary>
     public void Refresh()
     {
+        _reverted = null;
         _left = _readLeft();
         _right = Source is { } source ? [.. source.SnapshotLines] : [];
         Diff = AlignedDiff.Compute(_left, _right, MaxEdits);
@@ -392,6 +413,7 @@ public sealed class DiffTab : FrameView
         var digits = Digits;
 
         var current = GetAttributeForRole(VisualRole.Focus);
+        var reverted = normal with { Background = current.Background };
         var header = normal with { Style = normal.Style | TextStyle.Bold };
         PrepareSyntax();
         DrawText(0, 0, leftWidth, " " + LeftLabel, header);
@@ -412,12 +434,16 @@ public sealed class DiffTab : FrameView
             DiffRow? row = index < _rows.Count ? Diff.Rows[_rows[index].Diff] : null;
             var changed = row?.Kind is DiffRowKind.Modified or DiffRowKind.LeftOnly or DiffRowKind.RightOnly;
             Attribute? marked = row is not null && index == _current ? current : null;
-            DrawSide(0, y, leftWidth, row?.Left, _left, LeftTokens, digits, changed ? '-' : ' ', changed ? removed : normal, normal, marked);
+            var tinted = IsReverted(row) ? reverted : normal;
+            DrawSide(0, y, leftWidth, row?.Left, _left, LeftTokens, digits, changed ? '-' : ' ', changed ? removed : tinted, normal, marked);
             DrawSeparator(leftWidth, y, normal);
-            DrawSide(rightX, y, rightWidth, row?.Right, _right, RightTokens, digits, changed ? '+' : ' ', changed ? inserted : normal, normal, marked);
+            DrawSide(rightX, y, rightWidth, row?.Right, _right, RightTokens, digits, changed ? '+' : ' ', changed ? inserted : tinted, normal, marked);
         }
         return true;
     }
+
+    private bool IsReverted(DiffRow? row) =>
+        _reverted is { } range && row?.Right is { } right && right >= range.Start && right < range.End;
 
     private void PrepareSyntax()
     {

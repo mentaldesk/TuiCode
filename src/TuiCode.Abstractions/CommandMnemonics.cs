@@ -53,6 +53,7 @@ public static class CommandMnemonics
             [CommandIds.CompareToSaved] = "cts",
             [CommandIds.NextChange] = "nc",
             [CommandIds.PreviousChange] = "pc",
+            [CommandIds.RevertChange] = "rc",
             [CommandIds.CompareToRevision] = "ctr",
             [CommandIds.CompareToOtherFile] = "cto",
             [CommandIds.ToggleSidebar] = "ts",

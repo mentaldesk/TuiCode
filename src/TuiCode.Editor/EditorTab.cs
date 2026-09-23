@@ -224,6 +224,9 @@ public sealed class EditorTab : FrameView
 
     public void DuplicateLines(LineDirection direction) => _textView.DuplicateLines(direction);
 
+    /// <summary>Replaces <paramref name="count"/> lines from <paramref name="start"/> with <paramref name="lines"/>, as one undo step (#245).</summary>
+    public void ReplaceLines(int start, int count, IReadOnlyList<string> lines) => _textView.ReplaceLines(start, count, lines);
+
     public bool HasSecondaryCursors => _textView.HasSecondaryCarets;
 
     /// <summary>Whether extending the selection sweeps a rectangle rather than a run of text (#114).</summary>
