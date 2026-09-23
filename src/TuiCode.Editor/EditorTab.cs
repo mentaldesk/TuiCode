@@ -157,6 +157,22 @@ public sealed class EditorTab : FrameView
         _textView.InsertionPoint = new System.Drawing.Point(col, row);
     }
 
+    public int TopRow => _textView.Viewport.Y;
+
+    public int VisibleRows => _textView.Viewport.Height;
+
+    /// <summary>
+    /// Scroll so the cursor's line sits in the middle of the view, without scrolling either end of
+    /// the file out of view: a jump lands in the middle rather than at the edge it scrolled in from.
+    /// </summary>
+    public void CenterOnCursor()
+    {
+        var height = _textView.Viewport.Height;
+        if (height <= 0) return;
+        var top = Math.Clamp(CursorRow - height / 2, 0, Math.Max(_textView.Lines - height, 0));
+        _textView.ScrollTo(new System.Drawing.Point(_textView.Viewport.X, top));
+    }
+
     /// <summary>
     /// The buffer's lines as the editor models them (terminators excluded). Columns in a
     /// <see cref="TextMatch"/> computed against these line up with <see cref="Select"/> / <see cref="Replace"/>.

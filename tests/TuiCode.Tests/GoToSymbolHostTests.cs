@@ -181,6 +181,29 @@ public class GoToSymbolHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Jumping_to_a_symbol_below_the_fold_scrolls_it_to_the_middle_of_the_view()
+    {
+        const int filler = 400;
+        string[] padding = [.. Enumerable.Repeat("// filler", filler)];
+        _fs.AddFile("/work/Long.cs", new MockFileData(
+            string.Join('\n', [.. padding, "public class Middle { }", .. padding])));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Long.cs"); },
+            () => { commands.TryExecute(CommandIds.GoToSymbol); },
+            () => Picker(workbench) is { Scanned: true },
+            () => Picker(workbench)!.VisibleItems.SequenceEqual(["Middle"]),
+            () => host.App.InjectKey(Key.Enter),
+            () => Picker(workbench) is null);
+
+        var tab = Tab(workbench);
+        Assert.Equal(filler, tab.CursorRow);
+        Assert.Equal(tab.VisibleRows / 2, tab.CursorRow - tab.TopRow);
+    }
+
+    [Fact]
     public async Task A_second_gs_without_an_edit_opens_on_the_scan_the_first_one_finished()
     {
         using var workbench = BuildWorkbench();
