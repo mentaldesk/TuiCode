@@ -1,3 +1,4 @@
+using Terminal.Gui.Drawing;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
@@ -440,6 +441,34 @@ public class FocusHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.F.WithCtrl),
             () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is not null,
             () => bar!.Query == "two");
+    }
+
+    // A terminal can hide the cursor, so the bar has to name the field the keys are in some other way too.
+    [Fact]
+    public async Task The_find_bar_names_the_field_the_keys_are_in()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        FindBarView? bar = null;
+        var onOpen = (Query: false, Replace: false);
+        var afterTab = (Query: false, Replace: false);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.H.WithCtrl),
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault())?.ReplaceVisible == true,
+            () =>
+            {
+                onOpen = (bar!.MarksAsFocused(replace: false), bar.MarksAsFocused(replace: true));
+                host.App.InjectKey(Key.Tab);
+            },
+            () => bar!.ReplacementHasFocus,
+            () => { afterTab = (bar!.MarksAsFocused(replace: false), bar.MarksAsFocused(replace: true)); });
+
+        Assert.NotEqual(bar!.GetAttributeForRole(VisualRole.Normal), bar.GetAttributeForRole(VisualRole.Focus));
+        Assert.Equal((Query: true, Replace: false), onOpen);
+        Assert.Equal((Query: false, Replace: true), afterTab);
     }
 
     private Workbench.Workbench BuildWorkbench()

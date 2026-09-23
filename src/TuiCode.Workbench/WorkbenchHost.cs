@@ -311,7 +311,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
         _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
         _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ToggleSidebarTab(SidebarTab.Explorer));
-        _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleSidebarTab(SidebarTab.Find));
+        _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleFindPane(replace: false));
         _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", () => OpenFindPane(replace: true));
         // No default key (#180).
         _commands.Register(CommandIds.FocusReview, "Focus review", FocusReview);
@@ -586,8 +586,22 @@ public sealed class WorkbenchHost : IDisposable
         if (showing) _workbench.Sidebar.Review.Refresh();
     }
 
+    // Ctrl+Shift+F is also how you leave a replace behind: like the bar's Ctrl+F it shows the pane with only
+    // the find row, and hides the sidebar as the other sidebar shortcuts do once that's already what's showing.
+    private void ToggleFindPane(bool replace)
+    {
+        if (_workbench.IsSidebarVisible && _workbench.Sidebar.ActiveTab == SidebarTab.Find
+            && _workbench.Sidebar.Search.ReplaceVisible == replace)
+        {
+            ToggleSidebar();
+            return;
+        }
+        OpenFindPane(replace);
+    }
+
     private void OpenFindPane(bool replace)
     {
+        _workbench.Sidebar.Search.ShowReplace(replace);
         _workbench.Sidebar.ShowTab(SidebarTab.Find);
         FocusSidebar();
         if (replace) _workbench.Sidebar.Search.FocusReplacement();
