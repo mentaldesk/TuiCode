@@ -237,6 +237,20 @@ public class RevertChangeHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Ctrl_right_reverts_too_because_our_terminal_profiles_rewrite_alt_right_to_it()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => OpenThreeChanges(workbench, commands),
+            () => host.App.InjectKey(Key.CursorRight.WithCtrl));
+
+        Assert.Equal($"Reverted 1 line from saved  •  2 changes  •  {Keys}", workbench.StatusBar.DisplayedText);
+        Assert.Equal("line 5", workbench.Editor.Group.Tabs[0].Lines[4]);
+    }
+
+    [Fact]
     public async Task One_ctrl_z_in_the_editor_takes_the_whole_revert_back_with_the_cursor()
     {
         using var workbench = BuildWorkbench();
@@ -348,6 +362,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
                 host.ApplyKeybindings(
                 [
                     new KeybindingOverride(TestKeys.Chord("Alt+CursorRight"), "-" + CommandIds.RevertChange),
+                    new KeybindingOverride(TestKeys.Chord("Ctrl+CursorRight"), "-" + CommandIds.RevertChange),
                     new KeybindingOverride(TestKeys.Chord("F9"), CommandIds.RevertChange),
                 ]);
                 OpenThreeChanges(workbench, commands);

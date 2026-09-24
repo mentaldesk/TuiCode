@@ -531,6 +531,9 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Alt+CursorUp", CommandIds.PreviousChange);
         keybindings.Bind("Enter", CommandIds.GoToChangeLine);
         keybindings.Bind("Alt+CursorRight", CommandIds.RevertChange);
+        // Our terminal profiles send Alt+Right as Ctrl+Right, so macOS keeps word-wise movement
+        // (Iterm2Integration, WezTermIntegration).
+        keybindings.Bind("Ctrl+CursorRight", CommandIds.RevertChange);
         keybindings.Bind("CursorLeft", CommandIds.ScrollDiffLeft);
         keybindings.Bind("CursorRight", CommandIds.ScrollDiffRight);
         keybindings.Bind("Shift+CursorLeft", CommandIds.ScrollDiffPageLeft);
