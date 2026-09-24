@@ -78,13 +78,25 @@ public class DiffRevertTests
     }
 
     [Fact]
-    public void Revert_above_the_first_change_does_nothing()
+    public void Revert_above_the_first_change_takes_the_first_one_and_shows_it()
     {
         using var group = new EditorGroup();
-        var (tab, diff) = Compare(group, "one\ntwo\nthree", "one\nTWO\nthree");
+        var (tab, diff) = Compare(group, "one\ntwo\nthree\nfour", "one\nTWO\nthree\nFOUR");
+
+        Assert.Equal(1, diff.RevertChange());
+        Assert.Equal(["one", "two", "three", "FOUR"], tab.Lines);
+        Assert.Equal(1, diff.CurrentRow);
+    }
+
+    [Fact]
+    public void Revert_with_nothing_left_to_revert_does_nothing()
+    {
+        using var group = new EditorGroup();
+        var (tab, diff) = Compare(group, "one\ntwo", "one\nTWO");
+        diff.RevertChange();
 
         Assert.Null(diff.RevertChange());
-        Assert.Equal(["one", "TWO", "three"], tab.Lines);
+        Assert.Equal(["one", "two"], tab.Lines);
     }
 
     [Fact]
@@ -202,7 +214,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
 
-        var descriptor = Assert.Single(commands.Registered.Where(c => c.Id == CommandIds.RevertChange));
+        var descriptor = Assert.Single(commands.Registered, c => c.Id == CommandIds.RevertChange);
         Assert.Equal(("Revert change", CommandScope.Diff), (descriptor.Label, descriptor.Scope));
         Assert.Equal("rc", CommandMnemonics.For(CommandIds.RevertChange));
     }
@@ -270,7 +282,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Rc_above_the_first_change_says_so_and_leaves_the_buffer_alone()
+    public async Task Rc_on_a_freshly_opened_diff_reverts_its_first_change()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -279,8 +291,29 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => OpenThreeChanges(workbench, commands),
             () => host.App.InjectKey(Key.CursorRight.WithAlt));
 
-        Assert.Equal($"No change here — Alt+↓ for the next one  •  3 changes  •  {Keys}", workbench.StatusBar.DisplayedText);
-        Assert.Equal("LINE 5", workbench.Editor.Group.Tabs[0].Lines[4]);
+        Assert.Equal($"Reverted 1 line from saved  •  2 changes  •  {Keys}", workbench.StatusBar.DisplayedText);
+        Assert.Equal("line 5", workbench.Editor.Group.Tabs[0].Lines[4]);
+    }
+
+    [Fact]
+    public async Task Rc_in_a_diff_it_does_not_cover_says_what_it_needs()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("alpha\nbravo"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                workbench.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+                var tab = workbench.Editor.Group.ActiveTab!;
+                tab.Content = "alpha\nBRAVO";
+                workbench.Editor.Group.Compare(tab, "HEAD", () => ["alpha", "bravo"]);
+            },
+            () => host.App.InjectKey(Key.CursorRight.WithAlt));
+
+        Assert.StartsWith("Revert needs a diff against saved, not HEAD", workbench.StatusBar.DisplayedText);
+        Assert.Equal("BRAVO", workbench.Editor.Group.Tabs[0].Lines[1]);
     }
 
     [Fact]
@@ -297,7 +330,6 @@ public class RevertChangeHostTests : StaticConfigurationTest
                 workbench.Editor.Group.ActiveTab!.Content = "alpha\nBRAVO";
                 commands.TryExecute(CommandIds.CompareToSaved);
             },
-            () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.CursorRight.WithAlt),
             () => host.App.InjectKey(Key.CursorRight.WithAlt));
 

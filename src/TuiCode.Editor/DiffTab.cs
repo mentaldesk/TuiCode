@@ -253,11 +253,13 @@ public sealed class DiffTab : FrameView
 
     /// <summary>
     /// Replaces the current change's buffer lines with the left side's, as one undo step, and recomputes
-    /// the diff; the number of lines it touched, or null when there's nothing to revert here (#245).
+    /// the diff; the number of lines it touched, or null when this diff has nothing to revert (#245).
+    /// A freshly opened diff sits above the first change, so from there it takes that one.
     /// </summary>
     public int? RevertChange()
     {
-        if (!CanRevert || Source is not { } source || CurrentChange == 0) return null;
+        if (!CanRevert || Source is not { } source) return null;
+        if (CurrentChange == 0 && !FirstChange()) return null;
 
         var block = Diff.Block(Diff.ChangeBlocks[CurrentChange - 1]);
         source.ReplaceLines(block.RightStart, block.RightCount, [.. _left.Skip(block.LeftStart).Take(block.LeftCount)]);

@@ -1324,15 +1324,15 @@ public sealed class WorkbenchHost : IDisposable
     /// </summary>
     private void RevertChange()
     {
-        if (_workbench.Editor.Group.ActiveDiffTab is not { CanRevert: true } diff) return;
-        if (diff.Diff.ChangeBlocks.Count == 0)
+        if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
+        if (!diff.CanRevert)
         {
-            _workbench.StatusBar.SetMessage("No changes");
+            _workbench.StatusBar.SetMessage($"Revert needs a diff against saved, not {diff.LeftLabel}");
             return;
         }
         if (diff.RevertChange() is not { } lines)
         {
-            _workbench.StatusBar.SetMessage("No change here — Alt+↓ for the next one");
+            _workbench.StatusBar.SetMessage("No changes");
             return;
         }
         var undo = lines > LargeRevert ? " — Ctrl+Z to undo" : string.Empty;
