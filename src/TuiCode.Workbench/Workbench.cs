@@ -91,6 +91,9 @@ public sealed class Workbench : Window
     /// <summary>The diff tab's keys, e.g. <c>Alt+↓ next  Alt+↑ prev</c>, from the live bindings.</summary>
     public string DiffKeysHint { get; set; } = string.Empty;
 
+    /// <summary>The same keys for a deleted file's diff, where the revert key restores the file instead (#247).</summary>
+    public string DeletedDiffKeysHint { get; set; } = string.Empty;
+
     /// <summary>Show the active tab's cursor position and selection; the host calls this every main-loop iteration.</summary>
     public void ShowCursorPosition()
     {
@@ -98,7 +101,7 @@ public sealed class Workbench : Window
         StatusBar.SetPosition(tab is null ? null : (tab.CursorRow, tab.CursorColumn));
         StatusBar.SetSelection(tab?.CaretCount ?? 1, tab?.CountSelection()?.Characters);
         StatusBar.SetDiffStatus(Editor.Group.ActiveDiffTab is { IsFocused: true } diff
-            ? string.Join("  •  ", new[] { diff.Review?.Label, diff.ChangeStatus, DiffKeysHint }.Where(part => !string.IsNullOrEmpty(part)))
+            ? string.Join("  •  ", new[] { diff.Review?.Label, diff.ChangeStatus, diff.IsDeleted ? DeletedDiffKeysHint : DiffKeysHint }.Where(part => !string.IsNullOrEmpty(part)))
             : null);
     }
 

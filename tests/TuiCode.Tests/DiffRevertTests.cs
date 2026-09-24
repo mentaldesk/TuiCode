@@ -5,8 +5,10 @@ using Terminal.Gui.ViewBase;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
+using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Tests;
@@ -386,5 +388,195 @@ public class RevertChangeHostTests : StaticConfigurationTest
         commands = new CommandService();
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+    }
+}
+
+// Restoring a file this branch deleted (#247): `rc` in a deleted file's diff (#182).
+public class RestoreDeletedFileTests
+{
+    private readonly MockFileSystem _fs = new();
+
+    public RestoreDeletedFileTests() => _fs.AddDirectory("/work");
+
+    [Fact]
+    public void Restore_opens_the_base_version_as_a_dirty_tab_and_writes_nothing()
+    {
+        using var group = new EditorGroup();
+
+        var tab = group.Restore(_fs.FileInfo.New("/work/gone.txt"), ["gone1", "gone2"]);
+
+        Assert.Same(tab, group.ActiveTab);
+        Assert.Equal(["gone1", "gone2"], tab.Lines);
+        Assert.True(tab.IsDirty);
+        Assert.False(_fs.File.Exists("/work/gone.txt"));
+    }
+
+    [Fact]
+    public void Saving_a_restored_tab_writes_the_base_content_back()
+    {
+        using var group = new EditorGroup();
+        group.Restore(_fs.FileInfo.New("/work/gone.txt"), DiffTab.SplitLines("gone1\ngone2\n"));
+
+        group.SaveActive();
+
+        Assert.Equal("gone1\ngone2\n", _fs.File.ReadAllText("/work/gone.txt"));
+    }
+
+    [Fact]
+    public void Closing_a_restored_tab_without_saving_leaves_the_file_deleted()
+    {
+        using var group = new EditorGroup();
+        group.Restore(_fs.FileInfo.New("/work/gone.txt"), ["gone1"]);
+
+        group.CloseActive();
+
+        Assert.Empty(group.Tabs);
+        Assert.False(_fs.File.Exists("/work/gone.txt"));
+    }
+
+    [Fact]
+    public void A_restored_tab_takes_its_grammar_from_the_file_name()
+    {
+        using var group = new EditorGroup(new SyntaxHighlighter(GrammarBundle.Load()));
+
+        var tab = group.Restore(_fs.FileInfo.New("/work/gone.json"), ["{}"]);
+
+        Assert.Equal("json", tab.Grammar?.Id);
+    }
+
+    [Fact]
+    public void Restoring_the_same_file_twice_focuses_the_tab_already_open()
+    {
+        using var group = new EditorGroup();
+        _fs.AddFile("/work/a.txt", new MockFileData("a"));
+        var file = _fs.FileInfo.New("/work/gone.txt");
+        var first = group.Restore(file, ["gone1"]);
+        first.Content = "edited";
+        group.OpenOrFocus(_fs.FileInfo.New("/work/a.txt"));
+
+        var second = group.Restore(file, ["gone1"]);
+
+        Assert.Same(first, second);
+        Assert.Same(first, group.ActiveTab);
+        Assert.Equal(["edited"], second.Lines);
+    }
+}
+
+// Drives `rc` on a deleted file's diff through the host, from the Review tab. Boots a TG Application — serialised (#77).
+public class RestoreDeletedHostTests : StaticConfigurationTest
+{
+    private readonly MockFileSystem _fs = new();
+    private readonly FakeGitCli _git = new();
+
+    public RestoreDeletedHostTests()
+    {
+        _fs.AddFile("/work/src/a.txt", new MockFileData("alpha\n"));
+        _git.Root = _fs.Path.GetFullPath("/work");
+        _git.Changes = [new GitChange(GitChangeKind.Deleted, "src/gone.txt")];
+        _git.RepoFiles["b45e:src/gone.txt"] = "gone1\ngone2\n";
+    }
+
+    [Fact]
+    public async Task Ctrl_r_brings_the_deleted_file_back_as_an_unsaved_tab()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.R.WithCtrl),
+            () => group.ActiveTab is not null);
+
+        var tab = Assert.Single(group.Tabs);
+        Assert.Equal(_fs.Path.GetFullPath("/work/src/gone.txt"), tab.File.FullName);
+        Assert.Equal(["gone1", "gone2"], tab.Lines.Take(2));
+        Assert.True(tab.IsDirty);
+        Assert.False(_fs.File.Exists("/work/src/gone.txt"));
+        Assert.Equal("gone.txt restored — Ctrl+S to write it back", workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task Ctrl_s_after_the_restore_writes_the_base_content_back()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.R.WithCtrl),
+            () => group.ActiveTab is not null,
+            () => host.App.InjectKey(Key.S.WithCtrl),
+            () => !group.ActiveTab!.IsDirty);
+
+        Assert.Equal("gone1\ngone2\n", _fs.File.ReadAllText("/work/src/gone.txt"));
+    }
+
+    [Fact]
+    public async Task The_hint_bar_for_a_deleted_file_says_restore_rather_than_revert()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+
+        await HostSteps.Run(host,
+            () => host.ApplyKeybindings(
+            [
+                new KeybindingOverride(TestKeys.Chord("Ctrl+R"), "-" + CommandIds.RevertChange),
+                new KeybindingOverride(TestKeys.Chord("F9"), CommandIds.RevertChange),
+            ]),
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true },
+            () => workbench.StatusBar.DisplayedText.Contains("restore", StringComparison.Ordinal));
+
+        Assert.EndsWith("Alt+↓ next  Alt+↑ prev  F9 restore  Enter go to line", workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task A_second_ctrl_r_focuses_the_tab_it_already_opened()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.R.WithCtrl),
+            () => group.ActiveTab is not null,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.R.WithCtrl),
+            () => group.ActiveTab is not null);
+
+        Assert.Single(group.Tabs);
+    }
+
+    private Workbench.Workbench BuildWorkbench()
+    {
+        var sidebar = new SidebarPart(new FileExplorerView(), review: new ReviewView(_git, new FakeGitHubCli()));
+        var workbench = new Workbench.Workbench(sidebar, new EditorPart(), new StatusBarPart());
+        workbench.Sidebar.Explorer.Open(_fs.DirectoryInfo.New("/work"));
+        return workbench;
+    }
+
+    private WorkbenchHost BuildHost(Workbench.Workbench workbench, out CommandService commands)
+    {
+        commands = new CommandService();
+        return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git);
     }
 }

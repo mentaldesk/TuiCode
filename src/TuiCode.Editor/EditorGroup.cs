@@ -161,6 +161,14 @@ public sealed class EditorGroup : Tabs
         return tab;
     }
 
+    /// <summary>
+    /// Opens <paramref name="lines"/> as an unsaved tab at <paramref name="file"/>'s path — the base version of a
+    /// file this branch deleted (#247). Nothing is written; Ctrl+S is what puts the file back. An open tab for
+    /// that path is focused instead.
+    /// </summary>
+    public EditorTab Restore(IFileInfo file, IReadOnlyList<string> lines) =>
+        Focus(file.FullName) ?? Track(EditorTab.Unsaved(file, string.Join('\n', lines), _syntax));
+
     /// <summary>Focuses an open deleted-file diff (#182); null when there is none.</summary>
     public DiffTab? FocusDeletedDiff(IFileInfo file, string key)
     {
