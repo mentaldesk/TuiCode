@@ -143,22 +143,6 @@ public class RevertSourcesHostTests : StaticConfigurationTest
         Assert.Equal("Change 1 of 1", group.ActiveDiffTab!.ChangeStatus);
     }
 
-    [Fact]
-    public async Task Rc_in_a_deleted_file_s_diff_says_there_is_no_buffer_to_revert_into()
-    {
-        _git.RepoFiles[$"{_git.MergeBase}:gone.txt"] = "g1\ng2";
-        _git.Changes = [new GitChange(GitChangeKind.Deleted, "gone.txt")];
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands);
-
-        await HostSteps.Run(host,
-            [.. OpenReviewDiff(host, commands, workbench), () => host.App.InjectKey(Key.R.WithCtrl)]);
-
-        Assert.True(workbench.Editor.Group.ActiveDiffTab!.IsDeleted);
-        Assert.StartsWith("gone.txt is deleted in this branch", workbench.StatusBar.DisplayedText);
-        Assert.Empty(workbench.Editor.Group.Tabs);
-    }
-
     // Adds a file the branch changes: its working-tree content on disk, its base content in git.
     private void Review(string path, string branch, string @base)
     {

@@ -427,11 +427,14 @@ public sealed class WorkbenchHost : IDisposable
 
         var help = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ShowHelp);
         _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
-        _workbench.DiffKeysHint = string.Join("  ", new[]
+        _workbench.DiffKeysHint = DiffKeys("revert");
+        _workbench.DeletedDiffKeysHint = DiffKeys("restore");
+
+        string DiffKeys(string revert) => string.Join("  ", new[]
         {
             KeyHint(CommandIds.NextChange, "next"),
             KeyHint(CommandIds.PreviousChange, "prev"),
-            KeyHint(CommandIds.RevertChange, "revert"),
+            KeyHint(CommandIds.RevertChange, revert),
             KeyHint(CommandIds.GoToChangeLine, "go to line"),
         }.OfType<string>());
     }
@@ -1351,7 +1354,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
         if (diff.IsDeleted)
         {
-            _workbench.StatusBar.SetMessage($"{diff.File.Name} is deleted in this branch — there's no buffer to revert into");
+            RestoreDeleted(diff);
             return;
         }
         if (diff.RevertChange() is not { } lines)
@@ -1361,6 +1364,17 @@ public sealed class WorkbenchHost : IDisposable
         }
         var undo = lines > LargeRevert ? " — Ctrl+Z to undo" : string.Empty;
         _workbench.StatusBar.SetMessage($"Reverted {lines:N0} line{(lines == 1 ? string.Empty : "s")} from {diff.LeftLabel}{undo}");
+    }
+
+    /// <summary>
+    /// Brings back a file this branch deleted (#247): its base version as an unsaved tab at that path. There's no
+    /// buffer to revert into, so this is the file-level version of the same rule — nothing is written until Ctrl+S.
+    /// </summary>
+    private void RestoreDeleted(DiffTab diff)
+    {
+        _workbench.Editor.Group.Restore(diff.File, diff.LeftLines);
+        FocusEditorBody();
+        _workbench.StatusBar.SetMessage($"{diff.File.Name} restored — Ctrl+S to write it back");
     }
 
     private void CompareToRevision()

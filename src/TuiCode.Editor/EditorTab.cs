@@ -52,12 +52,24 @@ public sealed class EditorTab : FrameView
     public event EventHandler? GrammarChanged;
 
     public EditorTab(IFileInfo file, SyntaxHighlighter? syntax = null)
+        : this(file, syntax, null)
+    {
+    }
+
+    /// <summary>
+    /// A tab holding <paramref name="content"/> at <paramref name="file"/>'s path, dirty from the start and
+    /// nothing on disk yet — the base version of a file this branch deleted (#247). Ctrl+S writes it back.
+    /// </summary>
+    internal static EditorTab Unsaved(IFileInfo file, string content, SyntaxHighlighter? syntax = null) =>
+        new(file, syntax, content);
+
+    private EditorTab(IFileInfo file, SyntaxHighlighter? syntax, string? unsaved)
     {
         File = file;
         _syntax = syntax;
         BorderStyle = LineStyle.None;
 
-        var initial = file.FileSystem.File.ReadAllText(file.FullName);
+        var initial = unsaved ?? file.FileSystem.File.ReadAllText(file.FullName);
         _eol = DetectEol(initial);
 
         _textView = new EditorTextView
@@ -80,6 +92,7 @@ public sealed class EditorTab : FrameView
         };
         Add(_gutter, _textView);
 
+        _dirty = unsaved is not null;
         UpdateTitle();
     }
 
