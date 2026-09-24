@@ -145,6 +145,25 @@ internal sealed partial class EditorTextView
         });
     }
 
+    /// <summary>Replaces <paramref name="count"/> lines from <paramref name="start"/> with <paramref name="lines"/>, as one undo step.</summary>
+    public void ReplaceLines(int start, int count, IReadOnlyList<string> lines)
+    {
+        if (ReadOnly) return;
+        var carets = Carets;
+        var model = ModelField.GetValue(this)!;
+        Edit(() =>
+        {
+            var shared = Math.Min(count, lines.Count);
+            for (var i = 0; i < shared; i++)
+                ReplaceLine(model, start + i, Cell.ToCellList(lines[i]));
+            for (var i = shared; i < count; i++)
+                RemoveLine(model, start + shared);
+            for (var i = shared; i < lines.Count; i++)
+                AddLine(model, start + i, Cell.ToCellList(lines[i]));
+            return carets;
+        });
+    }
+
     private static Caret Shift(Caret caret, int rows) => caret with
     {
         Position = caret.Position with { Y = caret.Position.Y + rows },

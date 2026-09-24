@@ -39,6 +39,7 @@ public static class CommandIds
     public const string NextChange = "diff.action.nextChange";
     public const string PreviousChange = "diff.action.previousChange";
     public const string GoToChangeLine = "diff.action.goToLine";
+    public const string RevertChange = "diff.action.revertChange";
     public const string ScrollDiffLeft = "diff.action.scrollLeft";
     public const string ScrollDiffRight = "diff.action.scrollRight";
     public const string ScrollDiffPageLeft = "diff.action.scrollPageLeft";
