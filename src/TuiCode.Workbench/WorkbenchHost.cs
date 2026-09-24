@@ -1343,15 +1343,15 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     /// <summary>
-    /// Puts the current change's saved lines back into the buffer (#245). Nothing is written to disk:
-    /// the tab goes dirty and one Ctrl+Z in the editor takes the whole revert back.
+    /// Puts the current change's left-hand lines back into the buffer (#245, #246). Nothing is written
+    /// to disk: the tab goes dirty and one Ctrl+Z in the editor takes the whole revert back.
     /// </summary>
     private void RevertChange()
     {
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
-        if (!diff.CanRevert)
+        if (diff.IsDeleted)
         {
-            _workbench.StatusBar.SetMessage($"Revert needs a diff against saved, not {diff.LeftLabel}");
+            _workbench.StatusBar.SetMessage($"{diff.File.Name} is deleted in this branch — there's no buffer to revert into");
             return;
         }
         if (diff.RevertChange() is not { } lines)
