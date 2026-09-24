@@ -82,6 +82,7 @@ public sealed class WorkbenchHost : IDisposable
     private CommentView? _activeComment;
     private DraftComments? _draftComments;
     private bool _launchedFromExplorer;
+    private bool _sidebarDragging;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -155,6 +156,7 @@ public sealed class WorkbenchHost : IDisposable
         _find.HintChanged += (_, hint) => _workbench.StatusBar.SetHint(hint);
 
         _app.Keyboard.KeyDown += OnAppKeyDown;
+        _app.Mouse.MouseEvent += OnAppMouseEvent;
         // TG raises no event for most programmatic cursor moves (find, multi-caret, line moves), so poll.
         _app.Iteration += OnIteration;
         _keybindings.ChordChanged += OnChordChanged;
@@ -279,6 +281,46 @@ public sealed class WorkbenchHost : IDisposable
             && TryHandleTabStripKey(key))
             key.Handled = true;
     }
+
+    // Handled here short-circuits App.RaiseMouseEvent before any view sees the event, which is what keeps
+    // the drag off the editor's cursor, the trees' selection and focus (#252, and see AGENTS.md).
+    private void OnAppMouseEvent(object? sender, Mouse mouse)
+    {
+        if (_sidebarDragging)
+        {
+            if (mouse.Flags.HasFlag(MouseFlags.LeftButtonReleased))
+            {
+                _sidebarDragging = false;
+                ReportSidebarWidth(DragSidebarTo(mouse.ScreenPosition.X));
+            }
+            else if (mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed))
+            {
+                DragSidebarTo(mouse.ScreenPosition.X);
+            }
+            else
+            {
+                // The button went up out of sight; drop the drag rather than fold the next press into it.
+                _sidebarDragging = false;
+                return;
+            }
+            mouse.Handled = true;
+            return;
+        }
+
+        if (!mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed) || !StartsSidebarDrag(mouse)) return;
+        _sidebarDragging = true;
+        mouse.Handled = true;
+    }
+
+    // TG reports the deepest view under the pointer, so requiring the sidebar's own border also rules
+    // out a modal covering that column.
+    private bool StartsSidebarDrag(Mouse mouse) =>
+        mouse.View is AdornmentView { Adornment: { } adornment }
+        && ReferenceEquals(adornment.Parent, _workbench.Sidebar)
+        && _workbench.IsOnSidebarBorder(mouse.ScreenPosition.X);
+
+    private int DragSidebarTo(int column) =>
+        _workbench.ResizeSidebarTo(_workbench.SidebarWidthForBorderAt(column));
 
     private Key NormalizeWindowsCtrlEnter(Key key) =>
         _environment.IsWindows && key.KeyCode == WindowsCtrlLineFeed ? new Key(CtrlEnter) : key;
@@ -573,7 +615,11 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var width = _workbench.NudgeSidebarWidth(columns);
+        ReportSidebarWidth(_workbench.NudgeSidebarWidth(columns));
+    }
+
+    private void ReportSidebarWidth(int width)
+    {
         _settings.SidebarWidth = width;
         _settings.Save();
         _workbench.StatusBar.SetMessage($"Sidebar width: {width}{LimitSuffix(width)}");
@@ -2209,6 +2255,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_disposed) return;
         _disposed = true;
         _app.Keyboard.KeyDown -= OnAppKeyDown;
+        _app.Mouse.MouseEvent -= OnAppMouseEvent;
         _app.Iteration -= OnIteration;
         _keybindings.ChordChanged -= OnChordChanged;
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
