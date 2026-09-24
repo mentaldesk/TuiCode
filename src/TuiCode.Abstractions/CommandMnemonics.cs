@@ -54,6 +54,7 @@ public static class CommandMnemonics
             [CommandIds.NextChange] = "nc",
             [CommandIds.PreviousChange] = "pc",
             [CommandIds.RevertChange] = "rc",
+            [CommandIds.RevertAllChanges] = "ra",
             [CommandIds.CompareToRevision] = "ctr",
             [CommandIds.CompareToOtherFile] = "cto",
             [CommandIds.ToggleSidebar] = "ts",

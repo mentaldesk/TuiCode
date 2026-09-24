@@ -268,6 +268,24 @@ public sealed class DiffTab : FrameView
         return Math.Max(block.LeftCount, block.RightCount);
     }
 
+    /// <summary>The changes a revert would work through, the diff as it was last computed.</summary>
+    public int ChangeCount => Diff.ChangeBlocks.Count;
+
+    /// <summary>
+    /// Puts the whole of the left side back into the buffer as one undo step, and recomputes the diff;
+    /// the number of changes it threw away, or null when this diff has nothing to revert (#248).
+    /// </summary>
+    public int? RevertAll()
+    {
+        if (Source is not { } source) return null;
+        if (ChangeCount == 0) return null;
+
+        var changes = ChangeCount;
+        source.ReplaceLines(0, source.Lines.Count, _left);
+        Refresh();
+        return changes;
+    }
+
     /// <summary>Scrolls both sides sideways by one column, or by a quarter of the narrower side.</summary>
     public bool ScrollSideways(int direction, bool page = false) =>
         ScrollSidewaysTo(_column + direction * (page ? LargeSidewaysStep : 1));
