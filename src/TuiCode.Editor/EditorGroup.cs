@@ -124,12 +124,8 @@ public sealed class EditorGroup : Tabs
     }
 
     /// <summary>Returns null, opening nothing, when the buffer matches the file on disk.</summary>
-    public DiffTab? CompareToSaved(EditorTab source)
-    {
-        var tab = Compare(source, "saved", () => DiffTab.ReadLines(source.File));
-        if (tab is not null) tab.CanRevert = true;
-        return tab;
-    }
+    public DiffTab? CompareToSaved(EditorTab source) =>
+        Compare(source, "saved", () => DiffTab.ReadLines(source.File));
 
     /// <summary>Opens or focuses the diff of <paramref name="readLeft"/> against the buffer; null, opening nothing, when they match.</summary>
     public DiffTab? Compare(EditorTab source, string label, Func<IReadOnlyList<string>> readLeft, string? key = null)

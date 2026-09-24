@@ -123,9 +123,6 @@ public sealed class DiffTab : FrameView
     /// <summary>Which file of a review this diff shows (#181); null when it was opened any other way.</summary>
     public ReviewSpot? Review { get; set; }
 
-    /// <summary>Whether a change can be reverted into the buffer (#245); only compare-to-saved so far.</summary>
-    public bool CanRevert { get; set; }
-
     /// <summary>The version on the left; for a deleted file (#182) it's what restoring it brings back (#247).</summary>
     public IReadOnlyList<string> LeftLines => _left;
 
@@ -261,7 +258,7 @@ public sealed class DiffTab : FrameView
     /// </summary>
     public int? RevertChange()
     {
-        if (!CanRevert || Source is not { } source) return null;
+        if (Source is not { } source) return null;
         if (CurrentChange == 0 && !FirstChange()) return null;
 
         var block = Diff.Block(Diff.ChangeBlocks[CurrentChange - 1]);

@@ -13,7 +13,7 @@ using TuiCode.Workbench.Services;
 
 namespace TuiCode.Tests;
 
-// Revert change (`rc`) in a compare-to-saved diff (#245).
+// Revert change (`rc`) against the lines on a diff's left side (#245).
 public class DiffRevertTests
 {
     private readonly MockFileSystem _fs = new();
@@ -102,17 +102,16 @@ public class DiffRevertTests
     }
 
     [Fact]
-    public void Revert_does_nothing_in_a_diff_this_slice_does_not_cover()
+    public void Revert_in_a_diff_against_a_revision_takes_that_revision_s_lines()
     {
         using var group = new EditorGroup();
-        _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));
+        _fs.AddFile("/work/a.txt", new MockFileData("one\nTWO"));
         var tab = group.OpenOrFocus(_fs.FileInfo.New("/work/a.txt"));
-        tab.Content = "one\nTWO";
         var diff = group.Compare(tab, "HEAD", () => ["one", "two"])!;
         diff.NextChange();
 
-        Assert.Null(diff.RevertChange());
-        Assert.Equal(["one", "TWO"], tab.Lines);
+        Assert.Equal(1, diff.RevertChange());
+        Assert.Equal(["one", "two"], tab.Lines);
     }
 
     [Fact]
@@ -182,7 +181,6 @@ public class DiffRevertDrawTests : StaticConfigurationTest
             App = _app,
             Width = 31,
             Height = 7,
-            CanRevert = true,
         };
         diff.BeginInit();
         diff.EndInit();
@@ -295,27 +293,6 @@ public class RevertChangeHostTests : StaticConfigurationTest
 
         Assert.Equal($"Reverted 1 line from saved  •  2 changes  •  {Keys}", workbench.StatusBar.DisplayedText);
         Assert.Equal("line 5", workbench.Editor.Group.Tabs[0].Lines[4]);
-    }
-
-    [Fact]
-    public async Task Rc_in_a_diff_it_does_not_cover_says_what_it_needs()
-    {
-        _fs.AddFile("/work/a.txt", new MockFileData("alpha\nbravo"));
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out _);
-
-        await HostSteps.Run(host,
-            () =>
-            {
-                workbench.OpenFile(_fs.FileInfo.New("/work/a.txt"));
-                var tab = workbench.Editor.Group.ActiveTab!;
-                tab.Content = "alpha\nBRAVO";
-                workbench.Editor.Group.Compare(tab, "HEAD", () => ["alpha", "bravo"]);
-            },
-            () => host.App.InjectKey(Key.R.WithCtrl));
-
-        Assert.StartsWith("Revert needs a diff against saved, not HEAD", workbench.StatusBar.DisplayedText);
-        Assert.Equal("BRAVO", workbench.Editor.Group.Tabs[0].Lines[1]);
     }
 
     [Fact]
