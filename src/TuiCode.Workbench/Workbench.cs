@@ -16,6 +16,12 @@ public sealed class Workbench : Window
 
     public bool IsSidebarVisible { get; private set; } = true;
 
+    /// <summary>The width the user asked for (#209). A terminal too narrow for it clamps <see cref="DrawnSidebarWidth"/>, not this.</summary>
+    public int SidebarWidth { get; private set; } = SidebarSizing.Default;
+
+    /// <summary>The width actually laid out: <see cref="SidebarWidth"/> clamped to the terminal.</summary>
+    public int DrawnSidebarWidth { get; private set; } = SidebarSizing.Default;
+
     private readonly WorkspaceStateStore? _workspaceState;
 
     // Null while switching folders or shutting down, so closing the old folder's tabs isn't saved as its state.
@@ -33,7 +39,7 @@ public sealed class Workbench : Window
 
         sidebar.X = 0;
         sidebar.Y = 0;
-        sidebar.Width = 30;
+        sidebar.Width = SidebarSizing.Default;
         sidebar.Height = Dim.Fill(1);
 
         editor.X = Pos.Right(sidebar);
@@ -191,6 +197,37 @@ public sealed class Workbench : Window
     {
         if (disposing) _workspaceFolder = null;
         base.Dispose(disposing);
+    }
+
+    /// <summary>Records the width the user asked for and lays out as much of it as the terminal allows.</summary>
+    public void SetSidebarWidth(int width)
+    {
+        SidebarWidth = Math.Max(SidebarSizing.Min, width);
+        ApplyDrawnSidebarWidth();
+    }
+
+    /// <summary>Moves the width by <paramref name="columns"/> from what's on screen, clamped. Returns the new width.</summary>
+    public int NudgeSidebarWidth(int columns)
+    {
+        var width = SidebarSizing.Clamp(DrawnSidebarWidth + columns, Viewport.Width);
+        SetSidebarWidth(width);
+        return width;
+    }
+
+    protected override void OnSubViewsLaidOut(LayoutEventArgs args)
+    {
+        base.OnSubViewsLaidOut(args);
+        ApplyDrawnSidebarWidth();
+    }
+
+    private void ApplyDrawnSidebarWidth()
+    {
+        // Nothing to clamp against before the first layout, and the default would draw for a frame.
+        var width = Viewport.Width > 0 ? SidebarSizing.Clamp(SidebarWidth, Viewport.Width) : SidebarWidth;
+        if (width == DrawnSidebarWidth) return;
+        DrawnSidebarWidth = width;
+        Sidebar.Width = width;
+        SetNeedsLayout();
     }
 
     public void SetSidebarVisible(bool visible)

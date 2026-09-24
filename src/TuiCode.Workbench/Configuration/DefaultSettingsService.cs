@@ -87,6 +87,8 @@ public sealed class DefaultSettingsService : ISettingsService
 
     public EditorSettings Editor { get; set; } = EditorSettings.Default;
 
+    public int SidebarWidth { get; set; } = SidebarSizing.Default;
+
     public void Load()
     {
         ConfigurationManager.RuntimeConfig = BundledThemes.Config;
@@ -117,6 +119,8 @@ public sealed class DefaultSettingsService : ISettingsService
             root["LineEnding"] = Editor.LineEnding.ToString();
         if (Editor.InsertFinalNewline != defaults.InsertFinalNewline)
             root["InsertFinalNewline"] = Editor.InsertFinalNewline;
+        if (SidebarWidth != SidebarSizing.Default)
+            root["SidebarWidth"] = SidebarWidth;
 
         if (root.Count == 0)
         {
@@ -206,6 +210,10 @@ public sealed class DefaultSettingsService : ISettingsService
             LineEnding = ReadEnum(root, "LineEnding", defaults.LineEnding),
             InsertFinalNewline = Read(root, "InsertFinalNewline", defaults.InsertFinalNewline),
         };
+        // A width above the spinner's maximum is legitimate on a wide terminal, so only the floor is validated.
+        SidebarWidth = Read(root, "SidebarWidth", SidebarSizing.Default) is var width && width >= SidebarSizing.Min
+            ? width
+            : SidebarSizing.Default;
     }
 
     private static T Read<T>(JsonObject? root, string key, T fallback) =>

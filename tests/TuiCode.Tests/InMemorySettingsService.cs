@@ -33,6 +33,8 @@ internal sealed class InMemorySettingsService : ISettingsService
 
     public EditorSettings Editor { get; set; } = EditorSettings.Default;
 
+    public int SidebarWidth { get; set; } = SidebarSizing.Default;
+
     public int SaveCount { get; private set; }
     public void Save() => SaveCount++;
 

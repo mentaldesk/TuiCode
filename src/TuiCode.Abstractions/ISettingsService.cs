@@ -37,6 +37,12 @@ public interface ISettingsService
     /// <summary>Indentation and line endings (#14). Stages the change in memory; <see cref="Save"/> persists it.</summary>
     EditorSettings Editor { get; set; }
 
+    /// <summary>
+    /// Sidebar width in columns (#209) — what the user asked for, which a narrow terminal clamps
+    /// when drawing without overwriting. Stages the change in memory; <see cref="Save"/> persists it.
+    /// </summary>
+    int SidebarWidth { get; set; }
+
     /// <summary>Persist the current settings to disk, writing only values that differ from defaults.</summary>
     void Save();
 

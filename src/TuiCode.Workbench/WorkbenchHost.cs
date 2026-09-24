@@ -141,6 +141,7 @@ public sealed class WorkbenchHost : IDisposable
         RegisterDefaultCommands();
         ApplyKeybindings(_settings.KeybindingOverrides);
         _workbench.Editor.Group.Settings = _settings.Editor;
+        _workbench.SetSidebarWidth(_settings.SidebarWidth);
         ApplyTokenTheme();
         _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
 
@@ -314,6 +315,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.PreviousEditor, "Previous editor", () => _workbench.Editor.PreviousTab());
 
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
+        _commands.Register(CommandIds.WidenSidebar, "Widen sidebar", () => NudgeSidebar(SidebarSizing.Step));
+        _commands.Register(CommandIds.NarrowSidebar, "Narrow sidebar", () => NudgeSidebar(-SidebarSizing.Step));
         _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
         _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ToggleSidebarTab(SidebarTab.Explorer));
         _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleFindPane(replace: false));
@@ -558,6 +561,26 @@ public sealed class WorkbenchHost : IDisposable
             FocusEditorBody();
     }
 
+    private void NudgeSidebar(int columns)
+    {
+        if (!_workbench.IsSidebarVisible)
+        {
+            _workbench.StatusBar.SetMessage($"Sidebar is hidden — use {CommandMnemonics.For(CommandIds.ToggleSidebar)} to show it");
+            return;
+        }
+
+        var width = _workbench.NudgeSidebarWidth(columns);
+        _settings.SidebarWidth = width;
+        _settings.Save();
+        _workbench.StatusBar.SetMessage($"Sidebar width: {width}{LimitSuffix(width)}");
+    }
+
+    private string LimitSuffix(int width) =>
+        width <= SidebarSizing.Min ? " (minimum)"
+        : width >= SidebarSizing.MaxFor(_workbench.Viewport.Width)
+            ? $" (maximum — the editor needs {SidebarSizing.EditorFloor} columns)"
+            : string.Empty;
+
     private void ToggleGutter()
     {
         var group = _workbench.Editor.Group;
@@ -719,6 +742,7 @@ public sealed class WorkbenchHost : IDisposable
         view.Dispose();
         _activeSettings = null;
         _workbench.Editor.Group.Settings = _settings.Editor;
+        _workbench.SetSidebarWidth(_settings.SidebarWidth);
         FocusCallingRegion();
     }
 
