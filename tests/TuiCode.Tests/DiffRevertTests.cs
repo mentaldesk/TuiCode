@@ -204,12 +204,12 @@ public class DiffRevertDrawTests : StaticConfigurationTest
 // Drives `rc` through the host. Boots a TG Application — serialised (#77).
 public class RevertChangeHostTests : StaticConfigurationTest
 {
-    private const string Keys = "Alt+↓ next  Alt+↑ prev  Alt+→ revert  Enter go to line";
+    private const string Keys = "Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line";
 
     private readonly MockFileSystem _fs = new();
 
     [Fact]
-    public void Revert_change_is_a_diff_scoped_command_bound_to_alt_right()
+    public void Revert_change_is_a_diff_scoped_command_bound_to_ctrl_r()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -220,7 +220,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Alt_right_reverts_the_change_and_says_how_many_lines_it_took_back()
+    public async Task Ctrl_r_reverts_the_change_and_says_how_many_lines_it_took_back()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -229,25 +229,11 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => OpenThreeChanges(workbench, commands),
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
-            () => host.App.InjectKey(Key.CursorRight.WithAlt));
+            () => host.App.InjectKey(Key.R.WithCtrl));
 
         Assert.Equal($"Reverted 1 line from saved  •  Change 1 of 2  •  {Keys}", workbench.StatusBar.DisplayedText);
         Assert.Equal(40, workbench.Editor.Group.Tabs[0].Lines.Count);
         Assert.Equal("line 15", workbench.Editor.Group.Tabs[0].Lines[14]);
-    }
-
-    [Fact]
-    public async Task Ctrl_right_reverts_too_because_our_terminal_profiles_rewrite_alt_right_to_it()
-    {
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands);
-
-        await HostSteps.Run(host,
-            () => OpenThreeChanges(workbench, commands),
-            () => host.App.InjectKey(Key.CursorRight.WithCtrl));
-
-        Assert.Equal($"Reverted 1 line from saved  •  2 changes  •  {Keys}", workbench.StatusBar.DisplayedText);
-        Assert.Equal("line 5", workbench.Editor.Group.Tabs[0].Lines[4]);
     }
 
     [Fact]
@@ -264,7 +250,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
                 group.Tabs[0].MoveCursor(20, 0);
             },
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
-            () => host.App.InjectKey(Key.CursorRight.WithAlt),
+            () => host.App.InjectKey(Key.R.WithCtrl),
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveTab is not null,
             () => host.App.InjectKey(Key.Z.WithCtrl));
@@ -289,7 +275,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
                 commands.TryExecute(CommandIds.CompareToSaved);
             },
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
-            () => host.App.InjectKey(Key.CursorRight.WithAlt));
+            () => host.App.InjectKey(Key.R.WithCtrl));
 
         Assert.StartsWith("Reverted 60 lines from saved — Ctrl+Z to undo", workbench.StatusBar.DisplayedText);
         Assert.Equal(saved.Split('\n'), workbench.Editor.Group.Tabs[0].Lines);
@@ -303,7 +289,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => OpenThreeChanges(workbench, commands),
-            () => host.App.InjectKey(Key.CursorRight.WithAlt));
+            () => host.App.InjectKey(Key.R.WithCtrl));
 
         Assert.Equal($"Reverted 1 line from saved  •  2 changes  •  {Keys}", workbench.StatusBar.DisplayedText);
         Assert.Equal("line 5", workbench.Editor.Group.Tabs[0].Lines[4]);
@@ -324,7 +310,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
                 tab.Content = "alpha\nBRAVO";
                 workbench.Editor.Group.Compare(tab, "HEAD", () => ["alpha", "bravo"]);
             },
-            () => host.App.InjectKey(Key.CursorRight.WithAlt));
+            () => host.App.InjectKey(Key.R.WithCtrl));
 
         Assert.StartsWith("Revert needs a diff against saved, not HEAD", workbench.StatusBar.DisplayedText);
         Assert.Equal("BRAVO", workbench.Editor.Group.Tabs[0].Lines[1]);
@@ -344,8 +330,8 @@ public class RevertChangeHostTests : StaticConfigurationTest
                 workbench.Editor.Group.ActiveTab!.Content = "alpha\nBRAVO";
                 commands.TryExecute(CommandIds.CompareToSaved);
             },
-            () => host.App.InjectKey(Key.CursorRight.WithAlt),
-            () => host.App.InjectKey(Key.CursorRight.WithAlt));
+            () => host.App.InjectKey(Key.R.WithCtrl),
+            () => host.App.InjectKey(Key.R.WithCtrl));
 
         Assert.StartsWith("No changes  •  No changes", workbench.StatusBar.DisplayedText);
     }
@@ -361,8 +347,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
             {
                 host.ApplyKeybindings(
                 [
-                    new KeybindingOverride(TestKeys.Chord("Alt+CursorRight"), "-" + CommandIds.RevertChange),
-                    new KeybindingOverride(TestKeys.Chord("Ctrl+CursorRight"), "-" + CommandIds.RevertChange),
+                    new KeybindingOverride(TestKeys.Chord("Ctrl+R"), "-" + CommandIds.RevertChange),
                     new KeybindingOverride(TestKeys.Chord("F9"), CommandIds.RevertChange),
                 ]);
                 OpenThreeChanges(workbench, commands);

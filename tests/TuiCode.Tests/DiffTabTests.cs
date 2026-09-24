@@ -679,7 +679,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         commands.TryExecute(CommandIds.CompareToSaved);
     }
 
-    private const string ThreeChangesStatus = "a.txt ↔ saved  •  Change {0} of 3  •  Alt+↓ next  Alt+↑ prev  Alt+→ revert  Enter go to line";
+    private const string ThreeChangesStatus = "a.txt ↔ saved  •  Change {0} of 3  •  Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line";
 
     [Fact]
     public async Task Alt_down_and_alt_up_step_through_changes_and_stop_at_the_last()
@@ -755,7 +755,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusSidebar),
             () => workbench.StatusBar.DisplayedText == "a.txt ↔ saved");
 
-        Assert.Equal("a.txt ↔ saved  •  Change 1 of 3  •  F8 next  Alt+↑ prev  Alt+→ revert  Enter go to line", rebound);
+        Assert.Equal("a.txt ↔ saved  •  Change 1 of 3  •  F8 next  Alt+↑ prev  Ctrl+R revert  Enter go to line", rebound);
     }
 
     // Changes at rows 4 (modified), 14 (line 15 removed) and 30 (modified).
