@@ -207,12 +207,21 @@ public sealed class Workbench : Window
     }
 
     /// <summary>Moves the width by <paramref name="columns"/> from what's on screen, clamped. Returns the new width.</summary>
-    public int NudgeSidebarWidth(int columns)
+    public int NudgeSidebarWidth(int columns) => ResizeSidebarTo(DrawnSidebarWidth + columns);
+
+    /// <summary>Sets the width to <paramref name="width"/>, clamped to the terminal. Returns the new width.</summary>
+    public int ResizeSidebarTo(int width)
     {
-        var width = SidebarSizing.Clamp(DrawnSidebarWidth + columns, Viewport.Width);
-        SetSidebarWidth(width);
-        return width;
+        var clamped = SidebarSizing.Clamp(width, Viewport.Width);
+        SetSidebarWidth(clamped);
+        return clamped;
     }
+
+    /// <summary>True when <paramref name="column"/> is the sidebar's right border — the one column a drag starts in (#252).</summary>
+    public bool IsOnSidebarBorder(int column) => IsSidebarVisible && column == Sidebar.FrameToScreen().Right - 1;
+
+    /// <summary>The width that puts the sidebar's right border under screen column <paramref name="column"/>.</summary>
+    public int SidebarWidthForBorderAt(int column) => column - Sidebar.FrameToScreen().Left + 1;
 
     protected override void OnSubViewsLaidOut(LayoutEventArgs args)
     {
