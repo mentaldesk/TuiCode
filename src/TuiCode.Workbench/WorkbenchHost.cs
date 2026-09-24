@@ -82,6 +82,7 @@ public sealed class WorkbenchHost : IDisposable
     private CommentView? _activeComment;
     private DraftComments? _draftComments;
     private bool _launchedFromExplorer;
+    private bool _sidebarDragging;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -155,6 +156,7 @@ public sealed class WorkbenchHost : IDisposable
         _find.HintChanged += (_, hint) => _workbench.StatusBar.SetHint(hint);
 
         _app.Keyboard.KeyDown += OnAppKeyDown;
+        _app.Mouse.MouseEvent += OnAppMouseEvent;
         // TG raises no event for most programmatic cursor moves (find, multi-caret, line moves), so poll.
         _app.Iteration += OnIteration;
         _keybindings.ChordChanged += OnChordChanged;
@@ -280,6 +282,46 @@ public sealed class WorkbenchHost : IDisposable
             key.Handled = true;
     }
 
+    // Handled here short-circuits App.RaiseMouseEvent before any view sees the event, which is what keeps
+    // the drag off the editor's cursor, the trees' selection and focus (#252, and see AGENTS.md).
+    private void OnAppMouseEvent(object? sender, Mouse mouse)
+    {
+        if (_sidebarDragging)
+        {
+            if (mouse.Flags.HasFlag(MouseFlags.LeftButtonReleased))
+            {
+                _sidebarDragging = false;
+                ReportSidebarWidth(DragSidebarTo(mouse.ScreenPosition.X));
+            }
+            else if (mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed))
+            {
+                DragSidebarTo(mouse.ScreenPosition.X);
+            }
+            else
+            {
+                // The button went up out of sight; drop the drag rather than fold the next press into it.
+                _sidebarDragging = false;
+                return;
+            }
+            mouse.Handled = true;
+            return;
+        }
+
+        if (!mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed) || !StartsSidebarDrag(mouse)) return;
+        _sidebarDragging = true;
+        mouse.Handled = true;
+    }
+
+    // TG reports the deepest view under the pointer, so requiring the sidebar's own border also rules
+    // out a modal covering that column.
+    private bool StartsSidebarDrag(Mouse mouse) =>
+        mouse.View is AdornmentView { Adornment: { } adornment }
+        && ReferenceEquals(adornment.Parent, _workbench.Sidebar)
+        && _workbench.IsOnSidebarBorder(mouse.ScreenPosition.X);
+
+    private int DragSidebarTo(int column) =>
+        _workbench.ResizeSidebarTo(_workbench.SidebarWidthForBorderAt(column));
+
     private Key NormalizeWindowsCtrlEnter(Key key) =>
         _environment.IsWindows && key.KeyCode == WindowsCtrlLineFeed ? new Key(CtrlEnter) : key;
 
@@ -371,6 +413,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.PreviousChange, "Previous change", () => MoveToChange(-1), CommandScope.Diff);
         _commands.Register(CommandIds.GoToChangeLine, "Go to line in file", GoToChangeLine, CommandScope.Diff);
         _commands.Register(CommandIds.RevertChange, "Revert change", RevertChange, CommandScope.Diff);
+        _commands.Register(CommandIds.RevertAllChanges, "Revert all changes in file", RevertAllChanges, CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffLeft, "Scroll diff left", () => ScrollDiff(-1), CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffRight, "Scroll diff right", () => ScrollDiff(1), CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffPageLeft, "Scroll diff a page left", () => ScrollDiff(-1, page: true), CommandScope.Diff);
@@ -572,7 +615,11 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var width = _workbench.NudgeSidebarWidth(columns);
+        ReportSidebarWidth(_workbench.NudgeSidebarWidth(columns));
+    }
+
+    private void ReportSidebarWidth(int width)
+    {
         _settings.SidebarWidth = width;
         _settings.Save();
         _workbench.StatusBar.SetMessage($"Sidebar width: {width}{LimitSuffix(width)}");
@@ -1364,6 +1411,43 @@ public sealed class WorkbenchHost : IDisposable
         }
         var undo = lines > LargeRevert ? " — Ctrl+Z to undo" : string.Empty;
         _workbench.StatusBar.SetMessage($"Reverted {lines:N0} line{(lines == 1 ? string.Empty : "s")} from {diff.LeftLabel}{undo}");
+    }
+
+    /// <summary>
+    /// Throws away every change in the focused diff's file at once (#248). It confirms first — unlike a single
+    /// revert it drops work that isn't on screen — and is still one buffer edit, with nothing written to disk.
+    /// </summary>
+    private void RevertAllChanges()
+    {
+        if (_activeConfirm is not null) return;
+        if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
+        if (diff.IsDeleted)
+        {
+            _workbench.StatusBar.SetMessage($"{diff.File.Name} is deleted in this branch — use rc to restore it");
+            return;
+        }
+        var changes = diff.ChangeCount;
+        if (changes == 0)
+        {
+            _workbench.StatusBar.SetMessage("No changes");
+            return;
+        }
+
+        var view = new ConfirmView("Revert all changes",
+            $"Revert all {changes:N0} change{(changes == 1 ? string.Empty : "s")} in {diff.File.Name}?", "Revert");
+        view.Cancelled += (_, _) => CloseConfirm(view);
+        view.Confirmed += (_, _) =>
+        {
+            CloseConfirm(view);
+            if (diff.RevertAll() is not { } reverted) return;
+            _workbench.StatusBar.SetMessage(
+                $"Reverted {reverted:N0} change{(reverted == 1 ? string.Empty : "s")} in {diff.File.Name} — Ctrl+Z to undo");
+        };
+
+        _activeConfirm = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusCancel();
     }
 
     /// <summary>
@@ -2171,6 +2255,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_disposed) return;
         _disposed = true;
         _app.Keyboard.KeyDown -= OnAppKeyDown;
+        _app.Mouse.MouseEvent -= OnAppMouseEvent;
         _app.Iteration -= OnIteration;
         _keybindings.ChordChanged -= OnChordChanged;
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
