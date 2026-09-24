@@ -123,9 +123,6 @@ public sealed class DiffTab : FrameView
     /// <summary>Which file of a review this diff shows (#181); null when it was opened any other way.</summary>
     public ReviewSpot? Review { get; set; }
 
-    /// <summary>Whether a change can be reverted into the buffer (#245); only compare-to-saved so far.</summary>
-    public bool CanRevert { get; set; }
-
     public AlignedDiff Diff { get; private set; }
 
     /// <summary>A row on screen: a row of the diff, or a row of a thread (#186) or draft (#188) sitting under one.</summary>
@@ -258,7 +255,7 @@ public sealed class DiffTab : FrameView
     /// </summary>
     public int? RevertChange()
     {
-        if (!CanRevert || Source is not { } source) return null;
+        if (Source is not { } source) return null;
         if (CurrentChange == 0 && !FirstChange()) return null;
 
         var block = Diff.Block(Diff.ChangeBlocks[CurrentChange - 1]);
