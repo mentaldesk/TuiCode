@@ -29,7 +29,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
         var widths = new List<int>();
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             Press(host, BorderColumn),
             Move(host, 39),
             () => widths.Add(workbench.DrawnSidebarWidth),
@@ -47,7 +47,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             Press(host, BorderColumn),
             Move(host, 44),
             Release(host, 44));
@@ -63,7 +63,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             Press(host, BorderColumn),
             Move(host, 44));
 
@@ -78,7 +78,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             Press(host, BorderColumn),
             Release(host, WideTerminal - 1));
 
@@ -92,7 +92,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             Press(host, BorderColumn),
             Release(host, 0));
 
@@ -107,8 +107,8 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
-        await HostSteps.Run(host, Size(host, 50),
-            BorderSettled(workbench),
+        await HostSteps.Run(host, Size(host, workbench, 50),
+            BorderSettledAt(workbench, SidebarSizing.Min),
             Press(host, SidebarSizing.Min - 1),
             Release(host, 49));
 
@@ -124,7 +124,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             Press(host, column),
             Move(host, 60),
             Release(host, 60));
@@ -139,7 +139,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             () => { commands.TryExecute(CommandIds.ToggleSidebar); },
             Press(host, BorderColumn),
             Release(host, 60));
@@ -156,7 +156,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
         var covered = false;
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             () => { if (Key.TryParse("Ctrl+,", out var open)) host.App.InjectKey(open); },
             () => { covered = workbench.SubViews.OfType<SettingsView>().Any(); },
             Press(host, BorderColumn),
@@ -176,7 +176,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
         var focused = false;
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
             () => workbench.Editor.Group.ActiveTab!.MoveCursor(1, 4),
             Press(host, BorderColumn),
@@ -199,7 +199,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         string? selected = null;
         var focused = false;
 
-        await HostSteps.Run(host, Size(host, WideTerminal),
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             () => { commands.TryExecute(CommandIds.FocusSidebar); },
             () => host.App.InjectKey(Key.CursorDown),
             () => { selected = workbench.Sidebar.Explorer.SelectedObject?.FullName; },
@@ -226,14 +226,19 @@ public class SidebarDragHostTests : StaticConfigurationTest
     private static Action Inject(WorkbenchHost host, MouseFlags flags, int column) =>
         () => host.App.InjectMouse(new Mouse { Flags = flags, ScreenPosition = new Point(column, BorderRow) });
 
-    // A re-clamp sets the sidebar's Width; its Frame — and so the border the user can grab — only
-    // catches up on the next layout.
-    private static Func<bool> BorderSettled(Workbench.Workbench workbench) =>
-        () => workbench.Sidebar.FrameToScreen().Width == workbench.DrawnSidebarWidth;
+    // A resize reaches the sidebar on the layout it triggers, and its Frame — the border the user
+    // grabs — on the one after, so waiting on the width it lands at covers both.
+    private static Func<bool> BorderSettledAt(Workbench.Workbench workbench, int width) =>
+        () => workbench.DrawnSidebarWidth == width && workbench.Sidebar.FrameToScreen().Width == width;
 
-    // Resizing the terminal takes effect on the next layout, so it gets its own step.
-    private static Action Size(WorkbenchHost host, int width) =>
-        () => host.App.Driver!.SetScreenSize(width, Rows);
+    // Resizing the terminal takes effect on the next layout, and a driver may report a size of its
+    // own once more after startup, so it's re-applied until the workbench is laid out at it.
+    private static Func<bool> Size(WorkbenchHost host, Workbench.Workbench workbench, int width) =>
+        () =>
+        {
+            host.App.Driver!.SetScreenSize(width, Rows);
+            return workbench.Viewport.Width == width;
+        };
 
     private static EditorTextView TextView(Workbench.Workbench workbench) =>
         workbench.Editor.Group.ActiveTab!.SubViews.OfType<EditorTextView>().Single();
