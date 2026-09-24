@@ -275,6 +275,54 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         Assert.Equal(FileIconStyle.Off, svc.FileIcons);
     }
 
+    [Fact]
+    public void Sidebar_width_round_trips_through_the_settings_file()
+    {
+        var fs = new MockFileSystem();
+        var svc = new DefaultSettingsService(fs) { SidebarWidth = 45 };
+
+        svc.Save();
+
+        Assert.Equal(45, new DefaultSettingsService(fs).SidebarWidth);
+    }
+
+    [Fact]
+    public void A_default_sidebar_width_is_not_written()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{ \"SidebarWidth\": 45 }"));
+        var svc = new DefaultSettingsService(fs) { SidebarWidth = SidebarSizing.Default };
+
+        svc.Save();
+
+        Assert.False(fs.File.Exists(SettingsPath(fs)));
+    }
+
+    [Theory]
+    [InlineData("{ \"SidebarWidth\": \"wide\" }")]
+    [InlineData("{ \"SidebarWidth\": 4 }")]
+    [InlineData("{ \"SidebarWidth\": ")]
+    public void A_bad_sidebar_width_loads_as_the_default(string json)
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData(json));
+
+        Assert.Equal(SidebarSizing.Default, new DefaultSettingsService(fs).SidebarWidth);
+    }
+
+    // A width past the spinner's maximum is legitimate on a wide terminal, so loading keeps it.
+    [Fact]
+    public void A_sidebar_width_above_the_spinner_maximum_survives()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{ \"SidebarWidth\": 120, \"IndentSize\": 2 }"));
+
+        var svc = new DefaultSettingsService(fs);
+
+        Assert.Equal(120, svc.SidebarWidth);
+        Assert.Equal(2, svc.Editor.IndentSize);
+    }
+
     private static string SettingsPath(MockFileSystem fs)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

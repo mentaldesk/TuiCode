@@ -260,6 +260,13 @@ UI design rules — which control to use, hint bars, how errors are shown, icons
 - CLI surface in `TerminalIntegrationCli` — `--install-/--uninstall-/--list-/--check-terminal-integration[=id]`. `Program.cs` runs it before TG init and exits on hit; the `--check` flag returns 0/1/2 for installed/stale/not-installed.
 - Settings UI: `TerminalIntegrationPickerView` shows only the *detected* terminal (per #59). Buttons act on `ITerminalIntegration` directly — no staging via `ISettingsService.Save`, because the write is to an external app's config, not a TuiCode setting. Rendering decisions are split into the pure `TerminalIntegrationPanelState.Build` so unit tests don't need TG.
 
+## Sidebar width (#209)
+
+- `SidebarSizing` (Abstractions) holds the limits and the clamp: default 30, floor 15, 5 a step, and a maximum of `max(15, terminalWidth - 40)` so the editor keeps 40 columns — except on a terminal too narrow for both, where the sidebar's floor wins.
+- `Workbench` keeps two widths. `SidebarWidth` is what the user asked for; `DrawnSidebarWidth` is that clamped to the terminal, re-computed in `OnSubViewsLaidOut` so shrinking the window never starves the editor and widening it back restores the choice. The clamp never writes back to `SidebarWidth`.
+- `Widen sidebar` / `Narrow sidebar` (`ws` / `ns`, **unbound by default**) nudge from what's on screen and persist through `ISettingsService.SidebarWidth`, so they save on each press — the only commands that write settings outside the Settings dialog.
+- Settings → Interface is the same value as a `NumericUpDown<int>` (15–80). The spinner can't know the terminal, so its maximum is fixed; a wider width chosen by the commands on a big terminal is still stored and loaded, and only the *floor* is validated on load.
+
 ## Settings & persistence
 
 - `DefaultSettingsService` is a thin wrapper around TG's static `ConfigurationManager` / `ThemeManager`. `Theme` getter/setter delegate straight to `ThemeManager.Theme`; no backing field. `Load()` calls `ConfigurationManager.Enable(ConfigLocations.All)`; `Program.cs` invokes it on the resolved service before constructing the App, so `ThemeManager.Theme` is in place when `Application.Init()` paints. `ThemeManager.Theme` is a TG-native `[ConfigurationProperty(Scope = typeof(SettingsScope))]` and persists as `{"Theme": "Daylight"}` at the JSON root of `~/.tui/TuiCode.config.json`. `Save()` writes that format manually (TG exposes no save API). Picker exposes only our bundled themes (see Themes).

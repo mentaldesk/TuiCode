@@ -29,6 +29,7 @@ public sealed class SettingsView : Window
     private readonly KeybindingsPickerView _keybindingsPicker;
     private readonly GrammarAssociationsView _grammarAssociations;
     private readonly TerminalIntegrationPickerView _terminalIntegrationPicker;
+    private readonly InterfaceSettingsView _interfaceSettings;
     private readonly List<(string Name, View Panel, Func<bool> Focus)> _panels;
 
     private readonly ICommandService _scopeCommands;
@@ -142,6 +143,15 @@ public sealed class SettingsView : Window
             Visible = false
         };
 
+        _interfaceSettings = new InterfaceSettingsView(settings.SidebarWidth)
+        {
+            X = Pos.Right(_separator) + 1,
+            Y = 1,
+            Width = Dim.Fill(2),
+            Height = Dim.Fill(2),
+            Visible = false
+        };
+
         _panels =
         [
             ("Theme", _themePicker, _themePicker.FocusContent),
@@ -149,6 +159,7 @@ public sealed class SettingsView : Window
             ("Keyboard Shortcuts", _keybindingsPicker, _keybindingsPicker.FocusContent),
             ("Grammars", _grammarAssociations, _grammarAssociations.FocusContent),
             ("Terminal Integration", _terminalIntegrationPicker, _terminalIntegrationPicker.FocusContent),
+            ("Interface", _interfaceSettings, _interfaceSettings.FocusContent),
         ];
         if (icons is not null)
         {
@@ -238,6 +249,7 @@ public sealed class SettingsView : Window
         if (_icons is not null)
             _settings.FileIcons = _icons.Setting;
         _settings.Editor = _editorSettings.Current;
+        _settings.SidebarWidth = _interfaceSettings.Current;
         _settings.Save();
         _applyGrammarAssociations?.Invoke();
         Closed?.Invoke(this, EventArgs.Empty);

@@ -56,6 +56,8 @@ public static class CommandMnemonics
             [CommandIds.CompareToRevision] = "ctr",
             [CommandIds.CompareToOtherFile] = "cto",
             [CommandIds.ToggleSidebar] = "ts",
+            [CommandIds.WidenSidebar] = "ws",
+            [CommandIds.NarrowSidebar] = "ns",
             [CommandIds.ToggleGutter] = "tg",
             [CommandIds.ToggleColumnSelect] = "tc",
             [CommandIds.FocusSidebar] = "fs",
