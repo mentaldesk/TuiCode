@@ -353,8 +353,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
         _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", () => _workbench.Editor.Save());
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", () => _workbench.Editor.CloseActive());
-        _commands.Register(CommandIds.NextEditor, "Next editor", () => _workbench.Editor.NextTab());
-        _commands.Register(CommandIds.PreviousEditor, "Previous editor", () => _workbench.Editor.PreviousTab());
+        _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
+        _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => _workbench.Editor.PreviousTab());
 
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
         _commands.Register(CommandIds.WidenSidebar, "Widen sidebar", () => NudgeSidebar(SidebarSizing.Step));

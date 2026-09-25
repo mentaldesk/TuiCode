@@ -44,8 +44,8 @@ public class CommandMnemonicsTests
         Assert.Equal("fs", CommandMnemonics.For(CommandIds.FocusSidebar));
         Assert.Equal("ws", CommandMnemonics.For(CommandIds.WidenSidebar));
         Assert.Equal("ns", CommandMnemonics.For(CommandIds.NarrowSidebar));
-        Assert.Equal("tn", CommandMnemonics.For(CommandIds.NextEditor));
-        Assert.Equal("tp", CommandMnemonics.For(CommandIds.PreviousEditor));
+        Assert.Equal("nt", CommandMnemonics.For(CommandIds.NextEditor));
+        Assert.Equal("pt", CommandMnemonics.For(CommandIds.PreviousEditor));
         Assert.Equal("gl", CommandMnemonics.For(CommandIds.GoToLine));
         Assert.Equal("gp", CommandMnemonics.For(CommandIds.NavigateBack));
         Assert.Equal("gn", CommandMnemonics.For(CommandIds.NavigateForward));
