@@ -360,8 +360,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.WidenSidebar, "Widen sidebar", () => NudgeSidebar(SidebarSizing.Step));
         _commands.Register(CommandIds.NarrowSidebar, "Narrow sidebar", () => NudgeSidebar(-SidebarSizing.Step));
         _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
-        _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ToggleSidebarTab(SidebarTab.Explorer));
-        _commands.Register(CommandIds.FindGlobally, "Find globally", () => ToggleFindPane(replace: false));
+        _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ShowSidebarTab(SidebarTab.Explorer));
+        _commands.Register(CommandIds.FindGlobally, "Find globally", () => OpenFindPane(replace: false));
         _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", () => OpenFindPane(replace: true));
         // No default key (#180).
         _commands.Register(CommandIds.FocusReview, "Focus review", FocusReview);
@@ -646,16 +646,11 @@ public sealed class WorkbenchHost : IDisposable
         FocusEditorBody();
     }
 
-    // A sidebar item's shortcut (#33) shows its tab — revealing the sidebar if needed — and, pressed
-    // again while that tab is already showing, hides the sidebar. Like ToggleSidebar this decides on
-    // visibility, not focus, so it behaves the same from the palette and leader (#85).
-    private void ToggleSidebarTab(SidebarTab tab)
+    // A sidebar item's shortcut (#33) shows its tab, revealing the sidebar if needed, and never hides it:
+    // only ts does (#259). Like ToggleSidebar it decides on visibility, not focus, so it behaves the same
+    // from the palette and leader (#85).
+    private void ShowSidebarTab(SidebarTab tab)
     {
-        if (_workbench.IsSidebarVisible && _workbench.Sidebar.ActiveTab == tab)
-        {
-            ToggleSidebar();
-            return;
-        }
         _workbench.Sidebar.ShowTab(tab);
         FocusSidebar();
     }
@@ -669,18 +664,7 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     // Ctrl+Shift+F is also how you leave a replace behind: like the bar's Ctrl+F it shows the pane with only
-    // the find row, and hides the sidebar as the other sidebar shortcuts do once that's already what's showing.
-    private void ToggleFindPane(bool replace)
-    {
-        if (_workbench.IsSidebarVisible && _workbench.Sidebar.ActiveTab == SidebarTab.Find
-            && _workbench.Sidebar.Search.ReplaceVisible == replace)
-        {
-            ToggleSidebar();
-            return;
-        }
-        OpenFindPane(replace);
-    }
-
+    // the find row.
     private void OpenFindPane(bool replace)
     {
         _workbench.Sidebar.Search.ShowReplace(replace);

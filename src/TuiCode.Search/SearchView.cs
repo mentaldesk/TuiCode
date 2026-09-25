@@ -11,7 +11,7 @@ namespace TuiCode.Search;
 /// </summary>
 public sealed class SearchView : View
 {
-    private const int LabelWidth = 5;
+    private const int LabelWidth = 8;
 
     private readonly TextField _query;
     private readonly Label _replaceLabel;
@@ -57,7 +57,7 @@ public sealed class SearchView : View
 
         var queryLabel = new Label { X = 0, Y = 0, Text = "Find" };
         _query = new TextField { X = LabelWidth, Y = 0, Width = Dim.Fill() };
-        _replaceLabel = new Label { X = 0, Y = 1, Text = "Repl", Visible = false };
+        _replaceLabel = new Label { X = 0, Y = 1, Text = "Replace", Visible = false };
         _replacement = new TextField { X = LabelWidth, Y = 1, Width = Dim.Fill(), Visible = false };
         _status = new Label { X = 0, Y = 1, Width = Dim.Fill(), Text = string.Empty };
         _results = new TreeView<SearchNode>
