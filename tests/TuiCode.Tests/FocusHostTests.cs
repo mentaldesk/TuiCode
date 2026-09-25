@@ -530,6 +530,130 @@ public class FocusHostTests : StaticConfigurationTest
         Assert.Equal("Editor", onArrow);
     }
 
+    public static TheoryData<Key> Arrows => [Key.CursorUp, Key.CursorDown, Key.CursorLeft, Key.CursorRight];
+
+    public static TheoryData<string, string, SidebarTab, Key> SidebarPanesAndArrows()
+    {
+        TheoryData<string, string, SidebarTab, Key> data = [];
+        foreach (var (command, region, tab) in new (string, string, SidebarTab)[]
+                 {
+                     (CommandIds.FocusSidebar, "Explorer", SidebarTab.Explorer),
+                     (CommandIds.FindGlobally, "Find", SidebarTab.Find),
+                     (CommandIds.FocusReview, "Review", SidebarTab.Review),
+                 })
+            foreach (var arrow in new[] { Key.CursorUp, Key.CursorDown, Key.CursorLeft, Key.CursorRight })
+                data.Add(command, region, tab, arrow);
+        return data;
+    }
+
+    // #255: an arrow the pane couldn't use switched the sidebar's tab, and the readout kept naming the old pane.
+    [Theory]
+    [MemberData(nameof(SidebarPanesAndArrows))]
+    public async Task An_arrow_in_a_sidebar_pane_leaves_the_sidebar_on_it(string command, string region, SidebarTab tab, Key arrow)
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.RepoFiles["main:a.txt"] = "one\nTWO\n";
+        _gitHub.PullRequest = new GitHubPullRequest(1, "A change", "main", "feature", default);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var after = (Tab: default(SidebarTab), Region: "");
+        Func<bool> keysInPane = tab switch
+        {
+            SidebarTab.Find => () => workbench.Sidebar.Search.InputsHaveFocus,
+            SidebarTab.Review => () => workbench.Sidebar.Review.ListHasFocus,
+            _ => () => workbench.Sidebar.Explorer.HasFocus,
+        };
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(command),
+            () => keysInPane() && workbench.StatusBar.DisplayedFocus == region,
+            () => host.App.InjectKey(arrow),
+            () => { after = (workbench.Sidebar.ActiveTab, workbench.StatusBar.DisplayedFocus); });
+
+        Assert.Equal((tab, region), after);
+    }
+
+    // The hop to the PR overview link is inside the Review pane, so #255 leaves it alone — and the link
+    // is the top of the pane, so the next Up is one of the presses that used to change the tab.
+    [Fact]
+    public async Task Up_from_the_first_review_node_reaches_the_PR_overview_link_and_stops_there()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.RepoFiles["main:a.txt"] = "one\nTWO\n";
+        _gitHub.PullRequest = new GitHubPullRequest(1, "A change", "main", "feature", default);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var after = (Tab: default(SidebarTab), Region: "");
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.CursorUp),
+            () => workbench.Sidebar.Review.OverviewHasFocus,
+            () => host.App.InjectKey(Key.CursorUp),
+            () => { after = (workbench.Sidebar.ActiveTab, workbench.StatusBar.DisplayedFocus); });
+
+        Assert.Equal((SidebarTab.Review, "Review"), after);
+        Assert.True(workbench.Sidebar.Review.OverviewHasFocus);
+    }
+
+    // With nothing to review the list is hidden, so the pane itself holds the keys and uses no arrow.
+    [Theory]
+    [MemberData(nameof(Arrows))]
+    public async Task An_arrow_in_an_empty_review_pane_leaves_the_sidebar_on_Review(Key arrow)
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var after = (Tab: default(SidebarTab), Region: "");
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.StatusBar.DisplayedFocus == "Review",
+            () => host.App.InjectKey(arrow),
+            () => { after = (workbench.Sidebar.ActiveTab, workbench.StatusBar.DisplayedFocus); });
+
+        Assert.Equal((SidebarTab.Review, "Review"), after);
+    }
+
+    [Fact]
+    public async Task An_arrow_still_moves_the_selection_inside_the_explorer()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.Sidebar.Explorer.HasFocus,
+            () => { workbench.Sidebar.Explorer.SelectedObject = workbench.Sidebar.Explorer.Root; },
+            () => host.App.InjectKey(Key.CursorDown),
+            () => workbench.Sidebar.Explorer.SelectedObject is IFileInfo);
+
+        Assert.Equal(SidebarTab.Explorer, workbench.Sidebar.ActiveTab);
+    }
+
+    // The shortcuts are now the only way between panes, so they carry the whole route (#255).
+    [Fact]
+    public async Task The_sidebar_shortcuts_still_change_the_pane_and_Esc_still_goes_back_to_the_editor()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var panes = new List<SidebarTab>();
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+            () => workbench.StatusBar.DisplayedFocus == "Find",
+            () => { panes.Add(workbench.Sidebar.ActiveTab); host.App.InjectKey(Key.R.WithCtrl.WithShift); },
+            () => workbench.StatusBar.DisplayedFocus == "Review",
+            () => { panes.Add(workbench.Sidebar.ActiveTab); host.App.InjectKey(Key.E.WithCtrl.WithShift); },
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => { panes.Add(workbench.Sidebar.ActiveTab); host.App.InjectKey(Key.Esc); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor");
+
+        Assert.Equal([SidebarTab.Find, SidebarTab.Review, SidebarTab.Explorer], panes);
+    }
+
     // The strip is still reached on purpose, and its own keys are unchanged (#235).
     [Fact]
     public async Task The_tab_strip_still_cycles_with_its_own_keys_and_Down_goes_back_to_the_file()

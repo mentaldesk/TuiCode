@@ -1,3 +1,4 @@
+using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Search;
 using TuiCode.Workbench.Review;
@@ -8,7 +9,7 @@ public enum SidebarTab { Explorer, Find, Review }
 
 public sealed class SidebarPart : FrameView
 {
-    private readonly Tabs _tabs;
+    private readonly PaneTabs _tabs;
     private readonly View _explorerTab;
     private readonly View _findTab;
     private readonly View _reviewTab;
@@ -35,7 +36,7 @@ public sealed class SidebarPart : FrameView
         _findTab = WrapTab("Find", Search);
         _reviewTab = WrapTab("Review", Review);
 
-        _tabs = new Tabs
+        _tabs = new PaneTabs
         {
             X = 0,
             Y = 0,
