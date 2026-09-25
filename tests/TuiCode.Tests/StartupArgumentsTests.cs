@@ -60,13 +60,59 @@ public class StartupArgumentsTests
     [Theory]
     [InlineData("today.md")]
     [InlineData("Makefile")]
-    public void A_missing_file_is_created_and_opened(string path)
+    public void A_missing_file_is_created_and_opened_once_you_agree(string path)
     {
         var target = Resolve(path);
 
         Assert.True(_fs.File.Exists($"/work/{path}"));
         Assert.Equal(Full("/work"), target.Workspace!.FullName);
         Assert.Equal(Full($"/work/{path}"), target.File!.FullName);
+    }
+
+    [Theory]
+    [InlineData("today.md")]
+    [InlineData("scratch/")]
+    public void Declining_creates_nothing_and_starts_nothing(string path)
+    {
+        var target = StartupArguments.Resolve([path], _fs, "/work", Decline);
+
+        Assert.True(target.Declined);
+        Assert.Null(target.Workspace);
+        Assert.Null(target.File);
+        Assert.Null(target.Error);
+        Assert.False(_fs.File.Exists("/work/today.md"));
+        Assert.False(_fs.Directory.Exists("/work/scratch"));
+    }
+
+    [Fact]
+    public void An_existing_path_is_opened_without_asking()
+    {
+        var target = StartupArguments.Resolve(["src/a.cs"], _fs, "/work", Decline);
+
+        Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
+        Assert.False(target.Declined);
+    }
+
+    [Fact]
+    public void What_you_are_asked_to_create_is_the_full_path_and_its_kind()
+    {
+        (string Path, bool Directory)? asked = null;
+
+        StartupArguments.Resolve(["notes/today.md"], _fs, "/work", (path, directory) =>
+        {
+            asked = (path, directory);
+            return false;
+        });
+
+        Assert.Equal((Full("/work/notes/today.md"), false), asked);
+
+        StartupArguments.Resolve(["notes/"], _fs, "/work", (path, directory) =>
+        {
+            asked = (path, directory);
+            return false;
+        });
+
+        Assert.Equal((Full("/work/notes/"), true), asked);
     }
 
     [Fact]
@@ -95,7 +141,7 @@ public class StartupArgumentsTests
         var fs = new DeniedFileSystem();
         fs.AddDirectory("/work");
 
-        var target = StartupArguments.Resolve(["hosts.new"], fs, "/work");
+        var target = StartupArguments.Resolve(["hosts.new"], fs, "/work", Agree);
 
         Assert.Equal($"tuicode: permission denied: {fs.Path.GetFullPath("/work/hosts.new")}", target.Error);
         Assert.Null(target.Workspace);
@@ -119,7 +165,7 @@ public class StartupArgumentsTests
     [Fact]
     public void The_value_of_driver_is_not_a_path()
     {
-        var target = StartupArguments.Resolve(["--driver", "ansi"], _fs, "/work");
+        var target = StartupArguments.Resolve(["--driver", "ansi"], _fs, "/work", Agree);
 
         Assert.Equal(Full("/work"), target.Workspace!.FullName);
         Assert.Null(target.File);
@@ -129,12 +175,16 @@ public class StartupArgumentsTests
     [Fact]
     public void A_path_alongside_flags_is_still_found()
     {
-        var target = StartupArguments.Resolve(["--driver=ansi", "src/a.cs", "--smoke"], _fs, "/work");
+        var target = StartupArguments.Resolve(["--driver=ansi", "src/a.cs", "--smoke"], _fs, "/work", Agree);
 
         Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
     }
 
+    private static bool Agree(string path, bool directory) => true;
+
+    private static bool Decline(string path, bool directory) => false;
+
     private string Full(string path) => _fs.Path.GetFullPath(path);
 
-    private StartupTarget Resolve(params string[] args) => StartupArguments.Resolve(args, _fs, "/work");
+    private StartupTarget Resolve(params string[] args) => StartupArguments.Resolve(args, _fs, "/work", Agree);
 }

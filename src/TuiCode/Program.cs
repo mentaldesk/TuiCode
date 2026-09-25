@@ -89,15 +89,21 @@ var cliExit = cli.TryHandle(args);
 if (cliExit is int code)
     return code;
 
-// Resolve `tuicode <path>` before Application.Init, so a path we can't create is reported to a
+// Resolve `tuicode <path>` before Application.Init, so the create prompt and any error land on a
 // terminal nothing has drawn on yet (#263).
 var fileSystem = provider.GetRequiredService<IFileSystem>();
-var startup = StartupArguments.Resolve(args, fileSystem, Environment.CurrentDirectory);
+var startup = StartupArguments.Resolve(
+    args,
+    fileSystem,
+    Environment.CurrentDirectory,
+    (path, directory) => CreatePrompt.Ask(Console.In, Console.Out, path, directory));
 if (startup.Error is { } startupError)
 {
     Console.Error.WriteLine(startupError);
     return 1;
 }
+if (startup.Declined)
+    return 0;
 
 // Load persisted settings before resolving App — App's construction triggers
 // Application.Init() which reads ThemeManager.Theme for the first paint.

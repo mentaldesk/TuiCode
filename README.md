@@ -22,8 +22,12 @@ Other channels (winget, Linux packagers) are tracked in [#43](https://github.com
 ## Running
 
 ```bash
-tuicode
+tuicode                  # the folder you're in
+tuicode src/App.cs       # that file, with the folder you're in in the explorer
+tuicode ~/projects/api   # that folder
 ```
+
+A path that isn't there is offered for creation first, so a typo doesn't leave an empty file behind.
 
 Needs a real terminal — the app won't render through a non-TTY pipe. On macOS, prefer iTerm2, Ghostty, WezTerm, or Alacritty over Terminal.app, which strips most three-modifier key combos and breaks some chord shortcuts. On Linux, kitty / foot / GNOME Terminal with `modifyOtherKeys` all work.
 

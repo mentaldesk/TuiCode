@@ -6,14 +6,18 @@ namespace TuiCode.Workbench.Configuration;
 /// <param name="Workspace">The folder the explorer roots at; the current directory when nothing else applies.</param>
 /// <param name="File">The file to open in the editor, or null for a folder-only start.</param>
 /// <param name="Error">A message to print to stderr instead of booting, or null.</param>
-public sealed record StartupTarget(IDirectoryInfo? Workspace, IFileInfo? File, string? Error = null);
+/// <param name="Declined">The path wasn't there and the user said not to create it: exit quietly, don't boot.</param>
+public sealed record StartupTarget(IDirectoryInfo? Workspace, IFileInfo? File, string? Error = null, bool Declined = false);
+
+/// <summary>Asked before <c>tuicode &lt;path&gt;</c> creates a path that isn't there (#263).</summary>
+public delegate bool ConfirmCreate(string fullPath, bool directory);
 
 /// <summary>
 /// Resolves <c>tuicode &lt;path&gt;</c> (#263) into the folder to root at and the file to open.
-/// The first positional argument is a path; a missing one is created by the rule <c>Ctrl+N</c>
-/// uses (<see cref="FilePaths.IsDirectoryPath"/>): a trailing slash means a folder, anything else
-/// a file, and intermediate folders are created. The workspace is the folder you ran from when it
-/// contains that file, and the file's own folder when it doesn't.
+/// The first positional argument is a path; a missing one is only created once the user agrees,
+/// by the rule <c>Ctrl+N</c> uses (<see cref="FilePaths.IsDirectoryPath"/>): a trailing slash means
+/// a folder, anything else a file, and intermediate folders are created. The workspace is the folder
+/// you ran from when it contains that file, and the file's own folder when it doesn't.
 /// </summary>
 /// <remarks>
 /// Flags are never paths. <c>--driver</c> takes a value, so the argument after it is skipped with
@@ -27,11 +31,16 @@ public static class StartupArguments
     // The only flag whose value is a separate argument, and so could be mistaken for a path.
     private const string ValueFlag = "--driver";
 
-    public static StartupTarget Resolve(IReadOnlyList<string> args, IFileSystem fileSystem, string currentDirectory)
+    public static StartupTarget Resolve(
+        IReadOnlyList<string> args,
+        IFileSystem fileSystem,
+        string currentDirectory,
+        ConfirmCreate confirmCreate)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(fileSystem);
         ArgumentNullException.ThrowIfNull(currentDirectory);
+        ArgumentNullException.ThrowIfNull(confirmCreate);
 
         var workspace = fileSystem.DirectoryInfo.New(currentDirectory);
         if (FirstPath(args) is not { } requested) return new StartupTarget(workspace, null);
@@ -43,9 +52,13 @@ public static class StartupArguments
         if (fileSystem.File.Exists(fullPath))
             return ForFile(fileSystem, workspace, fullPath);
 
+        var directory = FilePaths.IsDirectoryPath(requested);
+        if (!confirmCreate(fullPath, directory))
+            return new StartupTarget(null, null, Declined: true);
+
         try
         {
-            if (FilePaths.IsDirectoryPath(requested))
+            if (directory)
             {
                 fileSystem.Directory.CreateDirectory(fullPath);
                 return new StartupTarget(fileSystem.DirectoryInfo.New(fullPath), null);

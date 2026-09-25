@@ -26,7 +26,7 @@ public class StartupHostTests : StaticConfigurationTest
     [Fact]
     public async Task A_file_named_on_the_command_line_opens_ready_to_type_in()
     {
-        var target = StartupArguments.Resolve(["src/a.cs"], _fs, "/work");
+        var target = StartupArguments.Resolve(["src/a.cs"], _fs, "/work", NeverAsked);
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
@@ -44,7 +44,7 @@ public class StartupHostTests : StaticConfigurationTest
     [Fact]
     public async Task A_folder_named_on_the_command_line_roots_the_explorer_with_nothing_open()
     {
-        var target = StartupArguments.Resolve(["src"], _fs, "/work");
+        var target = StartupArguments.Resolve(["src"], _fs, "/work", NeverAsked);
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
@@ -54,6 +54,9 @@ public class StartupHostTests : StaticConfigurationTest
 
         Assert.Null(workbench.Editor.Group.ActiveTab);
     }
+
+    private static bool NeverAsked(string path, bool directory) =>
+        throw new InvalidOperationException($"An existing path shouldn't be asked about: {path}");
 
     private string Full(string path) => _fs.Path.GetFullPath(path);
 
