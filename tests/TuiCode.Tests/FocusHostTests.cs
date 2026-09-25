@@ -557,21 +557,29 @@ public class FocusHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Ctrl_Tab_and_Ctrl_2_still_change_the_file()
+    public async Task Alt_Tab_Alt_Shift_Tab_and_Ctrl_2_still_change_the_file()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
         var cycled = "";
+        var back = "";
 
         await HostSteps.Run(host,
-            () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); workbench.OpenFile(_fs.FileInfo.New("/work/b.txt")); },
+            () =>
+            {
+                workbench.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+                workbench.OpenFile(_fs.FileInfo.New("/work/b.txt"));
+                workbench.OpenFile(_fs.FileInfo.New("/work/Widget.cs"));
+            },
             () => workbench.StatusBar.DisplayedFocus == "Editor",
-            () => host.App.InjectKey(Key.Tab.WithCtrl),
+            () => host.App.InjectKey(Key.Tab.WithAlt),
             () => workbench.Editor.Group.ActiveTab!.File.Name == "a.txt",
-            () => { cycled = workbench.Editor.Group.ActiveTab!.File.Name; host.App.InjectKey(Key.D2.WithCtrl); },
+            () => { cycled = workbench.Editor.Group.ActiveTab!.File.Name; host.App.InjectKey(Key.Tab.WithAlt.WithShift); },
+            () => workbench.Editor.Group.ActiveTab!.File.Name == "Widget.cs",
+            () => { back = workbench.Editor.Group.ActiveTab!.File.Name; host.App.InjectKey(Key.D2.WithCtrl); },
             () => workbench.Editor.Group.ActiveTab!.File.Name == "b.txt");
 
-        Assert.Equal("a.txt", cycled);
+        Assert.Equal(("a.txt", "Widget.cs"), (cycled, back));
     }
 
     private Workbench.Workbench BuildWorkbench()
