@@ -68,25 +68,6 @@ public class FocusReadoutHostTests : StaticConfigurationTest
         Assert.Equal("a.txt", workbench.Editor.Group.ActiveTab?.File.Name);
     }
 
-    // TG's own navigation parks the keyboard on the strip when the cursor can't go up (#237), not just ft.
-    [Fact]
-    public async Task Arrowing_up_out_of_the_buffer_reads_as_Tabs()
-    {
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out _);
-        var onStrip = "";
-
-        await HostSteps.Run(host,
-            () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); workbench.OpenFile(_fs.FileInfo.New("/work/b.txt")); },
-            () => workbench.StatusBar.DisplayedFocus == "Editor",
-            () => host.App.InjectKey(Key.CursorUp),
-            () => host.App.InjectKey(Key.CursorUp),
-            () => { onStrip = workbench.StatusBar.DisplayedFocus; host.App.InjectKey(Key.Enter); },
-            () => workbench.StatusBar.DisplayedFocus == "Editor");
-
-        Assert.Equal("Tabs", onStrip);
-    }
-
     [Fact]
     public async Task Toggling_the_sidebar_moves_the_word_between_the_explorer_and_the_editor()
     {

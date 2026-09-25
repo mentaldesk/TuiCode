@@ -771,7 +771,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnTypeS(object? s, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnTypeS;
-            // After 't' the overlay is still open (ts/tn/tp ambiguous); 's' completes 'ts'.
+            // After 't' the overlay is still open (ts/tg/tc/tui ambiguous); 's' completes 'ts'.
             if (Key.TryParse("s", out var k)) host.App.InjectKey(k);
             host.App.Iteration += OnAssert;
         }

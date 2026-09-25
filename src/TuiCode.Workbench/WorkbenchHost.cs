@@ -353,8 +353,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
         _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", () => _workbench.Editor.Save());
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", () => _workbench.Editor.CloseActive());
-        _commands.Register(CommandIds.NextEditor, "Next editor", () => _workbench.Editor.NextTab());
-        _commands.Register(CommandIds.PreviousEditor, "Previous editor", () => _workbench.Editor.PreviousTab());
+        _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
+        _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => _workbench.Editor.PreviousTab());
 
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
         _commands.Register(CommandIds.WidenSidebar, "Widen sidebar", () => NudgeSidebar(SidebarSizing.Step));
@@ -528,8 +528,9 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Q", CommandIds.Quit);
         keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
         keybindings.Bind("Ctrl+W", CommandIds.CloseActiveEditor);
-        keybindings.Bind("Ctrl+Tab", CommandIds.NextEditor);
-        keybindings.Bind("Ctrl+Shift+Tab", CommandIds.PreviousEditor);
+        // Not Ctrl+Tab: Terminal.app and iTerm2 both keep it for their own tabs (#254).
+        keybindings.Bind("Alt+Tab", CommandIds.NextEditor);
+        keybindings.Bind("Alt+Shift+Tab", CommandIds.PreviousEditor);
 
         // No default key for ToggleSidebar — Ctrl+0 is eaten by the terminal's own zoom-reset
         // in many emulators (#81), so it was unreliable. Reach it via the `ts` mnemonic instead.

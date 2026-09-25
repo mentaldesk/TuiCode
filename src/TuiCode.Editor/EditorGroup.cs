@@ -70,12 +70,19 @@ public sealed class EditorGroup : Tabs
     public EditorGroup(SyntaxHighlighter? syntax = null)
     {
         _syntax = syntax;
+        // Claimed and dropped, so an arrow the focused view can't use switches no tab and moves no focus (#254).
+        AddCommand(Command.Up, StayPut);
+        AddCommand(Command.Down, StayPut);
+        AddCommand(Command.Left, StayPut);
+        AddCommand(Command.Right, StayPut);
         ValueChanged += (_, _) =>
         {
             ActiveDiffTab?.Refresh();
             ActiveTabChanged?.Invoke(this, ActiveTab);
         };
     }
+
+    private static bool? StayPut() => true;
 
     public EditorTab OpenOrFocus(IFileInfo file) =>
         Focus(file.FullName) ?? Track(new EditorTab(file, _syntax));

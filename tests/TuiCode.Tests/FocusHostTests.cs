@@ -471,6 +471,117 @@ public class FocusHostTests : StaticConfigurationTest
         Assert.Equal((Query: false, Replace: true), afterTab);
     }
 
+    public static TheoryData<Key> ArrowsOffTheStart => [Key.CursorUp, Key.CursorLeft];
+
+    public static TheoryData<Key> ArrowsOffTheEnd => [Key.CursorDown, Key.CursorRight];
+
+    // #254: an arrow the buffer can't use used to become a tab switch, taking the file off the screen.
+    [Theory]
+    [MemberData(nameof(ArrowsOffTheStart))]
+    public async Task An_arrow_at_the_start_of_the_buffer_leaves_the_keys_in_the_file(Key arrow)
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var position = (Row: -1, Column: -1);
+        var onArrow = "";
+
+        await HostSteps.Run(host,
+            () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); workbench.OpenFile(_fs.FileInfo.New("/work/b.txt")); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(arrow),
+            () =>
+            {
+                var tab = workbench.Editor.Group.ActiveTab!;
+                (position, onArrow) = ((tab.CursorRow, tab.CursorColumn), workbench.StatusBar.DisplayedFocus);
+                host.App.InjectKey(new Key('X'));
+            },
+            () => workbench.Editor.Group.ActiveTab!.Content.StartsWith('X'));
+
+        Assert.Equal("b.txt", workbench.Editor.Group.ActiveTab?.File.Name);
+        Assert.Equal((Row: 0, Column: 0), position);
+        Assert.Equal("Editor", onArrow);
+    }
+
+    [Theory]
+    [MemberData(nameof(ArrowsOffTheEnd))]
+    public async Task An_arrow_at_the_end_of_the_buffer_leaves_the_keys_in_the_file(Key arrow)
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var position = (Row: -1, Column: -1);
+        var onArrow = "";
+
+        await HostSteps.Run(host,
+            () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); workbench.OpenFile(_fs.FileInfo.New("/work/b.txt")); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            // "three\n" ends on an empty second line, so this is past the last character.
+            () => { workbench.Editor.Group.ActiveTab!.MoveCursor(1, 0); },
+            () => host.App.InjectKey(arrow),
+            () =>
+            {
+                var tab = workbench.Editor.Group.ActiveTab!;
+                (position, onArrow) = ((tab.CursorRow, tab.CursorColumn), workbench.StatusBar.DisplayedFocus);
+                host.App.InjectKey(new Key('X'));
+            },
+            () => workbench.Editor.Group.ActiveTab!.Content.EndsWith('X'));
+
+        Assert.Equal("b.txt", workbench.Editor.Group.ActiveTab?.File.Name);
+        Assert.Equal((Row: 1, Column: 0), position);
+        Assert.Equal("Editor", onArrow);
+    }
+
+    // The strip is still reached on purpose, and its own keys are unchanged (#235).
+    [Fact]
+    public async Task The_tab_strip_still_cycles_with_its_own_keys_and_Down_goes_back_to_the_file()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var afterUp = "";
+        var afterUpTab = "";
+
+        await HostSteps.Run(host,
+            () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); workbench.OpenFile(_fs.FileInfo.New("/work/b.txt")); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => commands.TryExecute(CommandIds.FocusEditorTabStrip),
+            () => workbench.StatusBar.DisplayedFocus == "Tabs",
+            () => host.App.InjectKey(Key.CursorUp),
+            () => { (afterUp, afterUpTab) = (workbench.StatusBar.DisplayedFocus, workbench.Editor.Group.ActiveTab!.File.Name); },
+            () => host.App.InjectKey(Key.CursorLeft),
+            () => workbench.Editor.Group.ActiveTab!.File.Name == "a.txt",
+            () => host.App.InjectKey(Key.CursorRight),
+            () => workbench.Editor.Group.ActiveTab!.File.Name == "b.txt",
+            () => host.App.InjectKey(Key.CursorDown),
+            () => workbench.StatusBar.DisplayedFocus == "Editor");
+
+        Assert.Equal(("Tabs", "b.txt"), (afterUp, afterUpTab));
+    }
+
+    [Fact]
+    public async Task Alt_Tab_Alt_Shift_Tab_and_Ctrl_2_still_change_the_file()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var cycled = "";
+        var back = "";
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                workbench.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+                workbench.OpenFile(_fs.FileInfo.New("/work/b.txt"));
+                workbench.OpenFile(_fs.FileInfo.New("/work/Widget.cs"));
+            },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.Tab.WithAlt),
+            () => workbench.Editor.Group.ActiveTab!.File.Name == "a.txt",
+            () => { cycled = workbench.Editor.Group.ActiveTab!.File.Name; host.App.InjectKey(Key.Tab.WithAlt.WithShift); },
+            () => workbench.Editor.Group.ActiveTab!.File.Name == "Widget.cs",
+            () => { back = workbench.Editor.Group.ActiveTab!.File.Name; host.App.InjectKey(Key.D2.WithCtrl); },
+            () => workbench.Editor.Group.ActiveTab!.File.Name == "b.txt");
+
+        Assert.Equal(("a.txt", "Widget.cs"), (cycled, back));
+    }
+
     private Workbench.Workbench BuildWorkbench()
     {
         var sidebar = new SidebarPart(new FileExplorerView(), review: new ReviewView(_git, _gitHub));

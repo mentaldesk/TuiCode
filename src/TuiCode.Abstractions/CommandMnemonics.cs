@@ -6,10 +6,13 @@ namespace TuiCode.Abstractions;
 /// leader key that opens the dialog is. They are fixed design decisions so the dialog
 /// can show stable hints and so muscle memory carries across machines.
 ///
+/// A mnemonic is the command label's initials (<c>fg</c> for "Find globally", <c>nt</c> for
+/// "Next tab"); a label that doesn't give usable initials is the thing to change.
+///
 /// Invariant: no complete mnemonic is a prefix of another. That lets the dialog
 /// auto-execute the instant the typed sequence uniquely identifies a command, with no
 /// terminating Enter. Mnemonics therefore come in families under a shared first key
-/// (<c>c</c>lose, <c>o</c>pen, <c>f</c>ocus, <c>t</c>ab/toggle, …) that have room to
+/// (<c>c</c>lose, <c>o</c>pen, <c>f</c>ocus, <c>t</c>oggle, …) that have room to
 /// grow: <c>cf</c> close file leaves <c>co</c>/<c>ca</c>/<c>cs</c> free for future
 /// close-other/all/sidebar commands. <c>q</c> (quit) and <c>?</c> (help) are the only
 /// single-key mnemonics — common enough to be exceptions and unlikely to spawn a family.
@@ -40,8 +43,8 @@ public static class CommandMnemonics
             [CommandIds.RenameFile] = "mf",
             [CommandIds.CutFile] = "xf",
             [CommandIds.PasteFile] = "pf",
-            [CommandIds.NextEditor] = "tn",
-            [CommandIds.PreviousEditor] = "tp",
+            [CommandIds.NextEditor] = "nt",
+            [CommandIds.PreviousEditor] = "pt",
             [CommandIds.Open] = "of",
             [CommandIds.OpenSettings] = "os",
             [CommandIds.OpenPullRequest] = "opr",
