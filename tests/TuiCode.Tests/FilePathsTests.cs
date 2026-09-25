@@ -26,4 +26,15 @@ public class FilePathsTests
     {
         Assert.Equal(expected, FilePaths.Rebase(path, from, to));
     }
+
+    [Theory]
+    [InlineData("components/", true)]
+    [InlineData("src/utils/", true)]
+    [InlineData("notes.txt", false)]
+    [InlineData("Makefile", false)]
+    [InlineData("a/b/c.cs", false)]
+    public void IsDirectoryPath_keys_off_a_trailing_slash(string path, bool expected)
+    {
+        Assert.Equal(expected, FilePaths.IsDirectoryPath(path));
+    }
 }

@@ -107,7 +107,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         if (Root is not { } root)
             throw new InvalidOperationException("Cannot create entries before the tree is rooted.");
 
-        var directory = EntryPaths.IsDirectoryPath(relativePath);
+        var directory = FilePaths.IsDirectoryPath(relativePath);
         var fs = root.FileSystem;
         var fullPath = EntryPaths.Resolve(fs, root, relativePath);
 
@@ -328,13 +328,6 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 /// </summary>
 internal static class EntryPaths
 {
-    /// <summary>A trailing slash (either style) marks the path as a directory.</summary>
-    public static bool IsDirectoryPath(string relativePath)
-    {
-        var trimmed = relativePath.TrimEnd();
-        return trimmed.EndsWith('/') || trimmed.EndsWith('\\');
-    }
-
     public static string Prefill(IDirectoryInfo root, IDirectoryInfo target)
     {
         var relative = Relative(root, target.FullName);

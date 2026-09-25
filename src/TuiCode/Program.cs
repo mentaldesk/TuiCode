@@ -89,14 +89,22 @@ var cliExit = cli.TryHandle(args);
 if (cliExit is int code)
     return code;
 
+// Resolve `tuicode <path>` before Application.Init, so a path we can't create is reported to a
+// terminal nothing has drawn on yet (#263).
+var fileSystem = provider.GetRequiredService<IFileSystem>();
+var startup = StartupArguments.Resolve(args, fileSystem, Environment.CurrentDirectory);
+if (startup.Error is { } startupError)
+{
+    Console.Error.WriteLine(startupError);
+    return 1;
+}
+
 // Load persisted settings before resolving App — App's construction triggers
 // Application.Init() which reads ThemeManager.Theme for the first paint.
 provider.GetRequiredService<ISettingsService>().Load();
 
 using var app = provider.GetRequiredService<App>();
-var fileSystem = provider.GetRequiredService<IFileSystem>();
-app.Host.Workbench.OpenFolder(
-    fileSystem.DirectoryInfo.New(Environment.CurrentDirectory));
+app.Host.Workbench.OpenStartupTarget(startup);
 
 // --smoke: boot through Application.Init + one render iteration, then quit.
 // CI runs this against the AOT-published binary to catch runtime failures

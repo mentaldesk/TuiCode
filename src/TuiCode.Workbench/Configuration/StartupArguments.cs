@@ -1,0 +1,88 @@
+using TuiCode.Abstractions;
+
+namespace TuiCode.Workbench.Configuration;
+
+/// <summary>What the command line asks the workbench to open (#263).</summary>
+/// <param name="Workspace">The folder the explorer roots at; the current directory when nothing else applies.</param>
+/// <param name="File">The file to open in the editor, or null for a folder-only start.</param>
+/// <param name="Error">A message to print to stderr instead of booting, or null.</param>
+public sealed record StartupTarget(IDirectoryInfo? Workspace, IFileInfo? File, string? Error = null);
+
+/// <summary>
+/// Resolves <c>tuicode &lt;path&gt;</c> (#263) into the folder to root at and the file to open.
+/// The first positional argument is a path; a missing one is created by the rule <c>Ctrl+N</c>
+/// uses (<see cref="FilePaths.IsDirectoryPath"/>): a trailing slash means a folder, anything else
+/// a file, and intermediate folders are created. The workspace is the folder you ran from when it
+/// contains that file, and the file's own folder when it doesn't.
+/// </summary>
+/// <remarks>
+/// Flags are never paths. <c>--driver</c> takes a value, so the argument after it is skipped with
+/// it; anything else starting with <c>--</c> belongs to another parser (<see cref="DriverSelection"/>,
+/// <c>TerminalIntegrationCli</c>, <c>--smoke</c>) and is passed over.
+/// </remarks>
+public static class StartupArguments
+{
+    private const string ProgramName = "tuicode";
+
+    // The only flag whose value is a separate argument, and so could be mistaken for a path.
+    private const string ValueFlag = "--driver";
+
+    public static StartupTarget Resolve(IReadOnlyList<string> args, IFileSystem fileSystem, string currentDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        ArgumentNullException.ThrowIfNull(fileSystem);
+        ArgumentNullException.ThrowIfNull(currentDirectory);
+
+        var workspace = fileSystem.DirectoryInfo.New(currentDirectory);
+        if (FirstPath(args) is not { } requested) return new StartupTarget(workspace, null);
+
+        var fullPath = fileSystem.Path.GetFullPath(fileSystem.Path.Combine(currentDirectory, requested));
+
+        if (fileSystem.Directory.Exists(fullPath))
+            return new StartupTarget(fileSystem.DirectoryInfo.New(fullPath), null);
+        if (fileSystem.File.Exists(fullPath))
+            return ForFile(fileSystem, workspace, fullPath);
+
+        try
+        {
+            if (FilePaths.IsDirectoryPath(requested))
+            {
+                fileSystem.Directory.CreateDirectory(fullPath);
+                return new StartupTarget(fileSystem.DirectoryInfo.New(fullPath), null);
+            }
+
+            if (fileSystem.Path.GetDirectoryName(fullPath) is { Length: > 0 } parent)
+                fileSystem.Directory.CreateDirectory(parent);
+            fileSystem.File.Create(fullPath).Dispose();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return new StartupTarget(null, null, Describe(e, fullPath));
+        }
+
+        return ForFile(fileSystem, workspace, fullPath);
+    }
+
+    private static string? FirstPath(IReadOnlyList<string> args)
+    {
+        for (var i = 0; i < args.Count; i++)
+        {
+            var arg = args[i];
+            if (!arg.StartsWith("--", StringComparison.Ordinal)) return arg.Trim();
+            if (arg == ValueFlag) i++;
+        }
+        return null;
+    }
+
+    private static StartupTarget ForFile(IFileSystem fileSystem, IDirectoryInfo workspace, string fullPath)
+    {
+        var root = FilePaths.IsSameOrUnder(fullPath, workspace.FullName)
+            ? workspace
+            : fileSystem.DirectoryInfo.New(fileSystem.Path.GetDirectoryName(fullPath)!);
+        return new StartupTarget(root, fileSystem.FileInfo.New(fullPath));
+    }
+
+    private static string Describe(Exception e, string path) => e is UnauthorizedAccessException
+        ? $"{ProgramName}: permission denied: {path}"
+        : $"{ProgramName}: cannot create {path}: {e.Message}";
+}
