@@ -37,8 +37,8 @@ public class StartupHostTests : StaticConfigurationTest
             () => workbench.Editor.Group.ActiveTab!.Content.StartsWith('X'));
 
         Assert.Equal("Editor", workbench.StatusBar.DisplayedFocus);
-        Assert.Equal("/work/src/a.cs", workbench.Editor.Group.ActiveTab?.File.FullName);
-        Assert.Equal("/work", workbench.Sidebar.Explorer.Root?.FullName);
+        Assert.Equal(Full("/work/src/a.cs"), workbench.Editor.Group.ActiveTab?.File.FullName);
+        Assert.Equal(Full("/work"), workbench.Sidebar.Explorer.Root?.FullName);
     }
 
     [Fact]
@@ -50,10 +50,12 @@ public class StartupHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => workbench.OpenStartupTarget(target),
-            () => workbench.Sidebar.Explorer.Root?.FullName == "/work/src");
+            () => workbench.Sidebar.Explorer.Root?.FullName == Full("/work/src"));
 
         Assert.Null(workbench.Editor.Group.ActiveTab);
     }
+
+    private string Full(string path) => _fs.Path.GetFullPath(path);
 
     private Workbench.Workbench BuildWorkbench() =>
         new(new SidebarPart(new FileExplorerView(), review: new ReviewView(_git, _gitHub)),

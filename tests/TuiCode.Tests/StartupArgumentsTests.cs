@@ -20,7 +20,7 @@ public class StartupArgumentsTests
     {
         var target = Resolve();
 
-        Assert.Equal("/work", target.Workspace!.FullName);
+        Assert.Equal(Full("/work"), target.Workspace!.FullName);
         Assert.Null(target.File);
         Assert.Null(target.Error);
     }
@@ -32,8 +32,8 @@ public class StartupArgumentsTests
     {
         var target = Resolve(path);
 
-        Assert.Equal("/work", target.Workspace!.FullName);
-        Assert.Equal("/work/src/a.cs", target.File!.FullName);
+        Assert.Equal(Full("/work"), target.Workspace!.FullName);
+        Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
     }
 
     [Fact]
@@ -41,8 +41,8 @@ public class StartupArgumentsTests
     {
         var target = Resolve("/elsewhere/README.md");
 
-        Assert.Equal("/elsewhere", target.Workspace!.FullName);
-        Assert.Equal("/elsewhere/README.md", target.File!.FullName);
+        Assert.Equal(Full("/elsewhere"), target.Workspace!.FullName);
+        Assert.Equal(Full("/elsewhere/README.md"), target.File!.FullName);
     }
 
     [Theory]
@@ -53,7 +53,7 @@ public class StartupArgumentsTests
     {
         var target = Resolve(path);
 
-        Assert.Equal("/work/src", target.Workspace!.FullName);
+        Assert.Equal(Full("/work/src"), target.Workspace!.FullName);
         Assert.Null(target.File);
     }
 
@@ -65,8 +65,8 @@ public class StartupArgumentsTests
         var target = Resolve(path);
 
         Assert.True(_fs.File.Exists($"/work/{path}"));
-        Assert.Equal("/work", target.Workspace!.FullName);
-        Assert.Equal($"/work/{path}", target.File!.FullName);
+        Assert.Equal(Full("/work"), target.Workspace!.FullName);
+        Assert.Equal(Full($"/work/{path}"), target.File!.FullName);
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class StartupArgumentsTests
 
         Assert.True(_fs.Directory.Exists("/work/notes/2026"));
         Assert.True(_fs.File.Exists("/work/notes/2026/today.md"));
-        Assert.Equal("/work/notes/2026/today.md", target.File!.FullName);
+        Assert.Equal(Full("/work/notes/2026/today.md"), target.File!.FullName);
     }
 
     [Fact]
@@ -85,7 +85,7 @@ public class StartupArgumentsTests
         var target = Resolve("scratch/");
 
         Assert.True(_fs.Directory.Exists("/work/scratch"));
-        Assert.Equal("/work/scratch", target.Workspace!.FullName);
+        Assert.Equal(Full("/work/scratch"), target.Workspace!.FullName);
         Assert.Null(target.File);
     }
 
@@ -97,7 +97,7 @@ public class StartupArgumentsTests
 
         var target = StartupArguments.Resolve(["hosts.new"], fs, "/work");
 
-        Assert.Equal("tuicode: permission denied: /work/hosts.new", target.Error);
+        Assert.Equal($"tuicode: permission denied: {fs.Path.GetFullPath("/work/hosts.new")}", target.Error);
         Assert.Null(target.Workspace);
         Assert.Null(target.File);
     }
@@ -111,7 +111,7 @@ public class StartupArgumentsTests
     {
         var target = Resolve(flag);
 
-        Assert.Equal("/work", target.Workspace!.FullName);
+        Assert.Equal(Full("/work"), target.Workspace!.FullName);
         Assert.Null(target.File);
         Assert.False(_fs.File.Exists($"/work/{flag}"));
     }
@@ -121,7 +121,7 @@ public class StartupArgumentsTests
     {
         var target = StartupArguments.Resolve(["--driver", "ansi"], _fs, "/work");
 
-        Assert.Equal("/work", target.Workspace!.FullName);
+        Assert.Equal(Full("/work"), target.Workspace!.FullName);
         Assert.Null(target.File);
         Assert.False(_fs.File.Exists("/work/ansi"));
     }
@@ -131,8 +131,10 @@ public class StartupArgumentsTests
     {
         var target = StartupArguments.Resolve(["--driver=ansi", "src/a.cs", "--smoke"], _fs, "/work");
 
-        Assert.Equal("/work/src/a.cs", target.File!.FullName);
+        Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
     }
+
+    private string Full(string path) => _fs.Path.GetFullPath(path);
 
     private StartupTarget Resolve(params string[] args) => StartupArguments.Resolve(args, _fs, "/work");
 }
