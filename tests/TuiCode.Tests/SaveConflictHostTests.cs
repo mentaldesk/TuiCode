@@ -35,7 +35,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
             """
             'a.txt' changed on disk since you opened it.
             This tab has unsaved changes.
-            Saving would overwrite the newer file.
+            What would you like to do?
             """.ReplaceLineEndings("\n"),
             asked.ReplaceLineEndings("\n"));
         Assert.True(cancelFocused);
@@ -91,6 +91,29 @@ public class SaveConflictHostTests : StaticConfigurationTest
         Assert.Equal("mine\n", written);
         Assert.False(dirtyAfterSave);
         Assert.Equal("changed again\n", _fs.File.ReadAllText(Path));
+    }
+
+    [Fact]
+    public async Task View_changes_shows_the_buffer_against_the_file_on_disk()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenWithAnExternalChange(workbench),
+            () => host.App.InjectKey(Key.S.WithCtrl),
+            () => Confirm(workbench) is not null,
+            () => host.App.InjectKey(Key.Tab),
+            () => Confirm(workbench)!.ConfirmHasFocus,
+            () => host.App.InjectKey(Key.Tab),
+            () => Confirm(workbench)!.AlternativeHasFocus,
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.Editor.Group.ActiveDiffTab is not null);
+
+        Assert.Null(Confirm(workbench));
+        Assert.Equal("from the other branch\n", _fs.File.ReadAllText(Path));
+        Assert.Equal("saved", workbench.Editor.Group.ActiveDiffTab!.LeftLabel);
+        Assert.True(workbench.Editor.Group.ActiveDiffTab!.Source!.IsDirty);
     }
 
     [Fact]

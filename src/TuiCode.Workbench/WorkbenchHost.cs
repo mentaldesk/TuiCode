@@ -1176,14 +1176,20 @@ public sealed class WorkbenchHost : IDisposable
         var message = string.Join('\n',
             $"'{tab.File.Name}' changed on disk since you opened it.",
             "This tab has unsaved changes.",
-            "Saving would overwrite the newer file.");
+            "What would you like to do?");
 
-        var view = new ConfirmView("File changed on disk", message, "Overwrite");
+        var view = new ConfirmView("File changed on disk", message, "Overwrite", "View changes");
         view.Cancelled += (_, _) => CloseConfirm(view);
         view.Confirmed += (_, _) =>
         {
             CloseConfirm(view);
             tab.Save();
+        };
+        // The same diff `cts` opens: the buffer against what's on disk now, so the choice is an informed one.
+        view.Alternative += (_, _) =>
+        {
+            CloseConfirm(view);
+            CompareToSaved();
         };
 
         _activeConfirm = view;
