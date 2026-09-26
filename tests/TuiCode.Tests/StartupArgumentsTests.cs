@@ -202,13 +202,15 @@ public class StartupArgumentsTests
     }
 
     [Fact]
-    public void A_file_created_from_the_command_line_keeps_the_position_it_was_given()
+    public void A_path_that_has_to_be_created_is_created_as_typed()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "A colon can't be in a Windows file name, so the rule can't apply there");
+
         var target = Resolve("src/new.cs:42");
 
-        Assert.Equal(Full("/work/src/new.cs"), target.File!.FullName);
-        Assert.True(_fs.File.Exists(Full("/work/src/new.cs")));
-        Assert.Equal(new FilePosition(42, 1), target.Position);
+        Assert.Equal(Full("/work/src/new.cs:42"), target.File!.FullName);
+        Assert.False(_fs.File.Exists(Full("/work/src/new.cs")));
+        Assert.Null(target.Position);
     }
 
     private static bool Agree(string path, bool directory) => true;

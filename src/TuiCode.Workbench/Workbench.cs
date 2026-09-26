@@ -128,6 +128,8 @@ public sealed class Workbench : Window
     /// <summary>
     /// Open what the command line asked for (#263): the workspace, then the file if there is one, at the
     /// position it carried (#265). Positions are 1-based on the command line; the cursor is 0-based.
+    /// Call it from the running loop, not before <c>Application.Init</c>: a tab opened before the first
+    /// layout loses the keyboard to a session-restored one, and there's no viewport to centre in yet.
     /// </summary>
     public void OpenStartupTarget(StartupTarget target)
     {
@@ -137,6 +139,7 @@ public sealed class Workbench : Window
         OpenFile(file);
         if (target.Position is not { } position || Editor.Group.ActiveTab is not { } tab) return;
         tab.MoveCursor(position.Line - 1, position.Column - 1);
+        tab.CenterOnCursor();
     }
 
     /// <summary>

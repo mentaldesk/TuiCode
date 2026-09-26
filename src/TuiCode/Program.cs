@@ -114,7 +114,7 @@ if (startup.Declined)
 provider.GetRequiredService<ISettingsService>().Load();
 
 using var app = provider.GetRequiredService<App>();
-app.Host.Workbench.OpenStartupTarget(startup);
+app.Host.OpenWhenRunning(startup);
 
 // --smoke: boot through Application.Init + one render iteration, then quit.
 // CI runs this against the AOT-published binary to catch runtime failures

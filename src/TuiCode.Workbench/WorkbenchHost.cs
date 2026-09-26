@@ -8,6 +8,7 @@ using TuiCode.Editor;
 using TuiCode.Icons;
 using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
+using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.DocumentInfo;
 using TuiCode.Workbench.Files;
@@ -254,6 +255,22 @@ public sealed class WorkbenchHost : IDisposable
     public Workbench Workbench => _workbench;
 
     public void Run() => _app.Run(_workbench, errorHandler: null!);
+
+    /// <summary>
+    /// Opens what the command line asked for (#263) on the first loop iteration rather than now: before
+    /// the first layout a session-restored tab keeps the keyboard and there's no viewport to scroll a
+    /// position into (#265).
+    /// </summary>
+    public void OpenWhenRunning(StartupTarget target)
+    {
+        _app.Iteration += Open;
+
+        void Open(object? sender, EventArgs<IApplication?> e)
+        {
+            _app.Iteration -= Open;
+            _workbench.OpenStartupTarget(target);
+        }
+    }
 
     public Task<object?> RunAsync(CancellationToken ct = default) =>
         _app.RunAsync(_workbench, ct, errorHandler: null!);

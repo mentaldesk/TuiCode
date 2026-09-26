@@ -24,7 +24,8 @@ public delegate bool ConfirmCreate(string fullPath, bool directory);
 /// by the rule <c>Ctrl+N</c> uses (<see cref="FilePaths.IsDirectoryPath"/>): a trailing slash means
 /// a folder, anything else a file, and intermediate folders are created. The workspace is the folder
 /// you ran from when it contains that file, and the file's own folder when it doesn't. A file may carry
-/// a position (<see cref="PathPosition"/>), which a folder argument doesn't: there's no cursor to place.
+/// a position (<see cref="PathPosition"/>), which neither a folder argument nor a path that had to be
+/// created does: the first has no cursor to place, and the second is created as typed, position and all.
 /// </summary>
 /// <remarks>
 /// Flags are never paths. <c>--driver</c> takes a value, so the argument after it is skipped with
@@ -59,6 +60,13 @@ public static class StartupArguments
             return new StartupTarget(fileSystem.DirectoryInfo.New(fullPath), null);
         if (fileSystem.File.Exists(fullPath))
             return ForFile(fileSystem, workspace, fullPath, position);
+
+        // Nothing is there to put a cursor in, so what gets created is what was typed, colon and all (#265).
+        if (requested != argument)
+        {
+            (requested, position) = (argument, null);
+            fullPath = fileSystem.Path.GetFullPath(fileSystem.Path.Combine(currentDirectory, requested));
+        }
 
         var directory = FilePaths.IsDirectoryPath(requested);
         if (!confirmCreate(fullPath, directory))
