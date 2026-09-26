@@ -17,7 +17,6 @@ public sealed class DiffTab : FrameView
     public const int MaxEdits = 5_000;
 
     private const int MinDigits = 3;
-    private const int ChangeContext = 2;
 
     private static readonly Color DefaultRemoved = new(0x5A, 0x1E, 0x1E);
     private static readonly Color DefaultInserted = new(0x1E, 0x4A, 0x28);
@@ -228,6 +227,25 @@ public sealed class DiffTab : FrameView
     /// <summary>The 1-based change block <see cref="CurrentRow"/> is in or below; 0 above the first.</summary>
     public int CurrentChange => Diff.ChangeBlocks.Count(start => start <= CurrentDiffRow);
 
+    /// <summary>
+    /// The buffer lines a jump from <see cref="CurrentRow"/> should reveal (#287): its change block's,
+    /// or just <see cref="CurrentBufferLine"/> on a row that sits between blocks or in one the buffer
+    /// has no lines in.
+    /// </summary>
+    public (int First, int Last) CurrentChangeLines
+    {
+        get
+        {
+            var line = CurrentBufferLine;
+            if (CurrentChange == 0) return (line, line);
+
+            var block = Diff.Block(Diff.ChangeBlocks[CurrentChange - 1]);
+            if (CurrentDiffRow > block.LastRow || block.RightCount == 0) return (line, line);
+            // A block whose remaining rows are all left-only maps the current row past its own last line.
+            return (Math.Min(block.RightStart, line), Math.Max(block.RightStart + block.RightCount - 1, line));
+        }
+    }
+
     /// <summary>The row of the diff the current row is, or the one a thread row sits under.</summary>
     private int CurrentDiffRow => _current < _rows.Count ? _rows[_current].Diff : _current;
 
@@ -296,7 +314,7 @@ public sealed class DiffTab : FrameView
         _reverted = null;
         // Change blocks count rows of the diff; comment rows (#186, #188) sit between them and are stepped over.
         _current = Math.Max(0, _rows.FindIndex(r => r.Diff == start && !r.IsComment));
-        ScrollTo(_current - ChangeContext);
+        ScrollTo(_current - Reveal.Margin);
         return true;
     }
 
