@@ -1,11 +1,14 @@
 using Terminal.Gui.Drawing;
 using TuiCode.Abstractions;
 using TuiCode.Icons;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Explorer;
 
 public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 {
+    private readonly HashSet<string> _changedOnDisk = new(StringComparer.Ordinal);
+
     public event EventHandler<IFileInfo>? FileActivated;
 
     /// <summary>Raised with the item whose cut mark was just cleared, whether pasted, cancelled, deleted or renamed.</summary>
@@ -26,6 +29,8 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         {
             if (PendingCut is { } cut && string.Equals(e.Model?.FullName, cut.FullName, StringComparison.Ordinal))
                 Dim(e);
+            if (e.Model is { } model && _changedOnDisk.Contains(model.FullName))
+                Warn(e, GetAttributeForRole(VisualRole.Normal));
         };
         if (icons is not null)
         {
@@ -203,6 +208,19 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
             ?? throw new IOException($"Moved to '{shown}' but could not locate it in the tree.");
     }
 
+    /// <summary>
+    /// Name the open files that changed on disk (#268) in the theme's warning colour, so the tab strip
+    /// isn't the only place it shows. Replaces the previous set.
+    /// </summary>
+    public void ShowChangedOnDisk(IEnumerable<string> paths)
+    {
+        var changed = new HashSet<string>(paths, StringComparer.Ordinal);
+        if (changed.SetEquals(_changedOnDisk)) return;
+        _changedOnDisk.Clear();
+        _changedOnDisk.UnionWith(changed);
+        SetNeedsDraw();
+    }
+
     /// <summary>Mark <paramref name="item"/> to be moved by the next <see cref="PastePath"/>, replacing any earlier mark.</summary>
     public void Cut(IFileSystemInfo item)
     {
@@ -244,6 +262,13 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         for (var i = Math.Max(e.IndexOfModelText, 0); i < cells.Count; i++)
             if (cells[i].Attribute is { } attribute)
                 cells[i] = cells[i] with { Attribute = attribute with { Style = attribute.Style | TextStyle.Faint } };
+    }
+
+    private static void Warn(DrawTreeViewLineEventArgs<IFileSystemInfo> e, Attribute row)
+    {
+        if (e.Cells is not { } cells || WarningColour.Foreground is not { } colour) return;
+        for (var i = Math.Max(e.IndexOfModelText, 0); i < cells.Count; i++)
+            cells[i] = cells[i] with { Attribute = (cells[i].Attribute ?? row) with { Foreground = colour } };
     }
 
     private IDirectoryInfo RequireRoot() =>

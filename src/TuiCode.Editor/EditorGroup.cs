@@ -13,6 +13,9 @@ public sealed class EditorGroup : PaneTabs
     public event EventHandler<IFileInfo>? FileSaved;
     public event EventHandler<EditorTab?>? ActiveTabChanged;
 
+    /// <summary>Raised whenever tabs are opened, closed or moved, so what to watch can be re-read (#268).</summary>
+    public event EventHandler? TabsChanged;
+
     /// <summary>Raised when any tab's grammar changes, e.g. from the grammar picker or new associations.</summary>
     public event EventHandler<EditorTab>? GrammarChanged;
 
@@ -120,6 +123,7 @@ public sealed class EditorGroup : PaneTabs
         _byPath[tab.File.FullName] = tab;
         Add(tab);
         Value = tab;
+        TabsChanged?.Invoke(this, EventArgs.Empty);
         return tab;
     }
 
@@ -217,6 +221,7 @@ public sealed class EditorGroup : PaneTabs
         _byPath.Clear();
         foreach (var tab in tabs)
             _byPath[tab.File.FullName] = tab;
+        TabsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void Close(View tab)
@@ -236,6 +241,7 @@ public sealed class EditorGroup : PaneTabs
         }
 
         var remaining = strip.Where(t => !closing.Contains(t)).ToList();
+        TabsChanged?.Invoke(this, EventArgs.Empty);
         if (remaining.Count == 0)
         {
             ClearValue();
@@ -257,6 +263,7 @@ public sealed class EditorGroup : PaneTabs
         _byPath.Clear();
         _diffs.Clear();
         _documents.Clear();
+        TabsChanged?.Invoke(this, EventArgs.Empty);
         ClearValue();
     }
 
