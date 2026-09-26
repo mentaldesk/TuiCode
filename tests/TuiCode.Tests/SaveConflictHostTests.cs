@@ -117,10 +117,11 @@ public class SaveConflictHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task A_clean_tab_saves_without_asking()
+    public async Task A_clean_tab_is_asked_about_too_because_its_text_is_the_older_one()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
+        var asked = "";
 
         await HostSteps.Run(host,
             () =>
@@ -131,9 +132,17 @@ public class SaveConflictHostTests : StaticConfigurationTest
             },
             () => workbench.Editor.Group.ActiveTab is not null,
             () => host.App.InjectKey(Key.S.WithCtrl),
-            () => _fs.File.ReadAllText(Path) == "one\n");
+            () => Confirm(workbench) is not null,
+            () => { asked = Message(Confirm(workbench)!); });
 
-        Assert.Null(Confirm(workbench));
+        Assert.Equal(
+            """
+            'a.txt' changed on disk since you opened it.
+            Saving puts this tab's older text back.
+            What would you like to do?
+            """.ReplaceLineEndings("\n"),
+            asked.ReplaceLineEndings("\n"));
+        Assert.Equal("from the other branch\n", _fs.File.ReadAllText(Path));
     }
 
     [Fact]

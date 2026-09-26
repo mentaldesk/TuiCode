@@ -76,7 +76,7 @@ public class DiskChangeColourTests : StaticConfigurationTest
         Render(group);
         var warned = Attribute(row: 1, col: 1);
 
-        Assert.Equal("a.txt ⚠", tab.Title);
+        Assert.Equal("a.txt ⚠ ", tab.Title);
         Assert.NotEqual(Warning(), plain.Foreground);
         Assert.Equal(Warning(), warned.Foreground);
         Assert.Equal(plain.Background, warned.Background);
@@ -96,6 +96,18 @@ public class DiskChangeColourTests : StaticConfigurationTest
         Render(group);
 
         Assert.Equal(plain, Attribute(row: 1, col: 1));
+    }
+
+    [Fact]
+    public void The_marker_is_drawn_clear_of_the_tab_header_border()
+    {
+        using var group = new EditorGroup { App = _app, Width = Width, Height = 6 };
+        var tab = group.OpenOrFocus(_file);
+
+        tab.MarkChangedOnDisk(true);
+        Render(group);
+
+        Assert.Contains("a.txt ⚠ │", Row(1));
     }
 
     private static Color Warning() => SchemeManager.GetScheme(WarningColour.SchemeName).Normal.Foreground;

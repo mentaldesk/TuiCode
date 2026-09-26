@@ -58,6 +58,17 @@ public sealed class EditorGroup : PaneTabs
         }
     }
 
+    /// <summary>The icon style the disk-change marker follows (#268); applies to open and future tabs alike.</summary>
+    public FileIconStyle IconStyle
+    {
+        get;
+        set
+        {
+            field = value;
+            foreach (var tab in _byPath.Values) tab.IconStyle = value;
+        }
+    } = FileIconStyle.Off;
+
     /// <summary>Indentation and line endings (#14); applies to open and future tabs alike.</summary>
     public EditorSettings Settings
     {
@@ -115,6 +126,7 @@ public sealed class EditorGroup : PaneTabs
     {
         tab.GutterVisible = GutterVisible;
         tab.ColumnSelect = ColumnSelect;
+        tab.IconStyle = IconStyle;
         tab.Settings = Settings;
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));

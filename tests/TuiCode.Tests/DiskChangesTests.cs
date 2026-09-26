@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench.Files;
@@ -40,11 +41,34 @@ public class DiskChangesTests : IDisposable
         Change(tab, "from the other branch\n");
 
         Assert.True(tab.ChangedOnDiskMarked);
-        Assert.Equal("● a.txt ⚠", tab.Title);
+        Assert.Equal("● a.txt ⚠ ", tab.Title);
         Assert.Equal(["⚠ a.txt changed on disk"], _said);
 
         Change(tab, "and again\n");
         Assert.Single(_said);
+    }
+
+    [Fact]
+    public void A_nerd_font_marks_the_tab_and_the_status_line_with_nf_oct_alert()
+    {
+        _group.IconStyle = FileIconStyle.NerdFont;
+        var tab = Open("/work/a.txt", "one\n");
+
+        Change(tab, "from the other branch\n");
+
+        Assert.Equal("a.txt \uf421 ", tab.Title);
+        Assert.Equal(["\uf421 a.txt changed on disk"], _said);
+    }
+
+    [Fact]
+    public void Changing_the_icon_style_restyles_the_tabs_already_marked()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+        Change(tab, "from the other branch\n");
+
+        _group.IconStyle = FileIconStyle.NerdFont;
+
+        Assert.Equal("a.txt \uf421 ", tab.Title);
     }
 
     [Fact]

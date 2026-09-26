@@ -1,3 +1,4 @@
+using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
 
@@ -47,7 +48,7 @@ internal sealed class DiskChanges : IDisposable
             if (changed == tab.ChangedOnDiskMarked) continue;
             tab.MarkChangedOnDisk(changed);
             // Once per tab, and only on the way in: it's told you, and you can keep typing.
-            if (changed) _announce($"⚠ {tab.File.Name} changed on disk");
+            if (changed) _announce($"{WarningMark.For(_group.IconStyle)} {tab.File.Name} changed on disk");
             moved = true;
         }
         if (moved) ShowMarks();

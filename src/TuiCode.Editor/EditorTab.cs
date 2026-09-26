@@ -43,6 +43,18 @@ public sealed class EditorTab : FrameView
         UpdateTitle();
     }
 
+    /// <summary>Which glyph the disk-change marker uses, Auto already resolved; <see cref="EditorGroup"/> keeps it in step.</summary>
+    public FileIconStyle IconStyle
+    {
+        get;
+        set
+        {
+            if (field == value) return;
+            field = value;
+            if (_changedOnDisk) UpdateTitle();
+        }
+    } = FileIconStyle.Off;
+
     public string Content
     {
         get => _textView.Text;
@@ -453,7 +465,8 @@ public sealed class EditorTab : FrameView
 
     private void UpdateTitle()
     {
-        Title = $"{(_dirty ? "● " : "")}{File.Name}{(_changedOnDisk ? " ⚠" : "")}";
+        // The trailing space keeps the marker off the tab's right border.
+        Title = $"{(_dirty ? "● " : "")}{File.Name}{(_changedOnDisk ? $" {WarningMark.For(IconStyle)} " : "")}";
         // TG redraws the tab header from Title only on layout, and positions headers from a cached width first.
         if (Border.View is BorderView { TitleView: { } view })
         {
