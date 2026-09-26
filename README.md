@@ -26,6 +26,7 @@ tuicode                  # the folder you're in
 tuicode src/App.cs       # that file, with the folder you're in in the explorer
 tuicode ~/projects/api   # that folder
 tuicode src/App.cs:42    # that file, cursor on line 42 (`:42:9` for a column too)
+tuicode src/*.cs         # every match as a tab, the first one active
 tuicode --help           # every flag the CLI takes
 ```
 

@@ -9,7 +9,7 @@ using TuiCode.Workbench.Workspace;
 
 namespace TuiCode.Tests;
 
-// What `tuicode <path>` hands the workbench (#263), handed over the way `Program.cs` does — before the
+// What `tuicode <path>...` hands the workbench (#263, #266), handed over the way `Program.cs` does — before the
 // loop starts, opened on its first iteration. Boots a TG Application — serialised (#77).
 public class StartupHostTests : StaticConfigurationTest
 {
@@ -115,6 +115,31 @@ public class StartupHostTests : StaticConfigurationTest
         Assert.Equal([Full("/work/notes.md"), Full("/work/src/long.cs")],
             workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
         Assert.Equal("Ln 128, Col 2", workbench.StatusBar.DisplayedPosition);
+    }
+
+    [Fact]
+    public async Task Several_files_named_on_the_command_line_all_open_with_the_first_active()
+    {
+        _fs.AddFile("/work/notes.md", new MockFileData("# notes\n"));
+        var target = StartupArguments.Resolve(["src/a.cs:1", "src/long.cs:128", "notes.md"], _fs, "/work", NeverAsked);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        host.OpenWhenRunning(target);
+
+        await HostSteps.Run(host,
+            () => workbench.Editor.Group.Tabs.Count == 3,
+            () => host.App.InjectKey(new Key('X')),
+            () => workbench.Editor.Group.ActiveTab!.Content.StartsWith('X'));
+
+        Assert.Equal(
+            [Full("/work/src/a.cs"), Full("/work/src/long.cs"), Full("/work/notes.md")],
+            workbench.Editor.Group.Tabs.Select(tab => tab.File.FullName));
+        Assert.Equal(Full("/work/src/a.cs"), workbench.Editor.Group.ActiveTab?.File.FullName);
+        Assert.Equal(Full("/work"), workbench.Sidebar.Explorer.Root?.FullName);
+
+        // Each tab kept the position it was given, not just the one you can see.
+        var behind = workbench.Editor.Group.Tabs.Single(tab => tab.File.Name == "long.cs");
+        Assert.Equal(127, behind.CursorRow);
     }
 
     private static bool NeverAsked(string path, bool directory) =>

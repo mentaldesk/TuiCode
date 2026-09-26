@@ -1,8 +1,9 @@
+using System.IO.Abstractions;
 using TuiCode.Workbench.Configuration;
 
 namespace TuiCode.Tests;
 
-// `tuicode <path>` (#263), decided before anything is drawn.
+// `tuicode <path>...` (#263, #266), decided before anything is drawn.
 public class StartupArgumentsTests
 {
     private readonly MockFileSystem _fs = new();
@@ -21,7 +22,7 @@ public class StartupArgumentsTests
         var target = Resolve();
 
         Assert.Equal(Full("/work"), target.Workspace!.FullName);
-        Assert.Null(target.File);
+        Assert.Empty(target.Files);
         Assert.Null(target.Error);
     }
 
@@ -33,7 +34,7 @@ public class StartupArgumentsTests
         var target = Resolve(path);
 
         Assert.Equal(Full("/work"), target.Workspace!.FullName);
-        Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
+        Assert.Equal(Full("/work/src/a.cs"), Single(target).FullName);
     }
 
     [Fact]
@@ -42,7 +43,7 @@ public class StartupArgumentsTests
         var target = Resolve("/elsewhere/README.md");
 
         Assert.Equal(Full("/elsewhere"), target.Workspace!.FullName);
-        Assert.Equal(Full("/elsewhere/README.md"), target.File!.FullName);
+        Assert.Equal(Full("/elsewhere/README.md"), Single(target).FullName);
     }
 
     [Theory]
@@ -54,7 +55,7 @@ public class StartupArgumentsTests
         var target = Resolve(path);
 
         Assert.Equal(Full("/work/src"), target.Workspace!.FullName);
-        Assert.Null(target.File);
+        Assert.Empty(target.Files);
     }
 
     [Theory]
@@ -66,7 +67,7 @@ public class StartupArgumentsTests
 
         Assert.True(_fs.File.Exists($"/work/{path}"));
         Assert.Equal(Full("/work"), target.Workspace!.FullName);
-        Assert.Equal(Full($"/work/{path}"), target.File!.FullName);
+        Assert.Equal(Full($"/work/{path}"), Single(target).FullName);
     }
 
     [Theory]
@@ -78,7 +79,7 @@ public class StartupArgumentsTests
 
         Assert.True(target.Declined);
         Assert.Null(target.Workspace);
-        Assert.Null(target.File);
+        Assert.Empty(target.Files);
         Assert.Null(target.Error);
         Assert.False(_fs.File.Exists("/work/today.md"));
         Assert.False(_fs.Directory.Exists("/work/scratch"));
@@ -89,7 +90,7 @@ public class StartupArgumentsTests
     {
         var target = StartupArguments.Resolve(["src/a.cs"], _fs, "/work", Decline);
 
-        Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
+        Assert.Equal(Full("/work/src/a.cs"), Single(target).FullName);
         Assert.False(target.Declined);
     }
 
@@ -122,7 +123,7 @@ public class StartupArgumentsTests
 
         Assert.True(_fs.Directory.Exists("/work/notes/2026"));
         Assert.True(_fs.File.Exists("/work/notes/2026/today.md"));
-        Assert.Equal(Full("/work/notes/2026/today.md"), target.File!.FullName);
+        Assert.Equal(Full("/work/notes/2026/today.md"), Single(target).FullName);
     }
 
     [Fact]
@@ -132,7 +133,7 @@ public class StartupArgumentsTests
 
         Assert.True(_fs.Directory.Exists("/work/scratch"));
         Assert.Equal(Full("/work/scratch"), target.Workspace!.FullName);
-        Assert.Null(target.File);
+        Assert.Empty(target.Files);
     }
 
     [Fact]
@@ -145,7 +146,7 @@ public class StartupArgumentsTests
 
         Assert.Equal($"tuicode: permission denied: {fs.Path.GetFullPath("/work/hosts.new")}", target.Error);
         Assert.Null(target.Workspace);
-        Assert.Null(target.File);
+        Assert.Empty(target.Files);
     }
 
     [Theory]
@@ -158,7 +159,7 @@ public class StartupArgumentsTests
         var target = Resolve(flag);
 
         Assert.Equal(Full("/work"), target.Workspace!.FullName);
-        Assert.Null(target.File);
+        Assert.Empty(target.Files);
         Assert.False(_fs.File.Exists($"/work/{flag}"));
     }
 
@@ -168,7 +169,7 @@ public class StartupArgumentsTests
         var target = StartupArguments.Resolve(["--driver", "ansi"], _fs, "/work", Agree);
 
         Assert.Equal(Full("/work"), target.Workspace!.FullName);
-        Assert.Null(target.File);
+        Assert.Empty(target.Files);
         Assert.False(_fs.File.Exists("/work/ansi"));
     }
 
@@ -177,7 +178,7 @@ public class StartupArgumentsTests
     {
         var target = StartupArguments.Resolve(["--driver=ansi", "src/a.cs", "--smoke"], _fs, "/work", Agree);
 
-        Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
+        Assert.Equal(Full("/work/src/a.cs"), Single(target).FullName);
     }
 
     [Theory]
@@ -187,8 +188,8 @@ public class StartupArgumentsTests
     {
         var target = Resolve(path);
 
-        Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
-        Assert.Equal(new FilePosition(line, column), target.Position);
+        Assert.Equal(Full("/work/src/a.cs"), Single(target).FullName);
+        Assert.Equal(new FilePosition(line, column), Assert.Single(target.Files).Position);
     }
 
     [Fact]
@@ -197,8 +198,7 @@ public class StartupArgumentsTests
         var target = Resolve("src:42");
 
         Assert.Equal(Full("/work/src"), target.Workspace!.FullName);
-        Assert.Null(target.File);
-        Assert.Null(target.Position);
+        Assert.Empty(target.Files);
     }
 
     [Fact]
@@ -208,10 +208,107 @@ public class StartupArgumentsTests
 
         var target = Resolve("src/new.cs:42");
 
-        Assert.Equal(Full("/work/src/new.cs:42"), target.File!.FullName);
+        Assert.Equal(Full("/work/src/new.cs:42"), Single(target).FullName);
         Assert.False(_fs.File.Exists(Full("/work/src/new.cs")));
-        Assert.Null(target.Position);
+        Assert.Null(Assert.Single(target.Files).Position);
     }
+
+    [Fact]
+    public void Every_file_on_the_command_line_opens_in_the_order_given()
+    {
+        _fs.AddFile("/work/src/b.cs", new MockFileData("class B;"));
+        _fs.AddFile("/work/notes.md", new MockFileData("# hi"));
+
+        var target = Resolve("src/b.cs", "notes.md", "src/a.cs");
+
+        Assert.Equal(
+            [Full("/work/src/b.cs"), Full("/work/notes.md"), Full("/work/src/a.cs")],
+            Paths(target));
+    }
+
+    [Fact]
+    public void The_first_path_roots_the_workspace_and_the_rest_may_live_outside_it()
+    {
+        var target = Resolve("src/a.cs", "/elsewhere/README.md");
+
+        Assert.Equal(Full("/work"), target.Workspace!.FullName);
+        Assert.Equal([Full("/work/src/a.cs"), Full("/elsewhere/README.md")], Paths(target));
+    }
+
+    [Fact]
+    public void A_folder_first_roots_the_workspace_and_the_files_after_it_open()
+    {
+        var target = Resolve("src", "/elsewhere/README.md");
+
+        Assert.Equal(Full("/work/src"), target.Workspace!.FullName);
+        Assert.Equal([Full("/elsewhere/README.md")], Paths(target));
+    }
+
+    [Fact]
+    public void A_folder_after_the_first_path_opens_nothing_and_does_not_re_root()
+    {
+        var target = Resolve("/elsewhere/README.md", "src");
+
+        Assert.Equal(Full("/elsewhere"), target.Workspace!.FullName);
+        Assert.Equal([Full("/elsewhere/README.md")], Paths(target));
+    }
+
+    [Fact]
+    public void The_same_path_twice_opens_one_tab()
+    {
+        var target = Resolve("src/a.cs", "/work/src/a.cs");
+
+        Assert.Equal([Full("/work/src/a.cs")], Paths(target));
+    }
+
+    [Fact]
+    public void Each_path_keeps_its_own_position()
+    {
+        _fs.AddFile("/work/src/b.cs", new MockFileData("class B;"));
+
+        var target = Resolve("src/a.cs:10", "src/b.cs:20:3");
+
+        Assert.Equal(
+            [new FilePosition(10, 1), new FilePosition(20, 3)],
+            target.Files.Select(file => file.Position));
+    }
+
+    [Fact]
+    public void A_missing_path_anywhere_in_the_list_is_created()
+    {
+        var target = Resolve("src/a.cs", "notes/today.md");
+
+        Assert.True(_fs.File.Exists("/work/notes/today.md"));
+        Assert.Equal([Full("/work/src/a.cs"), Full("/work/notes/today.md")], Paths(target));
+    }
+
+    [Fact]
+    public void One_path_that_cannot_be_created_opens_none_of_them()
+    {
+        var fs = new DeniedFileSystem();
+        fs.AddFile("/work/src/a.cs", new MockFileData("class A;"));
+
+        var target = StartupArguments.Resolve(["src/a.cs", "hosts.new"], fs, "/work", Agree);
+
+        Assert.Equal($"tuicode: permission denied: {fs.Path.GetFullPath("/work/hosts.new")}", target.Error);
+        Assert.Null(target.Workspace);
+        Assert.Empty(target.Files);
+    }
+
+    [Fact]
+    public void Declining_one_path_starts_nothing_and_creates_none_of_them()
+    {
+        var target = StartupArguments.Resolve(["first.md", "second.md"], _fs, "/work", Decline);
+
+        Assert.True(target.Declined);
+        Assert.False(_fs.File.Exists("/work/first.md"));
+        Assert.False(_fs.File.Exists("/work/second.md"));
+    }
+
+    private static IEnumerable<string> Paths(StartupTarget target) =>
+        target.Files.Select(file => file.File.FullName);
+
+    private static IFileInfo Single(StartupTarget target) => Assert.Single(target.Files).File;
 
     private static bool Agree(string path, bool directory) => true;
 
