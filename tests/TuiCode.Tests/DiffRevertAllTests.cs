@@ -96,7 +96,7 @@ public class RevertAllHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.RevertAllChanges),
             () => Confirm(workbench) is not null,
             () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Tab); },
-            () => Confirm(workbench)!.ConfirmHasFocus,
+            () => Confirm(workbench)!.FocusedChoice == "Revert",
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is null);
 
@@ -120,7 +120,7 @@ public class RevertAllHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.RevertAllChanges),
             () => Confirm(workbench) is not null,
             () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Tab); },
-            () => Confirm(workbench)!.ConfirmHasFocus,
+            () => Confirm(workbench)!.FocusedChoice == "Revert",
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is null);
 
@@ -160,7 +160,7 @@ public class RevertAllHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.RevertAllChanges),
             () => Confirm(workbench) is not null,
             () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.ConfirmHasFocus,
+            () => Confirm(workbench)!.FocusedChoice == "Revert",
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is null,
             () => host.App.InjectKey(Key.Enter),

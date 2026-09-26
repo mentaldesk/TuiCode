@@ -1221,24 +1221,14 @@ public sealed class WorkbenchHost : IDisposable
             tab.IsDirty ? "This tab has unsaved changes." : "Saving puts this tab's older text back.",
             "What would you like to do?");
 
-        var view = new ConfirmView("File changed on disk", message, "Overwrite", "View changes");
+        // Compare leads: it's the only way out that decides nothing. Then take mine, then take theirs (#270).
+        // Compare is the diff `cts` opens — the buffer against what's on disk now.
+        var view = new ConfirmView("File changed on disk", message,
+            new ConfirmChoice("Compare", CompareToSaved),
+            new ConfirmChoice("Overwrite", tab.Save),
+            new ConfirmChoice("Reload", () => _diskChanges.Reload(tab)));
         view.Cancelled += (_, _) => CloseConfirm(view);
-        view.Confirmed += (_, _) =>
-        {
-            CloseConfirm(view);
-            tab.Save();
-        };
-        // The same diff `cts` opens: the buffer against what's on disk now, so the choice is an informed one.
-        view.Alternative += (_, _) =>
-        {
-            CloseConfirm(view);
-            CompareToSaved();
-        };
-
-        _activeConfirm = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusCancel();
+        ShowConfirm(view);
     }
 
     private void ConfirmDelete()
@@ -1260,15 +1250,8 @@ public sealed class WorkbenchHost : IDisposable
             "This action is irreversible!",
         }.OfType<string>());
 
-        var view = new ConfirmView("Delete", message, "Delete");
-        view.Cancelled += (_, _) =>
+        var view = new ConfirmView("Delete", message, new ConfirmChoice("Delete", () =>
         {
-            CloseConfirm(view);
-            if (fromExplorer) FocusSidebar();
-        };
-        view.Confirmed += (_, _) =>
-        {
-            CloseConfirm(view);
             try
             {
                 _workbench.Delete(item);
@@ -1279,6 +1262,24 @@ public sealed class WorkbenchHost : IDisposable
                 _workbench.StatusBar.SetMessage(ex.Message);
             }
             if (fromExplorer) FocusSidebar();
+        }));
+        view.Cancelled += (_, _) =>
+        {
+            CloseConfirm(view);
+            if (fromExplorer) FocusSidebar();
+        };
+        ShowConfirm(view);
+    }
+
+    // Every way out runs only once the modal has closed: removing a focused modal hands focus back into the
+    // editor group, and a Tabs switches Value to whichever tab takes focus, so a diff opened first wouldn't
+    // stay the active one (#191).
+    private void ShowConfirm(ConfirmView view)
+    {
+        view.Chosen += (_, choice) =>
+        {
+            CloseConfirm(view);
+            choice.Run();
         };
 
         _activeConfirm = view;
@@ -1499,20 +1500,15 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         var view = new ConfirmView("Revert all changes",
-            $"Revert all {changes:N0} change{(changes == 1 ? string.Empty : "s")} in {diff.File.Name}?", "Revert");
+            $"Revert all {changes:N0} change{(changes == 1 ? string.Empty : "s")} in {diff.File.Name}?",
+            new ConfirmChoice("Revert", () =>
+            {
+                if (diff.RevertAll() is not { } reverted) return;
+                _workbench.StatusBar.SetMessage(
+                    $"Reverted {reverted:N0} change{(reverted == 1 ? string.Empty : "s")} in {diff.File.Name} — Ctrl+Z to undo");
+            }));
         view.Cancelled += (_, _) => CloseConfirm(view);
-        view.Confirmed += (_, _) =>
-        {
-            CloseConfirm(view);
-            if (diff.RevertAll() is not { } reverted) return;
-            _workbench.StatusBar.SetMessage(
-                $"Reverted {reverted:N0} change{(reverted == 1 ? string.Empty : "s")} in {diff.File.Name} — Ctrl+Z to undo");
-        };
-
-        _activeConfirm = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusCancel();
+        ShowConfirm(view);
     }
 
     /// <summary>
