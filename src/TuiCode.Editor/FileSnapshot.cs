@@ -1,9 +1,9 @@
 namespace TuiCode.Editor;
 
 /// <summary>
-/// A file as an editor last saw it — on load, and again after every save (#267). Lets a save tell
-/// its own last write from someone else's before it overwrites anything. Later slices of #133 ask
-/// the same question for markers and reloads.
+/// A file as an editor last saw it — on load, on reload, and again after every save (#267). Lets a save
+/// tell its own last write from someone else's before it overwrites anything, and a reload (#269) tell
+/// what's on disk from what the tab is already showing.
 /// </summary>
 public sealed record FileSnapshot(DateTime LastWriteTimeUtc, long Length, string Content)
 {
@@ -18,17 +18,21 @@ public sealed record FileSnapshot(DateTime LastWriteTimeUtc, long Length, string
     }
 
     /// <summary>
-    /// Whether the file on disk now differs from this snapshot. mtime and length are the cheap
-    /// screen; only a real content difference counts, so a <c>git checkout</c> that rewrites the
-    /// file byte for byte is not a change. A file that has gone is not one either — there's
-    /// nothing left to overwrite.
+    /// The file's content now if it really differs from this snapshot, else null. mtime and length are
+    /// the cheap screen; only a real content difference counts, so a <c>git checkout</c> that rewrites
+    /// the file byte for byte is not a change. A file that has gone is not one either — there's nothing
+    /// left to overwrite, and nothing to reload.
     /// </summary>
-    public bool DiffersOnDisk(IFileInfo file)
+    public string? ReadIfChanged(IFileInfo file)
     {
         ArgumentNullException.ThrowIfNull(file);
         file.Refresh();
-        if (!file.Exists) return false;
-        if (file.LastWriteTimeUtc == LastWriteTimeUtc && file.Length == Length) return false;
-        return !string.Equals(file.FileSystem.File.ReadAllText(file.FullName), Content, StringComparison.Ordinal);
+        if (!file.Exists) return null;
+        if (file.LastWriteTimeUtc == LastWriteTimeUtc && file.Length == Length) return null;
+        var content = file.FileSystem.File.ReadAllText(file.FullName);
+        return string.Equals(content, Content, StringComparison.Ordinal) ? null : content;
     }
+
+    /// <summary>Whether the file on disk now differs from this snapshot.</summary>
+    public bool DiffersOnDisk(IFileInfo file) => ReadIfChanged(file) is not null;
 }

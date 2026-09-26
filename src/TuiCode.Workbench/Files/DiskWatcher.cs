@@ -39,6 +39,16 @@ internal sealed class DiskWatcher : IDisposable
         get { lock (_gate) return _watchers.Count; }
     }
 
+    /// <summary>
+    /// Whether <paramref name="path"/>'s directory has a live watcher. A directory whose watcher couldn't be
+    /// established, or that errored, has no other way of hearing, so its tabs check on activation instead (#269).
+    /// </summary>
+    public bool IsWatching(string path)
+    {
+        if (_fileSystem.Path.GetDirectoryName(path) is not { Length: > 0 } directory) return false;
+        lock (_gate) return _watchers.ContainsKey(directory);
+    }
+
     /// <summary>Watch exactly <paramref name="paths"/>, adding and dropping directory watchers to match.</summary>
     public void Follow(IEnumerable<string> paths)
     {
