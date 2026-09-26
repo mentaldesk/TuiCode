@@ -1,5 +1,6 @@
 using TuiCode.Abstractions;
 using TuiCode.Editor;
+using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Workspace;
@@ -122,6 +123,14 @@ public sealed class Workbench : Window
         Editor.Open(file).Select(match);
         StatusBar.SetMessage($"{file.FullName}:{match.Row + 1}:{match.Column + 1}");
         FileOpened?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Open what the command line asked for (#263): the workspace, then the file if there is one.</summary>
+    public void OpenStartupTarget(StartupTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        OpenFolder(target.Workspace ?? throw new ArgumentException("Nothing to open.", nameof(target)));
+        if (target.File is { } file) OpenFile(file);
     }
 
     /// <summary>

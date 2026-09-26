@@ -12,6 +12,13 @@ public static class FilePaths
         return path.Length == ancestor.Length || IsSeparator(path[ancestor.Length]);
     }
 
+    /// <summary>A trailing slash (either style) marks a path as a directory — how <c>Ctrl+N</c> and <c>tuicode &lt;path&gt;</c> both decide what to create.</summary>
+    public static bool IsDirectoryPath(string path)
+    {
+        var trimmed = path.TrimEnd();
+        return trimmed.EndsWith('/') || trimmed.EndsWith('\\');
+    }
+
     /// <summary>Where <paramref name="path"/> ends up once <paramref name="from"/> moves to <paramref name="to"/>.</summary>
     public static string Rebase(string path, string from, string to)
     {
