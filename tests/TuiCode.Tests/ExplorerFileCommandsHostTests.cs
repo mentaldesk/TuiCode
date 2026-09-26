@@ -63,7 +63,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => { enterOnCancelKeptFile = _fs.File.Exists("/work/a.txt"); host.App.InjectKey(Key.Delete); },
             () => Confirm(workbench) is not null,
             () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.ConfirmHasFocus,
+            () => Confirm(workbench)!.FocusedChoice == "Delete",
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is null);
 
@@ -369,7 +369,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Delete),
             () => Confirm(workbench) is not null,
             () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.ConfirmHasFocus,
+            () => Confirm(workbench)!.FocusedChoice == "Delete",
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is null);
 

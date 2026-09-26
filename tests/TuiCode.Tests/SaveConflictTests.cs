@@ -101,6 +101,48 @@ public class SaveConflictTests
         Assert.False(tab.ChangedOnDisk);
     }
 
+    // Reload as a way out of the conflict (#270): unlike #269's clean-tab reload, this one has edits to drop.
+    [Fact]
+    public void Reloading_over_unsaved_edits_leaves_the_tab_clean()
+    {
+        var tab = Open("one\n");
+        tab.Content = "mine\n";
+        _fs.File.WriteAllText(Path, "from the other branch\n");
+
+        Assert.True(tab.Reload());
+
+        Assert.Equal("from the other branch\n", tab.Content.ReplaceLineEndings("\n"));
+        Assert.False(tab.IsDirty);
+        Assert.False(tab.ChangedOnDisk);
+    }
+
+    [Fact]
+    public void Reloading_over_unsaved_edits_clears_the_undo_history()
+    {
+        var tab = Open("one\n");
+        tab.Content = "mine\n";
+        _fs.File.WriteAllText(Path, "from the other branch\n");
+
+        tab.Reload();
+        tab.SubViews.OfType<EditorTextView>().Single().Undo();
+
+        Assert.Equal("from the other branch\n", tab.Content.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
+    public void Reloading_over_unsaved_edits_says_the_tab_stopped_being_dirty()
+    {
+        var tab = Open("one\n");
+        tab.Content = "mine\n";
+        _fs.File.WriteAllText(Path, "from the other branch\n");
+        var told = 0;
+        tab.DirtyChanged += (_, _) => told++;
+
+        tab.Reload();
+
+        Assert.Equal(1, told);
+    }
+
     private const string Path = "/work/a.txt";
 
     private EditorTab Open(string content)

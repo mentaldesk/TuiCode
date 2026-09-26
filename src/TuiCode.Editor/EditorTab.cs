@@ -183,7 +183,8 @@ public sealed class EditorTab : FrameView
     /// <summary>
     /// Take up what's on disk (#269), returning false and touching nothing when that's already what the
     /// tab holds. The cursor keeps its line and column, clamped to the new file; the gutter's baseline and
-    /// the undo history describe the new content; the tab stays as clean as it was.
+    /// the undo history describe the new content. The tab comes out clean — the buffer *is* the file now,
+    /// so a reload asked for over unsaved edits (#270) drops them along with the marker.
     /// </summary>
     public bool Reload()
     {
@@ -207,6 +208,11 @@ public sealed class EditorTab : FrameView
         _edits++;
         _gutter.ResetBaseline();
         _changedOnDisk = false;
+        if (_dirty)
+        {
+            _dirty = false;
+            DirtyChanged?.Invoke(this, EventArgs.Empty);
+        }
         UpdateTitle();
         ContentChanged?.Invoke(this, EventArgs.Empty);
         return true;

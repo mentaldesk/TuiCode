@@ -3,27 +3,31 @@ using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Files;
 
+/// <summary>One way out of a <see cref="ConfirmView"/>, other than cancelling.</summary>
+/// <param name="Label">The button's text.</param>
+/// <param name="Run">What taking it does, once the modal has closed.</param>
+public sealed record ConfirmChoice(string Label, Action Run);
+
 /// <summary>Modal for a destructive action. Cancel starts focused, so a stray Enter never confirms.</summary>
 public sealed class ConfirmView : Window
 {
-    private readonly Button _confirm;
-    private readonly Button? _alternative;
-    private readonly Button _cancel;
+    private readonly Button[] _buttons;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
 
     public IKeybindingService Scope => _scopeKeybindings;
 
-    public event EventHandler? Confirmed;
-
-    /// <summary>A third way out, offered when <c>alternativeLabel</c> is given — e.g. showing the diff before deciding (#267).</summary>
-    public event EventHandler? Alternative;
+    /// <summary>The way out the user took. The host closes the modal first, then runs it.</summary>
+    public event EventHandler<ConfirmChoice>? Chosen;
 
     public event EventHandler? Cancelled;
 
-    public ConfirmView(string title, string message, string confirmLabel, string? alternativeLabel = null)
+    public ConfirmView(string title, string message, params ConfirmChoice[] choices)
     {
+        ArgumentNullException.ThrowIfNull(choices);
+        ArgumentNullException.ThrowIfNull(message);
+
         Title = title;
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
@@ -32,27 +36,24 @@ public sealed class ConfirmView : Window
         Height = message.Split('\n').Length + 5;
         CanFocus = true;
 
-        var text = new Label
+        Add(new Label
         {
             X = 1,
             Y = 0,
             Width = Dim.Fill(1),
             Text = message,
-        };
+        });
 
-        _confirm = Choice(confirmLabel);
-        _confirm.Accepting += (_, e) => { e.Handled = true; Confirmed?.Invoke(this, EventArgs.Empty); };
-        if (alternativeLabel is not null)
+        _buttons = new Button[choices.Length + 1];
+        for (var i = 0; i < choices.Length; i++)
         {
-            _alternative = Choice(alternativeLabel);
-            _alternative.Accepting += (_, e) => { e.Handled = true; Alternative?.Invoke(this, EventArgs.Empty); };
+            var choice = choices[i];
+            _buttons[i] = Choice(choice.Label);
+            _buttons[i].Accepting += (_, e) => { e.Handled = true; Chosen?.Invoke(this, choice); };
         }
-        _cancel = Choice("Cancel");
-        _cancel.Accepting += (_, e) => { e.Handled = true; Cancelled?.Invoke(this, EventArgs.Empty); };
-
-        Add(text, _confirm);
-        if (_alternative is not null) Add(_alternative);
-        Add(_cancel);
+        _buttons[^1] = Choice("Cancel");
+        _buttons[^1].Accepting += (_, e) => { e.Handled = true; Cancelled?.Invoke(this, EventArgs.Empty); };
+        foreach (var button in _buttons) Add(button);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -68,9 +69,8 @@ public sealed class ConfirmView : Window
         Y = Pos.AnchorEnd(1),
     };
 
-    public bool FocusCancel() => _cancel.SetFocus();
+    public bool FocusCancel() => _buttons[^1].SetFocus();
 
-    public bool ConfirmHasFocus => _confirm.HasFocus;
-
-    public bool AlternativeHasFocus => _alternative?.HasFocus is true;
+    /// <summary>The label of whichever button has focus, <c>Cancel</c> included; null when none does.</summary>
+    public string? FocusedChoice => Array.Find(_buttons, b => b.HasFocus)?.Text;
 }

@@ -76,6 +76,17 @@ internal sealed class DiskChanges : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Take up what's on disk because the user asked (#270) — the same reload as above, edits and all, with
+    /// the explorer told that the marker has gone.
+    /// </summary>
+    public bool Reload(EditorTab tab)
+    {
+        if (!tab.Reload()) return false;
+        ShowMarks();
+        return true;
+    }
+
     private void ShowMarks() =>
         _explorer.ShowChangedOnDisk(_group.Tabs.Where(t => t.ChangedOnDiskMarked).Select(t => t.File.FullName));
 
