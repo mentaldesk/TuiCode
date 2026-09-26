@@ -25,6 +25,7 @@ Other channels (winget, Linux packagers) are tracked in [#43](https://github.com
 tuicode                  # the folder you're in
 tuicode src/App.cs       # that file, with the folder you're in in the explorer
 tuicode ~/projects/api   # that folder
+tuicode src/App.cs:42    # that file, cursor on line 42 (`:42:9` for a column too)
 tuicode --help           # every flag the CLI takes
 ```
 

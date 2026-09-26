@@ -180,6 +180,39 @@ public class StartupArgumentsTests
         Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
     }
 
+    [Theory]
+    [InlineData("src/a.cs:42", 42, 1)]
+    [InlineData("src/a.cs:42:9", 42, 9)]
+    public void A_position_on_the_path_rides_along_with_the_file(string path, int line, int column)
+    {
+        var target = Resolve(path);
+
+        Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
+        Assert.Equal(new FilePosition(line, column), target.Position);
+    }
+
+    [Fact]
+    public void A_position_on_a_folder_is_dropped()
+    {
+        var target = Resolve("src:42");
+
+        Assert.Equal(Full("/work/src"), target.Workspace!.FullName);
+        Assert.Null(target.File);
+        Assert.Null(target.Position);
+    }
+
+    [Fact]
+    public void A_path_that_has_to_be_created_is_created_as_typed()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "A colon can't be in a Windows file name, so the rule can't apply there");
+
+        var target = Resolve("src/new.cs:42");
+
+        Assert.Equal(Full("/work/src/new.cs:42"), target.File!.FullName);
+        Assert.False(_fs.File.Exists(Full("/work/src/new.cs")));
+        Assert.Null(target.Position);
+    }
+
     private static bool Agree(string path, bool directory) => true;
 
     private static bool Decline(string path, bool directory) => false;
