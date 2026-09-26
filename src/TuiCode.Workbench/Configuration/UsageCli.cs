@@ -13,8 +13,10 @@ public static class UsageCli
         tuicode — a minimalist terminal code editor
 
         Usage:
-          tuicode [<path>]           Open a file, or a folder as the workspace.
+          tuicode [<path>...]        Open a file, or a folder as the workspace.
                                      With no path, the current folder.
+                                     Several files open as tabs, the first
+                                     active; the first path is the workspace.
                                      A file may carry a position:
                                      path:line[:column]
 

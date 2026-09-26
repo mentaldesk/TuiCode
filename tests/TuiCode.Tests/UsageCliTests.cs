@@ -25,7 +25,7 @@ public class UsageCliTests
 
         Assert.Equal(0, exit);
         Assert.Contains("Usage:", @out.ToString());
-        Assert.Contains("tuicode [<path>]", @out.ToString());
+        Assert.Contains("tuicode [<path>...]", @out.ToString());
     }
 
     [Fact]

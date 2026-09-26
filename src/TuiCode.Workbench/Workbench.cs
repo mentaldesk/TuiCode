@@ -126,8 +126,9 @@ public sealed class Workbench : Window
     }
 
     /// <summary>
-    /// Open what the command line asked for (#263): the workspace, then the file if there is one, at the
-    /// position it carried (#265). Positions are 1-based on the command line; the cursor is 0-based.
+    /// Open what the command line asked for (#263): the workspace, then every file it named, each at the
+    /// position it carried (#265), with the first one active (#266). Positions are 1-based on the command
+    /// line; the cursor is 0-based.
     /// Call it from the running loop, not before <c>Application.Init</c>: a tab opened before the first
     /// layout loses the keyboard to a session-restored one, and there's no viewport to centre in yet.
     /// </summary>
@@ -135,9 +136,16 @@ public sealed class Workbench : Window
     {
         ArgumentNullException.ThrowIfNull(target);
         OpenFolder(target.Workspace ?? throw new ArgumentException("Nothing to open.", nameof(target)));
-        if (target.File is not { } file) return;
-        OpenFile(file);
-        if (target.Position is not { } position || Editor.Group.ActiveTab is not { } tab) return;
+        foreach (var startup in target.Files)
+            Place(startup);
+        // Opening left the last tab active, and only the visible tab has a viewport to centre in.
+        if (target.Files is [var first, _, ..]) Place(first);
+    }
+
+    private void Place(StartupFile startup)
+    {
+        OpenFile(startup.File);
+        if (startup.Position is not { } position || Editor.Group.ActiveTab is not { } tab) return;
         tab.MoveCursor(position.Line - 1, position.Column - 1);
         tab.CenterOnCursor();
     }
