@@ -52,6 +52,7 @@ public class PathPositionTests
     [Fact]
     public void A_file_whose_name_really_ends_in_a_number_after_a_colon_wins()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "A colon can't be in a Windows file name, so the rule can't apply there");
         _fs.AddFile("/work/weird:42", new MockFileData("odd"));
 
         var (parsed, position) = Split("weird:42");
