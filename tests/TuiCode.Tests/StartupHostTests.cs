@@ -21,6 +21,8 @@ public class StartupHostTests : StaticConfigurationTest
     {
         _fs.AddDirectory("/work");
         _fs.AddFile("/work/src/a.cs", new MockFileData("class A;\n"));
+        _fs.AddFile("/work/src/long.cs", new MockFileData(string.Concat(
+            Enumerable.Range(1, 200).Select(n => $"// line {n} padded out so a column lands somewhere\n"))));
     }
 
     [Fact]
@@ -53,6 +55,56 @@ public class StartupHostTests : StaticConfigurationTest
             () => workbench.Sidebar.Explorer.Root?.FullName == Full("/work/src"));
 
         Assert.Null(workbench.Editor.Group.ActiveTab);
+    }
+
+    [Theory]
+    [InlineData("src/long.cs:128", 127, 0, "Ln 128, Col 1")]
+    [InlineData("src/long.cs:128:9", 127, 8, "Ln 128, Col 9")]
+    public async Task A_position_on_the_command_line_puts_the_cursor_there(
+        string argument, int row, int column, string shown)
+    {
+        var target = StartupArguments.Resolve([argument], _fs, "/work", NeverAsked);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        // Opened before the loop starts, as Program.cs does: the viewport isn't laid out yet.
+        workbench.OpenStartupTarget(target);
+        await HostSteps.Run(host,
+            () => workbench.Editor.Group.ActiveTab is not null);
+
+        var tab = workbench.Editor.Group.ActiveTab!;
+        Assert.Equal(row, tab.CursorRow);
+        Assert.Equal(column, tab.CursorColumn);
+        Assert.Equal(shown, workbench.StatusBar.DisplayedPosition);
+        Assert.InRange(row, tab.TopRow, tab.TopRow + tab.VisibleRows - 1);
+    }
+
+    [Fact]
+    public async Task A_line_past_the_end_of_the_file_lands_on_the_last_one()
+    {
+        var target = StartupArguments.Resolve(["src/a.cs:9999"], _fs, "/work", NeverAsked);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenStartupTarget(target),
+            () => workbench.Editor.Group.ActiveTab is not null);
+
+        Assert.Equal("Ln 2, Col 1", workbench.StatusBar.DisplayedPosition);
+    }
+
+    [Fact]
+    public async Task A_position_on_a_file_that_had_to_be_created_lands_on_line_1()
+    {
+        var target = StartupArguments.Resolve(["src/new.cs:42"], _fs, "/work", (_, _) => true);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenStartupTarget(target),
+            () => workbench.Editor.Group.ActiveTab is not null);
+
+        Assert.Equal("Ln 1, Col 1", workbench.StatusBar.DisplayedPosition);
     }
 
     private static bool NeverAsked(string path, bool directory) =>

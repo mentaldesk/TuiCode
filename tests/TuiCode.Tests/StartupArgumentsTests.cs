@@ -180,6 +180,37 @@ public class StartupArgumentsTests
         Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
     }
 
+    [Theory]
+    [InlineData("src/a.cs:42", 42, 1)]
+    [InlineData("src/a.cs:42:9", 42, 9)]
+    public void A_position_on_the_path_rides_along_with_the_file(string path, int line, int column)
+    {
+        var target = Resolve(path);
+
+        Assert.Equal(Full("/work/src/a.cs"), target.File!.FullName);
+        Assert.Equal(new FilePosition(line, column), target.Position);
+    }
+
+    [Fact]
+    public void A_position_on_a_folder_is_dropped()
+    {
+        var target = Resolve("src:42");
+
+        Assert.Equal(Full("/work/src"), target.Workspace!.FullName);
+        Assert.Null(target.File);
+        Assert.Null(target.Position);
+    }
+
+    [Fact]
+    public void A_file_created_from_the_command_line_keeps_the_position_it_was_given()
+    {
+        var target = Resolve("src/new.cs:42");
+
+        Assert.Equal(Full("/work/src/new.cs"), target.File!.FullName);
+        Assert.True(_fs.File.Exists(Full("/work/src/new.cs")));
+        Assert.Equal(new FilePosition(42, 1), target.Position);
+    }
+
     private static bool Agree(string path, bool directory) => true;
 
     private static bool Decline(string path, bool directory) => false;

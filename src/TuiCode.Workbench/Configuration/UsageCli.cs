@@ -15,6 +15,8 @@ public static class UsageCli
         Usage:
           tuicode [<path>]           Open a file, or a folder as the workspace.
                                      With no path, the current folder.
+                                     A file may carry a position:
+                                     path:line[:column]
 
         Options:
           --help, -h                 Show this help and exit

@@ -125,12 +125,18 @@ public sealed class Workbench : Window
         FileOpened?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Open what the command line asked for (#263): the workspace, then the file if there is one.</summary>
+    /// <summary>
+    /// Open what the command line asked for (#263): the workspace, then the file if there is one, at the
+    /// position it carried (#265). Positions are 1-based on the command line; the cursor is 0-based.
+    /// </summary>
     public void OpenStartupTarget(StartupTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
         OpenFolder(target.Workspace ?? throw new ArgumentException("Nothing to open.", nameof(target)));
-        if (target.File is { } file) OpenFile(file);
+        if (target.File is not { } file) return;
+        OpenFile(file);
+        if (target.Position is not { } position || Editor.Group.ActiveTab is not { } tab) return;
+        tab.MoveCursor(position.Line - 1, position.Column - 1);
     }
 
     /// <summary>
