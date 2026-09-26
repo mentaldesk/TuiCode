@@ -17,6 +17,14 @@ namespace TuiCode.Workbench.TerminalIntegration;
 /// </remarks>
 public sealed class TerminalIntegrationCli
 {
+    public const string ListFlag = "--list-terminal-integrations";
+    public const string InstallFlag = "--install-terminal-integration";
+    public const string UninstallFlag = "--uninstall-terminal-integration";
+    public const string CheckFlag = "--check-terminal-integration";
+
+    /// <summary>Every flag <see cref="TryHandle"/> recognises, so <c>--help</c> can list them all.</summary>
+    public static IReadOnlyList<string> Flags { get; } = [ListFlag, InstallFlag, UninstallFlag, CheckFlag];
+
     private readonly IReadOnlyList<ITerminalIntegration> _integrations;
     private readonly TextWriter _out;
 
@@ -37,13 +45,13 @@ public sealed class TerminalIntegrationCli
             var (flag, value) = SplitFlag(raw);
             switch (flag)
             {
-                case "--list-terminal-integrations":
+                case ListFlag:
                     return List();
-                case "--install-terminal-integration":
+                case InstallFlag:
                     return Install(value);
-                case "--uninstall-terminal-integration":
+                case UninstallFlag:
                     return Uninstall(value);
-                case "--check-terminal-integration":
+                case CheckFlag:
                     return Check(value);
             }
         }

@@ -25,6 +25,7 @@ Other channels (winget, Linux packagers) are tracked in [#43](https://github.com
 tuicode                  # the folder you're in
 tuicode src/App.cs       # that file, with the folder you're in in the explorer
 tuicode ~/projects/api   # that folder
+tuicode --help           # every flag the CLI takes
 ```
 
 A path that isn't there is offered for creation first, so a typo doesn't leave an empty file behind.

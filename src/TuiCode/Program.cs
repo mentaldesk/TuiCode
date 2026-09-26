@@ -20,6 +20,10 @@ using TuiCode.Workbench.Workspace;
 if (args.Contains("--smoke-syntax"))
     return SyntaxSmoke.Run(Console.Out);
 
+// --help / -h: usage to stdout, before anything touches the terminal (#264).
+if (UsageCli.TryHandle(args, Console.Out) is int usageExit)
+    return usageExit;
+
 var services = new ServiceCollection();
 
 // No provider is registered yet — ILogger output is captured through the abstraction but not
