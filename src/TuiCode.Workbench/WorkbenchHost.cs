@@ -1203,10 +1203,11 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     // Ctrl+S never overwrites someone else's newer file without asking (#267), clean tab or not: a clean
-    // buffer is still older than what's on disk, and writing it loses their work just the same.
+    // buffer is still older than what's on disk, and writing it loses their work just the same. A file that
+    // has gone is no such file, so a ⊘ tab writes it straight back with nothing to ask about (#271).
     private void SaveActiveEditor()
     {
-        if (_workbench.Editor.Group.ActiveTab is { ChangedOnDisk: true } tab)
+        if (_workbench.Editor.Group.ActiveTab is { DiskNow: DiskState.Changed } tab)
             ConfirmOverwrite(tab);
         else
             _workbench.Editor.Save();

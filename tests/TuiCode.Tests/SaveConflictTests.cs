@@ -1,3 +1,4 @@
+using TuiCode.Abstractions;
 using TuiCode.Editor;
 
 namespace TuiCode.Tests;
@@ -14,7 +15,7 @@ public class SaveConflictTests
         var tab = Open("one\n");
         tab.Content = "edited\n";
 
-        Assert.False(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Unchanged, tab.DiskNow);
     }
 
     [Fact]
@@ -25,7 +26,7 @@ public class SaveConflictTests
 
         _fs.File.WriteAllText(Path, "from the other branch\n");
 
-        Assert.True(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Changed, tab.DiskNow);
     }
 
     [Fact]
@@ -35,7 +36,7 @@ public class SaveConflictTests
 
         _fs.File.SetLastWriteTimeUtc(Path, _fs.File.GetLastWriteTimeUtc(Path).AddHours(1));
 
-        Assert.False(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Unchanged, tab.DiskNow);
     }
 
     // The bytes differ (a BOM in front) but ReadAllText gives back the same text, so the
@@ -48,18 +49,19 @@ public class SaveConflictTests
         _fs.File.WriteAllBytes(Path, [0xEF, 0xBB, 0xBF, .. "one\n"u8.ToArray()]);
 
         Assert.Equal("one\n", _fs.File.ReadAllText(Path));
-        Assert.False(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Unchanged, tab.DiskNow);
     }
 
+    // Gone, not changed: there's nothing left to overwrite, so Ctrl+S has nothing to ask about (#271).
     [Fact]
-    public void A_deleted_file_has_not_changed_because_there_is_nothing_left_to_overwrite()
+    public void A_deleted_file_is_gone_rather_than_changed()
     {
         var tab = Open("one\n");
         tab.Content = "edited\n";
 
         _fs.File.Delete(Path);
 
-        Assert.False(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Gone, tab.DiskNow);
     }
 
     [Fact]
@@ -72,7 +74,7 @@ public class SaveConflictTests
         tab.Save();
 
         Assert.Equal("edited\n", _fs.File.ReadAllText(Path));
-        Assert.False(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Unchanged, tab.DiskNow);
     }
 
     [Fact]
@@ -84,7 +86,7 @@ public class SaveConflictTests
 
         tab.Content = "edited again\n";
 
-        Assert.False(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Unchanged, tab.DiskNow);
     }
 
     [Fact]
@@ -98,7 +100,7 @@ public class SaveConflictTests
         _fs.File.Move(Path, "/work/b.txt");
         group.Relocate(Path, "/work/b.txt");
 
-        Assert.False(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Unchanged, tab.DiskNow);
     }
 
     // Reload as a way out of the conflict (#270): unlike #269's clean-tab reload, this one has edits to drop.
@@ -113,7 +115,7 @@ public class SaveConflictTests
 
         Assert.Equal("from the other branch\n", tab.Content.ReplaceLineEndings("\n"));
         Assert.False(tab.IsDirty);
-        Assert.False(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Unchanged, tab.DiskNow);
     }
 
     [Fact]

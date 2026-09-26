@@ -7,7 +7,8 @@ using static TuiCode.Editor.LineChange;
 
 namespace TuiCode.Tests;
 
-// What a change on disk does to a tab: the marker on a dirty one (#268), the new text on a clean one (#269).
+// What a change on disk does to a tab: the marker on a dirty one (#268), the new text on a clean one (#269),
+// and neither on a file that has gone (#271).
 public class DiskChangesTests : IDisposable
 {
     private readonly WatchableFileSystem _fs = new();
@@ -41,7 +42,7 @@ public class DiskChangesTests : IDisposable
 
         Change(tab, "from the other branch\n");
 
-        Assert.True(tab.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Changed, tab.DiskMarker);
         Assert.Equal("● a.txt ⚠ ", tab.Title);
         Assert.Equal(["⚠ a.txt changed on disk"], _said);
 
@@ -81,7 +82,7 @@ public class DiskChangesTests : IDisposable
 
         Change(tab, "one\n");
 
-        Assert.False(tab.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
         Assert.Equal("a.txt", tab.Title);
         Assert.Empty(_said);
     }
@@ -96,7 +97,7 @@ public class DiskChangesTests : IDisposable
         Raise(tab);
         Flush();
 
-        Assert.False(tab.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
         Assert.Equal("mine\n", Text(tab));
         Assert.Empty(_said);
     }
@@ -126,7 +127,7 @@ public class DiskChangesTests : IDisposable
 
         Change(background, "from the other branch\n");
 
-        Assert.True(background.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Changed, background.DiskMarker);
         Assert.Same(front, _group.ActiveTab);
     }
 
@@ -140,7 +141,7 @@ public class DiskChangesTests : IDisposable
         // What #267's Overwrite does once the reviewer picks it.
         tab.Save();
 
-        Assert.False(tab.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
         Assert.Equal("a.txt", tab.Title);
     }
 
@@ -150,11 +151,11 @@ public class DiskChangesTests : IDisposable
         var tab = Open("/work/a.txt", "one\n");
         tab.Content = "mine\n";
         Change(tab, "from the other branch\n");
-        Assert.True(tab.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Changed, tab.DiskMarker);
 
         Change(tab, "one\n");
 
-        Assert.False(tab.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
     }
 
     [Fact]
@@ -165,7 +166,182 @@ public class DiskChangesTests : IDisposable
 
         Change(tab, "from the other branch\n");
 
-        Assert.True(tab is { IsDirty: true, ChangedOnDisk: true });
+        Assert.True(tab is { IsDirty: true, DiskNow: DiskState.Changed });
+    }
+
+    [Fact]
+    public void A_deleted_file_marks_its_tab_and_keeps_the_buffer()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+
+        Delete(tab);
+
+        Assert.Equal(DiskState.Gone, tab.DiskMarker);
+        Assert.Equal("a.txt \u2298 ", tab.Title);
+        Assert.Equal("one\n", Text(tab));
+        Assert.Equal(["\u2298 a.txt no longer exists on disk \u2014 Ctrl+S writes it back"], _said);
+    }
+
+    [Fact]
+    public void A_deleted_file_says_so_once()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+
+        Delete(tab);
+        Raise(tab);
+        Flush();
+
+        Assert.Single(_said);
+    }
+
+    [Fact]
+    public void A_dirty_tab_whose_file_was_deleted_keeps_both_marks_and_every_edit()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+        tab.Content = "mine\n";
+
+        Delete(tab);
+
+        Assert.Equal("\u25cf a.txt \u2298 ", tab.Title);
+        Assert.Equal("mine\n", Text(tab));
+        // Closing it warns the way any dirty tab does; nothing about the deletion touched that.
+        Assert.True(tab.IsDirty);
+    }
+
+    [Fact]
+    public void A_nerd_font_marks_a_deleted_file_with_nf_fa_ban()
+    {
+        _group.IconStyle = FileIconStyle.NerdFont;
+        var tab = Open("/work/a.txt", "one\n");
+
+        Delete(tab);
+
+        Assert.Equal("a.txt \uf05e ", tab.Title);
+        Assert.Equal(["\uf05e a.txt no longer exists on disk \u2014 Ctrl+S writes it back"], _said);
+    }
+
+    [Fact]
+    public void A_file_renamed_away_has_gone_rather_than_followed_to_its_new_name()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+        var moved = tab.File.FullName;
+
+        _fs.File.Move(moved, _fs.Path.Combine(_fs.Path.GetDirectoryName(moved)!, "b.txt"));
+        _fs.Watchers.For(_fs.Path.GetDirectoryName(moved)!).RaiseRenamedAway(moved);
+        Flush();
+
+        Assert.Equal(DiskState.Gone, tab.DiskMarker);
+        Assert.Equal(moved, tab.File.FullName);
+    }
+
+    [Fact]
+    public void A_deletion_leaves_the_undo_history_alone()
+    {
+        var tab = Open("/work/a.txt", "alpha\n");
+        tab.Replace(new TextMatch(0, 0, 5), "ALPHA");
+
+        Delete(tab);
+        tab.SubViews.OfType<EditorTextView>().Single().Undo();
+
+        Assert.Equal("alpha\n", Text(tab));
+    }
+
+    [Fact]
+    public void Saving_a_deleted_file_writes_it_back_and_clears_the_marker()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+        tab.Content = "mine\n";
+        Delete(tab);
+
+        tab.Save();
+
+        Assert.Equal("mine\n", _fs.File.ReadAllText(tab.File.FullName));
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
+        Assert.Equal("a.txt", tab.Title);
+        Assert.False(tab.IsDirty);
+    }
+
+    [Fact]
+    public void Saving_a_deleted_file_recreates_the_directory_that_went_with_it()
+    {
+        var tab = Open("/work/sub/a.txt", "one\n");
+        tab.Content = "mine\n";
+        _fs.Directory.Delete(_fs.Path.GetDirectoryName(tab.File.FullName)!, recursive: true);
+        Raise(tab);
+        Flush();
+        Assert.Equal(DiskState.Gone, tab.DiskMarker);
+
+        tab.Save();
+
+        Assert.Equal("mine\n", _fs.File.ReadAllText(tab.File.FullName));
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
+    }
+
+    // Checking the branch out again puts the file back byte for byte, so there's nothing to take up.
+    [Fact]
+    public void A_clean_tab_whose_file_comes_back_drops_the_marker()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+        Delete(tab);
+
+        Change(tab, "one\n");
+
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
+        Assert.Equal("one\n", Text(tab));
+        Assert.Single(_said);
+    }
+
+    [Fact]
+    public void A_clean_tab_whose_file_comes_back_different_reloads_it()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+        Delete(tab);
+
+        Change(tab, "from the other branch\n");
+
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
+        Assert.Equal("from the other branch\n", Text(tab));
+    }
+
+    [Fact]
+    public void A_dirty_tab_whose_file_comes_back_is_marked_changed_instead()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+        tab.Content = "mine\n";
+        Delete(tab);
+
+        Change(tab, "from the other branch\n");
+
+        Assert.Equal(DiskState.Changed, tab.DiskMarker);
+        Assert.Equal("\u25cf a.txt \u26a0 ", tab.Title);
+        Assert.Equal("mine\n", Text(tab));
+    }
+
+    [Fact]
+    public void The_explorer_is_told_about_a_file_that_has_gone_too()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+
+        Delete(tab);
+
+        Assert.Equal([tab.File.FullName], _explorer.MarkedOnDisk);
+    }
+
+    // Workbench.Delete closes the tabs itself; the event that follows mustn't put a marker back on one of them.
+    [Fact]
+    public void Deleting_a_file_from_inside_the_editor_closes_its_tab_and_leaves_no_marker()
+    {
+        var tab = Open("/work/a.txt", "one\n");
+
+        _fs.File.Delete(tab.File.FullName);
+        Raise(tab);
+        _group.CloseUnder(tab.File.FullName);
+        Flush();
+
+        Assert.Empty(_group.Tabs);
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
+        Assert.Empty(_explorer.MarkedOnDisk);
+        Assert.Empty(_said);
     }
 
     [Fact]
@@ -189,7 +365,7 @@ public class DiskChangesTests : IDisposable
 
         Flush();
 
-        Assert.False(tab.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
         Assert.Empty(_said);
     }
 
@@ -212,8 +388,8 @@ public class DiskChangesTests : IDisposable
         Change(tab, "from the other branch\n");
 
         Assert.False(tab.IsDirty);
-        Assert.False(tab.ChangedOnDiskMarked);
-        Assert.False(tab.ChangedOnDisk);
+        Assert.Equal(DiskState.Unchanged, tab.DiskMarker);
+        Assert.Equal(DiskState.Unchanged, tab.DiskNow);
         Assert.Equal("a.txt", tab.Title);
     }
 
@@ -285,7 +461,7 @@ public class DiskChangesTests : IDisposable
 
         Assert.Equal("mine\n", Text(tab));
         Assert.True(tab.IsDirty);
-        Assert.True(tab.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Changed, tab.DiskMarker);
     }
 
     [Fact]
@@ -312,7 +488,7 @@ public class DiskChangesTests : IDisposable
         _group.Focus(behind.File.FullName);
 
         Assert.Equal("mine\n", Text(behind));
-        Assert.True(behind.ChangedOnDiskMarked);
+        Assert.Equal(DiskState.Changed, behind.DiskMarker);
     }
 
     // With a watcher in place the check on activation would be a re-read of a file we're already told about.
@@ -353,6 +529,13 @@ public class DiskChangesTests : IDisposable
     private void Change(EditorTab tab, string content)
     {
         _fs.File.WriteAllText(tab.File.FullName, content);
+        Raise(tab);
+        Flush();
+    }
+
+    private void Delete(EditorTab tab)
+    {
+        _fs.File.Delete(tab.File.FullName);
         Raise(tab);
         Flush();
     }
