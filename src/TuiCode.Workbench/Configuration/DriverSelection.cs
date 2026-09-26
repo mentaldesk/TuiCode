@@ -25,7 +25,7 @@ public static class DriverSelection
     // resolver stays free of Terminal.Gui and unit-testable without booting a driver.
     private const string WindowsDriver = "windows";
 
-    private const string Flag = "--driver";
+    public const string Flag = "--driver";
 
     public static string? Resolve(IReadOnlyList<string> args, IEnvironment environment)
     {
