@@ -131,11 +131,12 @@ public sealed class EditorGroup : PaneTabs
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         tab.GrammarChanged += (_, _) => GrammarChanged?.Invoke(this, tab);
-        // Tabs selects the first tab it's given during Add, so register it first for ActiveTabChanged listeners to see.
+        // Tabs selects the first tab it's given during Add, so register it first for ActiveTabChanged listeners to
+        // see — and announce it before that, so the file is being watched by the time anything reacts to it (#269).
         _byPath[tab.File.FullName] = tab;
+        TabsChanged?.Invoke(this, EventArgs.Empty);
         Add(tab);
         Value = tab;
-        TabsChanged?.Invoke(this, EventArgs.Empty);
         return tab;
     }
 

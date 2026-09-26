@@ -15,10 +15,11 @@ public sealed class EditorTab : FrameView
     private readonly SyntaxHighlighter? _syntax;
     private bool _grammarChosen;
     private View? _header;
-    private readonly string _eol;
+    private string _eol;
     private bool _dirty;
     private bool _changedOnDisk;
     private bool _headerColoured;
+    private bool _loading;
     private int _edits;
     private (int Edits, (System.Drawing.Point Start, System.Drawing.Point End)[] Ranges, DocumentStats Stats)? _selectionStats;
     private (int Edits, SyntaxLanguage? Grammar, SymbolScan? Scan)? _symbols;
@@ -177,6 +178,38 @@ public sealed class EditorTab : FrameView
         if (_syntax is null || Equals(Grammar, grammar)) return;
         _textView.Syntax = _syntax.CreateCache(grammar);
         GrammarChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Take up what's on disk (#269), returning false and touching nothing when that's already what the
+    /// tab holds. The cursor keeps its line and column, clamped to the new file; the gutter's baseline and
+    /// the undo history describe the new content; the tab stays as clean as it was.
+    /// </summary>
+    public bool Reload()
+    {
+        if (OnDisk.ReadIfChanged(File) is not { } content) return false;
+
+        var (row, column) = (CursorRow, CursorColumn);
+        _eol = DetectEol(content);
+        // Text = clears the undo history: Ctrl+Z mustn't walk back through edits made against text that's gone.
+        // It also raises ContentsChanged, which would dirty the tab; taking up the file isn't an edit.
+        _loading = true;
+        try
+        {
+            _textView.Text = content;
+        }
+        finally
+        {
+            _loading = false;
+        }
+        OnDisk = FileSnapshot.Of(File, content);
+        MoveCursor(row, column);
+        _edits++;
+        _gutter.ResetBaseline();
+        _changedOnDisk = false;
+        UpdateTitle();
+        ContentChanged?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     /// <summary>Follow a rename or move; the buffer is untouched.</summary>
@@ -449,6 +482,7 @@ public sealed class EditorTab : FrameView
 
     private void OnEdited()
     {
+        if (_loading) return;
         _edits++;
         MarkDirty();
         _gutter.OnContentChanged();
