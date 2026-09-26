@@ -24,6 +24,12 @@ public sealed class EditorTab : FrameView
     public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
 
+    /// <summary>The file as this tab last saw it: on load, and again after every save (#267).</summary>
+    public FileSnapshot OnDisk { get; private set; }
+
+    /// <summary>Whether someone else has changed the file since then, so saving would overwrite theirs.</summary>
+    public bool ChangedOnDisk => OnDisk.DiffersOnDisk(File);
+
     public string Content
     {
         get => _textView.Text;
@@ -70,6 +76,7 @@ public sealed class EditorTab : FrameView
         BorderStyle = LineStyle.None;
 
         var initial = unsaved ?? file.FileSystem.File.ReadAllText(file.FullName);
+        OnDisk = FileSnapshot.Of(file, initial);
         _eol = DetectEol(initial);
 
         _textView = new EditorTextView
@@ -151,6 +158,7 @@ public sealed class EditorTab : FrameView
     internal void Relocate(IFileInfo file)
     {
         File = file;
+        OnDisk = FileSnapshot.Of(file, OnDisk.Content);
         UpdateTitle();
         InferGrammar();
     }
@@ -376,6 +384,7 @@ public sealed class EditorTab : FrameView
         if (Settings.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
             content += eol;
         File.FileSystem.File.WriteAllText(File.FullName, content);
+        OnDisk = FileSnapshot.Of(File, content);
         _gutter.ResetBaseline();
         if (_dirty)
         {

@@ -351,7 +351,7 @@ public sealed class WorkbenchHost : IDisposable
     private void RegisterDefaultCommands()
     {
         _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
-        _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", () => _workbench.Editor.Save());
+        _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor);
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", () => _workbench.Editor.CloseActive());
         _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
         _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => _workbench.Editor.PreviousTab());
@@ -1159,6 +1159,44 @@ public sealed class WorkbenchHost : IDisposable
         view.Dispose();
         _activePathPrompt = null;
         FocusCallingRegion();
+    }
+
+    // Ctrl+S never overwrites someone else's newer file without asking (#267); a clean tab has nothing to lose.
+    private void SaveActiveEditor()
+    {
+        if (_workbench.Editor.Group.ActiveTab is { IsDirty: true, ChangedOnDisk: true } tab)
+            ConfirmOverwrite(tab);
+        else
+            _workbench.Editor.Save();
+    }
+
+    private void ConfirmOverwrite(EditorTab tab)
+    {
+        if (_activeConfirm is not null) return;
+
+        var message = string.Join('\n',
+            $"'{tab.File.Name}' changed on disk since you opened it.",
+            "This tab has unsaved changes.",
+            "What would you like to do?");
+
+        var view = new ConfirmView("File changed on disk", message, "Overwrite", "View changes");
+        view.Cancelled += (_, _) => CloseConfirm(view);
+        view.Confirmed += (_, _) =>
+        {
+            CloseConfirm(view);
+            tab.Save();
+        };
+        // The same diff `cts` opens: the buffer against what's on disk now, so the choice is an informed one.
+        view.Alternative += (_, _) =>
+        {
+            CloseConfirm(view);
+            CompareToSaved();
+        };
+
+        _activeConfirm = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusCancel();
     }
 
     private void ConfirmDelete()
