@@ -411,7 +411,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.ToggleGutter, "Toggle gutter", ToggleGutter);
-        _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect);
+        _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect, CommandScope.Editor);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         // No default key (#184, #185, #187, #188).
@@ -461,19 +461,19 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ScrollDiffPageRight, "Scroll diff a page right", () => ScrollDiff(1, page: true), CommandScope.Diff);
         _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision);
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile);
-        _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)));
-        _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)));
-        _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)));
-        _commands.Register(CommandIds.DuplicateLinesDown, "Duplicate line down", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Down)));
-        _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Up)));
-        _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Down)));
+        _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)), CommandScope.Editor);
+        _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)), CommandScope.Editor);
+        _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)), CommandScope.Editor);
+        _commands.Register(CommandIds.DuplicateLinesDown, "Duplicate line down", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Down)), CommandScope.Editor);
+        _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Up)), CommandScope.Editor);
+        _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Down)), CommandScope.Editor);
         var group = _workbench.Editor.Group;
         _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => group.ActiveTab?.RemoveSecondaryCursors(),
             CommandScope.Editor, () => group.ActiveTab is { HasSecondaryCursors: true });
         // No default keys (#113).
-        _commands.Register(CommandIds.SelectNextOccurrence, "Select next occurrence", () => EditActiveTab(tab => tab.SelectNextOccurrence()));
-        _commands.Register(CommandIds.SelectPreviousOccurrence, "Select previous occurrence", () => EditActiveTab(tab => tab.SelectPreviousOccurrence()));
-        _commands.Register(CommandIds.SelectAllOccurrences, "Select all occurrences", () => EditActiveTab(tab => tab.SelectAllOccurrences()));
+        _commands.Register(CommandIds.SelectNextOccurrence, "Select next occurrence", () => EditActiveTab(tab => tab.SelectNextOccurrence()), CommandScope.Editor);
+        _commands.Register(CommandIds.SelectPreviousOccurrence, "Select previous occurrence", () => EditActiveTab(tab => tab.SelectPreviousOccurrence()), CommandScope.Editor);
+        _commands.Register(CommandIds.SelectAllOccurrences, "Select all occurrences", () => EditActiveTab(tab => tab.SelectAllOccurrences()), CommandScope.Editor);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
