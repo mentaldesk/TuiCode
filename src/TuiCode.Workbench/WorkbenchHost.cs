@@ -58,6 +58,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly TerminalCursors _terminalCursors;
     private readonly FindController _find;
     private readonly FocusService _focus;
+    private readonly DiskChanges _diskChanges;
     private readonly CursorLocationHistory _history = new();
     // Set while we drive the cursor ourselves (Back/Forward, Go-to-line) so those moves
     // don't get re-recorded as fresh jumps.
@@ -98,7 +99,8 @@ public sealed class WorkbenchHost : IDisposable
         ILogger<WorkbenchHost>? logger = null,
         FileIcons? icons = null,
         IGitCli? git = null,
-        IGitHubCli? gitHub = null)
+        IGitHubCli? gitHub = null,
+        IFileSystem? fileSystem = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -155,6 +157,16 @@ public sealed class WorkbenchHost : IDisposable
         _find.Closed += (_, _) => FocusEditorBody();
         _find.HintChanged += (_, hint) => _workbench.StatusBar.SetHint(hint);
 
+        ApplyIconStyle();
+        if (_icons is not null) _icons.Changed += (_, _) => ApplyIconStyle();
+
+        // Tell a tab its file changed the moment it happens, rather than at the save it would lose (#268).
+        _diskChanges = new DiskChanges(
+            _workbench.Editor.Group,
+            _workbench.Sidebar.Explorer,
+            _workbench.StatusBar.SetMessage,
+            new DiskWatcher(fileSystem ?? new FileSystem(), ScheduleFlush, _logger));
+
         _app.Keyboard.KeyDown += OnAppKeyDown;
         _app.Mouse.MouseEvent += OnAppMouseEvent;
         // TG raises no event for most programmatic cursor moves (find, multi-caret, line moves), so poll.
@@ -177,6 +189,18 @@ public sealed class WorkbenchHost : IDisposable
         // still be carrying a stale HasFocus, which its own SetFocus would no-op on (#228).
         _workbench.FileOpened += (_, _) => MoveFocus(FocusRegion.Editor);
     }
+
+    private void ApplyIconStyle() =>
+        _workbench.Editor.Group.IconStyle = _icons?.Style ?? FileIconStyle.Off;
+
+    // Watcher events arrive on a background thread, and the marker touches views: AddTimeout's callback
+    // runs on the main loop, so the debounce doubles as the hop back onto it.
+    private void ScheduleFlush(TimeSpan delay, Action flush) =>
+        _app.Invoke(() => _app.AddTimeout(delay, () =>
+        {
+            flush();
+            return false;
+        }));
 
     private void RegisterFocusRegions()
     {
@@ -1161,10 +1185,11 @@ public sealed class WorkbenchHost : IDisposable
         FocusCallingRegion();
     }
 
-    // Ctrl+S never overwrites someone else's newer file without asking (#267); a clean tab has nothing to lose.
+    // Ctrl+S never overwrites someone else's newer file without asking (#267), clean tab or not: a clean
+    // buffer is still older than what's on disk, and writing it loses their work just the same.
     private void SaveActiveEditor()
     {
-        if (_workbench.Editor.Group.ActiveTab is { IsDirty: true, ChangedOnDisk: true } tab)
+        if (_workbench.Editor.Group.ActiveTab is { ChangedOnDisk: true } tab)
             ConfirmOverwrite(tab);
         else
             _workbench.Editor.Save();
@@ -1176,7 +1201,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var message = string.Join('\n',
             $"'{tab.File.Name}' changed on disk since you opened it.",
-            "This tab has unsaved changes.",
+            tab.IsDirty ? "This tab has unsaved changes." : "Saving puts this tab's older text back.",
             "What would you like to do?");
 
         var view = new ConfirmView("File changed on disk", message, "Overwrite", "View changes");
@@ -2283,6 +2308,7 @@ public sealed class WorkbenchHost : IDisposable
         _keybindings.ChordChanged -= OnChordChanged;
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
+        _diskChanges.Dispose();
         _find.Dispose();
         _terminalCursors.Dispose();
         _workbench.Dispose();

@@ -13,6 +13,9 @@ public sealed class EditorGroup : PaneTabs
     public event EventHandler<IFileInfo>? FileSaved;
     public event EventHandler<EditorTab?>? ActiveTabChanged;
 
+    /// <summary>Raised whenever tabs are opened, closed or moved, so what to watch can be re-read (#268).</summary>
+    public event EventHandler? TabsChanged;
+
     /// <summary>Raised when any tab's grammar changes, e.g. from the grammar picker or new associations.</summary>
     public event EventHandler<EditorTab>? GrammarChanged;
 
@@ -54,6 +57,17 @@ public sealed class EditorGroup : PaneTabs
             foreach (var tab in _byPath.Values) tab.ColumnSelect = value;
         }
     }
+
+    /// <summary>The icon style the disk-change marker follows (#268); applies to open and future tabs alike.</summary>
+    public FileIconStyle IconStyle
+    {
+        get;
+        set
+        {
+            field = value;
+            foreach (var tab in _byPath.Values) tab.IconStyle = value;
+        }
+    } = FileIconStyle.Off;
 
     /// <summary>Indentation and line endings (#14); applies to open and future tabs alike.</summary>
     public EditorSettings Settings
@@ -112,6 +126,7 @@ public sealed class EditorGroup : PaneTabs
     {
         tab.GutterVisible = GutterVisible;
         tab.ColumnSelect = ColumnSelect;
+        tab.IconStyle = IconStyle;
         tab.Settings = Settings;
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
@@ -120,6 +135,7 @@ public sealed class EditorGroup : PaneTabs
         _byPath[tab.File.FullName] = tab;
         Add(tab);
         Value = tab;
+        TabsChanged?.Invoke(this, EventArgs.Empty);
         return tab;
     }
 
@@ -217,6 +233,7 @@ public sealed class EditorGroup : PaneTabs
         _byPath.Clear();
         foreach (var tab in tabs)
             _byPath[tab.File.FullName] = tab;
+        TabsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void Close(View tab)
@@ -236,6 +253,7 @@ public sealed class EditorGroup : PaneTabs
         }
 
         var remaining = strip.Where(t => !closing.Contains(t)).ToList();
+        TabsChanged?.Invoke(this, EventArgs.Empty);
         if (remaining.Count == 0)
         {
             ClearValue();
@@ -257,6 +275,7 @@ public sealed class EditorGroup : PaneTabs
         _byPath.Clear();
         _diffs.Clear();
         _documents.Clear();
+        TabsChanged?.Invoke(this, EventArgs.Empty);
         ClearValue();
     }
 

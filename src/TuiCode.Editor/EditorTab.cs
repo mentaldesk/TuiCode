@@ -17,6 +17,8 @@ public sealed class EditorTab : FrameView
     private View? _header;
     private readonly string _eol;
     private bool _dirty;
+    private bool _changedOnDisk;
+    private bool _headerColoured;
     private int _edits;
     private (int Edits, (System.Drawing.Point Start, System.Drawing.Point End)[] Ranges, DocumentStats Stats)? _selectionStats;
     private (int Edits, SyntaxLanguage? Grammar, SymbolScan? Scan)? _symbols;
@@ -29,6 +31,29 @@ public sealed class EditorTab : FrameView
 
     /// <summary>Whether someone else has changed the file since then, so saving would overwrite theirs.</summary>
     public bool ChangedOnDisk => OnDisk.DiffersOnDisk(File);
+
+    /// <summary>Whether the header carries the disk-change marker (#268); the next save clears it.</summary>
+    public bool ChangedOnDiskMarked => _changedOnDisk;
+
+    /// <summary>Show or drop the marker. Nothing else about the tab changes: you can keep typing through it.</summary>
+    public void MarkChangedOnDisk(bool marked)
+    {
+        if (marked == _changedOnDisk) return;
+        _changedOnDisk = marked;
+        UpdateTitle();
+    }
+
+    /// <summary>Which glyph the disk-change marker uses, Auto already resolved; <see cref="EditorGroup"/> keeps it in step.</summary>
+    public FileIconStyle IconStyle
+    {
+        get;
+        set
+        {
+            if (field == value) return;
+            field = value;
+            if (_changedOnDisk) UpdateTitle();
+        }
+    } = FileIconStyle.Off;
 
     public string Content
     {
@@ -386,12 +411,13 @@ public sealed class EditorTab : FrameView
         File.FileSystem.File.WriteAllText(File.FullName, content);
         OnDisk = FileSnapshot.Of(File, content);
         _gutter.ResetBaseline();
+        _changedOnDisk = false;
         if (_dirty)
         {
             _dirty = false;
-            UpdateTitle();
             DirtyChanged?.Invoke(this, EventArgs.Empty);
         }
+        UpdateTitle();
         Saved?.Invoke(this, EventArgs.Empty);
     }
 
@@ -439,10 +465,29 @@ public sealed class EditorTab : FrameView
 
     private void UpdateTitle()
     {
-        Title = _dirty ? $"● {File.Name}" : File.Name;
+        // The trailing space keeps the marker off the tab's right border.
+        Title = $"{(_dirty ? "● " : "")}{File.Name}{(_changedOnDisk ? $" {WarningMark.For(IconStyle)} " : "")}";
         // TG redraws the tab header from Title only on layout, and positions headers from a cached width first.
-        if (Border.View is BorderView { TitleView: ITitleView header }) header.MeasuredTabLength = 0;
+        if (Border.View is BorderView { TitleView: { } view })
+        {
+            if (view is ITitleView header) header.MeasuredTabLength = 0;
+            NameChangesOnDisk(view);
+        }
         SetNeedsLayout();
+    }
+
+    // TG has no VisualRole for a warning and GetAttributeForRole isn't virtual in 2.1.0, so the marked
+    // tab's name is recoloured as its attribute is resolved; Handled makes the result stick.
+    private void NameChangesOnDisk(View header)
+    {
+        if (_headerColoured) return;
+        _headerColoured = true;
+        header.GettingAttributeForRole += (_, e) =>
+        {
+            if (!_changedOnDisk) return;
+            e.Result = WarningColour.On(e.Result ?? GetAttributeForRole(e.Role));
+            e.Handled = true;
+        };
     }
 }
 

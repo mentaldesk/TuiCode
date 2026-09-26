@@ -70,7 +70,7 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
             {
                 ThemeManager.Theme = theme;
                 ConfigurationManager.Apply();
-                foreach (var scheme in new[] { "Base", "Accent", "Dialog", "Menu", "Error", "Sidebar", "StatusBar" })
+                foreach (var scheme in new[] { "Base", "Accent", "Dialog", "Menu", "Error", "Warning", "Sidebar", "StatusBar" })
                     Assert.True(SchemeManager.TryGetScheme(scheme, out _), $"{theme} has no {scheme} scheme");
             }
         }

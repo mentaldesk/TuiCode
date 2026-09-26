@@ -79,7 +79,8 @@ services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
     logger: sp.GetRequiredService<ILogger<WorkbenchHost>>(),
     icons: sp.GetRequiredService<FileIcons>(),
     git: sp.GetRequiredService<IGitCli>(),
-    gitHub: sp.GetRequiredService<IGitHubCli>()));
+    gitHub: sp.GetRequiredService<IGitHubCli>(),
+    fileSystem: sp.GetRequiredService<IFileSystem>()));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();
