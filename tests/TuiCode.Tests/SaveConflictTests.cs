@@ -98,7 +98,7 @@ public class SaveConflictTests
         tab.Content = "edited\n";
 
         _fs.File.Move(Path, "/work/b.txt");
-        group.Relocate(Path, "/work/b.txt");
+        group.Relocate(_fs.Path.GetFullPath(Path), _fs.Path.GetFullPath("/work/b.txt"));
 
         Assert.Equal(DiskState.Unchanged, tab.DiskNow);
     }
