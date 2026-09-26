@@ -4,9 +4,10 @@ using TuiCode.Workbench.Services;
 namespace TuiCode.Workbench.Actions;
 
 /// <summary>
-/// Modal command-palette overlay (VS Code's F1). Lists every registered
-/// command with its current key bindings; typing filters; Enter executes the
-/// highlighted command and closes; Esc cancels.
+/// Modal command-palette overlay (VS Code's F1). Lists the commands that apply where the keys were when it
+/// opened — Global plus that <see cref="CommandScope"/> — with their current key bindings; typing filters;
+/// Enter executes the highlighted command and closes; Esc cancels. Settings › Keyboard Shortcuts is the
+/// unfiltered reference.
 ///
 /// Owns its own <see cref="ICommandService"/> + <see cref="IKeybindingService"/>
 /// for the modal scope. The owning <see cref="WorkbenchHost"/> pushes
@@ -27,12 +28,17 @@ public sealed class ActionView : Window
 
     public IKeybindingService Scope => _scopeKeybindings;
 
+    /// <summary>The labels currently listed, in the order they're shown.</summary>
+    public IReadOnlyList<string> Labels => [.. _visibleRows.Select(r => r.Label)];
+
     /// <summary>Fired after the view wants to be removed (Esc or after a command was dispatched).</summary>
     public event EventHandler? Closed;
 
+    /// <param name="scope">The scope focus was in when the palette opened — captured there, since opening it pushes a modal input scope.</param>
     public ActionView(
         ICommandService workbenchCommands,
         IKeybindingService workbenchKeybindings,
+        CommandScope scope,
         Action<string> execute)
     {
         ArgumentNullException.ThrowIfNull(workbenchCommands);
@@ -75,20 +81,21 @@ public sealed class ActionView : Window
         _scopeKeybindings = new KeybindingService(_scopeCommands);
         RegisterScopeBindings();
 
-        _allRows = BuildRows(workbenchCommands, workbenchKeybindings);
+        _allRows = BuildRows(workbenchCommands, workbenchKeybindings, scope);
         _visibleRows = _allRows;
         RebuildVisible();
     }
 
     public bool FocusSearch() => _search.SetFocus();
 
-    private static List<ActionRow> BuildRows(ICommandService commands, IKeybindingService keybindings)
+    private static List<ActionRow> BuildRows(ICommandService commands, IKeybindingService keybindings, CommandScope scope)
     {
         var bindingsByCommand = keybindings.Bindings
             .GroupBy(b => b.CommandId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Select(b => b.Display).ToArray(), StringComparer.Ordinal);
 
         return commands.Registered
+            .Where(c => c.Scope == CommandScope.Global || c.Scope == scope)
             .Select(c => new ActionRow(
                 c.Id,
                 c.Label,

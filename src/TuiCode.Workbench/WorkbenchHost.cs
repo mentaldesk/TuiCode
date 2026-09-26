@@ -858,7 +858,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_activeActions is not null) return;
 
         var fromExplorer = _workbench.Sidebar.Explorer.HasFocus;
-        var view = new ActionView(_commands, _keybindings, commandId => RunLaunched(commandId, fromExplorer));
+        var view = new ActionView(_commands, _keybindings, FocusedScope(), commandId => RunLaunched(commandId, fromExplorer));
         view.Closed += (_, _) => CloseActions(view);
         _activeActions = view;
         _workbench.Add(view);
