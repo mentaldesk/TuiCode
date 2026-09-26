@@ -6,9 +6,10 @@ namespace TuiCode.Workbench.Files;
 
 /// <summary>
 /// What a change on disk does to a tab. A clean tab takes the new text up by itself (#269); a dirty one keeps
-/// its edits and gets the marker instead (#268). Either way it's verified by re-reading the file and comparing
-/// it with the snapshot the tab took (#267), so our own saves and a <c>git checkout</c> that rewrites a file
-/// byte for byte do nothing at all. No modal, no focus steal, no beep: a marker, a colour and one status line.
+/// its edits and gets the marker instead (#268); a file that has gone is never reloaded over, whichever it is
+/// (#271). Every one of them is verified by re-reading the file and comparing it with the snapshot the tab took
+/// (#267), so our own saves and a <c>git checkout</c> that rewrites a file byte for byte do nothing at all.
+/// No modal, no focus steal, no beep: a marker, a colour and one status line.
 /// </summary>
 internal sealed class DiskChanges : IDisposable
 {
@@ -60,21 +61,38 @@ internal sealed class DiskChanges : IDisposable
     // Whether anything on screen changed.
     private bool Act(EditorTab tab)
     {
-        if (tab.IsDirty)
+        var now = tab.DiskNow;
+
+        // A file that has gone is never reloaded over, dirty or not: with nothing on disk the buffer is the
+        // only copy of it left (#271). A dirty tab keeps its edits and takes the marker either way (#268).
+        if (now == DiskState.Gone || tab.IsDirty)
         {
-            var changed = tab.ChangedOnDisk;
-            if (changed == tab.ChangedOnDiskMarked) return false;
-            tab.MarkChangedOnDisk(changed);
+            if (now == tab.DiskMarker) return false;
+            tab.MarkOnDisk(now);
             // Once per tab, and only on the way in: it's told you, and you can keep typing.
-            if (changed) _announce($"{WarningMark.For(_group.IconStyle)} {tab.File.Name} changed on disk");
+            if (Note(tab, now) is { } note) _announce(note);
             return true;
         }
 
-        if (!tab.Reload()) return false;
+        // Nothing to take up: the file came back byte for byte, so only the marker is left to drop.
+        if (!tab.Reload())
+        {
+            if (tab.DiskMarker == DiskState.Unchanged) return false;
+            tab.MarkOnDisk(DiskState.Unchanged);
+            return true;
+        }
+
         // A background tab reloads with nothing on screen at all.
         if (ReferenceEquals(tab, _group.ActiveTab)) _announce($"⟳ Reloaded {tab.File.Name} — changed on disk");
         return true;
     }
+
+    private string? Note(EditorTab tab, DiskState state) => state switch
+    {
+        DiskState.Changed => $"{DiskMark.For(state, _group.IconStyle)} {tab.File.Name} changed on disk",
+        DiskState.Gone => $"{DiskMark.For(state, _group.IconStyle)} {tab.File.Name} no longer exists on disk — Ctrl+S writes it back",
+        _ => null,
+    };
 
     /// <summary>
     /// Take up what's on disk because the user asked (#270) — the same reload as above, edits and all, with
@@ -88,7 +106,7 @@ internal sealed class DiskChanges : IDisposable
     }
 
     private void ShowMarks() =>
-        _explorer.ShowChangedOnDisk(_group.Tabs.Where(t => t.ChangedOnDiskMarked).Select(t => t.File.FullName));
+        _explorer.ShowChangedOnDisk(_group.Tabs.Where(t => t.DiskMarker != DiskState.Unchanged).Select(t => t.File.FullName));
 
     public void Dispose()
     {

@@ -80,7 +80,7 @@ internal sealed class DiskWatcher : IDisposable
             watcher.Changed += OnFileEvent;
             watcher.Created += OnFileEvent;
             watcher.Deleted += OnFileEvent;
-            watcher.Renamed += OnFileEvent;
+            watcher.Renamed += OnRenamed;
             watcher.Error += (_, e) => OnError(directory, e.GetException());
             watcher.EnableRaisingEvents = true;
             lock (_gate) _watchers[directory] = watcher;
@@ -106,14 +106,25 @@ internal sealed class DiskWatcher : IDisposable
         if (_watchers.Remove(directory, out var watcher)) watcher.Dispose();
     }
 
-    private void OnFileEvent(object sender, FileSystemEventArgs e)
+    private void OnFileEvent(object sender, FileSystemEventArgs e) => Note(e.FullPath);
+
+    // A rename carries both ends: the file has appeared at FullPath and gone from OldFullPath, and a tab
+    // could be open on either — the temp file an atomic save renames over ours, or ours renamed away (#271).
+    private void OnRenamed(object sender, RenamedEventArgs e) => Note(e.FullPath, e.OldFullPath);
+
+    private void Note(params ReadOnlySpan<string> paths)
     {
         if (_disposed) return;
         lock (_gate)
         {
-            if (!_followed.Contains(e.FullPath)) return;
-            _pending.Add(e.FullPath);
-            if (_armed) return;
+            var ours = false;
+            foreach (var path in paths)
+            {
+                if (!_followed.Contains(path)) continue;
+                _pending.Add(path);
+                ours = true;
+            }
+            if (!ours || _armed) return;
             _armed = true;
         }
         _schedule(Debounce, Flush);

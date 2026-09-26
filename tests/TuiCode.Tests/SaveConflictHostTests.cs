@@ -156,12 +156,12 @@ public class SaveConflictHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var title = "";
-        var marked = true;
+        var marked = DiskState.Changed;
         var dirty = true;
 
         await HostSteps.Run(host,
             () => OpenWithAnExternalChange(workbench),
-            () => { workbench.Editor.Group.ActiveTab!.MarkChangedOnDisk(true); },
+            () => { workbench.Editor.Group.ActiveTab!.MarkOnDisk(DiskState.Changed); },
             () => host.App.InjectKey(Key.S.WithCtrl),
             () => Confirm(workbench) is not null,
             Reach(host, workbench, "Reload"),
@@ -170,7 +170,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
             () =>
             {
                 var tab = workbench.Editor.Group.ActiveTab!;
-                (title, marked, dirty) = (tab.Title, tab.ChangedOnDiskMarked, tab.IsDirty);
+                (title, marked, dirty) = (tab.Title, tab.DiskMarker, tab.IsDirty);
             },
             // Ctrl+S straight afterwards: the recorded state is the file that's now there, so nothing asks again.
             () => host.App.InjectKey(Key.S.WithCtrl),
@@ -178,7 +178,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
 
         Assert.Equal("from the other branch\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
         Assert.Equal("a.txt", title);
-        Assert.False(marked);
+        Assert.Equal(DiskState.Unchanged, marked);
         Assert.False(dirty);
         Assert.Null(Confirm(workbench));
         Assert.Equal(1, _scopes.Depth);

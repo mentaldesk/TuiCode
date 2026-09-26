@@ -1,3 +1,5 @@
+using TuiCode.Abstractions;
+
 namespace TuiCode.Editor;
 
 /// <summary>
@@ -18,21 +20,35 @@ public sealed record FileSnapshot(DateTime LastWriteTimeUtc, long Length, string
     }
 
     /// <summary>
-    /// The file's content now if it really differs from this snapshot, else null. mtime and length are
-    /// the cheap screen; only a real content difference counts, so a <c>git checkout</c> that rewrites
-    /// the file byte for byte is not a change. A file that has gone is not one either — there's nothing
-    /// left to overwrite, and nothing to reload.
+    /// The file's content now if it really differs from this snapshot, else null. A file that has gone
+    /// is not a difference to take up: there's nothing left to read, and nothing to reload.
     /// </summary>
     public string? ReadIfChanged(IFileInfo file)
     {
         ArgumentNullException.ThrowIfNull(file);
-        file.Refresh();
-        if (!file.Exists) return null;
-        if (file.LastWriteTimeUtc == LastWriteTimeUtc && file.Length == Length) return null;
-        var content = file.FileSystem.File.ReadAllText(file.FullName);
-        return string.Equals(content, Content, StringComparison.Ordinal) ? null : content;
+        return Look(file).Content;
     }
 
-    /// <summary>Whether the file on disk now differs from this snapshot.</summary>
-    public bool DiffersOnDisk(IFileInfo file) => ReadIfChanged(file) is not null;
+    /// <summary>Where the file on disk stands against this snapshot.</summary>
+    public DiskState StateOf(IFileInfo file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        return Look(file).State;
+    }
+
+    /// <summary>
+    /// mtime and length are the cheap screen; only a real content difference counts, so a <c>git checkout</c>
+    /// that rewrites the file byte for byte is not a change. Read once, so the caller that wants the new
+    /// text and the one that only wants to know share a single pass over the file.
+    /// </summary>
+    private (DiskState State, string? Content) Look(IFileInfo file)
+    {
+        file.Refresh();
+        if (!file.Exists) return (DiskState.Gone, null);
+        if (file.LastWriteTimeUtc == LastWriteTimeUtc && file.Length == Length) return (DiskState.Unchanged, null);
+        var content = file.FileSystem.File.ReadAllText(file.FullName);
+        return string.Equals(content, Content, StringComparison.Ordinal)
+            ? (DiskState.Unchanged, null)
+            : (DiskState.Changed, content);
+    }
 }

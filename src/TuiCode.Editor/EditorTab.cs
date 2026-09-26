@@ -17,7 +17,7 @@ public sealed class EditorTab : FrameView
     private View? _header;
     private string _eol;
     private bool _dirty;
-    private bool _changedOnDisk;
+    private DiskState _disk;
     private bool _headerColoured;
     private bool _loading;
     private int _edits;
@@ -30,17 +30,17 @@ public sealed class EditorTab : FrameView
     /// <summary>The file as this tab last saw it: on load, and again after every save (#267).</summary>
     public FileSnapshot OnDisk { get; private set; }
 
-    /// <summary>Whether someone else has changed the file since then, so saving would overwrite theirs.</summary>
-    public bool ChangedOnDisk => OnDisk.DiffersOnDisk(File);
+    /// <summary>Where the file stands now: changed under us, so saving would overwrite theirs, or gone (#271).</summary>
+    public DiskState DiskNow => OnDisk.StateOf(File);
 
-    /// <summary>Whether the header carries the disk-change marker (#268); the next save clears it.</summary>
-    public bool ChangedOnDiskMarked => _changedOnDisk;
+    /// <summary>What the header is telling the user (#268); the next save clears it.</summary>
+    public DiskState DiskMarker => _disk;
 
     /// <summary>Show or drop the marker. Nothing else about the tab changes: you can keep typing through it.</summary>
-    public void MarkChangedOnDisk(bool marked)
+    public void MarkOnDisk(DiskState state)
     {
-        if (marked == _changedOnDisk) return;
-        _changedOnDisk = marked;
+        if (state == _disk) return;
+        _disk = state;
         UpdateTitle();
     }
 
@@ -52,7 +52,7 @@ public sealed class EditorTab : FrameView
         {
             if (field == value) return;
             field = value;
-            if (_changedOnDisk) UpdateTitle();
+            if (_disk != DiskState.Unchanged) UpdateTitle();
         }
     } = FileIconStyle.Off;
 
@@ -207,7 +207,7 @@ public sealed class EditorTab : FrameView
         MoveCursor(row, column);
         _edits++;
         _gutter.ResetBaseline();
-        _changedOnDisk = false;
+        _disk = DiskState.Unchanged;
         if (_dirty)
         {
             _dirty = false;
@@ -447,10 +447,14 @@ public sealed class EditorTab : FrameView
         var content = Normalize(_textView.Text, eol);
         if (Settings.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
             content += eol;
+        // A deleted file's directory can have gone with it (#271), and a tab opened on a file that never
+        // existed (#247) has nothing above it either; recreate the path rather than throwing.
+        if (File.FileSystem.Path.GetDirectoryName(File.FullName) is { Length: > 0 } directory)
+            File.FileSystem.Directory.CreateDirectory(directory);
         File.FileSystem.File.WriteAllText(File.FullName, content);
         OnDisk = FileSnapshot.Of(File, content);
         _gutter.ResetBaseline();
-        _changedOnDisk = false;
+        _disk = DiskState.Unchanged;
         if (_dirty)
         {
             _dirty = false;
@@ -506,25 +510,26 @@ public sealed class EditorTab : FrameView
     private void UpdateTitle()
     {
         // The trailing space keeps the marker off the tab's right border.
-        Title = $"{(_dirty ? "● " : "")}{File.Name}{(_changedOnDisk ? $" {WarningMark.For(IconStyle)} " : "")}";
+        var mark = DiskMark.For(_disk, IconStyle);
+        Title = $"{(_dirty ? "● " : "")}{File.Name}{(mark.Length > 0 ? $" {mark} " : "")}";
         // TG redraws the tab header from Title only on layout, and positions headers from a cached width first.
         if (Border.View is BorderView { TitleView: { } view })
         {
             if (view is ITitleView header) header.MeasuredTabLength = 0;
-            NameChangesOnDisk(view);
+            ColourWhileMarked(view);
         }
         SetNeedsLayout();
     }
 
     // TG has no VisualRole for a warning and GetAttributeForRole isn't virtual in 2.1.0, so the marked
     // tab's name is recoloured as its attribute is resolved; Handled makes the result stick.
-    private void NameChangesOnDisk(View header)
+    private void ColourWhileMarked(View header)
     {
         if (_headerColoured) return;
         _headerColoured = true;
         header.GettingAttributeForRole += (_, e) =>
         {
-            if (!_changedOnDisk) return;
+            if (_disk == DiskState.Unchanged) return;
             e.Result = WarningColour.On(e.Result ?? GetAttributeForRole(e.Role));
             e.Handled = true;
         };

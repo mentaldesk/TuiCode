@@ -63,6 +63,18 @@ public class DiskWatcherTests
         Assert.Equal([_a], _reported);
     }
 
+    // A rename reports the new path, so a file moved out from under its tab is only recognisable by the old one.
+    [Fact]
+    public void A_file_renamed_away_from_a_path_we_follow_is_reported_against_that_path()
+    {
+        using var watcher = Watch(_a);
+
+        Watcher(_a).RaiseRenamedAway(_a);
+        Flush();
+
+        Assert.Equal([_a], _reported);
+    }
+
     [Fact]
     public void A_change_to_a_file_nobody_has_open_is_ignored()
     {
