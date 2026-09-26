@@ -8,9 +8,6 @@ namespace TuiCode.Tests;
 // What a watcher event does to a tab (#268): verified by reading, then the marker and one status line.
 public class DiskChangesTests : IDisposable
 {
-    private const string Path = "/work/a.txt";
-    private const string Other = "/work/b.txt";
-
     private readonly WatchableFileSystem _fs = new();
     private readonly EditorGroup _group = new();
     private readonly FileExplorerView _explorer = new();
@@ -37,25 +34,25 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void A_change_someone_else_made_marks_the_tab_and_says_so_once()
     {
-        var tab = Open(Path, "one\n");
+        var tab = Open("/work/a.txt", "one\n");
         tab.Content = "mine\n";
 
-        Change(Path, "from the other branch\n");
+        Change(tab, "from the other branch\n");
 
         Assert.True(tab.ChangedOnDiskMarked);
         Assert.Equal("● a.txt ⚠", tab.Title);
         Assert.Equal(["⚠ a.txt changed on disk"], _said);
 
-        Change(Path, "and again\n");
+        Change(tab, "and again\n");
         Assert.Single(_said);
     }
 
     [Fact]
     public void A_checkout_that_rewrites_the_file_byte_for_byte_marks_nothing()
     {
-        var tab = Open(Path, "one\n");
+        var tab = Open("/work/a.txt", "one\n");
 
-        Change(Path, "one\n");
+        Change(tab, "one\n");
 
         Assert.False(tab.ChangedOnDiskMarked);
         Assert.Equal("a.txt", tab.Title);
@@ -65,11 +62,11 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void Our_own_save_does_not_mark_the_tab_it_just_wrote()
     {
-        var tab = Open(Path, "one\n");
+        var tab = Open("/work/a.txt", "one\n");
         tab.Content = "mine\n";
 
         tab.Save();
-        Raise(Path);
+        Raise(tab);
         Flush();
 
         Assert.False(tab.ChangedOnDiskMarked);
@@ -80,12 +77,12 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void A_file_half_written_when_the_event_arrived_is_read_whole_at_the_flush()
     {
-        var tab = Open(Path, "one\n");
+        var tab = Open("/work/a.txt", "one\n");
 
-        _fs.File.WriteAllText(Path, string.Empty);
-        Raise(Path);
-        _fs.File.WriteAllText(Path, "one\n");
-        Raise(Path);
+        _fs.File.WriteAllText(tab.File.FullName, string.Empty);
+        Raise(tab);
+        _fs.File.WriteAllText(tab.File.FullName, "one\n");
+        Raise(tab);
         Flush();
 
         Assert.False(tab.ChangedOnDiskMarked);
@@ -94,10 +91,10 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void A_background_tab_is_marked_without_being_switched_to()
     {
-        var background = Open(Path, "one\n");
-        var front = Open(Other, "two\n");
+        var background = Open("/work/a.txt", "one\n");
+        var front = Open("/work/b.txt", "two\n");
 
-        Change(Path, "from the other branch\n");
+        Change(background, "from the other branch\n");
 
         Assert.True(background.ChangedOnDiskMarked);
         Assert.Same(front, _group.ActiveTab);
@@ -106,9 +103,9 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void Saving_a_marked_tab_clears_the_marker()
     {
-        var tab = Open(Path, "one\n");
+        var tab = Open("/work/a.txt", "one\n");
         tab.Content = "mine\n";
-        Change(Path, "from the other branch\n");
+        Change(tab, "from the other branch\n");
 
         // What #267's Overwrite does once the reviewer picks it.
         tab.Save();
@@ -120,11 +117,11 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void A_change_that_puts_the_file_back_clears_the_marker()
     {
-        var tab = Open(Path, "one\n");
-        Change(Path, "from the other branch\n");
+        var tab = Open("/work/a.txt", "one\n");
+        Change(tab, "from the other branch\n");
         Assert.True(tab.ChangedOnDiskMarked);
 
-        Change(Path, "one\n");
+        Change(tab, "one\n");
 
         Assert.False(tab.ChangedOnDiskMarked);
     }
@@ -132,10 +129,10 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void Marking_a_tab_leaves_the_save_guard_armed()
     {
-        var tab = Open(Path, "one\n");
+        var tab = Open("/work/a.txt", "one\n");
         tab.Content = "mine\n";
 
-        Change(Path, "from the other branch\n");
+        Change(tab, "from the other branch\n");
 
         Assert.True(tab is { IsDirty: true, ChangedOnDisk: true });
     }
@@ -143,7 +140,7 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void Opening_and_closing_tabs_follows_and_unfollows_their_directories()
     {
-        Open(Path, "one\n");
+        Open("/work/a.txt", "one\n");
         Assert.Equal(1, _watcher.WatcherCount);
 
         _group.CloseActive();
@@ -154,9 +151,9 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void A_change_to_a_file_whose_tab_has_gone_marks_nothing()
     {
-        var tab = Open(Path, "one\n");
-        _fs.File.WriteAllText(Path, "from the other branch\n");
-        Raise(Path);
+        var tab = Open("/work/a.txt", "one\n");
+        _fs.File.WriteAllText(tab.File.FullName, "from the other branch\n");
+        Raise(tab);
         _group.CloseActive();
 
         Flush();
@@ -171,15 +168,17 @@ public class DiskChangesTests : IDisposable
         return _group.OpenOrFocus(_fs.FileInfo.New(path));
     }
 
-    private void Change(string path, string content)
+    // Through the tab's own FullName, which is exactly what the watcher followed: MockFileSystem
+    // roots a POSIX path on Windows, so a literal here wouldn't match the directory it watches.
+    private void Change(EditorTab tab, string content)
     {
-        _fs.File.WriteAllText(path, content);
-        Raise(path);
+        _fs.File.WriteAllText(tab.File.FullName, content);
+        Raise(tab);
         Flush();
     }
 
-    private void Raise(string path) =>
-        _fs.Watchers.For(_fs.Path.GetDirectoryName(path)!).RaiseChanged(path);
+    private void Raise(EditorTab tab) =>
+        _fs.Watchers.For(_fs.Path.GetDirectoryName(tab.File.FullName)!).RaiseChanged(tab.File.FullName);
 
     private void Flush()
     {
