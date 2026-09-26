@@ -262,6 +262,21 @@ public class StartupArgumentsTests
     }
 
     [Fact]
+    public void A_missing_path_named_twice_is_only_asked_about_once()
+    {
+        var asked = 0;
+
+        var target = StartupArguments.Resolve(["today.md", "today.md"], _fs, "/work", (path, directory) =>
+        {
+            asked++;
+            return true;
+        });
+
+        Assert.Equal(1, asked);
+        Assert.Equal([Full("/work/today.md")], Paths(target));
+    }
+
+    [Fact]
     public void Each_path_keeps_its_own_position()
     {
         _fs.AddFile("/work/src/b.cs", new MockFileData("class B;"));

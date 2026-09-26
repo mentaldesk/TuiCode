@@ -32,7 +32,8 @@ public delegate bool ConfirmCreate(string fullPath, bool directory);
 /// </summary>
 /// <remarks>
 /// Nothing opens unless every path resolves: each is asked about and created before any becomes a tab, so a
-/// list with one bad path in it leaves you at the shell rather than in a half-opened session.
+/// list with one bad path in it leaves you at the shell rather than in a half-opened session. The same path
+/// twice is one path: it opens one tab, and you're only asked once about creating it.
 /// Flags are never paths. <c>--driver</c> takes a value, so the argument after it is skipped with
 /// it; anything else starting with <c>--</c> belongs to another parser (<see cref="DriverSelection"/>,
 /// <c>TerminalIntegrationCli</c>, <c>--smoke</c>) and is passed over.
@@ -59,7 +60,10 @@ public static class StartupArguments
         var paths = Paths(args);
         if (paths.Count == 0) return new StartupTarget(workspace, []);
 
-        var requests = paths.Select(path => Classify(path, fileSystem, currentDirectory)).ToList();
+        var requests = paths
+            .Select(path => Classify(path, fileSystem, currentDirectory))
+            .DistinctBy(request => request.FullPath, StringComparer.Ordinal)
+            .ToList();
 
         // Ask about all of them before creating any, so declining the last leaves the earlier ones uncreated.
         if (requests.Any(request => request.Missing && !confirmCreate(request.FullPath, request.Directory)))
@@ -133,14 +137,10 @@ public static class StartupArguments
             : fileSystem.DirectoryInfo.New(fileSystem.Path.GetDirectoryName(first.FullPath)!);
     }
 
-    private static List<StartupFile> Tabs(IFileSystem fileSystem, IEnumerable<Request> requests)
-    {
-        var opened = new HashSet<string>(StringComparer.Ordinal);
-        return requests
-            .Where(request => !request.Directory && opened.Add(request.FullPath))
-            .Select(request => new StartupFile(fileSystem.FileInfo.New(request.FullPath), request.Position))
-            .ToList();
-    }
+    private static List<StartupFile> Tabs(IFileSystem fileSystem, IEnumerable<Request> requests) => requests
+        .Where(request => !request.Directory)
+        .Select(request => new StartupFile(fileSystem.FileInfo.New(request.FullPath), request.Position))
+        .ToList();
 
     private static string Full(IFileSystem fileSystem, string currentDirectory, string path) =>
         fileSystem.Path.GetFullPath(fileSystem.Path.Combine(currentDirectory, path));
