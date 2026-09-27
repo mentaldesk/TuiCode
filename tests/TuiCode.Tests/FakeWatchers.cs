@@ -68,6 +68,13 @@ internal sealed class FakeFileSystemWatcher(IFileSystem fileSystem, string path)
         }
     }
 
+    /// <summary>A file renamed away from <paramref name="fullPath"/> — where the OS reports the old path, not the new.</summary>
+    public void RaiseRenamedAway(string fullPath)
+    {
+        var name = FileSystem.Path.GetFileName(fullPath);
+        Renamed?.Invoke(this, new RenamedEventArgs(WatcherChangeTypes.Renamed, Path, name + ".moved", name));
+    }
+
     public void RaiseError(Exception exception) => Error?.Invoke(this, new ErrorEventArgs(exception));
 
     public event FileSystemEventHandler? Changed;
