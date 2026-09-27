@@ -1,3 +1,4 @@
+using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
@@ -77,9 +78,8 @@ public class StartupHostTests : StaticConfigurationTest
         Assert.Equal(row, tab.CursorRow);
         Assert.Equal(column, tab.CursorColumn);
         Assert.Equal(shown, workbench.StatusBar.DisplayedPosition);
-        // Centred, not merely on screen: TG's own scroll-to-cursor would leave the line on the bottom row.
-        // The viewport can grow after the centring, so pin the middle third rather than the exact row.
-        Assert.InRange(row - tab.TopRow, tab.VisibleRows / 3, tab.VisibleRows * 2 / 3);
+        // Revealed, not merely on screen: TG's own scroll-to-cursor would leave the line on the bottom row.
+        Assert.Equal(row - Reveal.Margin, tab.TopRow);
     }
 
     [Fact]

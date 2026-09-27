@@ -10,7 +10,8 @@ using TuiCode.Workbench.Themes;
 
 namespace TuiCode.Tests;
 
-// Both places a changed file is named read the colour from the theme's Warning scheme (#268).
+// Both places a changed file is named read the colour from the theme's Warning scheme (#268), and a
+// deleted one is named in it too (#271).
 public class DiskChangeColourTests : StaticConfigurationTest
 {
     private const int Width = 30;
@@ -72,7 +73,7 @@ public class DiskChangeColourTests : StaticConfigurationTest
         Render(group);
         var plain = Attribute(row: 1, col: 1);
 
-        tab.MarkChangedOnDisk(true);
+        tab.MarkOnDisk(DiskState.Changed);
         Render(group);
         var warned = Attribute(row: 1, col: 1);
 
@@ -83,6 +84,20 @@ public class DiskChangeColourTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void A_deleted_file_is_named_in_the_warning_colour_too()
+    {
+        using var group = new EditorGroup { App = _app, Width = Width, Height = 6 };
+        var tab = group.OpenOrFocus(_file);
+
+        tab.MarkOnDisk(DiskState.Gone);
+        Render(group);
+
+        Assert.Equal("a.txt \u2298 ", tab.Title);
+        Assert.Equal(Warning(), Attribute(row: 1, col: 1).Foreground);
+        Assert.Contains("a.txt \u2298 \u2502", Row(1));
+    }
+
+    [Fact]
     public void Clearing_the_marker_puts_the_header_colour_back()
     {
         using var group = new EditorGroup { App = _app, Width = Width, Height = 6 };
@@ -90,9 +105,9 @@ public class DiskChangeColourTests : StaticConfigurationTest
         Render(group);
         var plain = Attribute(row: 1, col: 1);
 
-        tab.MarkChangedOnDisk(true);
+        tab.MarkOnDisk(DiskState.Changed);
         Render(group);
-        tab.MarkChangedOnDisk(false);
+        tab.MarkOnDisk(DiskState.Unchanged);
         Render(group);
 
         Assert.Equal(plain, Attribute(row: 1, col: 1));
@@ -104,7 +119,7 @@ public class DiskChangeColourTests : StaticConfigurationTest
         using var group = new EditorGroup { App = _app, Width = Width, Height = 6 };
         var tab = group.OpenOrFocus(_file);
 
-        tab.MarkChangedOnDisk(true);
+        tab.MarkOnDisk(DiskState.Changed);
         Render(group);
 
         Assert.Contains("a.txt ⚠ │", Row(1));

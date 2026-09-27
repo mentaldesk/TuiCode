@@ -948,6 +948,7 @@ public sealed class WorkbenchHost : IDisposable
             _suppressHistory = true;
             try { tab.MoveCursor(target.Row, target.Column); }
             finally { _suppressHistory = false; }
+            tab.RevealLines(target.Row, target.Row);
             _history.Visit(new CursorLocation(tab.File.FullName, target.Row, target.Column), explicitJump: true);
         };
 
@@ -996,7 +997,7 @@ public sealed class WorkbenchHost : IDisposable
             try
             {
                 tab.MoveCursor(symbol.Line, 0);
-                tab.CenterOnCursor();
+                tab.RevealLines(symbol.Line, symbol.Line);
             }
             finally { _suppressHistory = false; }
             _history.Visit(new CursorLocation(tab.File.FullName, symbol.Line, 0), explicitJump: true);
@@ -1058,6 +1059,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             var tab = _workbench.Editor.Group.OpenOrFocus(file);
             tab.MoveCursor(loc.Row, loc.Column);
+            tab.RevealLines(loc.Row, loc.Row);
             MoveFocus(FocusRegion.Editor);
         }
         finally { _suppressHistory = false; }
@@ -1218,10 +1220,11 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     // Ctrl+S never overwrites someone else's newer file without asking (#267), clean tab or not: a clean
-    // buffer is still older than what's on disk, and writing it loses their work just the same.
+    // buffer is still older than what's on disk, and writing it loses their work just the same. A file that
+    // has gone is no such file, so a ⊘ tab writes it straight back with nothing to ask about (#271).
     private void SaveActiveEditor()
     {
-        if (_workbench.Editor.Group.ActiveTab is { ChangedOnDisk: true } tab)
+        if (_workbench.Editor.Group.ActiveTab is { DiskNow: DiskState.Changed } tab)
             ConfirmOverwrite(tab);
         else
             _workbench.Editor.Save();

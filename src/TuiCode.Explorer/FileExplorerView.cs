@@ -208,9 +208,11 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
             ?? throw new IOException($"Moved to '{shown}' but could not locate it in the tree.");
     }
 
+    internal IReadOnlyCollection<string> MarkedOnDisk => _changedOnDisk;
+
     /// <summary>
-    /// Name the open files that changed on disk (#268) in the theme's warning colour, so the tab strip
-    /// isn't the only place it shows. Replaces the previous set.
+    /// Name the open files whose copy on disk has moved out from under their tab (#268, #271) in the theme's
+    /// warning colour, so the tab strip isn't the only place it shows. Replaces the previous set.
     /// </summary>
     public void ShowChangedOnDisk(IEnumerable<string> paths)
     {
