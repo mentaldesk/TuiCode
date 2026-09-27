@@ -113,9 +113,10 @@ public sealed class EditorTab : FrameView
             Text = initial,
             Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
         };
-        _textView.ViewportSettings |= ViewportSettingsFlags.HasVerticalScrollBar;
+        _textView.ViewportSettings |= ViewportSettingsFlags.HasScrollBars;
         Settings = EditorSettings.Default;
-        _gutter = new EditorGutter(_textView, syntax) { X = 0, Y = 0, Height = Dim.Fill() };
+        _gutter = new EditorGutter(_textView, syntax) { X = 0, Y = 0, Height = Dim.Fill(Dim.Func(_ => _textView.Padding!.Thickness.Bottom)) };
+        _textView.HorizontalScrollBar.VisibleChanged += (_, _) => SetNeedsLayout();
         _textView.X = Pos.Right(_gutter);
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
         _textView.ContentsChanged += (_, _) => OnEdited();

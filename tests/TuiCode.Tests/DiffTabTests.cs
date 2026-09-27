@@ -210,7 +210,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
             "  3- three     │               ",
             "  4  four      │  3  four      ",
             "               │  4+ fivefivefi",
-            "               │               ",
+            "◄█████████████████░░░░░░░░░░░░►",
         ], screen);
     }
 
@@ -470,9 +470,9 @@ public class DiffTabDrawTests : StaticConfigurationTest
     [Fact]
     public void Only_the_lines_in_view_are_lexed()
     {
-        var saved = string.Join('\n', Enumerable.Range(1, 1_000).Select(i => $"int a{i};"));
+        var saved = string.Join('\n', Enumerable.Range(1, 1_000).Select(i => $"int{i};"));
         var syntax = new SyntaxHighlighter(GrammarBundle.Load());
-        var diff = Diff(saved, saved.Replace("a1;", "b1;"), syntax, "/work/a.cs");
+        var diff = Diff(saved, saved.Replace("int1;", "int0;"), syntax, "/work/a.cs");
 
         Render(diff);
         Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.

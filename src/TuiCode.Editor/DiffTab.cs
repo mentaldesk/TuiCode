@@ -28,6 +28,7 @@ public sealed class DiffTab : FrameView
     private readonly TokenPalette _palette = new();
     private readonly IFileInfo _file;
     private readonly ScrollBar _scrollBar;
+    private readonly ScrollBar _sidewaysBar;
     private bool _syncingScrollBar;
     private EditorSettings _settings = EditorSettings.Default;
     private IReadOnlyList<string> _left = [];
@@ -72,7 +73,7 @@ public sealed class DiffTab : FrameView
         {
             Orientation = Orientation.Vertical,
             X = Pos.AnchorEnd(),
-            Height = Dim.Fill(),
+            Height = Dim.Fill(Dim.Func(_ => Padding!.Thickness.Bottom)),
             VisibilityMode = ScrollBarVisibilityMode.Auto,
         };
         _scrollBar.VisibleChanged += (_, _) => Padding!.Thickness = Padding.Thickness with { Right = _scrollBar.Visible ? 1 : 0 };
@@ -80,7 +81,19 @@ public sealed class DiffTab : FrameView
         {
             if (!_syncingScrollBar) ScrollTo(e.NewValue);
         };
-        Padding!.GetOrCreateView().Add(_scrollBar);
+        _sidewaysBar = new ScrollBar
+        {
+            Orientation = Orientation.Horizontal,
+            Y = Pos.AnchorEnd(),
+            Width = Dim.Fill(Dim.Func(_ => Padding!.Thickness.Right)),
+            VisibilityMode = ScrollBarVisibilityMode.Auto,
+        };
+        _sidewaysBar.VisibleChanged += (_, _) => Padding!.Thickness = Padding.Thickness with { Bottom = _sidewaysBar.Visible ? 1 : 0 };
+        _sidewaysBar.ValueChanged += (_, e) =>
+        {
+            if (!_syncingScrollBar) ScrollSidewaysTo(FromSidewaysBar(e.NewValue));
+        };
+        Padding!.GetOrCreateView().Add(_scrollBar, _sidewaysBar);
         ViewportChanged += (_, _) => SyncScrollBar();
 
         AddCommand(Command.Up, () => MoveTo(_current - 1));
@@ -356,7 +369,6 @@ public sealed class DiffTab : FrameView
         BuildRows();
         UpdateTitle();
         ScrollTo(_top);
-        if (_column > 0) ScrollSidewaysTo(_column);
         MoveTo(_current);
     }
 
@@ -447,19 +459,37 @@ public sealed class DiffTab : FrameView
             _scrollBar.VisibleContentSize = PageHeight;
             _scrollBar.ScrollableContentSize = _rows.Count;
             _scrollBar.Value = _top;
+            _column = Math.Clamp(_column, 0, MaxColumn);
+            _sidewaysBar.VisibleContentSize = Math.Max(1, Viewport.Width);
+            _sidewaysBar.ScrollableContentSize = _sidewaysBar.VisibleContentSize + ToSidewaysBar(MaxColumn);
+            _sidewaysBar.Increment = Math.Max(1, ToSidewaysBar(1));
+            _sidewaysBar.Value = ToSidewaysBar(_column);
         }
         finally { _syncingScrollBar = false; }
     }
 
     internal ScrollBar ScrollBar => _scrollBar;
 
+    internal ScrollBar SidewaysBar => _sidewaysBar;
+
     private bool ScrollSidewaysTo(int column)
     {
-        _widest ??= _left.Concat(_right).Select(line => Columns(line)).DefaultIfEmpty().Max();
-        _column = Math.Clamp(column, 0, Math.Max(0, _widest.Value - NarrowerTextWidth));
+        _column = Math.Clamp(column, 0, MaxColumn);
+        SyncScrollBar();
         SetNeedsDraw();
         return true;
     }
+
+    private int Widest => _widest ??= _left.Concat(_right).Select(line => Columns(line)).DefaultIfEmpty().Max();
+
+    private int MaxColumn => Math.Max(0, Widest - NarrowerTextWidth);
+
+    // TG sizes a slider as if each bar cell were a column, but this bar spans both panes: its range is in bar cells.
+    private double SidewaysBarScale => (double)Math.Max(1, Viewport.Width) / Math.Max(1, NarrowerTextWidth);
+
+    private int ToSidewaysBar(int column) => (int)Math.Round(column * SidewaysBarScale);
+
+    private int FromSidewaysBar(int value) => (int)Math.Round(value / SidewaysBarScale);
 
     private int Digits => Math.Max(MinDigits, Math.Max(_left.Count, _right.Count).ToString().Length);
 
