@@ -391,9 +391,17 @@ public sealed class WorkbenchHost : IDisposable
 
     private void RegisterDefaultCommands()
     {
+        var group = _workbench.Editor.Group;
+        var explorer = _workbench.Sidebar.Explorer;
+        var review = _workbench.Sidebar.Review;
+        bool EditorOpen() => group.ActiveTab is not null || group.ActiveDiffTab is not null;
+        bool FileOpen() => group.ActiveTab is not null;
+        bool Reviewing() => review.Review is { PullRequest: not null };
+
         _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
-        _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor);
-        _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", () => _workbench.Editor.CloseActive());
+        _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor, CommandScope.Global, EditorOpen);
+        _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", () => _workbench.Editor.CloseActive(),
+            CommandScope.Global, EditorOpen);
         _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
         _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => _workbench.Editor.PreviousTab());
 
@@ -406,21 +414,22 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", () => OpenFindPane(replace: true));
         // No default key (#180).
         _commands.Register(CommandIds.FocusReview, "Focus review", FocusReview);
+        // Left ungated: with no tab these are Ctrl+F falling back to the Find pane and Esc's "Nothing to focus".
         _commands.Register(CommandIds.FindInFile, "Find in file", () => OpenFind(replace: false));
         _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => OpenFind(replace: true));
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
-        _commands.Register(CommandIds.ToggleGutter, "Toggle gutter", ToggleGutter);
+        _commands.Register(CommandIds.ToggleGutter, "Toggle gutter", ToggleGutter, CommandScope.Global, EditorOpen);
         _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect, CommandScope.Editor);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         // No default key (#184, #185, #187, #188).
-        _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest);
-        _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview);
-        _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview);
-        _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment);
+        _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest,
+            CommandScope.Global, () => GitRepository.Contains(explorer.Root));
+        _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview, CommandScope.Global, Reviewing);
+        _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview, CommandScope.Global, Reviewing);
+        _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment, CommandScope.Diff, Reviewing);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
-        var explorer = _workbench.Sidebar.Explorer;
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
         _commands.Register(CommandIds.CutFile, "Cut file or folder", CutEntry, CommandScope.Explorer);
@@ -438,18 +447,18 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
-        _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine);
+        _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Global, EditorOpen);
         // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
         _commands.Register(CommandIds.GoToSymbol, "Go to symbol in file", OpenSymbolPicker, CommandScope.Editor);
         // No default key (#21): rarely needed, and users can bind one in Settings.
-        _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker);
-        _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack);
-        _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward);
+        _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker, CommandScope.Global, EditorOpen);
+        _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack, CommandScope.Global, EditorOpen);
+        _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward, CommandScope.Global, EditorOpen);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
         _commands.Register(CommandIds.ShowAbout, "About TuiCode", OpenAbout);
-        _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo);
+        _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo, CommandScope.Global, EditorOpen);
         // No default key (#61): users can bind one in Settings.
-        _commands.Register(CommandIds.CompareToSaved, "Compare to saved", CompareToSaved);
+        _commands.Register(CommandIds.CompareToSaved, "Compare to saved", CompareToSaved, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.NextChange, "Next change", () => MoveToChange(1), CommandScope.Diff);
         _commands.Register(CommandIds.PreviousChange, "Previous change", () => MoveToChange(-1), CommandScope.Diff);
         _commands.Register(CommandIds.GoToChangeLine, "Go to line in file", GoToChangeLine, CommandScope.Diff);
@@ -459,15 +468,15 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ScrollDiffRight, "Scroll diff right", () => ScrollDiff(1), CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffPageLeft, "Scroll diff a page left", () => ScrollDiff(-1, page: true), CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffPageRight, "Scroll diff a page right", () => ScrollDiff(1, page: true), CommandScope.Diff);
-        _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision);
-        _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile);
+        _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision,
+            CommandScope.Editor, () => GitRepository.Contains(group.ActiveTab?.File.Directory));
+        _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)), CommandScope.Editor);
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)), CommandScope.Editor);
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)), CommandScope.Editor);
         _commands.Register(CommandIds.DuplicateLinesDown, "Duplicate line down", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Down)), CommandScope.Editor);
         _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Up)), CommandScope.Editor);
         _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Down)), CommandScope.Editor);
-        var group = _workbench.Editor.Group;
         _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => group.ActiveTab?.RemoveSecondaryCursors(),
             CommandScope.Editor, () => group.ActiveTab is { HasSecondaryCursors: true });
         // No default keys (#113).
@@ -478,7 +487,8 @@ public sealed class WorkbenchHost : IDisposable
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
         {
             var index = i;
-            _commands.Register(CommandIds.FocusEditorByIndex(index), $"Focus editor tab {index}", () => FocusEditorAt(index - 1));
+            _commands.Register(CommandIds.FocusEditorByIndex(index), $"Focus editor tab {index}", () => FocusEditorAt(index - 1),
+                CommandScope.Global, EditorOpen);
         }
     }
 
@@ -858,7 +868,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_activeActions is not null) return;
 
         var fromExplorer = _workbench.Sidebar.Explorer.HasFocus;
-        var view = new ActionView(_commands, _keybindings, commandId => RunLaunched(commandId, fromExplorer));
+        var view = new ActionView(_commands, _keybindings, FocusedScope(), commandId => RunLaunched(commandId, fromExplorer));
         view.Closed += (_, _) => CloseActions(view);
         _activeActions = view;
         _workbench.Add(view);

@@ -57,7 +57,7 @@ public sealed class HelpView : Window
         static string Row(string key, string desc) => $"  {key,-16}{desc}";
 
         return string.Join("\n",
-            Row("Ctrl+E", "Command palette: every command"),
+            Row("Ctrl+E", "Command palette: what applies here"),
             Row("Ctrl+Space", "Run a command by its mnemonic"),
             Row("Ctrl+O", "Open file or folder"),
             Row("Ctrl+N", "New file or folder"),
