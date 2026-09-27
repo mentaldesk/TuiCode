@@ -91,6 +91,20 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void The_sideways_bars_are_half_a_row_high_with_no_stipple()
+    {
+        using var tab = Tab(LongLine);
+        var diff = Diff("one", $"one\n{LongLine}");
+
+        foreach (var bar in new[] { Render(tab)[^1][Gutter(tab).Frame.Width..], Render(diff)[^1] })
+        {
+            Assert.Contains('▄', bar);
+            Assert.DoesNotContain('█', bar);
+            Assert.DoesNotContain('░', bar);
+        }
+    }
+
+    [Fact]
     public void Widening_the_tab_until_the_line_fits_hides_the_bar_and_back()
     {
         using var tab = Tab(new string('x', 40));
@@ -123,7 +137,7 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
 
         var bar = Render(diff)[^1];
 
-        Assert.Equal((Width - 2) * 10 / 20, bar.Count(c => c == '█'));
+        Assert.Equal((Width - 2) * 10 / 20, bar.Count(c => c == '▄'));
     }
 
     [Fact]
@@ -174,7 +188,7 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
 
         Assert.Equal(diff.SidewaysBar.ScrollableContentSize - diff.SidewaysBar.VisibleContentSize, diff.SidewaysBar.Value);
         Assert.EndsWith("►", Render(diff)[^1]);
-        Assert.Equal('█', Render(diff)[^1][^2]);
+        Assert.Equal('▄', Render(diff)[^1][^2]);
 
         diff.SidewaysBar.Value = 0;
         diff.SidewaysBar.Value = int.MaxValue;

@@ -210,7 +210,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
             "  3- three     │               ",
             "  4  four      │  3  four      ",
             "               │  4+ fivefivefi",
-            "◄█████████████████░░░░░░░░░░░░►",
+            "◄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄            ►",
         ], screen);
     }
 
@@ -585,6 +585,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
         var driver = _app.Driver!;
         driver.ClearContents();
         driver.Clip = new Region(driver.Screen);
+        view.Layout();
         view.SetNeedsDraw();
         view.Draw();
         return Enumerable.Range(0, view.Frame.Height)

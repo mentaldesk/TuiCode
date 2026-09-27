@@ -93,6 +93,7 @@ public sealed class DiffTab : FrameView
         {
             if (!_syncingScrollBar) ScrollSidewaysTo(FromSidewaysBar(e.NewValue));
         };
+        ThinScrollBar.Apply(_sidewaysBar);
         Padding!.GetOrCreateView().Add(_scrollBar, _sidewaysBar);
         ViewportChanged += (_, _) => SyncScrollBar();
 
