@@ -16,6 +16,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
 
     public CompareToRevisionHostTests()
     {
+        _fs.AddDirectory("/work/.git");
         _fs.AddFile("/work/a.txt", new MockFileData("alpha\nbravo\n"));
         _git.Root = "/work";
         _git.Refs = [new GitRef("main", GitRefKind.Branch), new GitRef("origin/main", GitRefKind.RemoteBranch), new GitRef("v1.0", GitRefKind.Tag)];

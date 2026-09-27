@@ -3,6 +3,7 @@ using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.DocumentInfo;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
@@ -73,19 +74,20 @@ public class DocumentInfoHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Di_with_no_file_open_says_so()
+    public async Task Di_with_no_file_open_is_not_offered()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
+        IReadOnlyList<string> listed = [];
 
         await HostSteps.Run(host,
             () => host.App.InjectKey(Key.Space.WithCtrl),
-            () => host.App.InjectKey(Key.D),
-            () => host.App.InjectKey(Key.I),
-            () => { });
+            () => workbench.SubViews.OfType<MnemonicView>().Any(),
+            () => { listed = workbench.SubViews.OfType<MnemonicView>().Single().Mnemonics; host.App.InjectKey(Key.Esc); },
+            () => !workbench.SubViews.OfType<MnemonicView>().Any());
 
+        Assert.DoesNotContain("di", listed);
         Assert.Null(Info(workbench));
-        Assert.Equal("No file is open.", workbench.StatusBar.DisplayedText);
     }
 
     private static List<string> Labels(DocumentInfoView view) => view.SubViews.OfType<Label>().Select(l => l.Text).ToList();

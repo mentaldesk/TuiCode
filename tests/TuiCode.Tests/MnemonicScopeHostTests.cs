@@ -187,9 +187,9 @@ public class MnemonicScopeHostTests : StaticConfigurationTest
         await HostSteps.Run(host, () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
             () => workbench.StatusBar.DisplayedFocus == "Editor");
 
-        var everything = WorkbenchHost.MnemonicsInScope(commands, CommandScope.Global)
-            .Concat(Enum.GetValues<CommandScope>().SelectMany(s => WorkbenchHost.MnemonicsInScope(commands, s)))
-            .DistinctBy(e => e.Mnemonic, StringComparer.Ordinal)
+        var everything = commands.Registered
+            .Where(c => CommandMnemonics.For(c.Id) is not null)
+            .Select(c => new MnemonicEntry(c.Id, CommandMnemonics.For(c.Id)!, c.Label))
             .ToList();
         var full = new MnemonicResolver(everything);
         var prefixes = everything
@@ -205,6 +205,27 @@ public class MnemonicScopeHostTests : StaticConfigurationTest
                     $"'{prefix}' fires in {scope} but not against every command — the mnemonic table is no "
                     + "longer prefix-free, so filtering the leader's list can no longer be safe on its own.");
         }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_leader_offers_open_pull_request_only_in_a_git_repository(bool inRepo)
+    {
+        if (!inRepo) _fs.Directory.Delete("/work/.git");
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        IReadOnlyList<string> listed = [];
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => host.App.InjectKey(Key.Space.WithCtrl),
+            () => Leader(workbench) is not null,
+            () => { listed = Leader(workbench)!.Mnemonics; host.App.InjectKey(Key.Esc); },
+            () => Leader(workbench) is null);
+
+        Assert.Equal(inRepo, listed.Contains("opr"));
     }
 
     private static MnemonicView? Leader(Workbench.Workbench workbench) =>

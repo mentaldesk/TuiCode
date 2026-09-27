@@ -912,11 +912,12 @@ public sealed class WorkbenchHost : IDisposable
     /// <summary>
     /// The leader's list: the live command set joined with the hard-coded mnemonic table, so it stays in
     /// step with whatever's registered (e.g. focus-tab-N) and skips commands with no mnemonic (Show all
-    /// commands, Show mnemonics itself), narrowed to Global plus <paramref name="scope"/> (#285).
+    /// commands, Show mnemonics itself), narrowed to Global plus <paramref name="scope"/> less the ones
+    /// disabled right now, as the palette does (#285).
     /// </summary>
     internal static IEnumerable<MnemonicEntry> MnemonicsInScope(ICommandService commands, CommandScope scope) =>
         commands.Registered
-            .Where(c => c.Scope == CommandScope.Global || c.Scope == scope)
+            .Where(c => (c.Scope == CommandScope.Global || c.Scope == scope) && commands.IsEnabled(c.Id))
             .Select(c => (Command: c, Mnemonic: CommandMnemonics.For(c.Id)))
             .Where(x => x.Mnemonic is not null)
             .Select(x => new MnemonicEntry(x.Command.Id, x.Mnemonic!, x.Command.Label));
