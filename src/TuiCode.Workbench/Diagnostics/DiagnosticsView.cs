@@ -159,7 +159,7 @@ public sealed class DiagnosticsView : Window
         _cursorColour.Text = reported is null
             ? $"asked {_askedCursorColour}  •  terminal didn't answer"
             : $"asked {_askedCursorColour}  •  terminal reports {reported}  "
-              + (string.Equals(reported, _askedCursorColour, StringComparison.OrdinalIgnoreCase) ? "✓" : "✗");
+              + (CursorColourProbe.Matches(_askedCursorColour, reported) ? "✓" : "✗");
     }
 
     public void UpdateLastKey(Key key)

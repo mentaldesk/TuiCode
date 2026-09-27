@@ -24,4 +24,24 @@ public class CursorColourProbeTests
     [InlineData("garbage")]
     public void ParseReply_returns_null_for_anything_but_a_cursor_colour(string? reply) =>
         Assert.Null(CursorColourProbe.ParseReply(reply));
+
+    [Fact]
+    public void Matches_accepts_iTerm2s_colour_space_rounding() =>
+        Assert.True(CursorColourProbe.Matches("#1F2328", CursorColourProbe.ParseReply("\x1b]12;rgb:1fde/2302/27ad\x07")!));
+
+    [Theory]
+    [InlineData("#1F2328")]
+    [InlineData("#1f2328")]
+    [InlineData("#212328")]
+    [InlineData("#1D2126")]
+    public void Matches_accepts_colours_within_two_steps_on_every_channel(string reported) =>
+        Assert.True(CursorColourProbe.Matches("#1F2328", reported));
+
+    [Theory]
+    [InlineData("#FFFFFF")]
+    [InlineData("#222328")]
+    [InlineData("#1F2025")]
+    [InlineData("#1F232B")]
+    public void Matches_rejects_colours_more_than_two_steps_off_on_any_channel(string reported) =>
+        Assert.False(CursorColourProbe.Matches("#1F2328", reported));
 }

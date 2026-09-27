@@ -53,6 +53,16 @@ internal static partial class CursorColourProbe
         return "#" + Channel(match.Groups["r"].Value) + Channel(match.Groups["g"].Value) + Channel(match.Groups["b"].Value);
     }
 
+    /// <summary>True when every channel of two <c>#RRGGBB</c> colours is within <see cref="Tolerance"/> 8-bit steps.</summary>
+    internal static bool Matches(string asked, string reported) =>
+        Enumerable.Range(0, 3).All(i => Math.Abs(ChannelAt(asked, i) - ChannelAt(reported, i)) <= Tolerance);
+
+    // iTerm2 converts the profile's colour between colour spaces and reports it a step off.
+    private const int Tolerance = 2;
+
+    private static int ChannelAt(string hex, int index) =>
+        int.Parse(hex.AsSpan(1 + 2 * index, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+
     private static string Channel(string digits)
     {
         var value = int.Parse(digits, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
