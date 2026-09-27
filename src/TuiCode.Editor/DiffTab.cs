@@ -27,6 +27,8 @@ public sealed class DiffTab : FrameView
     private readonly SyntaxLanguage? _deletedGrammar;
     private readonly TokenPalette _palette = new();
     private readonly IFileInfo _file;
+    private readonly ScrollBar _scrollBar;
+    private bool _syncingScrollBar;
     private EditorSettings _settings = EditorSettings.Default;
     private IReadOnlyList<string> _left = [];
     private IReadOnlyList<string> _right = [];
@@ -65,6 +67,21 @@ public sealed class DiffTab : FrameView
         BorderStyle = LineStyle.None;
         CanFocus = true;
         Diff = AlignedDiff.Compute([], []);
+
+        _scrollBar = new ScrollBar
+        {
+            Orientation = Orientation.Vertical,
+            X = Pos.AnchorEnd(),
+            Height = Dim.Fill(),
+            VisibilityMode = ScrollBarVisibilityMode.Auto,
+        };
+        _scrollBar.VisibleChanged += (_, _) => Padding!.Thickness = Padding.Thickness with { Right = _scrollBar.Visible ? 1 : 0 };
+        _scrollBar.ValueChanged += (_, e) =>
+        {
+            if (!_syncingScrollBar) ScrollTo(e.NewValue);
+        };
+        Padding!.GetOrCreateView().Add(_scrollBar);
+        ViewportChanged += (_, _) => SyncScrollBar();
 
         AddCommand(Command.Up, () => MoveTo(_current - 1));
         AddCommand(Command.Down, () => MoveTo(_current + 1));
@@ -401,6 +418,7 @@ public sealed class DiffTab : FrameView
                 _rows.Add(new Row(i, null, draft, ReviewThreadRows.ForDraft(draft)));
             }
         }
+        SyncScrollBar();
     }
 
     private bool MoveTo(int row)
@@ -416,9 +434,24 @@ public sealed class DiffTab : FrameView
     {
         var max = Math.Max(0, _rows.Count - PageHeight);
         _top = Math.Clamp(top, 0, max);
+        SyncScrollBar();
         SetNeedsDraw();
         return true;
     }
+
+    private void SyncScrollBar()
+    {
+        _syncingScrollBar = true;
+        try
+        {
+            _scrollBar.VisibleContentSize = PageHeight;
+            _scrollBar.ScrollableContentSize = _rows.Count;
+            _scrollBar.Value = _top;
+        }
+        finally { _syncingScrollBar = false; }
+    }
+
+    internal ScrollBar ScrollBar => _scrollBar;
 
     private bool ScrollSidewaysTo(int column)
     {
