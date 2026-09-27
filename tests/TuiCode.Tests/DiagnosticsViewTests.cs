@@ -44,6 +44,16 @@ public class DiagnosticsViewTests
     }
 
     [Fact]
+    public void ShowTerminalCursorColour_marks_a_near_match_and_still_shows_what_the_terminal_reported()
+    {
+        using var view = new DiagnosticsView("ansi", "No", "#1F2328");
+
+        view.ShowTerminalCursorColour("#202328");
+
+        Assert.Equal("asked #1F2328  •  terminal reports #202328  ✓", view.CursorColourText);
+    }
+
+    [Fact]
     public void ShowTerminalCursorColour_marks_a_mismatch()
     {
         using var view = new DiagnosticsView("ansi", "No", "#1F2328");
