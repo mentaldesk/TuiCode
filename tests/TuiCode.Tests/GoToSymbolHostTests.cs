@@ -1,3 +1,4 @@
+using TuiCode.Editor;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
@@ -181,7 +182,7 @@ public class GoToSymbolHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Jumping_to_a_symbol_below_the_fold_scrolls_it_to_the_middle_of_the_view()
+    public async Task Jumping_to_a_symbol_below_the_fold_lands_it_below_the_margin()
     {
         const int filler = 400;
         string[] padding = [.. Enumerable.Repeat("// filler", filler)];
@@ -200,7 +201,29 @@ public class GoToSymbolHostTests : StaticConfigurationTest
 
         var tab = Tab(workbench);
         Assert.Equal(filler, tab.CursorRow);
-        Assert.Equal(tab.VisibleRows / 2, tab.CursorRow - tab.TopRow);
+        Assert.Equal(filler - Reveal.Margin, tab.TopRow);
+    }
+
+    // What #239's unconditional centring got wrong: picking a symbol you can already see moved the screen.
+    [Fact]
+    public async Task Jumping_to_a_symbol_already_on_screen_does_not_scroll()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var top = -1;
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Widget.cs"); },
+            () => { commands.TryExecute(CommandIds.GoToSymbol); },
+            () => Picker(workbench) is { Scanned: true },
+            () => Type(host, "dwa"),
+            () => Picker(workbench)!.VisibleItems.SequenceEqual(["DoWorkAsync"]),
+            () => host.App.InjectKey(Key.Enter),
+            () => Picker(workbench) is null,
+            () => { top = Tab(workbench).TopRow; });
+
+        Assert.Equal(3, Tab(workbench).CursorRow);
+        Assert.Equal(0, top);
     }
 
     [Fact]
