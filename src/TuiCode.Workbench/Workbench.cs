@@ -120,7 +120,9 @@ public sealed class Workbench : Window
     /// <summary>Open a file with <paramref name="match"/> selected — where a search result lands.</summary>
     public void OpenMatch(IFileInfo file, TextMatch match)
     {
-        Editor.Open(file).Select(match);
+        var tab = Editor.Open(file);
+        tab.Select(match);
+        tab.RevealLines(match.Row, match.Row);
         StatusBar.SetMessage($"{file.FullName}:{match.Row + 1}:{match.Column + 1}");
         FileOpened?.Invoke(this, EventArgs.Empty);
     }
@@ -130,7 +132,7 @@ public sealed class Workbench : Window
     /// position it carried (#265), with the first one active (#266). Positions are 1-based on the command
     /// line; the cursor is 0-based.
     /// Call it from the running loop, not before <c>Application.Init</c>: a tab opened before the first
-    /// layout loses the keyboard to a session-restored one, and there's no viewport to centre in yet.
+    /// layout loses the keyboard to a session-restored one, and there's no viewport to reveal in yet.
     /// </summary>
     public void OpenStartupTarget(StartupTarget target)
     {
@@ -138,7 +140,7 @@ public sealed class Workbench : Window
         OpenFolder(target.Workspace ?? throw new ArgumentException("Nothing to open.", nameof(target)));
         foreach (var startup in target.Files)
             Place(startup);
-        // Opening left the last tab active, and only the visible tab has a viewport to centre in.
+        // Opening left the last tab active, and only the visible tab has a viewport to reveal in.
         if (target.Files is [var first, _, ..]) Place(first);
     }
 
@@ -147,7 +149,7 @@ public sealed class Workbench : Window
         OpenFile(startup.File);
         if (startup.Position is not { } position || Editor.Group.ActiveTab is not { } tab) return;
         tab.MoveCursor(position.Line - 1, position.Column - 1);
-        tab.CenterOnCursor();
+        tab.RevealLines(position.Line - 1, position.Line - 1);
     }
 
     /// <summary>

@@ -1,5 +1,4 @@
-using Terminal.Gui.Drivers;
-using Terminal.Gui.Input;
+using System.Globalization;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
@@ -161,6 +160,164 @@ public class RevealJumpHostTests : StaticConfigurationTest
             buffer[row] = buffer[row].ToUpperInvariant();
         workbench.Editor.Group.ActiveTab!.Content = string.Join('\n', buffer);
         commands.TryExecute(CommandIds.CompareToSaved);
+    }
+
+    private Workbench.Workbench BuildWorkbench()
+    {
+        var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());
+        _fs.AddDirectory("/work");
+        workbench.Sidebar.Explorer.Open(_fs.DirectoryInfo.New("/work"));
+        return workbench;
+    }
+
+    private static WorkbenchHost BuildHost(Workbench.Workbench workbench, out CommandService commands)
+    {
+        commands = new CommandService();
+        return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+    }
+}
+
+// The other five jumps, which #288 brought onto the same rule. Boots a TG Application — serialised (#77).
+public class RevealJumpSiteHostTests : StaticConfigurationTest
+{
+    private const int FileLines = 400;
+
+    private readonly MockFileSystem _fs = new();
+
+    [Fact]
+    public async Task Go_to_line_lands_the_line_below_the_margin_rather_than_on_the_edge()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            Size(host),
+            () => OpenLongFile(workbench),
+            () => GoToLine(host, commands, workbench, 300),
+            () => workbench.Editor.Group.ActiveTab!.CursorRow == 299);
+
+        var tab = workbench.Editor.Group.ActiveTab!;
+        Assert.Equal(299 - Reveal.Margin, tab.TopRow);
+    }
+
+    // Go to line, then Back and Forward, over hops short enough to stay on screen.
+    [Fact]
+    public async Task A_jump_to_somewhere_already_on_screen_leaves_the_screen_alone()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var tops = new List<int>();
+        void Record() => tops.Add(workbench.Editor.Group.ActiveTab!.TopRow);
+
+        await HostSteps.Run(host,
+            Size(host),
+            () => OpenLongFile(workbench),
+            () => GoToLine(host, commands, workbench, 101),
+            () => workbench.Editor.Group.ActiveTab!.CursorRow == 100,
+            Record,
+            () => GoToLine(host, commands, workbench, 105),
+            () => workbench.Editor.Group.ActiveTab!.CursorRow == 104,
+            Record,
+            () => commands.TryExecute(CommandIds.NavigateBack),
+            () => workbench.Editor.Group.ActiveTab!.CursorRow == 100,
+            Record);
+
+        Assert.Equal([98, 98, 98], tops);
+    }
+
+    [Fact]
+    public async Task Back_and_forward_reveal_what_they_land_on()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var tops = new List<int>();
+        void Record() => tops.Add(workbench.Editor.Group.ActiveTab!.TopRow);
+
+        await HostSteps.Run(host,
+            Size(host),
+            () => OpenLongFile(workbench),
+            () => GoToLine(host, commands, workbench, 101),
+            () => workbench.Editor.Group.ActiveTab!.CursorRow == 100,
+            () => GoToLine(host, commands, workbench, 301),
+            () => workbench.Editor.Group.ActiveTab!.CursorRow == 300,
+            () => commands.TryExecute(CommandIds.NavigateBack),
+            () => workbench.Editor.Group.ActiveTab!.CursorRow == 100,
+            Record,
+            () => commands.TryExecute(CommandIds.NavigateForward),
+            () => workbench.Editor.Group.ActiveTab!.CursorRow == 300,
+            Record);
+
+        Assert.Equal([100 - Reveal.Margin, 300 - Reveal.Margin], tops);
+    }
+
+    // Back to a file that's been closed reopens it, and the reveal has to land on that new tab.
+    [Fact]
+    public async Task Back_into_a_closed_file_reveals_it_in_the_tab_that_reopens()
+    {
+        _fs.AddFile("/work/other.txt", new MockFileData("other\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            Size(host),
+            () => OpenLongFile(workbench),
+            () => GoToLine(host, commands, workbench, 301),
+            () => workbench.Editor.Group.ActiveTab!.CursorRow == 300,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/other.txt")),
+            () => workbench.Editor.Group.ActiveTab!.File.Name == "other.txt",
+            () => { workbench.Editor.Group.OpenOrFocus(_fs.FileInfo.New("/work/long.txt")); },
+            () => workbench.Editor.Group.ActiveTab!.File.Name == "long.txt",
+            () => commands.TryExecute(CommandIds.CloseActiveEditor),
+            () => workbench.Editor.Group.Tabs is [{ File.Name: "other.txt" }],
+            () => commands.TryExecute(CommandIds.NavigateBack),
+            () => workbench.Editor.Group.ActiveTab!.File.Name == "long.txt");
+
+        var tab = workbench.Editor.Group.ActiveTab!;
+        Assert.Equal(300, tab.CursorRow);
+        Assert.Equal(300 - Reveal.Margin, tab.TopRow);
+    }
+
+    // The file isn't open when the result is picked, so this is also the freshly opened tab's reveal.
+    [Fact]
+    public async Task A_find_result_opens_its_file_revealed_and_still_selected()
+    {
+        var lines = Enumerable.Range(1, FileLines).Select(i => $"line {i}").ToArray();
+        lines[250] = "the needle";
+        _fs.AddFile("/work/haystack.txt", new MockFileData(string.Join('\n', lines)));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var search = workbench.Sidebar.Search;
+
+        await HostSteps.Run(host,
+            Size(host),
+            () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+            () => { foreach (var c in "needle") host.App.InjectKey(new Key(c)); },
+            () => search.Result.MatchCount == 1,
+            () => host.App.InjectKey(Key.Enter),
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.Editor.Group.ActiveTab is not null);
+
+        var tab = workbench.Editor.Group.ActiveTab!;
+        Assert.Equal("needle", tab.SelectedText);
+        Assert.Equal(250, tab.CursorRow);
+        Assert.Equal(250 - Reveal.Margin, tab.TopRow);
+    }
+
+    private static Action Size(WorkbenchHost host) => () => host.App.Driver!.SetScreenSize(100, 30);
+
+    private static void GoToLine(WorkbenchHost host, CommandService commands, Workbench.Workbench workbench, int line)
+    {
+        commands.TryExecute(CommandIds.GoToLine);
+        foreach (var c in line.ToString(CultureInfo.InvariantCulture)) host.App.InjectKey(new Key(c));
+        host.App.InjectKey(Key.Enter);
+    }
+
+    private void OpenLongFile(Workbench.Workbench workbench)
+    {
+        _fs.AddFile("/work/long.txt", new MockFileData(
+            string.Join('\n', Enumerable.Range(1, FileLines).Select(i => $"line {i}"))));
+        workbench.OpenFile(_fs.FileInfo.New("/work/long.txt"));
     }
 
     private Workbench.Workbench BuildWorkbench()

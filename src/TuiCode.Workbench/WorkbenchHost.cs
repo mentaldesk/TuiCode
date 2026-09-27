@@ -933,6 +933,7 @@ public sealed class WorkbenchHost : IDisposable
             _suppressHistory = true;
             try { tab.MoveCursor(target.Row, target.Column); }
             finally { _suppressHistory = false; }
+            tab.RevealLines(target.Row, target.Row);
             _history.Visit(new CursorLocation(tab.File.FullName, target.Row, target.Column), explicitJump: true);
         };
 
@@ -981,7 +982,7 @@ public sealed class WorkbenchHost : IDisposable
             try
             {
                 tab.MoveCursor(symbol.Line, 0);
-                tab.CenterOnCursor();
+                tab.RevealLines(symbol.Line, symbol.Line);
             }
             finally { _suppressHistory = false; }
             _history.Visit(new CursorLocation(tab.File.FullName, symbol.Line, 0), explicitJump: true);
@@ -1043,6 +1044,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             var tab = _workbench.Editor.Group.OpenOrFocus(file);
             tab.MoveCursor(loc.Row, loc.Column);
+            tab.RevealLines(loc.Row, loc.Row);
             MoveFocus(FocusRegion.Editor);
         }
         finally { _suppressHistory = false; }
