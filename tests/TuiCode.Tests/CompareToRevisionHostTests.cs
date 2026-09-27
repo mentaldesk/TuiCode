@@ -16,6 +16,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
 
     public CompareToRevisionHostTests()
     {
+        _fs.AddDirectory("/work/.git");
         _fs.AddFile("/work/a.txt", new MockFileData("alpha\nbravo\n"));
         _git.Root = "/work";
         _git.Refs = [new GitRef("main", GitRefKind.Branch), new GitRef("origin/main", GitRefKind.RemoteBranch), new GitRef("v1.0", GitRefKind.Tag)];
@@ -286,8 +287,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is { IsFocused: true },
-            () => host.App.InjectKey(Key.Space.WithCtrl),
-            () => Type(host, "ctr"),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
             () => Picker(workbench) is { Loaded: true },
             () =>
             {
@@ -327,8 +327,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is { Title: "a.txt ↔ main", IsFocused: true },
-            () => host.App.InjectKey(Key.Space.WithCtrl),
-            () => Type(host, "ctr"),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
             () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench) is null,

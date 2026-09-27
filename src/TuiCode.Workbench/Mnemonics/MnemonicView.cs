@@ -6,9 +6,11 @@ namespace TuiCode.Workbench.Mnemonics;
 
 /// <summary>
 /// Modal mnemonic launcher (issue #50). Opened by the leader key (Ctrl+Space by default).
-/// Lists every command that has a mnemonic; as the user types, the list filters to mnemonics
-/// with the typed prefix and the command fires the instant the prefix is unambiguous — no Enter
-/// needed (see <see cref="MnemonicResolver.ResolveExact"/>). Esc cancels; Backspace edits.
+/// Lists the commands with a mnemonic that apply where the keys were when it opened — the caller
+/// hands it that set, so a command out of scope isn't listed, can't be reached, and can't capture a
+/// keystroke (#285). As the user types, the list filters to mnemonics with the typed prefix and the
+/// command fires the instant the prefix is unambiguous — no Enter needed (see
+/// <see cref="MnemonicResolver.ResolveExact"/>). Esc cancels; Backspace edits.
 ///
 /// Unlike <see cref="Actions.ActionView"/> this captures raw keystrokes via a
 /// <see cref="KeyCaptureScope"/> rather than a focused TextField. That keeps execution on the
@@ -28,6 +30,9 @@ public sealed class MnemonicView : Window
 
     /// <summary>The input scope <see cref="WorkbenchHost"/> pushes on open and pops on close.</summary>
     public IKeybindingService Scope => _scope;
+
+    /// <summary>The mnemonics currently listed, in the order they're shown.</summary>
+    public IReadOnlyList<string> Mnemonics => [.. _visible.Select(e => e.Mnemonic)];
 
     /// <summary>Fired after the view wants to be removed (Esc, or after a command was dispatched).</summary>
     public event EventHandler? Closed;

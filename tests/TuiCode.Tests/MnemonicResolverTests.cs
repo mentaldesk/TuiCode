@@ -76,4 +76,32 @@ public class MnemonicResolverTests
         Assert.Null(Build().ResolveExact("c"));
         Assert.Equal("cmd.closeFile", Build().ResolveExact("cf")?.CommandId);
     }
+
+    // The leader hands the resolver only the commands in scope (#285), so everything below is asked of
+    // a subset — the resolver itself never sees the ones left out.
+    [Fact]
+    public void A_scoped_subset_is_all_that_All_and_Matching_ever_return()
+    {
+        var resolver = InScope();
+
+        Assert.Equal(new[] { "fe", "mf", "q" }, resolver.All.Select(e => e.Mnemonic));
+        Assert.Equal(new[] { "mf" }, resolver.Matching("m").Select(e => e.Mnemonic));
+        Assert.Empty(resolver.Matching("mu"));
+    }
+
+    [Fact]
+    public void ResolveExact_still_waits_for_the_second_key_when_filtering_left_one_match()
+    {
+        // 'm' is the only visible m-mnemonic once mu/md are out of scope, and it still mustn't fire:
+        // hiding a command may not make another one arrive a keystroke early.
+        Assert.Null(InScope().ResolveExact("m"));
+        Assert.Equal("cmd.renameFile", InScope().ResolveExact("mf")?.CommandId);
+    }
+
+    private static MnemonicResolver InScope() => new(new[]
+    {
+        new MnemonicEntry("cmd.quit", "q", "Quit"),
+        new MnemonicEntry("cmd.focusEditor", "fe", "Focus editor"),
+        new MnemonicEntry("cmd.renameFile", "mf", "Move or rename file or folder"),
+    });
 }

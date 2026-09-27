@@ -1,3 +1,4 @@
+using TuiCode.Abstractions;
 using Terminal.Gui.Views;
 using TuiCode.Editor;
 using TuiCode.Explorer;
@@ -172,21 +173,22 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
         Assert.Contains("'a.txt'", asked);
     }
 
+    // The leader no longer offers df outside the explorer (#285), so the launcher can't reach this branch;
+    // the command itself still targets the active file when the explorer isn't the context.
     [Fact]
-    public async Task The_df_mnemonic_acts_on_the_active_file_when_launched_from_the_editor()
+    public async Task Delete_acts_on_the_active_file_when_the_explorer_is_not_the_context()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("a"));
         _fs.AddFile("/work/b.txt", new MockFileData("b"));
         using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench);
+        using var host = BuildHost(workbench, out var commands);
         var asked = "";
 
         await HostSteps.Run(host,
             () => { workbench.Sidebar.Explorer.SelectedObject = Node(workbench, "a.txt"); },
             () => workbench.OpenFile(_fs.FileInfo.New("/work/b.txt")),
-            () => host.App.InjectKey(Key.Space.WithCtrl),
-            () => host.App.InjectKey(Key.D),
-            () => host.App.InjectKey(Key.F),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => commands.TryExecute(CommandIds.DeleteFile),
             () => Confirm(workbench) is not null,
             () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Esc); },
             () => Confirm(workbench) is null);
@@ -496,9 +498,11 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
         return workbench;
     }
 
-    private static WorkbenchHost BuildHost(Workbench.Workbench workbench)
+    private static WorkbenchHost BuildHost(Workbench.Workbench workbench) => BuildHost(workbench, out _);
+
+    private static WorkbenchHost BuildHost(Workbench.Workbench workbench, out CommandService commands)
     {
-        var commands = new CommandService();
+        commands = new CommandService();
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
     }

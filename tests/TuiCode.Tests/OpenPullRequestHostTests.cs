@@ -17,6 +17,7 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
     public OpenPullRequestHostTests()
     {
+        _fs.AddDirectory("/work/.git");
         _fs.AddFile("/work/a.txt", new MockFileData("alpha\n"));
         _fs.AddFile("/pr-132/b.txt", new MockFileData("bravo\n"));
         _git.Root = _fs.Path.GetFullPath("/work");
