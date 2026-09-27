@@ -98,9 +98,9 @@ internal sealed class DiskChanges : IDisposable
     /// Take up what's on disk because the user asked (#270) — the same reload as above, edits and all, with
     /// the explorer told that the marker has gone.
     /// </summary>
-    public bool Reload(EditorTab tab)
+    public bool Reload(EditorTab tab, bool evenIfUnchanged = false)
     {
-        if (!tab.Reload()) return false;
+        if (!tab.Reload(evenIfUnchanged)) return false;
         ShowMarks();
         return true;
     }

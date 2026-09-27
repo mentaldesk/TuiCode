@@ -37,6 +37,7 @@ public static class CommandIds
     public const string CompareToSaved = "workbench.action.compareToSaved";
     public const string CompareToRevision = "workbench.action.compareToRevision";
     public const string CompareToOtherFile = "workbench.action.compareToOtherFile";
+    public const string ReloadFromDisk = "workbench.action.reloadFromDisk";
 
     public const string NextChange = "diff.action.nextChange";
     public const string PreviousChange = "diff.action.previousChange";

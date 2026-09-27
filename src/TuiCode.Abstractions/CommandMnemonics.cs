@@ -60,6 +60,7 @@ public static class CommandMnemonics
             [CommandIds.RevertAllChanges] = "ra",
             [CommandIds.CompareToRevision] = "ctr",
             [CommandIds.CompareToOtherFile] = "cto",
+            [CommandIds.ReloadFromDisk] = "rd",
             [CommandIds.ToggleSidebar] = "ts",
             [CommandIds.WidenSidebar] = "ws",
             [CommandIds.NarrowSidebar] = "ns",

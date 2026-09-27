@@ -471,6 +471,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision,
             CommandScope.Editor, () => GitRepository.Contains(group.ActiveTab?.File.Directory));
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile, CommandScope.Editor, FileOpen);
+        // No default key (#272).
+        _commands.Register(CommandIds.ReloadFromDisk, "Reload from disk", ReloadFromDisk, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)), CommandScope.Editor);
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)), CommandScope.Editor);
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)), CommandScope.Editor);
@@ -1242,6 +1244,32 @@ public sealed class WorkbenchHost : IDisposable
             new ConfirmChoice("Reload", () => _diskChanges.Reload(tab)));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
+    }
+
+    private void ReloadFromDisk()
+    {
+        if (_activeConfirm is not null) return;
+        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
+        if (tab.DiskNow == DiskState.Gone)
+        {
+            _workbench.StatusBar.SetMessage($"{tab.File.Name} no longer exists on disk — nothing to reload");
+            return;
+        }
+        if (!tab.IsDirty)
+        {
+            Reload();
+            return;
+        }
+
+        var view = new ConfirmView("Reload from disk",
+            $"Reload '{tab.File.Name}' from disk?\nYour unsaved changes will be lost.",
+            new ConfirmChoice("Reload", Reload));
+        view.Cancelled += (_, _) => CloseConfirm(view);
+        ShowConfirm(view);
+
+        void Reload() => _workbench.StatusBar.SetMessage(_diskChanges.Reload(tab, evenIfUnchanged: true)
+            ? $"⟳ Reloaded {tab.File.Name} from disk"
+            : $"{tab.File.Name} no longer exists on disk — nothing to reload");
     }
 
     private void ConfirmDelete()
