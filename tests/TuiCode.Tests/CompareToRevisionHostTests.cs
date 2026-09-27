@@ -286,8 +286,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is { IsFocused: true },
-            () => host.App.InjectKey(Key.Space.WithCtrl),
-            () => Type(host, "ctr"),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
             () => Picker(workbench) is { Loaded: true },
             () =>
             {
@@ -327,8 +326,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is { Title: "a.txt ↔ main", IsFocused: true },
-            () => host.App.InjectKey(Key.Space.WithCtrl),
-            () => Type(host, "ctr"),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
             () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench) is null,

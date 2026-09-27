@@ -899,15 +899,8 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeMnemonics is not null) return;
 
-        // Build the dialog from the live command set joined with the hard-coded mnemonic table,
-        // so it stays in step with whatever's registered (e.g. focus-tab-N) and skips commands
-        // with no mnemonic (Show all commands, Show mnemonics itself).
-        var entries = _commands.Registered
-            .Select(c => (Command: c, Mnemonic: CommandMnemonics.For(c.Id)))
-            .Where(x => x.Mnemonic is not null)
-            .Select(x => new MnemonicEntry(x.Command.Id, x.Mnemonic!, x.Command.Label));
-
         var fromExplorer = _workbench.Sidebar.Explorer.HasFocus;
+        var entries = MnemonicsInScope(_commands, FocusedScope());
         var view = new MnemonicView(entries, commandId => RunLaunched(commandId, fromExplorer));
         view.Closed += (_, _) => CloseMnemonics(view);
         _activeMnemonics = view;
@@ -915,6 +908,18 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(view.Scope);
         view.SetFocus();
     }
+
+    /// <summary>
+    /// The leader's list: the live command set joined with the hard-coded mnemonic table, so it stays in
+    /// step with whatever's registered (e.g. focus-tab-N) and skips commands with no mnemonic (Show all
+    /// commands, Show mnemonics itself), narrowed to Global plus <paramref name="scope"/> (#285).
+    /// </summary>
+    internal static IEnumerable<MnemonicEntry> MnemonicsInScope(ICommandService commands, CommandScope scope) =>
+        commands.Registered
+            .Where(c => c.Scope == CommandScope.Global || c.Scope == scope)
+            .Select(c => (Command: c, Mnemonic: CommandMnemonics.For(c.Id)))
+            .Where(x => x.Mnemonic is not null)
+            .Select(x => new MnemonicEntry(x.Command.Id, x.Mnemonic!, x.Command.Label));
 
     private void CloseMnemonics(MnemonicView view)
     {
