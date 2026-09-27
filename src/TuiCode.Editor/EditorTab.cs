@@ -247,6 +247,17 @@ public sealed class EditorTab : FrameView
     public int VisibleRows => _textView.Viewport.Height;
 
     /// <summary>
+    /// Scroll so lines <paramref name="first"/> to <paramref name="last"/> are in view with a margin
+    /// above and below, or not at all when they already are (#287).
+    /// </summary>
+    public void RevealLines(int first, int last)
+    {
+        var viewport = _textView.Viewport;
+        if (Reveal.TopRow(viewport.Y, viewport.Height, _textView.Lines, first, last) is not { } top) return;
+        _textView.ScrollTo(new System.Drawing.Point(viewport.X, top));
+    }
+
+    /// <summary>
     /// Scroll so the cursor's line sits in the middle of the view, without scrolling either end of
     /// the file out of view: a jump lands in the middle rather than at the edge it scrolled in from.
     /// </summary>

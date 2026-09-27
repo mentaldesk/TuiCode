@@ -1447,6 +1447,7 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
         var line = diff.CurrentBufferLine;
+        var (first, last) = diff.CurrentChangeLines;
         _suppressHistory = true;
         try
         {
@@ -1455,6 +1456,8 @@ public sealed class WorkbenchHost : IDisposable
         }
         finally { _suppressHistory = false; }
         FocusEditorBody();
+        // After the cursor, so TG's own minimal scroll doesn't get the last word (#287).
+        tab.RevealLines(first, last);
         _history.Visit(new CursorLocation(tab.File.FullName, line, 0), explicitJump: true);
     }
 
