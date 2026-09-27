@@ -241,7 +241,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
 
         diff.NewKeyDownEvent(Key.End);
         Assert.Equal((19, 14), (diff.CurrentRow, diff.TopRow));
-        Assert.Equal(" 20- line 20   │ 20+ LINE 20   ", Render(diff)[^1]);
+        Assert.Equal(" 20- line 20  │ 20+ LINE 20   ▼", Render(diff)[^1]);
 
         diff.NewKeyDownEvent(Key.PageUp);
         Assert.Equal((13, 8), (diff.CurrentRow, diff.TopRow));
@@ -475,6 +475,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
         var diff = Diff(saved, saved.Replace("a1;", "b1;"), syntax, "/work/a.cs");
 
         Render(diff);
+        Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.
 
         Assert.NotNull(diff.RightTokens!.TokensFor(5));
         Assert.Null(diff.RightTokens.TokensFor(6));
