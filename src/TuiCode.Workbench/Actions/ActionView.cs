@@ -5,9 +5,9 @@ namespace TuiCode.Workbench.Actions;
 
 /// <summary>
 /// Modal command-palette overlay (VS Code's F1). Lists the commands that apply where the keys were when it
-/// opened — Global plus that <see cref="CommandScope"/> — with their current key bindings; typing filters;
-/// Enter executes the highlighted command and closes; Esc cancels. Settings › Keyboard Shortcuts is the
-/// unfiltered reference.
+/// opened — Global plus that <see cref="CommandScope"/>, less the ones disabled right now — with their
+/// current key bindings; typing filters; Enter executes the highlighted command and closes; Esc cancels.
+/// Settings › Keyboard Shortcuts is the unfiltered reference.
 ///
 /// Owns its own <see cref="ICommandService"/> + <see cref="IKeybindingService"/>
 /// for the modal scope. The owning <see cref="WorkbenchHost"/> pushes
@@ -95,7 +95,7 @@ public sealed class ActionView : Window
             .ToDictionary(g => g.Key, g => g.Select(b => b.Display).ToArray(), StringComparer.Ordinal);
 
         return commands.Registered
-            .Where(c => c.Scope == CommandScope.Global || c.Scope == scope)
+            .Where(c => (c.Scope == CommandScope.Global || c.Scope == scope) && commands.IsEnabled(c.Id))
             .Select(c => new ActionRow(
                 c.Id,
                 c.Label,

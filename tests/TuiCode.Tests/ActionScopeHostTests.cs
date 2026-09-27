@@ -10,15 +10,26 @@ using TuiCode.Workbench.Settings;
 
 namespace TuiCode.Tests;
 
-// Ctrl+E offers Global plus the scope the keys were in when it opened (#284). Boots a TG Application —
-// serialised (#77).
+// Ctrl+E offers Global plus the scope the keys were in when it opened, less whatever the workbench has
+// switched off (#284). Boots a TG Application — serialised (#77).
 public class ActionScopeHostTests : StaticConfigurationTest
 {
     private static readonly string[] Editing =
-        ["Move line up", "Add cursor above", "Toggle column select", "Go to symbol in file", "Remove secondary cursors"];
+        ["Move line up", "Add cursor above", "Toggle column select", "Go to symbol in file"];
 
     private static readonly string[] FileCommands =
         ["Delete file or folder", "Move or rename file or folder", "Cut file or folder", "Paste file or folder"];
+
+    private static readonly string[] Comparisons = ["Compare to saved", "Compare to other file", "Compare to revision"];
+
+    // Only offered while the branch's pull request is loaded, which none of the theory's palettes do.
+    private static readonly string[] ReviewCommands = ["PR overview", "Submit review", "Create comment"];
+
+    private static readonly string[] NeedAnEditor =
+    [
+        "Save active editor", "Close active editor", "Go to line:column", "Change grammar", "Toggle gutter",
+        "Show document info", "Previous cursor position", "Next cursor position", "Focus editor tab 1",
+    ];
 
     private static readonly string[] Globals =
     [
@@ -32,27 +43,42 @@ public class ActionScopeHostTests : StaticConfigurationTest
 
     public ActionScopeHostTests()
     {
-        _fs.AddDirectory("/work");
+        _fs.AddDirectory("/work/.git");
         _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo\n"));
     }
 
     public static TheoryData<string, string, string[], string[]> Palettes => new()
     {
-        { CommandIds.FocusEditorBody, "Editor", Editing, [.. FileCommands, "Focus find results", "Next change"] },
-        { CommandIds.FocusSidebar, "Explorer", FileCommands, [.. Editing, "Focus find results", "Next change"] },
+        {
+            CommandIds.FocusEditorBody, "Editor", [.. Editing, .. Comparisons],
+            [.. FileCommands, .. ReviewCommands, "Focus find results", "Next change"]
+        },
+        {
+            CommandIds.FocusSidebar, "Explorer", FileCommands,
+            [.. Editing, .. Comparisons, .. ReviewCommands, "Focus find results", "Next change"]
+        },
         {
             CommandIds.FindGlobally, "Find",
             ["Focus find results", "Switch find field", "Replace all globally"],
-            [.. Editing, .. FileCommands, "Next change"]
+            [.. Editing, .. FileCommands, .. Comparisons, .. ReviewCommands, "Next change"]
         },
         {
             CommandIds.CompareToSaved, "Diff",
             ["Next change", "Previous change", "Revert change", "Revert all changes in file", "Scroll diff left"],
-            [.. Editing, .. FileCommands, "Focus find results"]
+            [.. Editing, .. FileCommands, .. Comparisons, .. ReviewCommands, "Focus find results"]
         },
-        { CommandIds.FocusEditorTabStrip, "Tabs", Editing, [.. FileCommands, "Focus find results", "Next change"] },
-        { CommandIds.FindInFile, "Find", Editing, [.. FileCommands, "Focus find results", "Next change"] },
-        { CommandIds.FocusReview, "Review", [], [.. Editing, .. FileCommands, "Focus find results", "Next change"] },
+        {
+            CommandIds.FocusEditorTabStrip, "Tabs", [.. Editing, .. Comparisons],
+            [.. FileCommands, .. ReviewCommands, "Focus find results", "Next change"]
+        },
+        {
+            CommandIds.FindInFile, "Find", [.. Editing, .. Comparisons],
+            [.. FileCommands, .. ReviewCommands, "Focus find results", "Next change"]
+        },
+        {
+            CommandIds.FocusReview, "Review", [],
+            [.. Editing, .. FileCommands, .. Comparisons, .. ReviewCommands, "Focus find results", "Next change"]
+        },
     };
 
     [Theory]
@@ -155,6 +181,117 @@ public class ActionScopeHostTests : StaticConfigurationTest
         Assert.Empty(commands.Registered.Select(c => c.Id).Except(rows.Select(r => r.CommandId), StringComparer.Ordinal));
     }
 
+    [Fact]
+    public async Task What_needs_an_open_editor_is_only_offered_once_one_is()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        IReadOnlyList<string> closed = [];
+        IReadOnlyList<string> open = [];
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => host.App.InjectKey(Key.E.WithCtrl),
+            () => Palette(workbench) is not null,
+            () => { closed = Palette(workbench)!.Labels; host.App.InjectKey(Key.Esc); },
+            () => Palette(workbench) is null,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.E.WithCtrl),
+            () => Palette(workbench) is not null,
+            () => { open = Palette(workbench)!.Labels; host.App.InjectKey(Key.Esc); },
+            () => Palette(workbench) is null);
+
+        Assert.All(NeedAnEditor, label => Assert.DoesNotContain(label, closed));
+        Assert.All(NeedAnEditor, label => Assert.Contains(label, open));
+        Assert.Contains("Toggle sidebar", closed);
+    }
+
+    [Fact]
+    public async Task Outside_a_git_repository_the_palette_leaves_the_git_commands_out()
+    {
+        _fs.AddFile("/scratch/b.txt", new MockFileData("one\n"));
+        using var workbench = BuildWorkbench("/scratch");
+        using var host = BuildHost(workbench, out _);
+        IReadOnlyList<string> labels = [];
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/scratch/b.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.E.WithCtrl),
+            () => Palette(workbench) is not null,
+            () => { labels = Palette(workbench)!.Labels; host.App.InjectKey(Key.Esc); },
+            () => Palette(workbench) is null);
+
+        Assert.DoesNotContain("Open pull request", labels);
+        Assert.DoesNotContain("Compare to revision", labels);
+        Assert.Contains("Compare to saved", labels);
+    }
+
+    // The review commands act on the pull request being reviewed, and creating a comment on the diff row
+    // the keys are on — so the Review pane offers the first two and the diff all three.
+    [Fact]
+    public async Task The_review_commands_arrive_with_the_pull_request()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.RepoFiles["b45e:a.txt"] = "one\nTWO\n";
+        _gitHub.PullRequest = new GitHubPullRequest(284, "Scope the palette", "main", "feature", default);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        IReadOnlyList<string> fromReview = [];
+        IReadOnlyList<string> fromDiff = [];
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.Review?.PullRequest is not null,
+            () => host.App.InjectKey(Key.E.WithCtrl),
+            () => Palette(workbench) is not null,
+            () => { fromReview = Palette(workbench)!.Labels; host.App.InjectKey(Key.Esc); },
+            () => Palette(workbench) is null,
+            () => workbench.Sidebar.Review.ListHasFocus,
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.Editor.Group.ActiveDiffTab is not null,
+            () => commands.TryExecute(CommandIds.FocusEditorBody),
+            () => workbench.StatusBar.DisplayedFocus == "Diff",
+            () => host.App.InjectKey(Key.E.WithCtrl),
+            () => Palette(workbench) is not null,
+            () => { fromDiff = Palette(workbench)!.Labels; host.App.InjectKey(Key.Esc); },
+            () => Palette(workbench) is null);
+
+        Assert.Contains("PR overview", fromReview);
+        Assert.Contains("Submit review", fromReview);
+        Assert.DoesNotContain("Create comment", fromReview);
+        Assert.Contains("Create comment", fromDiff);
+    }
+
+    // isEnabled already keeps a command's keys from firing where it can't act; the palette drops it too.
+    [Fact]
+    public async Task A_command_the_workbench_has_switched_off_isnt_offered()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        IReadOnlyList<string> alone = [];
+        IReadOnlyList<string> withCursors = [];
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.E.WithCtrl),
+            () => Palette(workbench) is not null,
+            () => { alone = Palette(workbench)!.Labels; host.App.InjectKey(Key.Esc); },
+            () => Palette(workbench) is null,
+            () => host.App.InjectKey(Key.CursorDown.WithCtrl.WithAlt),
+            () => workbench.Editor.Group.ActiveTab!.HasSecondaryCursors,
+            () => host.App.InjectKey(Key.E.WithCtrl),
+            () => Palette(workbench) is not null,
+            () => { withCursors = Palette(workbench)!.Labels; host.App.InjectKey(Key.Esc); },
+            () => Palette(workbench) is null);
+
+        Assert.DoesNotContain("Remove secondary cursors", alone);
+        Assert.Contains("Remove secondary cursors", withCursors);
+    }
+
     private static ActionView? Palette(Workbench.Workbench workbench) =>
         workbench.SubViews.OfType<ActionView>().SingleOrDefault();
 
@@ -168,11 +305,11 @@ public class ActionScopeHostTests : StaticConfigurationTest
         return explorer.GetChildren(explorer.Root!).Single(c => c.Name == name);
     }
 
-    private Workbench.Workbench BuildWorkbench()
+    private Workbench.Workbench BuildWorkbench(string root = "/work")
     {
         var sidebar = new SidebarPart(new FileExplorerView(), review: new ReviewView(_git, _gitHub));
         var workbench = new Workbench.Workbench(sidebar, new EditorPart(), new StatusBarPart());
-        workbench.Sidebar.Explorer.Open(_fs.DirectoryInfo.New("/work"));
+        workbench.Sidebar.Explorer.Open(_fs.DirectoryInfo.New(root));
         return workbench;
     }
 
