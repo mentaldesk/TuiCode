@@ -185,10 +185,12 @@ public sealed class EditorTab : FrameView
     /// tab holds. The cursor keeps its line and column, clamped to the new file; the gutter's baseline and
     /// the undo history describe the new content. The tab comes out clean — the buffer *is* the file now,
     /// so a reload asked for over unsaved edits (#270) drops them along with the marker.
+    /// <paramref name="evenIfUnchanged"/> takes the file up when it still matches the snapshot too (#272).
     /// </summary>
-    public bool Reload()
+    public bool Reload(bool evenIfUnchanged = false)
     {
-        if (OnDisk.ReadIfChanged(File) is not { } content) return false;
+        var content = evenIfUnchanged ? ReadNow() : OnDisk.ReadIfChanged(File);
+        if (content is null) return false;
 
         var (row, column) = (CursorRow, CursorColumn);
         _eol = DetectEol(content);
@@ -216,6 +218,12 @@ public sealed class EditorTab : FrameView
         UpdateTitle();
         ContentChanged?.Invoke(this, EventArgs.Empty);
         return true;
+    }
+
+    private string? ReadNow()
+    {
+        File.Refresh();
+        return File.Exists ? File.FileSystem.File.ReadAllText(File.FullName) : null;
     }
 
     /// <summary>Follow a rename or move; the buffer is untouched.</summary>
