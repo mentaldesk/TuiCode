@@ -57,7 +57,9 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 ### UI controls
 
-UI design rules — which control to use, hint bars, how errors are shown, icons, and what a UI requirement has to say — live in the [MentalDesk TUI style guide](https://github.com/mentaldesk/tui-style-guide). Read it before describing UI in an issue or PR, and before building one. It's shared with a-team, so rules that keep coming back in review go there, not here. What follows is only how TuiCode implements it.
+How TuiCode looks and behaves lives in the [MentalDesk TUI style guide](https://github.com/mentaldesk/tui-style-guide). Read it before describing UI in an issue or PR, and before building one. It's shared with a-team, so rules that keep coming back in review go there, not here.
+
+Each rule is built once in the guide's shared library, `MentalDesk.Tui`, and shown working in its reference app, Swatch. Build new UI from the library type the guide's section names, not from a-team's version or an older one here. What follows is only how TuiCode implements it today.
 
 - `LogView` is the one custom view: `TextView` can't scroll without moving its cursor.
 - `AlertView` (`Workbench/Controls/`) is the guide's message block. It wraps the message and reports the rows it needs (`Lines`); the dialog grows by that many and moves its hints up (`SubmitReviewView.Alert`). `AlertSeverity.Error` draws it in the theme's `Error` scheme, `Info` in `Accent`. `sr`, `gs` and `cc` use it — `PathPromptView`, `RevisionPickerView` and `PullRequestPickerView` still have the one-row `Label` (#208).
