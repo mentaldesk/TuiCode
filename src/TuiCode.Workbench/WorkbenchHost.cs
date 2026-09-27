@@ -71,6 +71,7 @@ public sealed class WorkbenchHost : IDisposable
     private SymbolPickerView? _activeSymbolPicker;
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
+    private string? _cursorColour;
     private AboutView? _activeAbout;
     private DocumentInfoView? _activeDocumentInfo;
     private SixelSupport? _sixelSupport;
@@ -267,7 +268,8 @@ public sealed class WorkbenchHost : IDisposable
         // OSC 12 sets the terminal's cursor colour, which no TG scheme covers; terminals without it ignore the sequence.
         if (syntax.EditorColors.TryGetValue("editorCursor.foreground", out var hex) && Color.TryParse(hex, out Color? cursor))
         {
-            WriteToTerminal($"\x1b]12;#{cursor.Value.R:X2}{cursor.Value.G:X2}{cursor.Value.B:X2}\x07");
+            _cursorColour = $"#{cursor.Value.R:X2}{cursor.Value.G:X2}{cursor.Value.B:X2}";
+            WriteToTerminal($"\x1b]12;{_cursorColour}\x07");
             RefreshCursorColour(hex);
         }
     }
@@ -2322,12 +2324,18 @@ public sealed class WorkbenchHost : IDisposable
 
         var driverName = _app.Driver?.GetName() ?? "Unknown";
         var kittyNegotiationStatus = GetKittyNegotiationStatus();
-        var view = new DiagnosticsView(driverName, kittyNegotiationStatus);
+        var view = new DiagnosticsView(driverName, kittyNegotiationStatus, _cursorColour);
         view.Closed += (_, _) => CloseDiagnostics(view);
         _activeDiagnostics = view;
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.SetFocus();
+
+        if (_cursorColour is not null && _app.Driver is { } driver)
+            CursorColourProbe.Read(driver, reported => _app.Invoke(() =>
+            {
+                if (ReferenceEquals(_activeDiagnostics, view)) view.ShowTerminalCursorColour(reported);
+            }));
     }
 
     private string GetKittyNegotiationStatus()

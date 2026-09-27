@@ -6,8 +6,8 @@ namespace TuiCode.Workbench.Diagnostics;
 
 public sealed class DiagnosticsView : Window
 {
-    private const int DialogWidth = 60;
-    private const int FieldX = 13;
+    private const int DialogWidth = 64;
+    private const int FieldX = 16;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
@@ -15,13 +15,16 @@ public sealed class DiagnosticsView : Window
     private readonly Label _keyHex;
     private readonly Label _keyBase;
     private readonly Label _keyRune;
+    private readonly Label _cursorColour;
+    private readonly string? _askedCursorColour;
 
     public IKeybindingService Scope => _scopeKeybindings;
 
     public event EventHandler? Closed;
 
-    public DiagnosticsView(string driverName, string kittyNegotiationStatus)
+    public DiagnosticsView(string driverName, string kittyNegotiationStatus, string? cursorColour = null)
     {
+        _askedCursorColour = cursorColour;
         Title = "Diagnostics";
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
@@ -31,7 +34,8 @@ public sealed class DiagnosticsView : Window
 
         var kittyStatusLines = WrapText(kittyNegotiationStatus, GetFieldWidth());
         var kittyStatusText = string.Join("\n", kittyStatusLines);
-        var keyHeadingY = 2 + kittyStatusLines.Length + 1;
+        var cursorColourY = 2 + kittyStatusLines.Length;
+        var keyHeadingY = cursorColourY + 2;
         var nameY = keyHeadingY + 1;
         var hintY = nameY + 6;
         Height = hintY + 6;
@@ -60,6 +64,15 @@ public sealed class DiagnosticsView : Window
             Text = kittyStatusText,
         };
 
+        var cursorColourHeading = Heading("Cursor colour", cursorColourY);
+        _cursorColour = new Label
+        {
+            X = FieldX,
+            Y = cursorColourY,
+            Width = GetFieldWidth(),
+            Text = cursorColour is null ? "not set by the theme" : $"asked {cursorColour}  •  asking the terminal…",
+        };
+
         var keyHeading = Heading("Last key", keyHeadingY);
         var nameLabel = Heading("  Name", nameY);
         var hexLabel = Heading("  Hex", nameY + 1);
@@ -86,6 +99,7 @@ public sealed class DiagnosticsView : Window
         };
 
         Add(driverHeading, driverNameLabel, kittyHeading, kittyStatusLabel,
+            cursorColourHeading, _cursorColour,
             keyHeading, nameLabel, hexLabel, baseLabel, runeLabel,
             _keyName, _keyHex, _keyBase, _keyRune,
             hint, footer);
@@ -134,6 +148,18 @@ public sealed class DiagnosticsView : Window
         }
 
         return [.. lines];
+    }
+
+    public string CursorColourText => _cursorColour.Text;
+
+    /// <summary>Shows the cursor colour the terminal reported, or that it didn't answer when <paramref name="reported"/> is null.</summary>
+    public void ShowTerminalCursorColour(string? reported)
+    {
+        if (_askedCursorColour is null) return;
+        _cursorColour.Text = reported is null
+            ? $"asked {_askedCursorColour}  •  terminal didn't answer"
+            : $"asked {_askedCursorColour}  •  terminal reports {reported}  "
+              + (string.Equals(reported, _askedCursorColour, StringComparison.OrdinalIgnoreCase) ? "✓" : "✗");
     }
 
     public void UpdateLastKey(Key key)
