@@ -152,6 +152,7 @@ public class Iterm2IntegrationTests
     public void GetStatus_returns_Installed_after_Install()
     {
         var (integration, _, _) = Build();
+        integration.CursorColour = Daylight;
 
         integration.Install();
 
@@ -209,6 +210,130 @@ public class Iterm2IntegrationTests
         var ex = Record.Exception(() => integration.Uninstall());
 
         Assert.Null(ex);
+    }
+
+    private const string Daylight = "#1F2328";
+    private const string Midnight = "#E6E9EF";
+
+    private static JsonElement CursorKey(MockFileSystem fs, string key)
+    {
+        using var doc = JsonDocument.Parse(fs.File.ReadAllText(ProfilePath));
+        return doc.RootElement.GetProperty("Profiles")[0].GetProperty(key).Clone();
+    }
+
+    [Theory]
+    [InlineData("Cursor Color (Light)")]
+    [InlineData("Cursor Color (Dark)")]
+    public void Install_writes_the_theme_cursor_colour_as_sRGB_components(string key)
+    {
+        var (integration, fs, _) = Build();
+        integration.CursorColour = Daylight;
+
+        integration.Install();
+
+        var colour = CursorKey(fs, key);
+        Assert.Equal(0x1F / 255.0, colour.GetProperty("Red Component").GetDouble());
+        Assert.Equal(0x23 / 255.0, colour.GetProperty("Green Component").GetDouble());
+        Assert.Equal(0x28 / 255.0, colour.GetProperty("Blue Component").GetDouble());
+        Assert.Equal("sRGB", colour.GetProperty("Color Space").GetString());
+    }
+
+    [Fact]
+    public void Install_keeps_separate_light_and_dark_colours_on()
+    {
+        var (integration, fs, _) = Build();
+        integration.CursorColour = Daylight;
+
+        integration.Install();
+
+        Assert.True(CursorKey(fs, "Use Separate Colors for Light and Dark Mode").GetBoolean());
+    }
+
+    [Fact]
+    public void Install_with_a_cursor_colour_keeps_Bound_Hosts_and_the_full_Keyboard_Map()
+    {
+        var (withColour, fs, _) = Build();
+        var (without, plainFs, _) = Build();
+        withColour.CursorColour = Daylight;
+
+        withColour.Install();
+        without.Install();
+
+        Assert.Equal(["&TuiCode*", "&tuicode*"], CursorKey(fs, "Bound Hosts").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(KeyboardMap(plainFs).Keys.Order(), KeyboardMap(fs).Keys.Order());
+        Assert.Equal(26, KeyboardMap(fs).Count);
+    }
+
+    [Fact]
+    public void Refresh_rewrites_the_profile_when_the_theme_changes()
+    {
+        var (integration, fs, _) = Build();
+        integration.CursorColour = Daylight;
+        integration.Install();
+
+        integration.CursorColour = Midnight;
+        integration.Refresh();
+
+        Assert.Equal(0xE6 / 255.0, CursorKey(fs, "Cursor Color (Dark)").GetProperty("Red Component").GetDouble());
+    }
+
+    [Fact]
+    public void Refresh_on_the_theme_already_in_the_profile_does_not_touch_the_file()
+    {
+        var (integration, fs, _) = Build();
+        integration.CursorColour = Daylight;
+        integration.Install();
+        var written = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        fs.File.SetLastWriteTimeUtc(ProfilePath, written);
+
+        integration.Refresh();
+
+        Assert.Equal(written, fs.File.GetLastWriteTimeUtc(ProfilePath));
+    }
+
+    [Fact]
+    public void Refresh_rewrites_a_profile_from_an_older_TuiCode_with_no_cursor_colour()
+    {
+        var (integration, fs, _) = Build();
+        fs.Directory.CreateDirectory(ProfileDir);
+        fs.File.WriteAllText(ProfilePath, """{ "Profiles": [ { "TuiCodeIntegrationVersion": 2, "Guid": "x" } ] }""");
+        integration.CursorColour = Daylight;
+
+        integration.Refresh();
+
+        Assert.Equal(TerminalIntegrationStatus.Installed, integration.GetStatus());
+        Assert.Equal(26, KeyboardMap(fs).Count);
+    }
+
+    [Fact]
+    public void Refresh_installs_nothing_when_the_profile_is_absent()
+    {
+        var (integration, fs, _) = Build();
+        integration.CursorColour = Daylight;
+
+        integration.Refresh();
+
+        Assert.False(fs.File.Exists(ProfilePath));
+    }
+
+    [Fact]
+    public void GetStatus_returns_Stale_for_the_previous_version()
+    {
+        var (integration, fs, _) = Build();
+        fs.Directory.CreateDirectory(ProfileDir);
+        fs.File.WriteAllText(ProfilePath, $$"""{ "Profiles": [ { "TuiCodeIntegrationVersion": {{Iterm2Integration.CurrentProfileVersion - 1}}, "Guid": "x" } ] }""");
+
+        Assert.Equal(TerminalIntegrationStatus.Stale, integration.GetStatus());
+    }
+
+    [Fact]
+    public void GetStatus_returns_Stale_for_a_current_version_profile_with_no_cursor_colour()
+    {
+        var (integration, _, _) = Build();
+
+        integration.Install();
+
+        Assert.Equal(TerminalIntegrationStatus.Stale, integration.GetStatus());
     }
 
     [Fact]

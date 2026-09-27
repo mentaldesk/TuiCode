@@ -266,7 +266,26 @@ public sealed class WorkbenchHost : IDisposable
         foreach (var diff in _workbench.Editor.Group.DiffTabs) diff.SetNeedsDraw();
         // OSC 12 sets the terminal's cursor colour, which no TG scheme covers; terminals without it ignore the sequence.
         if (syntax.EditorColors.TryGetValue("editorCursor.foreground", out var hex) && Color.TryParse(hex, out Color? cursor))
+        {
             WriteToTerminal($"\x1b]12;#{cursor.Value.R:X2}{cursor.Value.G:X2}{cursor.Value.B:X2}\x07");
+            RefreshCursorColour(hex);
+        }
+    }
+
+    private void RefreshCursorColour(string hex)
+    {
+        foreach (var integration in _terminalIntegrations.OfType<ITerminalCursorColour>())
+        {
+            integration.CursorColour = hex;
+            try
+            {
+                integration.Refresh();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Couldn't rewrite a terminal profile with the cursor colour.");
+            }
+        }
     }
 
     private static void WriteToTerminal(string sequence)

@@ -56,3 +56,16 @@ public interface ITerminalIntegration
     /// </summary>
     string? PostInstallInstructions => null;
 }
+
+/// <summary>
+/// An integration whose installed config carries the theme's cursor colour, because its terminal
+/// reapplies the config's colours over the OSC 12 we send.
+/// </summary>
+public interface ITerminalCursorColour
+{
+    /// <summary>The theme's <c>#RRGGBB</c> cursor colour, written by <see cref="ITerminalIntegration.Install"/>.</summary>
+    string? CursorColour { get; set; }
+
+    /// <summary>Rewrites an installed config that doesn't carry <see cref="CursorColour"/> at the current version; installs nothing.</summary>
+    void Refresh();
+}
