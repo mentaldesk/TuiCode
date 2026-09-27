@@ -3,7 +3,8 @@ using TuiCode.Workbench.Files;
 
 namespace TuiCode.Tests;
 
-// One non-recursive watcher per open directory, events debounced and only for files we follow (#268).
+// One non-recursive watcher per open directory and per parent directory, events debounced and only for
+// files we follow (#268).
 public class DiskWatcherTests
 {
     private readonly WatchableFileSystem _fs = new();
@@ -99,14 +100,16 @@ public class DiskWatcherTests
     }
 
     [Fact]
-    public void Twenty_files_across_several_directories_hold_one_watcher_each_directory()
+    public void Twenty_files_across_several_directories_hold_one_watcher_each_directory_and_one_shared_parent()
     {
         var files = Enumerable.Range(0, 20).Select(i => Path($"/work/dir{i % 4}/f{i}.cs")).ToList();
         using var watcher = Watch([.. files]);
 
-        Assert.Equal(4, watcher.WatcherCount);
-        Assert.Equal(4, _fs.Watchers.Live.Count());
+        Assert.Equal(5, watcher.WatcherCount);
+        Assert.Equal(5, _fs.Watchers.Live.Count());
         Assert.All(_fs.Watchers.Live, w => Assert.False(w.IncludeSubdirectories));
+        // Without this a directory removed whole is silent on macOS (#271).
+        Assert.All(_fs.Watchers.Live, w => Assert.True(w.NotifyFilter.HasFlag(NotifyFilters.DirectoryName)));
     }
 
     [Fact]
@@ -114,18 +117,67 @@ public class DiskWatcherTests
     {
         using var watcher = Watch(_a, _b);
 
-        Assert.Equal(1, watcher.WatcherCount);
+        Assert.Equal(1, _fs.Watchers.Live.Count(w => string.Equals(w.Path, Directory(_a), StringComparison.Ordinal)));
+    }
+
+    // rm -rf of the directory a tab's file sits in: macOS reports the directory and nothing else, so the
+    // watcher on the directory itself never hears a thing (#271).
+    [Theory]
+    [InlineData(WatcherChangeTypes.Deleted)]
+    [InlineData(WatcherChangeTypes.Created)]
+    public void A_directory_that_goes_or_comes_back_reports_every_file_we_follow_inside_it(WatcherChangeTypes change)
+    {
+        using var watcher = Watch(_a, _b, _c);
+
+        ParentWatcher(_a).Raise(change, Directory(_a));
+        Flush();
+
+        Assert.Equal([_a, _b], _reported.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public void A_directory_renamed_away_reports_every_file_we_follow_inside_it()
+    {
+        using var watcher = Watch(_a, _b);
+
+        ParentWatcher(_a).RaiseRenamedAway(Directory(_a));
+        Flush();
+
+        Assert.Equal([_a, _b], _reported.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    // A directory's mtime bumps whenever anything inside it is written; its own watcher has already said so.
+    [Fact]
+    public void A_directory_merely_touched_reports_nothing()
+    {
+        using var watcher = Watch(_a, _b);
+
+        ParentWatcher(_a).RaiseChanged(Directory(_a));
+
+        Assert.Empty(_flushes);
+        Assert.Empty(_reported);
+    }
+
+    [Fact]
+    public void A_directory_nobody_has_a_file_open_in_is_ignored()
+    {
+        using var watcher = Watch(_a);
+
+        ParentWatcher(_c).Raise(WatcherChangeTypes.Deleted, Directory(_c));
+
+        Assert.Empty(_flushes);
+        Assert.Empty(_reported);
     }
 
     [Fact]
     public void Closing_the_last_file_in_a_directory_tears_its_watcher_down()
     {
         using var watcher = Watch(_a, _c);
-        Assert.Equal(2, watcher.WatcherCount);
+        Assert.Equal(3, watcher.WatcherCount);
 
         watcher.Follow([_a]);
 
-        Assert.Equal(1, watcher.WatcherCount);
+        Assert.Equal(2, watcher.WatcherCount);
         Assert.True(_fs.Watchers.All.Single(w => w.Path == Directory(_c)).Disposed);
     }
 
@@ -135,7 +187,7 @@ public class DiskWatcherTests
         _fs.Watchers.FailFor.Add(Directory(_a));
         using var watcher = Watch(_a, _c);
 
-        Assert.Equal(1, watcher.WatcherCount);
+        Assert.Equal(2, watcher.WatcherCount);
         Assert.Contains(_logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains(Directory(_a)));
 
         Watcher(_c).RaiseChanged(_c);
@@ -150,7 +202,7 @@ public class DiskWatcherTests
 
         Watcher(_a).RaiseError(new InternalBufferOverflowException("too many changes"));
 
-        Assert.Equal(1, watcher.WatcherCount);
+        Assert.Equal(2, watcher.WatcherCount);
         Assert.Contains(_logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains(Directory(_a)));
 
         Watcher(_c).RaiseChanged(_c);
@@ -188,4 +240,6 @@ public class DiskWatcherTests
     private string Directory(string path) => _fs.Path.GetDirectoryName(path)!;
 
     private FakeFileSystemWatcher Watcher(string path) => _fs.Watchers.For(Directory(path));
+
+    private FakeFileSystemWatcher ParentWatcher(string path) => _fs.Watchers.For(Directory(Directory(path)));
 }

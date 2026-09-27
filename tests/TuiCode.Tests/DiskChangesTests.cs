@@ -208,6 +208,25 @@ public class DiskChangesTests : IDisposable
         Assert.True(tab.IsDirty);
     }
 
+    // rm -rf of the directory the file sits in: macOS reports the directory going and nothing about the
+    // files, so the tabs have only the parent's watcher to hear it from (#271).
+    [Fact]
+    public void A_directory_removed_whole_marks_the_tabs_of_every_file_that_was_in_it()
+    {
+        var tab = Open("/work/sub/a.txt", "one\n");
+        var other = Open("/work/sub/b.txt", "two\n");
+        var directory = _fs.Path.GetDirectoryName(tab.File.FullName)!;
+
+        _fs.Directory.Delete(directory, recursive: true);
+        _fs.Watchers.For(_fs.Path.GetDirectoryName(directory)!).Raise(WatcherChangeTypes.Deleted, directory);
+        Flush();
+
+        Assert.Equal(DiskState.Gone, tab.DiskMarker);
+        Assert.Equal(DiskState.Gone, other.DiskMarker);
+        Assert.Equal("one\n", Text(tab));
+        Assert.Equal("two\n", Text(other));
+    }
+
     [Fact]
     public void A_nerd_font_marks_a_deleted_file_with_nf_fa_ban()
     {
@@ -347,8 +366,8 @@ public class DiskChangesTests : IDisposable
     [Fact]
     public void Opening_and_closing_tabs_follows_and_unfollows_their_directories()
     {
-        Open("/work/a.txt", "one\n");
-        Assert.Equal(1, _watcher.WatcherCount);
+        var tab = Open("/work/a.txt", "one\n");
+        Assert.True(_watcher.IsWatching(tab.File.FullName));
 
         _group.CloseActive();
 
@@ -491,6 +510,21 @@ public class DiskChangesTests : IDisposable
         Assert.Equal(DiskState.Changed, behind.DiskMarker);
     }
 
+    // Only one level up is watched, so an rm -rf higher than that is silent: the stale watcher is the
+    // reason IsWatching asks whether the directory is still there (#271).
+    [Fact]
+    public void A_tab_whose_whole_tree_went_away_is_marked_when_you_switch_to_it()
+    {
+        var behind = Open("/work/deep/a.txt", "one\n");
+        Open("/work/b.txt", "two\n");
+
+        _fs.Directory.Delete(_fs.Path.GetFullPath("/work/deep"), recursive: true);
+        _group.Focus(behind.File.FullName);
+
+        Assert.Equal(DiskState.Gone, behind.DiskMarker);
+        Assert.Equal("one\n", Text(behind));
+    }
+
     // With a watcher in place the check on activation would be a re-read of a file we're already told about.
     [Fact]
     public void Switching_to_a_tab_in_a_watched_directory_re_reads_nothing()
@@ -511,7 +545,7 @@ public class DiskChangesTests : IDisposable
         _fs.Watchers.FailFor.Add(_fs.Path.GetFullPath("/work"));
         var behind = Open("/work/a.txt", "one\n");
         Open("/work/b.txt", "two\n");
-        Assert.Equal(0, _watcher.WatcherCount);
+        Assert.False(_watcher.IsWatching(behind.File.FullName));
         return behind;
     }
 

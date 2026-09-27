@@ -4,8 +4,10 @@ namespace TuiCode.Workbench.Files;
 
 /// <summary>
 /// Watches the files open in tabs for changes made outside the editor (#268), one non-recursive watcher
-/// per distinct directory, torn down when its last file goes: on Linux each watcher is an inotify
-/// instance out of a limit the whole machine shares, so watching the repo tree would be antisocial.
+/// per distinct directory and one per parent directory, torn down when the last file goes: on Linux each
+/// watcher is an inotify instance out of a limit the whole machine shares, so watching the repo tree would
+/// be antisocial. The parent is there because a watcher hears nothing about its own directory being removed
+/// — on macOS an <c>rm -rf</c> of the directory reports neither the files nor an error (#271).
 /// A watcher that can't be established, or that errors, is dropped and logged — nothing else changes.
 /// </summary>
 internal sealed class DiskWatcher : IDisposable
@@ -18,6 +20,7 @@ internal sealed class DiskWatcher : IDisposable
     private readonly ILogger _logger;
     private readonly Dictionary<string, IFileSystemWatcher> _watchers = new(StringComparer.Ordinal);
     private readonly HashSet<string> _followed = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<string>> _byDirectory = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pending = new(StringComparer.Ordinal);
     private readonly Lock _gate = new();
     private bool _armed;
@@ -41,12 +44,17 @@ internal sealed class DiskWatcher : IDisposable
 
     /// <summary>
     /// Whether <paramref name="path"/>'s directory has a live watcher. A directory whose watcher couldn't be
-    /// established, or that errored, has no other way of hearing, so its tabs check on activation instead (#269).
+    /// established, that errored, or that has itself gone has no other way of hearing, so its tabs check on
+    /// activation instead (#269).
     /// </summary>
     public bool IsWatching(string path)
     {
         if (_fileSystem.Path.GetDirectoryName(path) is not { Length: > 0 } directory) return false;
-        lock (_gate) return _watchers.ContainsKey(directory);
+        lock (_gate)
+        {
+            if (!_watchers.ContainsKey(directory)) return false;
+        }
+        return _fileSystem.Directory.Exists(directory);
     }
 
     /// <summary>Watch exactly <paramref name="paths"/>, adding and dropping directory watchers to match.</summary>
@@ -58,10 +66,15 @@ internal sealed class DiskWatcher : IDisposable
         lock (_gate)
         {
             _followed.Clear();
+            _byDirectory.Clear();
             foreach (var path in paths)
             {
-                _followed.Add(path);
-                if (_fileSystem.Path.GetDirectoryName(path) is { Length: > 0 } directory) wanted.Add(directory);
+                if (!_followed.Add(path)) continue;
+                if (_fileSystem.Path.GetDirectoryName(path) is not { Length: > 0 } directory) continue;
+                wanted.Add(directory);
+                if (_fileSystem.Path.GetDirectoryName(directory) is { Length: > 0 } parent) wanted.Add(parent);
+                if (!_byDirectory.TryGetValue(directory, out var files)) _byDirectory[directory] = files = [];
+                files.Add(path);
             }
             foreach (var gone in _watchers.Keys.Where(d => !wanted.Contains(d)).ToList()) Drop(gone);
             missing = wanted.Where(d => !_watchers.ContainsKey(d)).ToList();
@@ -76,7 +89,7 @@ internal sealed class DiskWatcher : IDisposable
         {
             watcher = _fileSystem.FileSystemWatcher.New(directory);
             watcher.IncludeSubdirectories = false;
-            watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName;
+            watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName | NotifyFilters.DirectoryName;
             watcher.Changed += OnFileEvent;
             watcher.Created += OnFileEvent;
             watcher.Deleted += OnFileEvent;
@@ -106,23 +119,32 @@ internal sealed class DiskWatcher : IDisposable
         if (_watchers.Remove(directory, out var watcher)) watcher.Dispose();
     }
 
-    private void OnFileEvent(object sender, FileSystemEventArgs e) => Note(e.FullPath);
+    private void OnFileEvent(object sender, FileSystemEventArgs e) => Note(e.ChangeType, e.FullPath);
 
     // A rename carries both ends: the file has appeared at FullPath and gone from OldFullPath, and a tab
     // could be open on either — the temp file an atomic save renames over ours, or ours renamed away (#271).
-    private void OnRenamed(object sender, RenamedEventArgs e) => Note(e.FullPath, e.OldFullPath);
+    private void OnRenamed(object sender, RenamedEventArgs e) => Note(e.ChangeType, e.FullPath, e.OldFullPath);
 
-    private void Note(params ReadOnlySpan<string> paths)
+    private void Note(WatcherChangeTypes change, params ReadOnlySpan<string> paths)
     {
         if (_disposed) return;
+        // A directory appearing or going takes its files with it; one merely touched says nothing new.
+        var directoriesToo = change is not WatcherChangeTypes.Changed;
         lock (_gate)
         {
             var ours = false;
             foreach (var path in paths)
             {
-                if (!_followed.Contains(path)) continue;
-                _pending.Add(path);
-                ours = true;
+                if (_followed.Contains(path))
+                {
+                    _pending.Add(path);
+                    ours = true;
+                }
+                else if (directoriesToo && _byDirectory.TryGetValue(path, out var files))
+                {
+                    foreach (var file in files) _pending.Add(file);
+                    ours = true;
+                }
             }
             if (!ours || _armed) return;
             _armed = true;
@@ -149,6 +171,7 @@ internal sealed class DiskWatcher : IDisposable
         {
             foreach (var directory in _watchers.Keys.ToList()) Drop(directory);
             _followed.Clear();
+            _byDirectory.Clear();
             _pending.Clear();
         }
     }
