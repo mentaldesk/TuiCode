@@ -113,6 +113,7 @@ public sealed class EditorTab : FrameView
             Text = initial,
             Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
         };
+        _textView.ViewportSettings |= ViewportSettingsFlags.HasVerticalScrollBar;
         Settings = EditorSettings.Default;
         _gutter = new EditorGutter(_textView, syntax) { X = 0, Y = 0, Height = Dim.Fill() };
         _textView.X = Pos.Right(_gutter);
@@ -241,6 +242,8 @@ public sealed class EditorTab : FrameView
         _textView.RemoveSecondaryCarets();
         _textView.InsertionPoint = new System.Drawing.Point(col, row);
     }
+
+    internal EditorTextView TextView => _textView;
 
     public int TopRow => _textView.Viewport.Y;
 
