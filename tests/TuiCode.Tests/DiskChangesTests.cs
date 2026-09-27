@@ -208,13 +208,14 @@ public class DiskChangesTests : IDisposable
         Assert.True(tab.IsDirty);
     }
 
-    // rm -rf of the directory the file sits in: macOS reports the directory going and nothing about the
-    // files, so the tabs have only the parent's watcher to hear it from (#271).
+    // rm -rf of a directory the files sit under: macOS reports the directory going and nothing about the
+    // files, so the tabs have only the watcher above it to hear it from (#271).
     [Fact]
-    public void A_directory_removed_whole_marks_the_tabs_of_every_file_that_was_in_it()
+    public void A_directory_removed_whole_marks_the_tabs_of_every_file_that_was_beneath_it()
     {
         var tab = Open("/work/sub/a.txt", "one\n");
         var other = Open("/work/sub/b.txt", "two\n");
+        var deeper = Open("/work/sub/deeper/c.txt", "three\n");
         var directory = _fs.Path.GetDirectoryName(tab.File.FullName)!;
 
         _fs.Directory.Delete(directory, recursive: true);
@@ -223,8 +224,10 @@ public class DiskChangesTests : IDisposable
 
         Assert.Equal(DiskState.Gone, tab.DiskMarker);
         Assert.Equal(DiskState.Gone, other.DiskMarker);
+        Assert.Equal(DiskState.Gone, deeper.DiskMarker);
         Assert.Equal("one\n", Text(tab));
         Assert.Equal("two\n", Text(other));
+        Assert.Equal("three\n", Text(deeper));
     }
 
     [Fact]
@@ -510,10 +513,10 @@ public class DiskChangesTests : IDisposable
         Assert.Equal(DiskState.Changed, behind.DiskMarker);
     }
 
-    // Only one level up is watched, so an rm -rf higher than that is silent: the stale watcher is the
-    // reason IsWatching asks whether the directory is still there (#271).
+    // The chain of watchers hears a tree go, but an event can still be lost — an overflowed buffer, a watcher
+    // dropped on error — which is why IsWatching also asks whether the directory is still there (#271).
     [Fact]
-    public void A_tab_whose_whole_tree_went_away_is_marked_when_you_switch_to_it()
+    public void A_tab_whose_whole_tree_went_away_unheard_is_marked_when_you_switch_to_it()
     {
         var behind = Open("/work/deep/a.txt", "one\n");
         Open("/work/b.txt", "two\n");
