@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Abstractions;
 using System.Text;
 using System.Text.Json;
@@ -16,14 +17,16 @@ namespace TuiCode.Workbench.TerminalIntegration;
 /// <para>Bound Hosts matches both <c>TuiCode*</c> (upstream binary name) and <c>tuicode*</c>
 /// (Homebrew rename) — iTerm2's matcher is case-sensitive, so both patterns are required to cover
 /// every install method.</para>
+/// <para>The profile carries the theme's cursor colour: iTerm2 reapplies a profile's colours whenever it
+/// switches a session to it, over the OSC 12 <see cref="WorkbenchHost"/> sends (#299).</para>
 /// <para>Uses a stable GUID so reinstalls overwrite the same profile in place. Status is determined
 /// by reading the on-disk file's <c>TuiCodeIntegrationVersion</c> marker and comparing to
 /// <see cref="CurrentProfileVersion"/>.</para>
 /// </remarks>
-public sealed class Iterm2Integration : ITerminalIntegration
+public sealed class Iterm2Integration : ITerminalIntegration, ITerminalCursorColour
 {
     internal const string ProfileGuid = "a21365eb-a2a0-4260-b0b7-e7368856dc65";
-    internal const int CurrentProfileVersion = 2;
+    internal const int CurrentProfileVersion = 3;
     internal const string ProfileFileName = "tuicode.json";
 
     private readonly IFileSystem _fileSystem;
@@ -34,6 +37,8 @@ public sealed class Iterm2Integration : ITerminalIntegration
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _environment = environment ?? throw new ArgumentNullException(nameof(environment));
     }
+
+    public string? CursorColour { get; set; }
 
     public string Id => "iterm2";
 
@@ -47,23 +52,10 @@ public sealed class Iterm2Integration : ITerminalIntegration
 
     public TerminalIntegrationStatus GetStatus()
     {
-        var path = GetProfilePath();
-        if (!_fileSystem.File.Exists(path))
+        if (!_fileSystem.File.Exists(GetProfilePath()))
             return TerminalIntegrationStatus.NotInstalled;
 
-        int? installedVersion;
-        try
-        {
-            using var stream = _fileSystem.File.OpenRead(path);
-            using var doc = JsonDocument.Parse(stream);
-            installedVersion = TryReadVersion(doc);
-        }
-        catch (JsonException)
-        {
-            return TerminalIntegrationStatus.Stale;
-        }
-
-        return installedVersion == CurrentProfileVersion
+        return ReadInstalled() is (CurrentProfileVersion, not null, not null)
             ? TerminalIntegrationStatus.Installed
             : TerminalIntegrationStatus.Stale;
     }
@@ -72,7 +64,15 @@ public sealed class Iterm2Integration : ITerminalIntegration
     {
         var dir = GetProfileDirectory();
         _fileSystem.Directory.CreateDirectory(dir);
-        _fileSystem.File.WriteAllText(GetProfilePath(), ProfileJson, Encoding.UTF8);
+        _fileSystem.File.WriteAllText(GetProfilePath(), ProfileJson(ItermColour.Parse(CursorColour)), Encoding.UTF8);
+    }
+
+    public void Refresh()
+    {
+        if (ItermColour.Parse(CursorColour) is not { } cursor || !_fileSystem.File.Exists(GetProfilePath()))
+            return;
+        if (ReadInstalled() is not (CurrentProfileVersion, { } light, { } dark) || light != cursor || dark != cursor)
+            Install();
     }
 
     public void Uninstall()
@@ -90,36 +90,70 @@ public sealed class Iterm2Integration : ITerminalIntegration
     internal string GetProfilePath() =>
         _fileSystem.Path.Combine(GetProfileDirectory(), ProfileFileName);
 
-    private static int? TryReadVersion(JsonDocument doc)
+    private (int? Version, ItermColour? Light, ItermColour? Dark)? ReadInstalled()
     {
-        if (!doc.RootElement.TryGetProperty("Profiles", out var profiles) ||
-            profiles.ValueKind != JsonValueKind.Array ||
-            profiles.GetArrayLength() == 0)
+        try
+        {
+            using var stream = _fileSystem.File.OpenRead(GetProfilePath());
+            using var doc = JsonDocument.Parse(stream);
+            if (!doc.RootElement.TryGetProperty("Profiles", out var profiles) ||
+                profiles.ValueKind != JsonValueKind.Array ||
+                profiles.GetArrayLength() == 0)
+            {
+                return (null, null, null);
+            }
+
+            var first = profiles[0];
+            return (TryReadVersion(first), TryReadColour(first, "Cursor Color (Light)"), TryReadColour(first, "Cursor Color (Dark)"));
+        }
+        catch (JsonException)
         {
             return null;
         }
+    }
 
-        var first = profiles[0];
-        if (!first.TryGetProperty("TuiCodeIntegrationVersion", out var v) ||
-            v.ValueKind != JsonValueKind.Number)
-        {
+    private static int? TryReadVersion(JsonElement profile) =>
+        profile.TryGetProperty("TuiCodeIntegrationVersion", out var v) &&
+        v.ValueKind == JsonValueKind.Number &&
+        v.TryGetInt32(out var i) ? i : null;
+
+    private static ItermColour? TryReadColour(JsonElement profile, string key)
+    {
+        if (!profile.TryGetProperty(key, out var colour) || colour.ValueKind != JsonValueKind.Object)
             return null;
-        }
+        return Component(colour, "Red Component") is { } r &&
+               Component(colour, "Green Component") is { } g &&
+               Component(colour, "Blue Component") is { } b
+            ? new ItermColour(r, g, b)
+            : null;
+    }
 
-        return v.TryGetInt32(out var i) ? i : null;
+    private static double? Component(JsonElement colour, string key) =>
+        colour.TryGetProperty(key, out var c) && c.ValueKind == JsonValueKind.Number ? c.GetDouble() : null;
+
+    private static string CursorColourKeys(ItermColour? cursor)
+    {
+        if (cursor is not { } c) return "";
+        var components = string.Create(CultureInfo.InvariantCulture,
+            $$"""{ "Red Component" : {{c.Red:R}}, "Green Component" : {{c.Green:R}}, "Blue Component" : {{c.Blue:R}}, "Color Space" : "sRGB" }""");
+        return $"""
+            "Cursor Color (Light)" : {components},
+                  "Cursor Color (Dark)" : {components},
+            """;
     }
 
     // Raw JSON: keys / values mirror what the Homebrew formula used to ship, with two changes —
     // Bound Hosts adds the lowercase "tuicode*" pattern (Homebrew renames the binary), and a
     // TuiCodeIntegrationVersion marker so we can detect stale installs on upgrade.
     // Shifted letters are keyed by the shifted character: Cmd+Shift+Z is 0x5a, never 0x7a (#46).
-    internal const string ProfileJson = """
+    internal static string ProfileJson(ItermColour? cursor) => $$"""
         {
           "Profiles" : [
             {
-              "TuiCodeIntegrationVersion" : 2,
+              "TuiCodeIntegrationVersion" : {{CurrentProfileVersion}},
               "Bound Hosts" : ["&TuiCode*", "&tuicode*"],
               "Use Separate Colors for Light and Dark Mode" : true,
+              {{CursorColourKeys(cursor)}}
               "Rewritable" : true,
               "Name" : "TuiCode",
               "Guid" : "a21365eb-a2a0-4260-b0b7-e7368856dc65",

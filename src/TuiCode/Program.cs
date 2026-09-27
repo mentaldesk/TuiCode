@@ -15,6 +15,7 @@ using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.TerminalIntegration;
+using TuiCode.Workbench.Themes;
 using TuiCode.Workbench.Workspace;
 
 if (args.Contains("--smoke-syntax"))
@@ -87,9 +88,12 @@ using var provider = services.BuildServiceProvider();
 
 // Terminal-integration CLI: handles --install/--uninstall/--list/--check flags
 // and exits without booting the TUI. Returns null when no flag matched.
-var cli = new TerminalIntegrationCli(
-    provider.GetRequiredService<IEnumerable<ITerminalIntegration>>(),
-    Console.Out);
+var integrations = provider.GetRequiredService<IEnumerable<ITerminalIntegration>>().ToArray();
+var syntax = provider.GetRequiredService<SyntaxHighlighter>();
+syntax.UseTheme(BundledThemes.TokenThemeFor(provider.GetRequiredService<ISettingsService>().Theme));
+foreach (var integration in integrations.OfType<ITerminalCursorColour>())
+    integration.CursorColour = syntax.EditorColors.GetValueOrDefault("editorCursor.foreground");
+var cli = new TerminalIntegrationCli(integrations, Console.Out);
 var cliExit = cli.TryHandle(args);
 if (cliExit is int code)
     return code;
