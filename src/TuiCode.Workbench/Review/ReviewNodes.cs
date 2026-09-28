@@ -49,12 +49,16 @@ public sealed class ReviewFileNode(GitChange change, IReadOnlyList<GitHubReviewT
 
 internal static class ReviewRow
 {
-    /// <summary>A row as the tree shows it: its text, with a file's thread badge after it.</summary>
-    public static string Display(ReviewNode node, bool icon = false)
+    /// <summary>
+    /// A row's text: a file's name, with its thread badge after it. The change mark is drawn in front (#320),
+    /// so typing a name jumps to it.
+    /// </summary>
+    public static string Display(ReviewNode node, bool icon = false) => node switch
     {
-        var text = node.ToString() ?? string.Empty;
-        return node is ReviewFileNode file && file.Badge(icon) is { } badge ? $"{text}  {badge}" : text;
-    }
+        ReviewFileNode file when file.Badge(icon) is { } badge => $"{file.Name}  {badge}",
+        ReviewFileNode file => file.Name,
+        _ => node.ToString() ?? string.Empty,
+    };
 }
 
 /// <summary>The threads on a file whose line is gone (#186), read in a tab of their own on Enter.</summary>

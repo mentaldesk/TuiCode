@@ -1,5 +1,6 @@
 using TuiCode.Abstractions;
 using TuiCode.Icons;
+using TuiCode.Syntax;
 using TuiCode.Workbench.Git;
 
 namespace TuiCode.Workbench.Review;
@@ -14,6 +15,7 @@ public sealed class ReviewView : View
     private readonly IGitCli _git;
     private readonly IGitHubCli _gitHub;
     private readonly FileIcons? _icons;
+    private readonly SyntaxHighlighter? _syntax;
     private readonly Label _title;
     private readonly Label _header;
     private readonly Label _checks;
@@ -76,11 +78,13 @@ public sealed class ReviewView : View
 
     internal TreeView<ReviewNode> Files => _files;
 
-    public ReviewView(IGitCli? git = null, IGitHubCli? gitHub = null, FileIcons? icons = null)
+    /// <param name="syntax">Its token theme's <c>gitDecoration.*</c> colours tint the change marks.</param>
+    public ReviewView(IGitCli? git = null, IGitHubCli? gitHub = null, FileIcons? icons = null, SyntaxHighlighter? syntax = null)
     {
         _git = git ?? new GitCli(new FileSystem());
         _gitHub = gitHub ?? new GitHubCli();
         _icons = icons;
+        _syntax = syntax;
         CanFocus = true;
 
         _title = Line();
@@ -113,7 +117,11 @@ public sealed class ReviewView : View
             TreeBuilder = new DelegateTreeBuilder<ReviewNode>(n => n.Children, n => n.Children.Count > 0),
         };
         _files.AspectGetter = node => ReviewRow.Display(node, ThreadIcon(node) is not null);
-        _files.DrawLine += (_, e) => MarkThreads(e);
+        _files.DrawLine += (_, e) =>
+        {
+            MarkThreads(e);
+            MarkChange(e);
+        };
         if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
         Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files, _draftReview);
 
@@ -154,6 +162,19 @@ public sealed class ReviewView : View
             cells[i] = Styled(cells[i], file.BadgeStyle);
 
         if (icon is { } chat && IconDrawing.InsertAt(e, chat, at)) cells[at] = Styled(cells[at], file.BadgeStyle);
+    }
+
+    /// <summary>Draws what the branch did to a file in front of its name (#320); a deleted file's name is faint too.</summary>
+    private void MarkChange(DrawTreeViewLineEventArgs<ReviewNode> e)
+    {
+        if (e.Model is not ReviewFileNode file || e.Cells is not { } cells) return;
+        var mark = _icons?.ForChange(file.Change.Kind, _syntax?.EditorColors);
+        if (mark is not null && file.Change.Kind == GitChangeKind.Deleted)
+        {
+            for (var i = Math.Max(0, e.IndexOfModelText); i < Math.Min(cells.Count, e.IndexOfModelText + file.Name.Length); i++)
+                cells[i] = Styled(cells[i], TextStyle.Faint);
+        }
+        IconDrawing.Prepend(e, mark ?? new FileIcon(file.Mark.ToString()));
     }
 
     private FileIcon? ThreadIcon(ReviewNode node) =>
