@@ -97,6 +97,53 @@ public class FileIconsTests
         Assert.Equal("💭", emoji.ForThreads(unresolved: false)?.Glyph);
     }
 
+    [Theory]
+    [InlineData(GitChangeKind.Added, 0xeadc, "A", 0x81b88b, 0x587c0c)]
+    [InlineData(GitChangeKind.Modified, 0xeade, "M", 0xe2c08d, 0x895503)]
+    [InlineData(GitChangeKind.Deleted, 0xeadf, "D", 0xc74e39, 0xad0707)]
+    [InlineData(GitChangeKind.Renamed, 0xeae0, "R", 0x73a5e6, 0x0451a5)]
+    public void A_change_is_a_diff_icon_or_its_letter_in_the_same_colours(GitChangeKind kind, int codepoint, string letter, int dark, int light)
+    {
+        var nerd = new FileIcons(Detected(true)).ForChange(kind);
+        var emoji = new FileIcons(Detected(false)).ForChange(kind);
+
+        Assert.Equal(new FileIcon(char.ConvertFromUtf32(codepoint), dark, light), nerd);
+        Assert.Equal(new FileIcon(letter, dark, light), emoji);
+    }
+
+    [Fact]
+    public void With_icons_off_a_change_has_no_mark()
+    {
+        var icons = new FileIcons(Detected(true)) { Setting = FileIconStyle.Off };
+
+        Assert.Null(icons.ForChange(GitChangeKind.Added));
+    }
+
+    [Theory]
+    [InlineData(GitChangeKind.Added, "gitDecoration.addedResourceForeground")]
+    [InlineData(GitChangeKind.Modified, "gitDecoration.modifiedResourceForeground")]
+    [InlineData(GitChangeKind.Deleted, "gitDecoration.deletedResourceForeground")]
+    [InlineData(GitChangeKind.Renamed, "gitDecoration.renamedResourceForeground")]
+    public void A_themes_git_decoration_colour_overrides_the_default_on_both_backgrounds(GitChangeKind kind, string key)
+    {
+        var icons = new FileIcons(Detected(true));
+
+        var mark = icons.ForChange(kind, new Dictionary<string, string> { [key] = "#123456" })!.Value;
+
+        Assert.Equal(0x123456, mark.DarkColor);
+        Assert.Equal(0x123456, mark.LightColor);
+    }
+
+    [Fact]
+    public void A_theme_without_git_decoration_colours_gets_the_defaults()
+    {
+        var icons = new FileIcons(Detected(true));
+
+        var themed = icons.ForChange(GitChangeKind.Added, new Dictionary<string, string> { ["editor.foreground"] = "#123456" });
+
+        Assert.Equal(icons.ForChange(GitChangeKind.Added), themed);
+    }
+
     [Fact]
     public void Changing_the_setting_raises_Changed_once()
     {

@@ -109,7 +109,7 @@ public class ReviewThreadCountTests
 
         Assert.Empty(file.Threads);
         Assert.Empty(file.Children);
-        Assert.Equal("M a.cs", ReviewRow.Display(file));
+        Assert.Equal("a.cs", ReviewRow.Display(file));
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class ReviewThreadCountTests
         var nodes = ReviewTree.Build([Changed], [Thread("src/a.cs"), Thread("src/a.cs")]);
         var file = Assert.IsType<ReviewFolderNode>(Assert.Single(nodes)).Children[0];
 
-        Assert.Equal("M a.cs  ● 2", ReviewRow.Display(file));
+        Assert.Equal("a.cs  ● 2", ReviewRow.Display(file));
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class ReviewThreadCountTests
         var nodes = ReviewTree.Build([Changed], [Thread("src/a.cs"), Thread("src/a.cs")]);
         var file = Assert.IsType<ReviewFolderNode>(Assert.Single(nodes)).Children[0];
 
-        Assert.Equal("M a.cs  2", ReviewRow.Display(file, icon: true));
+        Assert.Equal("a.cs  2", ReviewRow.Display(file, icon: true));
     }
 
     [Fact]

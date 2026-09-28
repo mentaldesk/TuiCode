@@ -1,8 +1,9 @@
+using System.Globalization;
 using TuiCode.Abstractions;
 
 namespace TuiCode.Icons;
 
-/// <summary>A glyph and, for Nerd Font icons, its colours as <c>0xRRGGBB</c> for dark and light backgrounds.</summary>
+/// <summary>A glyph and, where it has any, its colours as <c>0xRRGGBB</c> for dark and light backgrounds.</summary>
 public readonly record struct FileIcon(string Glyph, int? DarkColor = null, int? LightColor = null)
 {
     public int? ColorFor(bool darkBackground) => darkBackground ? DarkColor : LightColor;
@@ -21,6 +22,15 @@ public sealed class FileIcons
     private static readonly FileIcon NerdThreadsSettled = new("\U000F1414");
     private static readonly FileIcon EmojiThreadsOpen = new("💬");
     private static readonly FileIcon EmojiThreadsSettled = new("💭");
+
+    // nf-cod-diff_added, _modified, _removed and _renamed.
+    private static readonly Dictionary<GitChangeKind, (string Glyph, string Letter, string ThemeKey, int Dark, int Light)> Changes = new()
+    {
+        [GitChangeKind.Added] = ("\ueadc", "A", "gitDecoration.addedResourceForeground", 0x81b88b, 0x587c0c),
+        [GitChangeKind.Modified] = ("\ueade", "M", "gitDecoration.modifiedResourceForeground", 0xe2c08d, 0x895503),
+        [GitChangeKind.Deleted] = ("\ueadf", "D", "gitDecoration.deletedResourceForeground", 0xc74e39, 0xad0707),
+        [GitChangeKind.Renamed] = ("\ueae0", "R", "gitDecoration.renamedResourceForeground", 0x73a5e6, 0x0451a5),
+    };
 
     private readonly Lazy<FontDetection> _detection;
     private FileIconStyle _setting;
@@ -72,6 +82,27 @@ public sealed class FileIcons
         FileIconStyle.Emoji => unresolved ? EmojiThreadsOpen : EmojiThreadsSettled,
         _ => null,
     };
+
+    /// <summary>
+    /// What a branch did to a file (#320), coloured from <paramref name="themeColors"/> where the theme sets its
+    /// <c>gitDecoration.*</c> key; null with icons off.
+    /// </summary>
+    public FileIcon? ForChange(GitChangeKind kind, IReadOnlyDictionary<string, string>? themeColors = null)
+    {
+        var (glyph, letter, key, dark, light) = Changes[kind];
+        if (themeColors?.GetValueOrDefault(key) is { } hex && ParseRgb(hex) is { } themed) dark = light = themed;
+        return Style switch
+        {
+            FileIconStyle.NerdFont => new FileIcon(glyph, dark, light),
+            FileIconStyle.Emoji => new FileIcon(letter, dark, light),
+            _ => null,
+        };
+    }
+
+    private static int? ParseRgb(string hex) =>
+        hex.Length is 7 or 9 && hex[0] == '#' && int.TryParse(hex.AsSpan(1, 6), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb)
+            ? rgb
+            : null;
 }
 
 public sealed record FontDetection(bool NerdFont, string Reason);

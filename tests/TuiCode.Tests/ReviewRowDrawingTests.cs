@@ -5,6 +5,7 @@ using Terminal.Gui.ViewBase;
 using TuiCode.Abstractions;
 using TuiCode.Icons;
 using TuiCode.Workbench.Review;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Tests;
 
@@ -14,6 +15,8 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
     private const int Columns = 24;
     private const string Chat = "\U000F0B79";
     private const string ChatSettled = "\U000F1414";
+    private const string Modified = "\ueade";
+    private const string Deleted = "\ueadf";
 
     private readonly IApplication _app = Application.Create().Init(DriverRegistry.Names.ANSI);
     private readonly MockFileSystem _fs = new();
@@ -43,7 +46,7 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         var rows = Render(view);
         var row = RowWith(rows, "a.cs");
 
-        Assert.Contains($"M a.cs  {Chat} 1", row);
+        Assert.Contains($"{Modified} a.cs  {Chat} 1", row);
         Assert.DoesNotContain("●", row);
         Assert.DoesNotContain(Chat, RowWith(rows, "b.cs"));
     }
@@ -55,7 +58,7 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
 
         var row = RowWith(Render(view), "a.cs");
 
-        Assert.Contains($"M a.cs  {ChatSettled} 1", row);
+        Assert.Contains($"{Modified} a.cs  {ChatSettled} 1", row);
         Assert.DoesNotContain("○", row);
     }
 
@@ -84,6 +87,92 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
 
         Assert.Contains("M a.cs  ● 1", row);
         Assert.DoesNotContain(Chat, row);
+    }
+
+    [Fact]
+    public async Task With_nerd_font_icons_each_file_starts_with_a_diff_icon_in_its_colour_and_the_name_stays_uncoloured()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "src/a.cs")];
+        using var view = await Review();
+
+        var row = RowIndex(view, "a.cs");
+        var name = CellOf(row, "a");
+        var mark = CellOf(row, Modified);
+
+        Assert.Contains($"{Modified} a.cs", Render(view)[row]);
+        Assert.Equal(IconDrawing.AttributeFor(_icons.ForChange(GitChangeKind.Modified)!.Value, name).Foreground, mark.Foreground);
+        Assert.NotEqual(name.Foreground, mark.Foreground);
+        Assert.False(name.Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public async Task A_deleted_files_name_is_drawn_faint()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Deleted, "src/a.cs")];
+        using var view = await Review();
+
+        var row = RowIndex(view, "a.cs");
+
+        Assert.Contains($"{Deleted} a.cs", Render(view)[row]);
+        Assert.True(CellOf(row, "a").Style.HasFlag(TextStyle.Faint));
+        Assert.True(CellOf(row, "s").Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public async Task With_emoji_icons_the_letter_carries_the_changes_colour()
+    {
+        _icons.Setting = FileIconStyle.Emoji;
+        _git.Changes = [new GitChange(GitChangeKind.Added, "src/a.cs")];
+        using var view = await Review();
+
+        var row = RowIndex(view, "a.cs");
+        var name = CellOf(row, "a");
+
+        Assert.Contains("A a.cs", Render(view)[row]);
+        Assert.Equal(IconDrawing.AttributeFor(_icons.ForChange(GitChangeKind.Added)!.Value, name).Foreground, CellOf(row, "A").Foreground);
+    }
+
+    [Fact]
+    public async Task With_icons_off_a_row_is_the_plain_letter_a_space_and_the_name()
+    {
+        _icons.Setting = FileIconStyle.Off;
+        _git.Changes = [new GitChange(GitChangeKind.Deleted, "src/a.cs")];
+        using var view = await Review();
+
+        var row = RowIndex(view, "a.cs");
+        var name = CellOf(row, "a");
+
+        Assert.Equal("  └─D a.cs", Render(view)[row].TrimEnd());
+        Assert.Equal(name, CellOf(row, "D"));
+        Assert.False(name.Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public async Task Changing_the_icon_setting_redraws_the_marks()
+    {
+        using var view = await Review();
+        Render(view);
+
+        _icons.Setting = FileIconStyle.Off;
+
+        Assert.True(view.Files.NeedsDraw);
+        Assert.Contains("M a.cs", RowWith(Render(view), "a.cs"));
+    }
+
+    [Theory]
+    [InlineData(FileIconStyle.NerdFont)]
+    [InlineData(FileIconStyle.Emoji)]
+    [InlineData(FileIconStyle.Off)]
+    public async Task Typing_a_files_first_letter_moves_the_selection_to_it(FileIconStyle style)
+    {
+        _icons.Setting = style;
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "alpha.cs"), new GitChange(GitChangeKind.Modified, "beta.cs")];
+        using var view = await Review();
+        Assert.Equal("alpha.cs", (view.Files.SelectedObject as ReviewFileNode)?.Name);
+
+        view.Files.NewKeyDownEvent(Key.B);
+
+        Assert.Equal("beta.cs", (view.Files.SelectedObject as ReviewFileNode)?.Name);
     }
 
     private static GitHubReviewThread Thread(string path, bool resolved = false) =>
@@ -116,6 +205,13 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         var contents = _app.Driver!.Contents!;
         var col = Enumerable.Range(0, Columns).First(c => contents[row, c].Grapheme == grapheme);
         return contents[row, col].Attribute!.Value.Style;
+    }
+
+    private Attribute CellOf(int row, string grapheme)
+    {
+        var contents = _app.Driver!.Contents!;
+        var col = Enumerable.Range(0, Columns).First(c => contents[row, c].Grapheme == grapheme);
+        return contents[row, col].Attribute!.Value;
     }
 
     private string[] Render(View view)
