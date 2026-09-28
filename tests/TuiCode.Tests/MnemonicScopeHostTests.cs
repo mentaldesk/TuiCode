@@ -16,14 +16,14 @@ namespace TuiCode.Tests;
 public class MnemonicScopeHostTests : StaticConfigurationTest
 {
     private static readonly string[] Editing =
-        ["mu", "md", "du", "dd", "aa", "ab", "sno", "spo", "sao", "tc", "gs"];
+        ["mu", "md", "du", "dd", "aa", "ab", "sno", "spo", "sao", "tc", "gs", "gl", "gp", "gn", "di", "cg", "cts"];
 
     private static readonly string[] FileCommands = ["df", "mf", "xf", "pf"];
 
     private static readonly string[] DiffCommands = ["nc", "pc", "rc", "ra"];
 
     private static readonly string[] Globals =
-        ["q", "?", "sf", "cf", "nt", "pt", "of", "os", "ts", "gl", "f1", "f9"];
+        ["q", "?", "sf", "cf", "nt", "pt", "of", "os", "ts", "f1", "f9"];
 
     private readonly MockFileSystem _fs = new();
     private readonly FakeGitCli _git = new() { Root = "/work" };
@@ -69,6 +69,24 @@ public class MnemonicScopeHostTests : StaticConfigurationTest
         Assert.All(Globals, m => Assert.Contains(m, listed));
         Assert.All(present, m => Assert.Contains(m, listed));
         Assert.All(absent, m => Assert.DoesNotContain(m, listed));
+    }
+
+    [Fact]
+    public async Task With_no_file_open_the_leader_offers_none_of_the_open_file_commands()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        IReadOnlyList<string> listed = [];
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => host.App.InjectKey(Key.Space.WithCtrl),
+            () => Leader(workbench) is not null,
+            () => { listed = Leader(workbench)!.Mnemonics; host.App.InjectKey(Key.Esc); },
+            () => Leader(workbench) is null);
+
+        Assert.All(["gl", "gp", "gn", "di", "cg"], m => Assert.DoesNotContain(m, listed));
     }
 
     // Decided 5: an out-of-scope command has to seem not to exist. 'u' would have completed mu, which

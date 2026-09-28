@@ -15,7 +15,10 @@ namespace TuiCode.Tests;
 public class ActionScopeHostTests : StaticConfigurationTest
 {
     private static readonly string[] Editing =
-        ["Move line up", "Add cursor above", "Toggle column select", "Go to symbol in file"];
+        [
+        "Move line up", "Add cursor above", "Toggle column select", "Go to symbol in file", "Go to line:column",
+        "Change grammar", "Show document info", "Previous cursor position", "Next cursor position",
+    ];
 
     private static readonly string[] FileCommands =
         ["Delete file or folder", "Move or rename file or folder", "Cut file or folder", "Paste file or folder"];

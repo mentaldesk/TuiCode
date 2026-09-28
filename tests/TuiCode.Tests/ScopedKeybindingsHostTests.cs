@@ -7,6 +7,7 @@ using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Configuration;
+using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
@@ -338,15 +339,15 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
 
         string[] expected =
         [
-            CommandIds.ChangeGrammar, CommandIds.CloseActiveEditor,
+            CommandIds.CloseActiveEditor,
             CommandIds.FindGlobally, CommandIds.FindInFile, CommandIds.FocusEditorBody,
             CommandIds.FocusEditorTabStrip, CommandIds.FocusReview, CommandIds.FocusSidebar,
-            CommandIds.GoToLine, CommandIds.NarrowSidebar, CommandIds.NavigateBack, CommandIds.NavigateForward,
+            CommandIds.NarrowSidebar,
             CommandIds.New, CommandIds.NextEditor, CommandIds.Open, CommandIds.OpenPullRequest,
             CommandIds.OpenSettings, CommandIds.PreviousEditor, CommandIds.PullRequestOverview,
             CommandIds.Quit, CommandIds.ReplaceGlobally, CommandIds.ReplaceInFile, CommandIds.SaveActiveEditor,
             CommandIds.ShowAbout, CommandIds.ShowActions, CommandIds.ShowDiagnostics,
-            CommandIds.ShowDocumentInfo, CommandIds.ShowExplorer, CommandIds.ShowHelp, CommandIds.ShowMnemonics,
+            CommandIds.ShowExplorer, CommandIds.ShowHelp, CommandIds.ShowMnemonics,
             CommandIds.SubmitReview, CommandIds.ToggleGutter, CommandIds.ToggleSidebar, CommandIds.WidenSidebar,
             .. Enumerable.Range(1, 9).Select(CommandIds.FocusEditorByIndex),
         ];
@@ -380,6 +381,169 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
                 "Toggle column select"],
             rescoped.Select(r => r.Label));
         Assert.All(rescoped, r => Assert.Equal(CommandScope.Editor, r.Scope));
+    }
+
+    [Fact]
+    public void The_open_file_commands_read_as_Editor_in_the_When_column()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        string[] ids =
+        [
+            CommandIds.GoToLine, CommandIds.ChangeGrammar, CommandIds.ShowDocumentInfo, CommandIds.NavigateBack,
+            CommandIds.NavigateForward, CommandIds.CompareToSaved, CommandIds.CompareToRevision,
+            CommandIds.CompareToOtherFile,
+        ];
+        var rows = KeybindingRows.Build(_commands.Registered, [.. _keybindings.Bindings], "")
+            .Where(r => ids.Contains(r.CommandId)).ToArray();
+
+        Assert.Equal(
+            ["Change grammar", "Compare to other file", "Compare to revision", "Compare to saved", "Go to line:column",
+                "Next cursor position", "Previous cursor position", "Show document info"],
+            rows.Select(r => r.Label).Order(StringComparer.Ordinal));
+        Assert.All(rows, r => Assert.Equal(CommandScope.Editor, r.Scope));
+    }
+
+    // Go to line and cursor history act on the active file, so they're Editor-scoped (#286).
+    private static readonly (string Name, Key[] Chord)[] GoToChords =
+    [
+        ("Ctrl+G L", [Key.G.WithCtrl, Key.L]),
+        ("Ctrl+G P", [Key.G.WithCtrl, Key.P]),
+        ("Ctrl+G N", [Key.G.WithCtrl, Key.N]),
+    ];
+
+    [Theory]
+    [InlineData(CommandIds.FocusSidebar, "Explorer")]
+    [InlineData(CommandIds.FindGlobally, "Find")]
+    [InlineData(CommandIds.CompareToSaved, "Diff")]
+    public async Task The_go_to_chords_leave_the_tabs_and_the_focus_alone_away_from_the_editor(string focusCommand, string word)
+    {
+        foreach (var name in new[] { "a", "b", "c" })
+            _fs.AddFile($"/work/{name}.txt", new MockFileData(ThreeLines));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var group = workbench.Editor.Group;
+        EditorTab? b = null;
+        var seen = new List<(bool Modal, object? Active, int Row, int Tabs, string Focus)>();
+        void Record() => seen.Add((workbench.SubViews.OfType<GoToLineView>().Any(), group.Value, b!.CursorRow,
+            group.Tabs.Count + group.DiffTabs.Count, workbench.StatusBar.DisplayedFocus));
+
+        // History a → b → c, stepped back to b, so both Previous and Next have somewhere to go.
+        var steps = new List<Delegate>
+        {
+            (Action)(() => workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt"))),
+            (Action)(() => { b = workbench.Editor.Open(_fs.FileInfo.New("/work/b.txt")); b.Content = "one\nTWO\nthree"; }),
+            (Action)(() => workbench.Editor.Open(_fs.FileInfo.New("/work/c.txt"))),
+            (Action)(() => _commands.TryExecute(CommandIds.NavigateBack)),
+            (Func<bool>)(() => group.ActiveTab == b),
+            (Action)(() => _commands.TryExecute(focusCommand)),
+            (Func<bool>)(() => workbench.StatusBar.DisplayedFocus == word),
+            (Action)Record,
+        };
+        foreach (var (_, chord) in GoToChords)
+        {
+            foreach (var key in chord)
+            {
+                var k = key;
+                steps.Add((Action)(() => host.App.InjectKey(k)));
+            }
+            steps.Add((Action)Record);
+        }
+
+        await HostSteps.Run(host, [.. steps]);
+
+        Assert.Equal(GoToChords.Length + 1, seen.Count);
+        Assert.All(seen, s => Assert.Equal(seen[0], s));
+        Assert.False(seen[0].Modal);
+    }
+
+    [Theory]
+    [InlineData(CommandIds.FocusEditorTabStrip, "Tabs")]
+    [InlineData(CommandIds.FindInFile, "Find")]
+    public async Task Ctrl_G_L_still_opens_go_to_line_from_a_region_that_scopes_to_the_editor(string focusCommand, string word)
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData(ThreeLines));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => { workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")).FocusContent(); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => _commands.TryExecute(focusCommand),
+            () => workbench.StatusBar.DisplayedFocus == word,
+            () => host.App.InjectKey(Key.G.WithCtrl),
+            () => host.App.InjectKey(Key.L),
+            () => workbench.SubViews.OfType<GoToLineView>().Any(),
+            () => host.App.InjectKey(Key.Esc),
+            () => !workbench.SubViews.OfType<GoToLineView>().Any());
+    }
+
+    [Fact]
+    public async Task With_no_file_open_the_go_to_chords_do_nothing_and_say_nothing()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var before = "";
+        var after = "";
+
+        var steps = new List<Delegate>
+        {
+            (Action)(() => _commands.TryExecute(CommandIds.FocusSidebar)),
+            (Func<bool>)(() => workbench.StatusBar.DisplayedFocus == "Explorer"),
+            (Action)(() => before = workbench.StatusBar.DisplayedText),
+        };
+        foreach (var key in GoToChords.SelectMany(c => c.Chord))
+        {
+            var k = key;
+            steps.Add((Action)(() => host.App.InjectKey(k)));
+        }
+        steps.Add((Action)(() => after = workbench.StatusBar.DisplayedText));
+
+        await HostSteps.Run(host, [.. steps]);
+
+        Assert.Equal(before, after);
+        Assert.False(workbench.SubViews.OfType<GoToLineView>().Any());
+        Assert.Empty(workbench.Editor.Group.Tabs);
+    }
+
+    [Fact]
+    public async Task Change_grammar_on_a_file_with_no_grammar_says_so()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData(ThreeLines));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var said = "";
+
+        await HostSteps.Run(host,
+            () => { workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")).FocusContent(); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => _commands.TryExecute(CommandIds.ChangeGrammar),
+            () => { said = workbench.StatusBar.DisplayedText; });
+
+        Assert.Contains("a.txt has no grammar", said);
+    }
+
+    [Fact]
+    public async Task Previous_and_next_cursor_position_say_so_with_nowhere_to_go()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData(ThreeLines));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        string back = "", forward = "";
+
+        await HostSteps.Run(host,
+            () => { workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")).FocusContent(); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.G.WithCtrl),
+            () => host.App.InjectKey(Key.P),
+            () => { back = workbench.StatusBar.DisplayedText; },
+            () => host.App.InjectKey(Key.G.WithCtrl),
+            () => host.App.InjectKey(Key.N),
+            () => { forward = workbench.StatusBar.DisplayedText; });
+
+        Assert.Contains("No previous cursor position", back);
+        Assert.Contains("No next cursor position", forward);
     }
 
     private Workbench.Workbench BuildWorkbench()
