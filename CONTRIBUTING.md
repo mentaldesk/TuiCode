@@ -69,7 +69,7 @@ The release is published outright rather than as a draft: draft assets 404 for u
 
 `packaging/tuicode.rb` is the tap's formula and `packaging/tuicode.json` the bucket's Scoop manifest, each with the version and its SHA256s replaced by `{{version}}` and `{{sha_<rid>}}`. The shared publish job renders both from the archives it downloaded and fails the job on a placeholder nothing filled — `PackagingTemplateTests` catches a typo'd one before the release rather than during it, and checks the manifest still parses as JSON once rendered. The formula has no `version` line: `brew audit --strict` rejects one that duplicates the URL.
 
-Both are pushed with `HOMEBREW_TAP_TOKEN`, a fine-grained PAT with Contents + Pull requests write on `mentaldesk/homebrew-tap` and Contents write on `mentaldesk/scoop-bucket`. Without that secret the release still publishes and the job warns.
+Both are pushed with `PACKAGES_TOKEN`, a fine-grained PAT with Contents + Pull requests write on `mentaldesk/homebrew-tap` and Contents write on `mentaldesk/scoop-bucket`, stored in the `release` environment, which only `main` can deploy to. Without that secret the release still publishes and the job warns.
 
 The tap gets a PR its own CI gates. The bucket has no CI, so the manifest is committed straight to its default branch — a mistake in the template is live for Windows users immediately, which is what the placeholder and JSON checks are there to prevent.
 

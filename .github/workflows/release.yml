@@ -18,7 +18,7 @@ concurrency: release
 
 jobs:
   version:
-    uses: mentaldesk/a-team/.github/workflows/release-version.yml@v0.0.5
+    uses: mentaldesk/a-team/.github/workflows/release-version.yml@v0.1.3
     # A called workflow doesn't inherit the caller's permissions.
     permissions:
       contents: read
@@ -163,7 +163,7 @@ jobs:
   publish:
     needs: [version, build]
     if: github.ref == 'refs/heads/main'
-    uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.0.5
+    uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.1.3
     permissions:
       contents: write
     with:
@@ -173,5 +173,6 @@ jobs:
       formula: packaging/tuicode.rb
       scoop: packaging/tuicode.json
       artifacts: tuicode-*
-    secrets:
-      packages-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      environment: release
+    # The only way an environment's secrets reach a called workflow: actions/runner#4453.
+    secrets: inherit
