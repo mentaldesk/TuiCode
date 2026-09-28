@@ -5,6 +5,9 @@ on:
     branches: ['**']
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   lint-workflows:
     # release.yml is only exercised by a real release, so its YAML gets linted here instead.

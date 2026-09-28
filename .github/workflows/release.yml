@@ -162,6 +162,7 @@ jobs:
 
   publish:
     needs: [version, build]
+    if: github.ref == 'refs/heads/main'
     uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.0.5
     permissions:
       contents: write
