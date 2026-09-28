@@ -34,7 +34,7 @@ public class CopyStatusHostTests : StaticConfigurationTest
 
         Assert.Equal("Copied 2 lines  •  1,001 characters", said);
         Assert.False(error);
-        Assert.Equal(Path, after);
+        Assert.Equal(new MockFileSystem().Path.GetFullPath(Path), after);
     }
 
     [Fact]
