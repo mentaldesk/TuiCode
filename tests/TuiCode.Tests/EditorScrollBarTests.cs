@@ -148,17 +148,22 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
     {
         var fs = new MockFileSystem();
         fs.AddFile("/work/long.txt", new MockFileData(
-            string.Join('\n', new[] { new string('x', 130) }.Concat(Enumerable.Range(1, 40).Select(i => $"line {i}")))));
+            string.Join('\n', new[] { new string('x', 60) }.Concat(Enumerable.Range(1, 40).Select(i => $"line {i}")))));
         using var workbench = Workbench();
         using var host = Host(workbench);
         bool wideHidden = false, narrowShown = false, narrowGutterLevel = false;
-        var narrow = "";
+        string wide = "", narrow = "";
 
         await HostSteps.Run(host,
-            Size(host, 260, 20),
-            () => { workbench.Editor.Open(fs.FileInfo.New("/work/long.txt")); },
-            () => { wideHidden = !Tab(workbench).TextView.HorizontalScrollBar.Visible; },
             Size(host, 120, 20),
+            () => { workbench.Editor.Open(fs.FileInfo.New("/work/long.txt")); },
+            () =>
+            {
+                var tab = Tab(workbench);
+                wideHidden = !tab.TextView.HorizontalScrollBar.Visible;
+                wide = $"screen {host.App.Screen}, viewport {tab.TextView.Viewport}, content {tab.TextView.GetContentSize()}";
+            },
+            Size(host, 80, 20),
             () => { },
             () =>
             {
@@ -167,11 +172,11 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
                 narrow = $"screen {host.App.Screen}, viewport {tab.TextView.Viewport}, content {tab.TextView.GetContentSize()}";
                 narrowGutterLevel = GutterHeight(tab) == tab.TextView.Viewport.Height;
             },
-            Size(host, 260, 20),
+            Size(host, 120, 20),
             () => { });
 
         var tab = Tab(workbench);
-        Assert.True(wideHidden);
+        Assert.True(wideHidden, wide);
         Assert.True(narrowShown, narrow);
         Assert.True(narrowGutterLevel);
         Assert.False(tab.TextView.HorizontalScrollBar.Visible);
