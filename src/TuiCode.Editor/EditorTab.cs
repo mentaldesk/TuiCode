@@ -23,6 +23,7 @@ public sealed class EditorTab : FrameView
     private int _edits;
     private (int Edits, (System.Drawing.Point Start, System.Drawing.Point End)[] Ranges, DocumentStats Stats)? _selectionStats;
     private (int Edits, SyntaxLanguage? Grammar, SymbolScan? Scan)? _symbols;
+    private (bool Vertical, bool Horizontal) _barsLaidOut;
 
     public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
@@ -130,6 +131,17 @@ public sealed class EditorTab : FrameView
 
         _dirty = unsaved is not null;
         UpdateTitle();
+    }
+
+    // A bar that shows or hides mid-layout changes the padding, and TG drops the relayout that asks for (#315).
+    protected override void OnSubViewsLaidOut(LayoutEventArgs args)
+    {
+        base.OnSubViewsLaidOut(args);
+        var bars = (_textView.VerticalScrollBar.Visible, _textView.HorizontalScrollBar.Visible);
+        if (bars == _barsLaidOut) return;
+        _barsLaidOut = bars;
+        SetNeedsLayout();
+        Layout();
     }
 
     public EditorSettings Settings
