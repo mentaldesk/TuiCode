@@ -21,6 +21,8 @@ internal sealed partial class EditorTextView
         AddCommand(Command.Redo, () => Redo());
         AddCommand(Command.NextTabStop, () => Indent());
         AddCommand(Command.PreviousTabStop, () => Outdent());
+        AddCommand(Command.Copy, () => CopyAtCarets(cut: false));
+        AddCommand(Command.Cut, () => CopyAtCarets(cut: true));
     }
 
     public override string Text

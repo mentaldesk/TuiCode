@@ -11,6 +11,7 @@ public sealed class EditorGroup : PaneTabs
     private readonly SyntaxHighlighter? _syntax;
 
     public event EventHandler<IFileInfo>? FileSaved;
+    public event EventHandler<CopyOutcome>? Copied;
     public event EventHandler<EditorTab?>? ActiveTabChanged;
 
     /// <summary>Raised whenever tabs are opened, closed or moved, so what to watch can be re-read (#268).</summary>
@@ -129,6 +130,7 @@ public sealed class EditorGroup : PaneTabs
         tab.IconStyle = IconStyle;
         tab.Settings = Settings;
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
+        tab.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         tab.GrammarChanged += (_, _) => GrammarChanged?.Invoke(this, tab);
         // Tabs selects the first tab it's given during Add, so register it first for ActiveTabChanged listeners to

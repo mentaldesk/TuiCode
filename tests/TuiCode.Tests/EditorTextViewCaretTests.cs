@@ -443,6 +443,86 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void Copy_at_a_single_caret_says_what_it_copied()
+    {
+        var view = View("one", "two");
+        var clipboard = new TestClipboard();
+        _app.Driver!.Clipboard = clipboard;
+        CopyOutcome? outcome = null;
+        view.Copied += (_, o) => outcome = o;
+        view.SetCarets([Selecting(0, 0, 3)]);
+
+        view.NewKeyDownEvent(Key.C.WithCtrl);
+
+        Assert.Equal("one", clipboard.Text);
+        Assert.Equal(new CopyOutcome.Copied(1, 3), outcome);
+    }
+
+    [Fact]
+    public void Copy_at_several_carets_counts_everything_copied()
+    {
+        var view = View("one 1", "two 2");
+        _app.Driver!.Clipboard = new TestClipboard();
+        CopyOutcome? outcome = null;
+        view.Copied += (_, o) => outcome = o;
+        view.SetCarets([Selecting(0, 0, 3), Selecting(1, 0, 5)]);
+
+        view.NewKeyDownEvent(Key.C.WithCtrl);
+
+        Assert.Equal(new CopyOutcome.Copied(2, 8), outcome);
+    }
+
+    [Fact]
+    public void Copy_with_no_selection_at_a_single_caret_pastes_back_as_a_whole_line()
+    {
+        var view = View("one", "two");
+        _app.Driver!.Clipboard = new TestClipboard();
+        CopyOutcome? outcome = null;
+        view.Copied += (_, o) => outcome = o;
+        view.SetCarets([At(1, 1)]);
+
+        view.NewKeyDownEvent(Key.C.WithCtrl);
+        view.NewKeyDownEvent(Key.V.WithCtrl);
+
+        Assert.Equal(new CopyOutcome.Copied(1, 3), outcome);
+        Assert.Equal(["one", "two", "two"], view.LineStrings);
+    }
+
+    [Fact]
+    public void Cut_at_a_single_caret_removes_the_selection_and_says_what_it_copied()
+    {
+        var view = View("one two");
+        var clipboard = new TestClipboard();
+        _app.Driver!.Clipboard = clipboard;
+        CopyOutcome? outcome = null;
+        view.Copied += (_, o) => outcome = o;
+        view.SetCarets([Selecting(0, 0, 4)]);
+
+        view.NewKeyDownEvent(Key.X.WithCtrl);
+
+        Assert.Equal(["two"], view.LineStrings);
+        Assert.Equal("one ", clipboard.Text);
+        Assert.Equal(new CopyOutcome.Copied(1, 4), outcome);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_cut_the_clipboard_refuses_leaves_the_text(bool severalCarets)
+    {
+        var view = View("one 1", "two 2");
+        _app.Driver!.Clipboard = new TestClipboard { Transform = _ => null };
+        CopyOutcome? outcome = null;
+        view.Copied += (_, o) => outcome = o;
+        view.SetCarets(severalCarets ? [Selecting(0, 0, 3), Selecting(1, 0, 3)] : [Selecting(0, 0, 3)]);
+
+        view.NewKeyDownEvent(Key.X.WithCtrl);
+
+        Assert.IsType<CopyOutcome.Failed>(outcome);
+        Assert.Equal(["one 1", "two 2"], view.LineStrings);
+    }
+
+    [Fact]
     public void Every_caret_is_a_bar_in_place_of_the_terminal_cursor()
     {
         var view = View("abcdef", "abcdef");

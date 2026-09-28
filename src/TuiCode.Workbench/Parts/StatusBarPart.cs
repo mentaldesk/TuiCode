@@ -48,8 +48,20 @@ public sealed class StatusBarPart : View
     public void SetMessage(string message)
     {
         _message = message;
+        _label.SchemeName = null;
         UpdateLabel();
     }
+
+    /// <summary>Show <paramref name="message"/> in the error colours until the next message replaces it.</summary>
+    public void SetError(string message)
+    {
+        SetMessage(message);
+        _label.SchemeName = "Error";
+    }
+
+    internal string Message => _message;
+
+    internal bool ShowsError => _label.SchemeName == "Error";
 
     /// <summary>Revert to the default message, unless something else has replaced <paramref name="message"/> since.</summary>
     public void ClearMessage(string message)
