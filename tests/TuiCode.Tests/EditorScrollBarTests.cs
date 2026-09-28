@@ -152,6 +152,7 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
         using var workbench = Workbench();
         using var host = Host(workbench);
         bool wideHidden = false, narrowShown = false, narrowGutterLevel = false;
+        var narrow = "";
 
         await HostSteps.Run(host,
             Size(host, 260, 20),
@@ -163,6 +164,7 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
             {
                 var tab = Tab(workbench);
                 narrowShown = tab.TextView.HorizontalScrollBar.Visible;
+                narrow = $"screen {host.App.Screen}, viewport {tab.TextView.Viewport}, content {tab.TextView.GetContentSize()}";
                 narrowGutterLevel = GutterHeight(tab) == tab.TextView.Viewport.Height;
             },
             Size(host, 260, 20),
@@ -170,7 +172,7 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
 
         var tab = Tab(workbench);
         Assert.True(wideHidden);
-        Assert.True(narrowShown);
+        Assert.True(narrowShown, narrow);
         Assert.True(narrowGutterLevel);
         Assert.False(tab.TextView.HorizontalScrollBar.Visible);
         Assert.Equal(tab.TextView.Frame.Height, tab.TextView.Viewport.Height);
