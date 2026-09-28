@@ -19,7 +19,7 @@ Version-picking and publishing are [a-team's reusable workflows](https://github.
 
 ### Cutting a release
 
-Actions → **Release** → *Run workflow* → *Run workflow*. That's it.
+Actions → **Release** → *Run workflow* → *Run workflow*. That's it. It publishes only from `main`: run on another branch, it builds and stops there.
 
 The **Bump** dropdown defaults to `auto`, which reads the labels of PRs merged since the last release: `breaking` → major, `enhancement` → minor, otherwise patch. Choose `patch`, `minor` or `major` to override it.
 
