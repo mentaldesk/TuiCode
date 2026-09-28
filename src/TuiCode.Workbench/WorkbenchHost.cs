@@ -468,16 +468,16 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
-        _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Global, EditorOpen);
+        _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Editor, FileOpen);
         // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
         _commands.Register(CommandIds.GoToSymbol, "Go to symbol in file", OpenSymbolPicker, CommandScope.Editor);
         // No default key (#21): rarely needed, and users can bind one in Settings.
-        _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker, CommandScope.Global, EditorOpen);
-        _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack, CommandScope.Global, EditorOpen);
-        _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward, CommandScope.Global, EditorOpen);
+        _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
         _commands.Register(CommandIds.ShowAbout, "About TuiCode", OpenAbout);
-        _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo, CommandScope.Global, EditorOpen);
+        _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo, CommandScope.Editor, FileOpen);
         // No default key (#61): users can bind one in Settings.
         _commands.Register(CommandIds.CompareToSaved, "Compare to saved", CompareToSaved, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.NextChange, "Next change", () => MoveToChange(1), CommandScope.Diff);
@@ -865,7 +865,12 @@ public sealed class WorkbenchHost : IDisposable
     private void OpenGrammarPicker()
     {
         if (_activeGrammarPicker is not null) return;
-        if (_workbench.Editor.Group is not { ActiveTab: { HasSyntax: true } tab, Syntax: { } syntax }) return;
+        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
+        if (!tab.HasSyntax || _workbench.Editor.Group.Syntax is not { } syntax)
+        {
+            _workbench.StatusBar.SetMessage($"{tab.File.Name} has no grammar");
+            return;
+        }
 
         var view = new GrammarPickerView(syntax.Languages, $"Grammar for {tab.File.Name}", tab.Grammar);
         view.Chosen += (_, grammar) => tab.SetGrammar(grammar);
@@ -1064,8 +1069,17 @@ public sealed class WorkbenchHost : IDisposable
         _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
     }
 
-    private void NavigateBack() => GoToHistory(_history.GoBack());
-    private void NavigateForward() => GoToHistory(_history.GoForward());
+    private void NavigateBack()
+    {
+        if (!_history.CanGoBack) _workbench.StatusBar.SetMessage("No previous cursor position");
+        else GoToHistory(_history.GoBack());
+    }
+
+    private void NavigateForward()
+    {
+        if (!_history.CanGoForward) _workbench.StatusBar.SetMessage("No next cursor position");
+        else GoToHistory(_history.GoForward());
+    }
 
     private void GoToHistory(CursorLocation? target)
     {
