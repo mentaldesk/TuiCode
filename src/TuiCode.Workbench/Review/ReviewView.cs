@@ -121,6 +121,7 @@ public sealed class ReviewView : View
         {
             MarkThreads(e);
             MarkChange(e);
+            if (e.Model is ReviewFolderNode && _icons?.ForDirectory(_files.IsExpanded(e.Model)) is { } folder) IconDrawing.Prepend(e, folder);
         };
         if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
         Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files, _draftReview);
@@ -164,7 +165,7 @@ public sealed class ReviewView : View
         if (icon is { } chat && IconDrawing.InsertAt(e, chat, at)) cells[at] = Styled(cells[at], file.BadgeStyle);
     }
 
-    /// <summary>Draws what the branch did to a file in front of its name (#320); a deleted file's name is faint too.</summary>
+    /// <summary>Draws what the branch did to a file (#320), then its type icon (#321), in front of its name; a deleted file's name is faint too.</summary>
     private void MarkChange(DrawTreeViewLineEventArgs<ReviewNode> e)
     {
         if (e.Model is not ReviewFileNode file || e.Cells is not { } cells) return;
@@ -174,6 +175,7 @@ public sealed class ReviewView : View
             for (var i = Math.Max(0, e.IndexOfModelText); i < Math.Min(cells.Count, e.IndexOfModelText + file.Name.Length); i++)
                 cells[i] = Styled(cells[i], TextStyle.Faint);
         }
+        if (_icons?.ForFile(file.Name) is { } type) IconDrawing.Prepend(e, type);
         IconDrawing.Prepend(e, mark ?? new FileIcon(file.Mark.ToString()));
     }
 
