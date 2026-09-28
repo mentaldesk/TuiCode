@@ -91,14 +91,14 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void The_sideways_bars_are_half_a_row_high_with_no_stipple()
+    public void The_sideways_bars_are_tiles_on_no_stipple_clear_of_the_arrows()
     {
         using var tab = Tab(LongLine);
         var diff = Diff("one", $"one\n{LongLine}");
 
         foreach (var bar in new[] { Render(tab)[^1][Gutter(tab).Frame.Width..], Render(diff)[^1] })
         {
-            Assert.Contains('▄', bar);
+            Assert.StartsWith($"◄ {ThinScrollBar.Tile}", bar);
             Assert.DoesNotContain('█', bar);
             Assert.DoesNotContain('░', bar);
         }
@@ -137,7 +137,8 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
 
         var bar = Render(diff)[^1];
 
-        Assert.Equal((Width - 2) * 10 / 20, bar.Count(c => c == '▄'));
+        // The slider's first cell is left blank, clear of the arrow.
+        Assert.Equal((Width - 2) * 10 / 20 - 1, Tiles(bar));
     }
 
     [Fact]
@@ -187,8 +188,7 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
         var last = diff.LeftColumn;
 
         Assert.Equal(diff.SidewaysBar.ScrollableContentSize - diff.SidewaysBar.VisibleContentSize, diff.SidewaysBar.Value);
-        Assert.EndsWith("►", Render(diff)[^1]);
-        Assert.Equal('▄', Render(diff)[^1][^2]);
+        Assert.EndsWith($"{ThinScrollBar.Tile} ►", Render(diff)[^1]);
 
         diff.SidewaysBar.Value = 0;
         diff.SidewaysBar.Value = int.MaxValue;
@@ -209,6 +209,8 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
         Assert.EndsWith("► ", screen[^1]);
         Assert.EndsWith("▼", screen[^2]);
     }
+
+    private static int Tiles(string bar) => bar.Split(ThinScrollBar.Tile).Length - 1;
 
     private EditorTab Tab(string content)
     {

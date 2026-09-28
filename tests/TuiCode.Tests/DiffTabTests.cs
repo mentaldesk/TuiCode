@@ -210,7 +210,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
             "  3- three     │               ",
             "  4  four      │  3  four      ",
             "               │  4+ fivefivefi",
-            "◄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄            ►",
+            $"◄ {string.Concat(Enumerable.Repeat(ThinScrollBar.Tile, 16))}            ►",
         ], screen);
     }
 
