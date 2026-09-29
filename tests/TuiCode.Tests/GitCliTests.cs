@@ -63,6 +63,7 @@ public class GitCliTests
         Assert.False((await git.ShowRepoFileAsync("/repo", "a.cs", "main", ct)).Succeeded);
         Assert.False((await git.AddWorktreeAsync("/repo", "/repo/../pr-1", ct)).Succeeded);
         Assert.False((await git.FindWorktreeAsync("/repo", "main", ct)).Succeeded);
+        Assert.False((await git.BlameAsync("/repo/a.cs", 1, cancellationToken: ct)).Succeeded);
     }
 
     [Fact]
@@ -265,6 +266,97 @@ public class GitCliTests
 
         Assert.True(mergeBase.Succeeded);
         Assert.Null(mergeBase.Value);
+    }
+
+    [Fact]
+    public void ParseBlame_reads_the_author_date_subject_and_line_of_a_commit()
+    {
+        var output =
+            "93f4047d5fbc2a7433901c533b3ef70496e39db8 2 2 1\n" +
+            "author Zoë \"Z\" O'Brien\n" +
+            "author-mail <z@example.com>\n" +
+            "author-time 1788480000\n" +
+            "author-tz -0530\n" +
+            "committer Someone Else\n" +
+            "committer-time 1788490000\n" +
+            "committer-tz +0000\n" +
+            "summary Add a — the first 🎉 (#12)\n" +
+            "boundary\n" +
+            "filename src/a b.cs\n" +
+            "\t    if (x)\tthen;\n";
+
+        var line = GitCli.ParseBlame(output);
+
+        Assert.Equal(new GitBlameLine(
+            "93f4047d5fbc2a7433901c533b3ef70496e39db8", "Zoë \"Z\" O'Brien",
+            DateTimeOffset.FromUnixTimeSeconds(1788480000).ToOffset(new TimeSpan(-5, -30, 0)),
+            "Add a — the first 🎉 (#12)", "    if (x)\tthen;"), line);
+        Assert.True(line!.IsCommitted);
+        Assert.Equal("93f4047", line.ShortHash);
+        Assert.Equal(TimeSpan.FromMinutes(-330), line.Date.Offset);
+    }
+
+    [Fact]
+    public void ParseBlame_marks_a_zero_hash_line_as_not_committed()
+    {
+        var output =
+            "0000000000000000000000000000000000000000 1 1 1\r\n" +
+            "author External file (--contents)\r\n" +
+            "author-time 1790660840\r\n" +
+            "author-tz +1300\r\n" +
+            "summary Version of a.txt from standard input\r\n" +
+            "\tzero\r\n";
+
+        var line = GitCli.ParseBlame(output);
+
+        Assert.False(line!.IsCommitted);
+        Assert.Equal("zero", line.Text);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("fatal: no such path\n")]
+    [InlineData("93f4047d5fbc2a7433901c533b3ef70496e39db8 2 2 1\nauthor A\n")]
+    public void ParseBlame_gives_nothing_for_output_without_a_line(string output) =>
+        Assert.Null(GitCli.ParseBlame(output));
+
+    [Fact]
+    public async Task Blames_a_saved_line_and_an_unsaved_buffer_as_it_is_on_screen()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("src/a.cs", "one\ntwo\n", "First");
+        repo.Commit("src/a.cs", "one\nTWO\n", "Shout two 🎉");
+        repo.Write("untracked.cs", "new\n");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var saved = (await git.BlameAsync(repo.File("src/a.cs"), 2, cancellationToken: ct)).Value;
+        var shifted = (await git.BlameAsync(repo.File("src/a.cs"), 4, "added\nabove\none\nTWO\n", ct)).Value;
+        var added = (await git.BlameAsync(repo.File("src/a.cs"), 1, "added\nabove\none\nTWO\n", ct)).Value;
+        var untracked = await git.BlameAsync(repo.File("untracked.cs"), 1, cancellationToken: ct);
+        var pastTheEnd = await git.BlameAsync(repo.File("src/a.cs"), 9, cancellationToken: ct);
+
+        Assert.Equal(("TWO", "Shout two 🎉", "Test"), (saved!.Text, saved.Subject, saved.Author));
+        Assert.Equal(saved.Hash, shifted!.Hash);
+        Assert.Equal("TWO", shifted.Text);
+        Assert.False(added!.IsCommitted);
+        Assert.Equal("added", added.Text);
+        Assert.True(untracked.Succeeded);
+        Assert.Null(untracked.Value);
+        Assert.False(pastTheEnd.Succeeded);
+    }
+
+    [Fact]
+    public async Task Blame_outside_a_repo_fails()
+    {
+        using var dir = new TempRepo(init: false);
+        dir.Write("a.cs", "one\n");
+        var git = new GitCli(new FileSystem());
+
+        var result = await git.BlameAsync(dir.File("a.cs"), 1, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("not a git repository", result.Error);
     }
 
     [Fact]

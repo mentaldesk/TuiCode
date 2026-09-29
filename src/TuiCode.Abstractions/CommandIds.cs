@@ -38,6 +38,7 @@ public static class CommandIds
     public const string CompareToRevision = "workbench.action.compareToRevision";
     public const string CompareToOtherFile = "workbench.action.compareToOtherFile";
     public const string ReloadFromDisk = "workbench.action.reloadFromDisk";
+    public const string GitBlame = "workbench.action.gitBlame";
 
     public const string NextChange = "diff.action.nextChange";
     public const string PreviousChange = "diff.action.previousChange";
@@ -53,6 +54,7 @@ public static class CommandIds
     public const string DiagnosticsClose = "diagnostics.action.close";
     public const string AboutClose = "about.action.close";
     public const string DocumentInfoClose = "documentInfo.action.close";
+    public const string BlameClose = "blame.action.close";
 
     public const string ActionsExecute = "actions.action.execute";
     public const string ActionsCancel = "actions.action.cancel";

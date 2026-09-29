@@ -86,4 +86,16 @@ internal sealed class FakeGitCli : IGitCli
         ShowCount++;
         return Task.FromResult(GitResult<string?>.Success(RepoFiles.GetValueOrDefault($"{revision}:{repoPath}")));
     }
+
+    public GitBlameLine? Blame { get; set; }
+    public string? BlameError { get; set; }
+
+    /// <summary>Each blame asked for: the line and the text passed for a dirty buffer.</summary>
+    public List<(int Line, string? Contents)> Blames { get; } = [];
+
+    public Task<GitResult<GitBlameLine?>> BlameAsync(string filePath, int line, string? contents = null, CancellationToken cancellationToken = default)
+    {
+        Blames.Add((line, contents));
+        return Task.FromResult(BlameError is { } error ? GitResult<GitBlameLine?>.Failure(error) : GitResult<GitBlameLine?>.Success(Blame));
+    }
 }
