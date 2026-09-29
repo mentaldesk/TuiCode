@@ -124,6 +124,7 @@ public static class CommandIds
     public const string CutFile = "explorer.action.cutFile";
     public const string PasteFile = "explorer.action.pasteFile";
     public const string CancelCut = "explorer.action.cancelCut";
+    public const string RefreshExplorer = "explorer.action.refresh";
     public const string ConfirmCancel = "confirm.action.cancel";
 
     public const string MoveLinesUp = "editor.action.moveLinesUp";

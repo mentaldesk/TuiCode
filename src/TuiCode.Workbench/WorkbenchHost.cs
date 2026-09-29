@@ -459,6 +459,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.CutFile, "Cut file or folder", CutEntry, CommandScope.Explorer);
         _commands.Register(CommandIds.PasteFile, "Paste file or folder", PasteEntry, CommandScope.Explorer);
         _commands.Register(CommandIds.CancelCut, "Cancel cut", explorer.ClearCut, CommandScope.Explorer, () => explorer.PendingCut is not null);
+        // No default key (#332).
+        _commands.Register(CommandIds.RefreshExplorer, "Refresh explorer", RefreshExplorer, CommandScope.Global, () => explorer.Root is not null);
         explorer.CutCleared += (_, item) => _workbench.StatusBar.ClearMessage(CutMessage(item));
         var search = _workbench.Sidebar.Search;
         // Find covers the whole pane, results list included; these keys belong to the query/replace inputs only.
@@ -1209,6 +1211,12 @@ public sealed class WorkbenchHost : IDisposable
         };
 
         ShowPathPrompt(view);
+    }
+
+    private void RefreshExplorer()
+    {
+        _workbench.Sidebar.Explorer.Refresh();
+        if (ExplorerIsContext) FocusSidebar();
     }
 
     private void CutEntry()
