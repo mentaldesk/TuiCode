@@ -505,6 +505,22 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
         Assert.Equal(new CopyOutcome.Copied(1, 4), outcome);
     }
 
+    [Fact]
+    public void Copy_after_select_all_in_a_large_file_takes_moments()
+    {
+        var view = View([.. Enumerable.Repeat(new string('x', 80), 37_500)]);
+        _app.Driver!.Clipboard = new TestClipboard();
+        CopyOutcome? outcome = null;
+        view.Copied += (_, o) => outcome = o;
+        view.NewKeyDownEvent(Key.A.WithCtrl);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        view.NewKeyDownEvent(Key.C.WithCtrl);
+
+        Assert.Equal(new CopyOutcome.Copied(37_500, 3_000_000), outcome);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(3), $"copy took {stopwatch.Elapsed}");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

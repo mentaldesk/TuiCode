@@ -609,7 +609,8 @@ internal sealed partial class EditorTextView : TextView
 
     protected override bool OnKeyDown(Key key)
     {
-        if (base.OnKeyDown(key)) return true;
+        // TG's OnKeyDown reads SelectedLength, which builds the selection in quadratic time: minutes after select-all on a large file.
+        if (Autocomplete.Suggestions.Count > 0 && base.OnKeyDown(key)) return true;
         var bound = KeyBindings.TryGet(key, out var binding);
         if (ColumnSelect && bound && ExtendColumnSelection(binding)) return true;
         // Anything else ends the box, so the next extend starts one from where the caret now is.
