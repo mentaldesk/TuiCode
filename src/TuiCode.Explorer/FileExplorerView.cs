@@ -208,6 +208,42 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
             ?? throw new IOException($"Moved to '{shown}' but could not locate it in the tree.");
     }
 
+    /// <summary>
+    /// Re-read every expanded folder from disk, keeping them expanded and the selection on the same path. A selection
+    /// that's gone moves to its neighbour, as after <see cref="Delete"/>.
+    /// </summary>
+    public void Refresh()
+    {
+        if (Root is not { } root) return;
+        var reselect = SelectedObject is { } selected ? SurvivingSelection(root, selected.FullName) : null;
+        RefreshKeepingExpansion(root);
+        if (reselect is null) return;
+        SelectedObject = Find(reselect) ?? root;
+        EnsureVisible(SelectedObject);
+    }
+
+    // The tree still lists what was there before the refresh, so the neighbours of the first vanished entry on the path come from it.
+    private string SurvivingSelection(IDirectoryInfo root, string selected)
+    {
+        var fs = root.FileSystem;
+        bool Exists(IFileSystemInfo entry) => fs.File.Exists(entry.FullName) || fs.Directory.Exists(entry.FullName);
+
+        IFileSystemInfo current = root;
+        foreach (var segment in Segments(root, selected))
+        {
+            var siblings = GetChildren(current).ToList();
+            var index = siblings.FindIndex(c => string.Equals(c.Name, segment, StringComparison.Ordinal));
+            if (index < 0) return current.FullName;
+            if (!Exists(siblings[index]))
+            {
+                var neighbour = siblings.Skip(index + 1).Concat(siblings.Take(index).Reverse()).FirstOrDefault(Exists);
+                return (neighbour ?? current).FullName;
+            }
+            current = siblings[index];
+        }
+        return selected;
+    }
+
     internal IReadOnlyCollection<string> MarkedOnDisk => _changedOnDisk;
 
     /// <summary>

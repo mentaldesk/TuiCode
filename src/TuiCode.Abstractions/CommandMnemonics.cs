@@ -61,6 +61,7 @@ public static class CommandMnemonics
             [CommandIds.CompareToRevision] = "ctr",
             [CommandIds.CompareToOtherFile] = "cto",
             [CommandIds.ReloadFromDisk] = "rd",
+            [CommandIds.RefreshExplorer] = "re",
             [CommandIds.ToggleSidebar] = "ts",
             [CommandIds.WidenSidebar] = "ws",
             [CommandIds.NarrowSidebar] = "ns",
