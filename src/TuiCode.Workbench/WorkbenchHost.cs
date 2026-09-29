@@ -60,6 +60,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly FindController _find;
     private readonly FocusService _focus;
     private readonly DiskChanges _diskChanges;
+    private readonly FolderWatcher _folderWatcher;
     private readonly CursorLocationHistory _history = new();
     // Set while we drive the cursor ourselves (Back/Forward, Go-to-line) so those moves
     // don't get re-recorded as fresh jumps.
@@ -163,12 +164,19 @@ public sealed class WorkbenchHost : IDisposable
         ApplyIconStyle();
         if (_icons is not null) _icons.Changed += (_, _) => ApplyIconStyle();
 
+        fileSystem ??= new FileSystem();
         // Tell a tab its file changed the moment it happens, rather than at the save it would lose (#268).
         _diskChanges = new DiskChanges(
             _workbench.Editor.Group,
             _workbench.Sidebar.Explorer,
             _workbench.StatusBar.SetMessage,
-            new DiskWatcher(fileSystem ?? new FileSystem(), ScheduleFlush, _logger));
+            new DiskWatcher(fileSystem, ScheduleFlush, _logger));
+
+        var explorer = _workbench.Sidebar.Explorer;
+        _folderWatcher = new FolderWatcher(fileSystem, ScheduleFlush, _logger);
+        explorer.ExpandedFoldersChanged += (_, _) => _folderWatcher.Follow(explorer.ExpandedFolders);
+        _folderWatcher.Changed += (_, folders) => explorer.Refresh(folders);
+        _folderWatcher.Follow(explorer.ExpandedFolders);
 
         _app.Keyboard.KeyDown += OnAppKeyDown;
         _app.Mouse.MouseEvent += OnAppMouseEvent;
@@ -2534,6 +2542,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
         _diskChanges.Dispose();
+        _folderWatcher.Dispose();
         _find.Dispose();
         _terminalCursors.Dispose();
         _workbench.Dispose();

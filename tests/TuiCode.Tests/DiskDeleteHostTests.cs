@@ -65,7 +65,7 @@ public class DiskDeleteHostTests : StaticConfigurationTest
     {
         var full = _fs.Path.GetFullPath(path);
         _fs.File.Delete(full);
-        _fs.Watchers.For(_fs.Path.GetDirectoryName(full)!).Raise(WatcherChangeTypes.Deleted, full);
+        foreach (var watcher in _fs.Watchers.At(_fs.Path.GetDirectoryName(full)!)) watcher.Raise(WatcherChangeTypes.Deleted, full);
     }
 
     private Workbench.Workbench BuildWorkbench()

@@ -215,6 +215,81 @@ public class FileExplorerRefreshTests
         Assert.Equal(9, explorer.ScrollOffsetVertical);
     }
 
+    [Fact]
+    public void ExpandedFolders_lists_the_root_then_folders_in_the_order_they_were_expanded()
+    {
+        using var explorer = Open("/work/b/x.cs", "/work/a/y.cs");
+        var raised = 0;
+        explorer.ExpandedFoldersChanged += (_, _) => raised++;
+
+        explorer.Expand(Node(explorer, "b"));
+        explorer.Refresh();
+        explorer.Expand(Node(explorer, "a"));
+        explorer.Refresh();
+
+        Assert.Equal([".", "b", "a"], explorer.ExpandedFolders.Select(Full).Select(Relative));
+        Assert.Equal(2, raised);
+    }
+
+    [Fact]
+    public void ExpandedFolders_drops_a_collapsed_folder_and_everything_under_it()
+    {
+        using var explorer = Open("/work/a/inner/x.cs", "/work/b.cs");
+        Node(explorer, "a/inner/x.cs");
+        explorer.Refresh();
+
+        explorer.Collapse(Node(explorer, "a"));
+        explorer.Refresh();
+
+        Assert.Equal(["."], explorer.ExpandedFolders.Select(Full).Select(Relative));
+    }
+
+    [Fact]
+    public void Refresh_of_some_folders_reads_only_those_that_are_expanded()
+    {
+        using var explorer = Open("/work/open/a.cs", "/work/other/b.cs", "/work/shut/c.cs");
+        Node(explorer, "open/a.cs");
+        Node(explorer, "other/b.cs");
+        var builder = new CountingTreeBuilder(explorer.TreeBuilder!);
+        explorer.TreeBuilder = builder;
+
+        _fs.AddFile("/work/open/d.cs", new MockFileData(""));
+        explorer.Refresh([_fs.Path.GetFullPath("/work/open"), _fs.Path.GetFullPath("/work/shut")]);
+
+        Assert.Equal([_fs.Path.GetFullPath("/work/open")], builder.Read);
+        Assert.Equal(["a.cs", "d.cs"], Names(explorer, "open"));
+    }
+
+    [Fact]
+    public void Refresh_of_some_folders_moves_a_deleted_selection_to_its_neighbour()
+    {
+        using var explorer = Open("/work/src/b.cs", "/work/src/c.cs");
+        explorer.SelectedObject = Node(explorer, "src/b.cs");
+
+        _fs.File.Delete("/work/src/b.cs");
+        explorer.Refresh([_fs.Path.GetFullPath("/work/src")]);
+
+        Assert.Equal("src/c.cs", Relative(explorer.SelectedObject));
+    }
+
+    [Fact]
+    public void Refresh_of_some_folders_leaves_the_scroll_alone_when_the_selection_is_out_of_view()
+    {
+        using var explorer = Open([.. Enumerable.Range(0, 20).Select(i => $"/work/f{i:00}.txt")]);
+        explorer.Frame = new Rectangle(0, 0, 20, 5);
+        explorer.SetContentSize(new Size(20, 21));
+        explorer.SelectedObject = Node(explorer, "f18.txt");
+        explorer.ScrollOffsetVertical = 0;
+
+        _fs.AddFile("/work/f00a.txt", new MockFileData(""));
+        explorer.Refresh([_fs.Path.GetFullPath("/work")]);
+
+        Assert.Equal(0, explorer.ScrollOffsetVertical);
+        Assert.Equal("f18.txt", Relative(explorer.SelectedObject));
+    }
+
+    private IFileSystemInfo Full(string path) => _fs.DirectoryInfo.New(path);
+
     private sealed class CountingTreeBuilder(ITreeBuilder<IFileSystemInfo> inner) : ITreeBuilder<IFileSystemInfo>
     {
         public List<string> Read { get; } = [];
