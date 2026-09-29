@@ -75,7 +75,7 @@ public sealed class WorkbenchHost : IDisposable
     private AboutView? _activeAbout;
     private DocumentInfoView? _activeDocumentInfo;
     private BlameView? _activeBlame;
-    private SixelSupport? _sixelSupport;
+    private bool? _sixelSupported;
     private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
     private PathPromptView? _activePathPrompt;
@@ -126,10 +126,10 @@ public sealed class WorkbenchHost : IDisposable
         _terminalCursors.Detect();
         // Detected up front so About can show a spinner rather than ASCII art that the image then replaces.
         if (_app.Driver is { } driver)
-            SixelProbe.Detect(driver, support => _app.Invoke(() =>
+            SixelProbe.Detect(driver, supported => _app.Invoke(() =>
             {
-                _sixelSupport = support;
-                _activeAbout?.Present(support);
+                _sixelSupported = supported;
+                if (_activeAbout is { } about) PresentAbout(about);
             }));
         _workbench = workbench;
         _commands = commands;
@@ -1461,7 +1461,23 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(view.Scope);
         view.SetFocus();
 
-        view.Present(_sixelSupport);
+        PresentAbout(view);
+    }
+
+    private void PresentAbout(AboutView view)
+    {
+        if (_sixelSupported is not true || _app.Driver is not { } driver)
+        {
+            view.Present(_sixelSupported is null ? null : SixelSupport.Unsupported);
+            return;
+        }
+
+        view.Present(null);
+        // Measured on every open: the window may have moved to a screen with another scale since the last one.
+        SixelProbe.MeasureCell(driver, cellPixels => _app.Invoke(() =>
+        {
+            if (ReferenceEquals(_activeAbout, view)) view.Present(new SixelSupport(true, cellPixels));
+        }));
     }
 
     private void CloseAbout(AboutView view)

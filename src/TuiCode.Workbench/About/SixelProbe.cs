@@ -14,29 +14,22 @@ internal static class SixelProbe
 {
     private static readonly SizeF DefaultCellPixels = new(10, 20);
 
-    /// <summary>Asks the terminal whether it draws sixel images and how many pixels a cell is.</summary>
-    public static void Detect(IDriver driver, Action<SixelSupport> found)
+    /// <summary>Asks the terminal whether it draws sixel images.</summary>
+    public static void Detect(IDriver driver, Action<bool> found)
     {
         if (driver.IsLegacyConsole)
         {
-            found(SixelSupport.Unsupported);
+            found(false);
             return;
         }
 
-        Queue(driver, EscSeqUtils.CSI_SendDeviceAttributes,
-            response =>
-            {
-                if (IndicatesSixel(response))
-                    FindCellPixels(driver, cellPixels => found(new SixelSupport(true, cellPixels)));
-                else
-                    found(SixelSupport.Unsupported);
-            },
-            () => found(SixelSupport.Unsupported));
+        Queue(driver, EscSeqUtils.CSI_SendDeviceAttributes, response => found(IndicatesSixel(response)), () => found(false));
     }
 
     // iTerm2 answers only its own query and most other terminals only CSI 16 t. An unanswered query takes TG a
     // second to abandon, so ask both at once and take the first answer.
-    private static void FindCellPixels(IDriver driver, Action<SizeF> found)
+    /// <summary>Asks how many pixels a cell is.</summary>
+    public static void MeasureCell(IDriver driver, Action<SizeF> found)
     {
         var settled = false;
         var misses = 0;
