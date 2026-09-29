@@ -1476,9 +1476,9 @@ public sealed class WorkbenchHost : IDisposable
 
         view.Present(null);
         // Measured on every open: the window may have moved to a screen with another scale since the last one.
-        SixelProbe.MeasureCell(driver, cellPixels => _app.Invoke(() =>
+        SixelProbe.MeasureCell(driver, cell => _app.Invoke(() =>
         {
-            if (ReferenceEquals(_activeAbout, view)) view.Present(new SixelSupport(true, cellPixels));
+            if (ReferenceEquals(_activeAbout, view)) view.Present(new SixelSupport(true, cell.Pixels));
         }));
     }
 
@@ -2482,11 +2482,18 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(view.Scope);
         view.SetFocus();
 
-        if (_cursorColour is not null && _app.Driver is { } driver)
+        if (_app.Driver is not { } driver) return;
+
+        if (_cursorColour is not null)
             CursorColourProbe.Read(driver, reported => _app.Invoke(() =>
             {
                 if (ReferenceEquals(_activeDiagnostics, view)) view.ShowTerminalCursorColour(reported);
             }));
+
+        SixelProbe.MeasureCell(driver, cell => _app.Invoke(() =>
+        {
+            if (ReferenceEquals(_activeDiagnostics, view)) view.ShowCellSize(cell);
+        }));
     }
 
     private string GetKittyNegotiationStatus()

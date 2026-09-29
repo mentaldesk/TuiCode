@@ -1,4 +1,5 @@
 using Terminal.Gui.Drawing;
+using Terminal.Gui.Drivers;
 using Terminal.Gui.Views;
 using TuiCode.Workbench.About;
 
@@ -82,7 +83,58 @@ public class SixelProbeTests
     public void ParseIterm2CellSize_reads_the_cell_in_device_pixels(string reply, float width, float height) =>
         Assert.Equal(
             new System.Drawing.SizeF(width, height),
-            SixelProbe.ParseIterm2CellSize($"\x1b]1337;ReportCellSize={reply}\x1b\\"));
+            SixelProbe.ParseIterm2CellSize($"\x1b]1337;ReportCellSize={reply}\x1b\\")?.Pixels);
+
+    [Theory]
+    [InlineData("17.50;8.00;2.0", 2f)]
+    [InlineData("17.50;8.00;1.0", 1f)]
+    [InlineData("17.50;8.00", 1f)]
+    public void ParseIterm2CellSize_reports_the_scale_it_used(string reply, float scale)
+    {
+        var cell = SixelProbe.ParseIterm2CellSize($"\x1b]1337;ReportCellSize={reply}\x1b\\");
+
+        Assert.Equal(CellSizeSource.Iterm2Report, cell?.Source);
+        Assert.Equal(scale, cell?.Scale);
+    }
+
+    [Fact]
+    public void MeasureCell_reports_the_query_that_answered_first()
+    {
+        var requests = new List<AnsiEscapeSequenceRequest>();
+        var found = new List<CellMeasurement>();
+        SixelProbe.MeasureCell(requests.Add, found.Add);
+
+        requests[1].ResponseReceived!("\x1b[6;20;10t");
+        requests[0].ResponseReceived!("\x1b]1337;ReportCellSize=17.5;8.0;2.0\x1b\\");
+
+        Assert.Equal([new CellMeasurement(new System.Drawing.SizeF(10, 20), CellSizeSource.CellResolutionReply)], found);
+    }
+
+    [Fact]
+    public void MeasureCell_takes_the_other_query_when_the_first_goes_unanswered()
+    {
+        var requests = new List<AnsiEscapeSequenceRequest>();
+        var found = new List<CellMeasurement>();
+        SixelProbe.MeasureCell(requests.Add, found.Add);
+
+        requests[1].Abandoned!();
+        requests[0].ResponseReceived!("\x1b]1337;ReportCellSize=17.5;8.0;2.0\x1b\\");
+
+        Assert.Equal([new CellMeasurement(new System.Drawing.SizeF(16, 35), CellSizeSource.Iterm2Report, 2)], found);
+    }
+
+    [Fact]
+    public void MeasureCell_assumes_a_size_when_neither_query_is_answered()
+    {
+        var requests = new List<AnsiEscapeSequenceRequest>();
+        var found = new List<CellMeasurement>();
+        SixelProbe.MeasureCell(requests.Add, found.Add);
+
+        requests[0].Abandoned!();
+        requests[1].Abandoned!();
+
+        Assert.Equal([new CellMeasurement(new System.Drawing.SizeF(10, 20), CellSizeSource.Assumed)], found);
+    }
 
     [Theory]
     [InlineData(null)]
