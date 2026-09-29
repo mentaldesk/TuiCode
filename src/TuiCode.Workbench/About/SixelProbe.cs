@@ -14,29 +14,22 @@ internal static class SixelProbe
 {
     private static readonly SizeF DefaultCellPixels = new(10, 20);
 
-    /// <summary>Asks the terminal whether it draws sixel images and how many pixels a cell is.</summary>
-    public static void Detect(IDriver driver, Action<SixelSupport> found)
+    /// <summary>Asks the terminal whether it draws sixel images.</summary>
+    public static void Detect(IDriver driver, Action<bool> found)
     {
         if (driver.IsLegacyConsole)
         {
-            found(SixelSupport.Unsupported);
+            found(false);
             return;
         }
 
-        Queue(driver, EscSeqUtils.CSI_SendDeviceAttributes,
-            response =>
-            {
-                if (IndicatesSixel(response))
-                    FindCellPixels(driver, cellPixels => found(new SixelSupport(true, cellPixels)));
-                else
-                    found(SixelSupport.Unsupported);
-            },
-            () => found(SixelSupport.Unsupported));
+        Queue(driver, EscSeqUtils.CSI_SendDeviceAttributes, response => found(IndicatesSixel(response)), () => found(false));
     }
 
     // iTerm2 answers only its own query and most other terminals only CSI 16 t. An unanswered query takes TG a
     // second to abandon, so ask both at once and take the first answer.
-    private static void FindCellPixels(IDriver driver, Action<SizeF> found)
+    /// <summary>Asks how many pixels a cell is.</summary>
+    public static void MeasureCell(IDriver driver, Action<SizeF> found)
     {
         var settled = false;
         var misses = 0;
@@ -90,11 +83,13 @@ internal static class SixelProbe
         return match.Success ? Positive(match.Groups[2].Value, match.Groups[1].Value) : null;
     }
 
-    /// <summary>Reads iTerm2's <c>OSC 1337 ; ReportCellSize=height;width;scale ST</c>.</summary>
+    /// <summary>Reads iTerm2's <c>OSC 1337 ; ReportCellSize=height;width;scale ST</c>, in points times the scale.</summary>
     internal static SizeF? ParseIterm2CellSize(string? response)
     {
-        var match = Regex.Match(response ?? "", @"ReportCellSize=([\d.]+);([\d.]+)");
-        return match.Success ? Positive(match.Groups[2].Value, match.Groups[1].Value) : null;
+        var match = Regex.Match(response ?? "", @"ReportCellSize=([\d.]+);([\d.]+)(?:;([\d.]+))?");
+        if (!match.Success || Positive(match.Groups[2].Value, match.Groups[1].Value) is not { } points) return null;
+        var scale = float.TryParse(match.Groups[3].Value, CultureInfo.InvariantCulture, out var s) ? Math.Clamp(s, 1, 4) : 1;
+        return scale == 1 ? points : new SizeF(MathF.Round(points.Width * scale), MathF.Round(points.Height * scale));
     }
 
     private static SizeF? Positive(string width, string height) =>
