@@ -70,6 +70,8 @@ public sealed class Workbench : Window
             RefreshReviewIfShowing();
         };
 
+        editor.Group.Copied += (_, outcome) => ShowCopy(outcome);
+
         editor.Group.ActiveTabChanged += (_, tab) =>
         {
             ShowActiveFile(tab);
@@ -87,6 +89,28 @@ public sealed class Workbench : Window
         else if (Editor.Group.ActiveDiffTab is { } diff) StatusBar.SetMessage(diff.Title);
         else if (Editor.Group.ActiveDocumentTab is { } document) StatusBar.SetMessage(document.Title);
         StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
+    }
+
+    /// <summary>How long a successful copy's message shows before the file path comes back.</summary>
+    internal TimeSpan CopyMessageDuration { get; set; } = TimeSpan.FromSeconds(4);
+
+    private void ShowCopy(CopyOutcome outcome)
+    {
+        if (outcome is CopyOutcome.Failed(var reason))
+        {
+            StatusBar.SetError($"Copy failed: {reason}");
+            return;
+        }
+        var (lines, characters) = (CopyOutcome.Copied)outcome;
+        var message = $"Copied {Count(lines, "line")}  •  {Count(characters, "character")}";
+        StatusBar.SetMessage(message);
+        App?.AddTimeout(CopyMessageDuration, () =>
+        {
+            if (StatusBar.Message == message) ShowActiveFile(Editor.Group.ActiveTab);
+            return false;
+        });
+
+        static string Count(int n, string noun) => $"{n:N0} {noun}{(n == 1 ? "" : "s")}";
     }
 
     /// <summary>The diff tab's keys, e.g. <c>Alt+↓ next  Alt+↑ prev</c>, from the live bindings.</summary>

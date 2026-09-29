@@ -75,6 +75,7 @@ public sealed class EditorTab : FrameView
     /// <summary>Raised on every edit, whether typed, pasted, replaced or set via <see cref="Content"/>.</summary>
     public event EventHandler? ContentChanged;
     public event EventHandler? Saved;
+    public event EventHandler<CopyOutcome>? Copied;
 
     /// <summary>
     /// Raised whenever the insertion point moves, carrying the position in the file's own
@@ -125,6 +126,7 @@ public sealed class EditorTab : FrameView
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
         _textView.ContentsChanged += (_, _) => OnEdited();
         // Point is (X=column, Y=row). Re-expose in (row, column) order to match the rest of the editor API.
+        _textView.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
         _textView.UnwrappedCursorPositionChanged += (_, point) =>
         {
             if (!_textView.IsVisitingCarets) CursorMoved?.Invoke(this, (point.Y, point.X));
@@ -575,7 +577,7 @@ internal sealed partial class EditorTextView : TextView
     private static readonly HashSet<Command> EditCommands =
     [
         .. KillCommands, Command.NewLine, Command.DeleteCharLeft, Command.DeleteCharRight,
-        Command.NextTabStop, Command.PreviousTabStop, Command.Paste, Command.Cut, Command.DeleteAll,
+        Command.NextTabStop, Command.PreviousTabStop, Command.Paste, Command.DeleteAll,
     ];
 
     private bool _holdContentsChanged;
@@ -621,7 +623,8 @@ internal sealed partial class EditorTextView : TextView
 
     protected override bool OnKeyDown(Key key)
     {
-        if (base.OnKeyDown(key)) return true;
+        // TG's OnKeyDown reads SelectedLength, which builds the selection in quadratic time: minutes after select-all on a large file.
+        if (Autocomplete.Suggestions.Count > 0 && base.OnKeyDown(key)) return true;
         var bound = KeyBindings.TryGet(key, out var binding);
         if (ColumnSelect && bound && ExtendColumnSelection(binding)) return true;
         // Anything else ends the box, so the next extend starts one from where the caret now is.

@@ -30,7 +30,7 @@ internal sealed partial class EditorTextView
     ];
 
     private static readonly HashSet<Command> CaretIndependentCommands =
-        [Command.Undo, Command.Redo, Command.ToggleOverwrite, Command.EnableOverwrite, Command.DisableOverwrite];
+        [Command.Undo, Command.Redo, Command.ToggleOverwrite, Command.EnableOverwrite, Command.DisableOverwrite, Command.Copy, Command.Cut];
 
     private readonly List<Caret> _secondary = [];
     private readonly List<(long Start, long End)> _caretSelections = [];
@@ -192,12 +192,6 @@ internal sealed partial class EditorTextView
         if (commands.All(CaretIndependentCommands.Contains)) return false;
         switch (commands)
         {
-            case [Command.Copy]:
-                CopyAtCarets(cut: false);
-                return true;
-            case [Command.Cut]:
-                CopyAtCarets(cut: true);
-                return true;
             case [Command.Paste]:
                 PasteAtCarets();
                 return true;
@@ -246,19 +240,30 @@ internal sealed partial class EditorTextView
         return new Point(Math.Max(GetLine(row).Count - fromEnd.X, 0), row);
     }
 
-    private void CopyAtCarets(bool cut)
+    /// <summary>Raised after every copy and cut, saying whether the text reached the clipboard.</summary>
+    public event EventHandler<CopyOutcome>? Copied;
+
+    private bool CopyAtCarets(bool cut)
     {
         var ordered = Carets.OrderBy(c => c.Start.Y).ThenBy(c => c.Start.X).ToArray();
-        _copiedPieces = [.. ordered.Select(c => c.Anchor is null ? Cell.ToString(GetLine(c.Position.Y)) : TextBetween(c.Start, c.End))];
-        _copiedText = string.Join(Environment.NewLine, _copiedPieces);
-        App?.Clipboard?.SetClipboardData(_copiedText);
-        if (!cut || ReadOnly) return;
+        string[] pieces = [.. ordered.Select(c => c.Anchor is null ? Cell.ToString(GetLine(c.Position.Y)) : TextBetween(c.Start, c.End))];
+        var text = string.Join(Environment.NewLine, pieces);
+        var outcome = VerifiedClipboard.Write(App?.Clipboard, text);
+        Copied?.Invoke(this, outcome);
+        if (outcome is CopyOutcome.Failed) return true;
+
+        _copiedPieces = pieces;
+        _copiedText = text;
+        // So TG's single-caret paste puts a whole copied line above the caret's, as its own Copy does.
+        CopyWithoutSelection(this) = ordered is [{ Anchor: null }];
+        if (!cut || ReadOnly) return true;
 
         AtEachCaret(_ =>
         {
             if (!IsSelecting) SelectCurrentLine();
             DeleteCharLeft();
         });
+        return true;
     }
 
     private void PasteAtCarets()
