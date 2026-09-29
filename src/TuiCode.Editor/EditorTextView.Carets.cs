@@ -243,12 +243,14 @@ internal sealed partial class EditorTextView
     /// <summary>Raised after every copy and cut, saying whether the text reached the clipboard.</summary>
     public event EventHandler<CopyOutcome>? Copied;
 
+    internal ClipboardTools? ClipboardFallback { get; set; } = ClipboardTools.ThisMachine;
+
     private bool CopyAtCarets(bool cut)
     {
         var ordered = Carets.OrderBy(c => c.Start.Y).ThenBy(c => c.Start.X).ToArray();
         string[] pieces = [.. ordered.Select(c => c.Anchor is null ? Cell.ToString(GetLine(c.Position.Y)) : TextBetween(c.Start, c.End))];
         var text = string.Join(Environment.NewLine, pieces);
-        var outcome = VerifiedClipboard.Write(App?.Clipboard, text);
+        var outcome = VerifiedClipboard.Write(App?.Clipboard, text, ClipboardFallback);
         Copied?.Invoke(this, outcome);
         if (outcome is CopyOutcome.Failed) return true;
 

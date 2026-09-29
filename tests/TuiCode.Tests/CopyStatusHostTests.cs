@@ -47,7 +47,8 @@ public class CopyStatusHostTests : StaticConfigurationTest
         var error = false;
 
         await HostSteps.Run(host,
-            () => Open(workbench, host, new TestClipboard { Transform = _ => null }),
+            () => Open(workbench, host, new TestClipboard { Transform = _ => null },
+                new ClipboardProgram { Answer = _ => new ToolRun.Exited(1, "", "Error: Can't open display: (null)") }),
             Copy(workbench),
             () => { },
             () => { },
@@ -57,19 +58,44 @@ public class CopyStatusHostTests : StaticConfigurationTest
                 error = workbench.StatusBar.ShowsError;
             });
 
-        Assert.Equal("Copy failed: the clipboard didn't take the text (TestClipboard)", said);
+        Assert.Equal("Copy failed: Error: Can't open display: (null) (xclip)", said);
         Assert.True(error);
+    }
+
+    [Fact]
+    public async Task A_copy_the_clipboard_refused_lands_through_the_platform_program()
+    {
+        using var workbench = Workbench();
+        using var host = Host(workbench);
+        var program = new ClipboardProgram();
+        var said = "";
+        var error = true;
+
+        await HostSteps.Run(host,
+            () => Open(workbench, host, new TestClipboard { Transform = _ => null }, program),
+            () =>
+            {
+                Copy(workbench)();
+                said = workbench.StatusBar.DisplayedText;
+                error = workbench.StatusBar.ShowsError;
+            });
+
+        Assert.Equal("Copied 2 lines  •  1,001 characters", said);
+        Assert.False(error);
+        Assert.Equal($"x{Environment.NewLine}{new string('y', 1000)}{Environment.NewLine}", program.Stored);
     }
 
     private const string Path = "/work/a.txt";
 
-    private static void Open(Workbench.Workbench workbench, WorkbenchHost host, TestClipboard clipboard)
+    private static void Open(Workbench.Workbench workbench, WorkbenchHost host, TestClipboard clipboard, ClipboardProgram? program = null)
     {
         var fs = new MockFileSystem();
         fs.AddFile(Path, new MockFileData($"x\n{new string('y', 1000)}\nz"));
         host.App.Driver!.Clipboard = clipboard;
         workbench.OpenFile(fs.FileInfo.New(Path));
-        workbench.Editor.Group.ActiveTab!.TextView.SetCarets([new Caret(new Point(0, 2), new Point(0, 0), Extending: true)]);
+        var view = workbench.Editor.Group.ActiveTab!.TextView;
+        view.ClipboardFallback = ClipboardTools.For(false, false, false, program ?? new ClipboardProgram());
+        view.SetCarets([new Caret(new Point(0, 2), new Point(0, 0), Extending: true)]);
     }
 
     private static Action Copy(Workbench.Workbench workbench) =>

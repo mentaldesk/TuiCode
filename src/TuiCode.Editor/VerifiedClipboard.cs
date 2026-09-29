@@ -11,7 +11,19 @@ public abstract record CopyOutcome
 internal static class VerifiedClipboard
 {
     // Checked by reading back, not IClipboard.IsSupported, which is false on macOS while the clipboard works (#210).
-    public static CopyOutcome Write(IClipboard? clipboard, string text)
+    public static CopyOutcome Write(IClipboard? clipboard, string text, ClipboardTools? fallback = null)
+    {
+        if (TryWrite(clipboard, text) is { } failed)
+        {
+            if (fallback is null) return failed;
+            if (fallback.Write(text) is { } fallbackFailed) return fallbackFailed;
+        }
+
+        var stats = DocumentStats.Of(Lines(text));
+        return new CopyOutcome.Copied(stats.Lines, stats.Characters);
+    }
+
+    private static CopyOutcome.Failed? TryWrite(IClipboard? clipboard, string text)
     {
         if (clipboard is null) return new CopyOutcome.Failed("there is no clipboard");
         string? readBack;
@@ -24,11 +36,9 @@ internal static class VerifiedClipboard
         {
             return new CopyOutcome.Failed($"{FirstLine(e.Message)} ({Name(clipboard)})");
         }
-        if (readBack?.ReplaceLineEndings("\n") != text.ReplaceLineEndings("\n"))
-            return new CopyOutcome.Failed($"the clipboard didn't take the text ({Name(clipboard)})");
-
-        var stats = DocumentStats.Of(Lines(text));
-        return new CopyOutcome.Copied(stats.Lines, stats.Characters);
+        return readBack?.ReplaceLineEndings("\n") == text.ReplaceLineEndings("\n")
+            ? null
+            : new CopyOutcome.Failed($"the clipboard didn't take the text ({Name(clipboard)})");
     }
 
     private static string[] Lines(string text)
