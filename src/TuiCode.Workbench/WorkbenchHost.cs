@@ -17,6 +17,7 @@ using TuiCode.Workbench.Focus;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Help;
+using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
@@ -57,6 +58,10 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IGitCli _git;
     private readonly IGitHubCli _gitHub;
     private readonly TerminalCursors _terminalCursors;
+    private readonly CommandMenu _menu;
+    // Open menus take arrows, Enter and Esc for themselves, so no workbench key fires under one.
+    private readonly KeybindingService _menuKeys = new(new CommandService());
+    private FocusRegion _menuOpenedFrom;
     private readonly FindController _find;
     private readonly FocusService _focus;
     private readonly DiskChanges _diskChanges;
@@ -145,6 +150,9 @@ public sealed class WorkbenchHost : IDisposable
         _focus = new FocusService(FocusedView);
 
         RegisterDefaultCommands();
+        _menu = new CommandMenu(_workbench.MenuBar, _commands, _keybindings, () => !_workbench.HasDialog);
+        _menu.Opened += (_, _) => OnMenuOpened();
+        _menu.Closed += (_, picked) => OnMenuClosed(picked);
         ApplyKeybindings(_settings.KeybindingOverrides);
         _workbench.Editor.Group.Settings = _settings.Editor;
         _workbench.SetSidebarWidth(_settings.SidebarWidth);
@@ -299,6 +307,8 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     public IApplication App => _app;
+
+    internal CommandMenu Menu => _menu;
     public Workbench Workbench => _workbench;
 
     public void Run() => _app.Run(_workbench, errorHandler: null!);
@@ -472,6 +482,7 @@ public sealed class WorkbenchHost : IDisposable
             () => { if (search.ReplaceVisible) search.RequestReplaceAll(); }, CommandScope.Find, () => search.InputsHaveFocus);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
+        _commands.Register(CommandIds.ShowMenu, "Show menu", () => _menu.Open());
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Editor, FileOpen);
         // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
@@ -548,6 +559,7 @@ public sealed class WorkbenchHost : IDisposable
             }
         }
 
+        _menu.Refresh();
         var help = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ShowHelp);
         _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
         _workbench.DiffKeysHint = DiffKeys("revert");
@@ -625,6 +637,7 @@ public sealed class WorkbenchHost : IDisposable
         // the mnemonics it dispatches are fixed (CommandMnemonics).
         keybindings.Bind("Ctrl+Space", CommandIds.ShowMnemonics);
         keybindings.Bind("F1", CommandIds.ShowHelp);
+        keybindings.Bind("F10", CommandIds.ShowMenu);
         // Ctrl+G is a chord family (#35): L = go-to-line, P/N = previous/next cursor location, B = blame (#330).
         keybindings.Bind("Ctrl+G L", CommandIds.GoToLine);
         keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
@@ -929,6 +942,24 @@ public sealed class WorkbenchHost : IDisposable
         _launchedFromExplorer = fromExplorer;
         try { _commands.TryExecute(commandId); }
         finally { _launchedFromExplorer = false; }
+    }
+
+    private void OnMenuOpened()
+    {
+        _menuOpenedFrom = _focus.Region;
+        _scopes.Push(_menuKeys);
+    }
+
+    // A picked command runs as its key would where the menu opened: not at all out of scope or disabled.
+    private void OnMenuClosed(string? picked)
+    {
+        _scopes.Pop(_menuKeys);
+        FocusCallingRegion();
+        if (picked is null) return;
+        var scope = _commands.ScopeOf(picked);
+        if (scope != CommandScope.Global && scope != FocusService.ScopeOf(_menuOpenedFrom)) return;
+        if (!_commands.IsEnabled(picked)) return;
+        RunLaunched(picked, _menuOpenedFrom == FocusRegion.Explorer);
     }
 
     private void OpenMnemonics()

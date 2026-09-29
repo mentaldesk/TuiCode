@@ -30,6 +30,7 @@ public static class CommandIds
 
     public const string ShowActions = "workbench.action.showActions";
     public const string ShowMnemonics = "workbench.action.showMnemonics";
+    public const string ShowMenu = "workbench.action.showMenu";
     public const string ShowHelp = "workbench.action.showHelp";
     public const string ShowDiagnostics = "workbench.action.showDiagnostics";
     public const string ShowAbout = "workbench.action.showAbout";
