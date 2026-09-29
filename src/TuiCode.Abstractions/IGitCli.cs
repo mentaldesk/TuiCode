@@ -45,6 +45,12 @@ public interface IGitCli
 
     /// <summary>The worktree of <paramref name="repoRoot"/> that has <paramref name="branch"/> checked out, or null when none has.</summary>
     Task<GitResult<string?>> FindWorktreeAsync(string repoRoot, string branch, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The commit behind 1-based <paramref name="line"/> of the file, or null when git doesn't track it. With
+    /// <paramref name="contents"/>, the file is blamed as that text, so unsaved edits don't shift the line.
+    /// </summary>
+    Task<GitResult<GitBlameLine?>> BlameAsync(string filePath, int line, string? contents = null, CancellationToken cancellationToken = default);
 }
 
 public readonly record struct GitResult<T>(T Value, string? Error)
@@ -66,6 +72,14 @@ public enum GitRefKind
 public sealed record GitRef(string Name, GitRefKind Kind);
 
 public sealed record GitCommit(string ShortHash, string Subject, DateTimeOffset Date);
+
+/// <summary>A line as <c>git blame</c> reports it. <see cref="Hash"/> is all zeros for a line no commit has yet.</summary>
+public sealed record GitBlameLine(string Hash, string Author, DateTimeOffset Date, string Subject, string Text)
+{
+    public bool IsCommitted => Hash.Any(c => c != '0');
+
+    public string ShortHash => Hash[..Math.Min(7, Hash.Length)];
+}
 
 public enum GitChangeKind
 {

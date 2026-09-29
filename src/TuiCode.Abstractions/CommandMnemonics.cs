@@ -74,6 +74,7 @@ public static class CommandMnemonics
             [CommandIds.GoToSymbol] = "gs",
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
+            [CommandIds.GitBlame] = "gb",
             [CommandIds.ShowExplorer] = "se",
             [CommandIds.MoveLinesUp] = "mu",
             [CommandIds.MoveLinesDown] = "md",

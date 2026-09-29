@@ -74,6 +74,7 @@ public sealed class WorkbenchHost : IDisposable
     private string? _cursorColour;
     private AboutView? _activeAbout;
     private DocumentInfoView? _activeDocumentInfo;
+    private BlameView? _activeBlame;
     private SixelSupport? _sixelSupport;
     private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
@@ -493,6 +494,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision,
             CommandScope.Editor, () => GitRepository.Contains(group.ActiveTab?.File.Directory));
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.GitBlame, "Git blame", GitBlame, CommandScope.Editor, FileOpen);
         // No default key (#272).
         _commands.Register(CommandIds.ReloadFromDisk, "Reload from disk", ReloadFromDisk, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)), CommandScope.Editor);
@@ -619,10 +621,11 @@ public sealed class WorkbenchHost : IDisposable
         // the mnemonics it dispatches are fixed (CommandMnemonics).
         keybindings.Bind("Ctrl+Space", CommandIds.ShowMnemonics);
         keybindings.Bind("F1", CommandIds.ShowHelp);
-        // Ctrl+G is a chord family (#35): L = go-to-line, P/N = previous/next cursor location.
+        // Ctrl+G is a chord family (#35): L = go-to-line, P/N = previous/next cursor location, B = blame (#330).
         keybindings.Bind("Ctrl+G L", CommandIds.GoToLine);
         keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
+        keybindings.Bind("Ctrl+G B", CommandIds.GitBlame);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
         keybindings.Bind("Alt+CursorUp", CommandIds.MoveLinesUp);
         keybindings.Bind("Alt+CursorDown", CommandIds.MoveLinesDown);
@@ -1634,6 +1637,81 @@ public sealed class WorkbenchHost : IDisposable
             else
                 OpenRevisionPicker(tab);
         });
+    }
+
+    private void GitBlame()
+    {
+        if (_activeBlame is not null) return;
+        if (_workbench.Editor.Group.ActiveTab is not { } tab)
+        {
+            _workbench.StatusBar.SetMessage("No file is open.");
+            return;
+        }
+        var name = tab.File.Name;
+        if (!tab.File.FileSystem.File.Exists(tab.File.FullName))
+        {
+            _workbench.StatusBar.SetMessage($"{name} has never been saved.");
+            return;
+        }
+        var lines = tab.Lines;
+        var row = tab.CursorRow;
+        // The row after a final line break has no line of its own for git to blame.
+        if (row > 0 && row == lines.Count - 1 && lines[row].Length == 0)
+        {
+            _workbench.StatusBar.SetMessage("Nothing to blame on the empty last line.");
+            return;
+        }
+
+        var path = tab.File.FullName;
+        var number = row + 1;
+        var contents = tab.IsDirty ? string.Join(tab.LineEnding == LineEnding.CRLF ? "\r\n" : "\n", lines) : null;
+        var root = Task.Run(() => _git.GetRepoRootAsync(path));
+        WhenDone(root, () =>
+        {
+            if (root.Result.Error is { } error)
+            {
+                _workbench.StatusBar.SetMessage(error);
+                return;
+            }
+            if (root.Result.Value is null)
+            {
+                _workbench.StatusBar.SetMessage($"{name} isn't in a git repository.");
+                return;
+            }
+            var blame = Task.Run(() => _git.BlameAsync(path, number, contents));
+            WhenDone(blame, () =>
+            {
+                if (blame.Result.Error is { } failure)
+                    _workbench.StatusBar.SetMessage(failure);
+                else if (blame.Result.Value is not { } line)
+                    _workbench.StatusBar.SetMessage($"{name} isn't tracked by git.");
+                else
+                    OpenBlame(name, number, line);
+            });
+        });
+    }
+
+    private void OpenBlame(string name, int number, GitBlameLine line)
+    {
+        if (_activeBlame is not null) return;
+        var view = new BlameView(name, number, line, DateTimeOffset.Now);
+        view.Closed += (_, _) => CloseBlame(view, refocus: true);
+        // Deferred: TG is still moving focus when it reports the loss.
+        view.FocusLeft += (_, _) => _app.Invoke(() => CloseBlame(view, refocus: false));
+        _activeBlame = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.SetFocus();
+    }
+
+    private void CloseBlame(BlameView view, bool refocus)
+    {
+        if (!ReferenceEquals(_activeBlame, view)) return;
+        _activeBlame = null;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        if (refocus) FocusCallingRegion();
     }
 
     private void CompareToOtherFile()

@@ -170,6 +170,65 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
             .FirstOrDefault(w => string.Equals(w.Branch, branch, StringComparison.Ordinal))?.Path);
     }
 
+    public async Task<GitResult<GitBlameLine?>> BlameAsync(string filePath, int line, string? contents = null, CancellationToken cancellationToken = default)
+    {
+        List<string> arguments = ["-c", "i18n.logOutputEncoding=UTF-8", "blame", "--line-porcelain", "-L", $"{line},{line}"];
+        if (contents is not null)
+            arguments.AddRange(["--contents", "-"]);
+        arguments.AddRange(["--", $"./{fileSystem.Path.GetFileName(filePath)}"]);
+
+        var run = await RunAsync(DirectoryOf(filePath), arguments, cancellationToken, input: contents);
+        if (run.Failure is { } failure)
+            return GitResult<GitBlameLine?>.Failure(failure);
+        if (run.ExitCode == 0 && ParseBlame(run.Output) is { } blamed)
+            return GitResult<GitBlameLine?>.Success(blamed);
+        return run.Error.Contains("no such path", StringComparison.Ordinal)
+            ? GitResult<GitBlameLine?>.Success(null)
+            : GitResult<GitBlameLine?>.Failure(ErrorMessage(run));
+    }
+
+    /// <summary>Reads one line of <c>blame --line-porcelain</c>: the hash, <c>key value</c> headers, then the line after a tab.</summary>
+    internal static GitBlameLine? ParseBlame(string output)
+    {
+        var lines = output.Split('\n');
+        var hash = lines[0].Split(' ')[0];
+        if (hash.Length < 40)
+            return null;
+
+        string author = "", subject = "";
+        long seconds = 0;
+        var offset = TimeSpan.Zero;
+        foreach (var line in lines.Skip(1).Select(l => l.TrimEnd('\r')))
+        {
+            if (line.StartsWith('\t'))
+                return new GitBlameLine(hash, author, DateTimeOffset.FromUnixTimeSeconds(seconds).ToOffset(offset), subject, line[1..]);
+
+            var space = line.IndexOf(' ');
+            if (space < 0)
+                continue;
+            var value = line[(space + 1)..];
+            switch (line[..space])
+            {
+                case "author": author = value; break;
+                case "author-time": long.TryParse(value, CultureInfo.InvariantCulture, out seconds); break;
+                case "author-tz": offset = ParseTimeZone(value); break;
+                case "summary": subject = value; break;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>A <c>+1300</c> / <c>-0530</c> offset; anything else is UTC.</summary>
+    private static TimeSpan ParseTimeZone(string value)
+    {
+        if (value.Length != 5 || value[0] is not ('+' or '-')
+            || !int.TryParse(value.AsSpan(1, 2), CultureInfo.InvariantCulture, out var hours)
+            || !int.TryParse(value.AsSpan(3, 2), CultureInfo.InvariantCulture, out var minutes))
+            return TimeSpan.Zero;
+        var offset = new TimeSpan(hours, minutes, 0);
+        return value[0] == '-' ? -offset : offset;
+    }
+
     /// <summary>
     /// The worktree <paramref name="path"/> is the root of, as git names it, or null when it's a plain
     /// directory or only sits inside one. Only git's own answer is comparable with the listing, which
@@ -288,7 +347,8 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return lines.FirstOrDefault() ?? $"git exited with code {run.ExitCode}";
     }
 
-    private Task<CliRun> RunAsync(string workingDirectory, IEnumerable<string> arguments, CancellationToken cancellationToken, TimeSpan? timeout = null)
+    private Task<CliRun> RunAsync(
+        string workingDirectory, IEnumerable<string> arguments, CancellationToken cancellationToken, TimeSpan? timeout = null, string? input = null)
     {
         var info = new ProcessStartInfo(executable)
         {
@@ -296,8 +356,10 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = input is not null,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
+            StandardInputEncoding = input is not null ? new UTF8Encoding(false) : null,
         };
         info.ArgumentList.Add("-C");
         info.ArgumentList.Add(workingDirectory);
@@ -307,6 +369,6 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         info.Environment["LC_ALL"] = "C";
         info.Environment["GIT_OPTIONAL_LOCKS"] = "0";
 
-        return CliProcess.RunAsync("git", info, timeout ?? _timeout, cancellationToken);
+        return CliProcess.RunAsync("git", info, timeout ?? _timeout, cancellationToken, input);
     }
 }
