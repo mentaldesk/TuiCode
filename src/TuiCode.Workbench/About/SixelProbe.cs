@@ -90,11 +90,13 @@ internal static class SixelProbe
         return match.Success ? Positive(match.Groups[2].Value, match.Groups[1].Value) : null;
     }
 
-    /// <summary>Reads iTerm2's <c>OSC 1337 ; ReportCellSize=height;width;scale ST</c>.</summary>
+    /// <summary>Reads iTerm2's <c>OSC 1337 ; ReportCellSize=height;width;scale ST</c>, in points times the scale.</summary>
     internal static SizeF? ParseIterm2CellSize(string? response)
     {
-        var match = Regex.Match(response ?? "", @"ReportCellSize=([\d.]+);([\d.]+)");
-        return match.Success ? Positive(match.Groups[2].Value, match.Groups[1].Value) : null;
+        var match = Regex.Match(response ?? "", @"ReportCellSize=([\d.]+);([\d.]+)(?:;([\d.]+))?");
+        if (!match.Success || Positive(match.Groups[2].Value, match.Groups[1].Value) is not { } points) return null;
+        var scale = float.TryParse(match.Groups[3].Value, CultureInfo.InvariantCulture, out var s) ? Math.Clamp(s, 1, 4) : 1;
+        return scale == 1 ? points : new SizeF(MathF.Round(points.Width * scale), MathF.Round(points.Height * scale));
     }
 
     private static SizeF? Positive(string width, string height) =>
