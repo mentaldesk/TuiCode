@@ -21,6 +21,9 @@ public sealed class BlameView : Window
     /// <summary>Esc or the hint: the host closes the dialog and gives the keys back.</summary>
     public event EventHandler? Closed;
 
+    /// <summary>Enter or its hint on a committed line: the host opens the change that introduced it (#331).</summary>
+    public event EventHandler? OpenChange;
+
     /// <summary>Focus moved elsewhere, a click in the editor say: the host closes the dialog and leaves the keys there.</summary>
     public event EventHandler? FocusLeft;
 
@@ -53,17 +56,16 @@ public sealed class BlameView : Window
         Add(Row(LineText, ref y));
         y++;
 
-        var close = new Button
-        {
-            Text = "Esc close",
-            X = 1,
-            Y = y,
-            NoDecorations = true,
-            NoPadding = true,
-            ShadowStyle = ShadowStyles.None,
-            HotKeySpecifier = (Rune)0xffff,
-        };
+        var close = Hint("Esc close", 1, y);
         close.Accepting += (_, e) => { e.Handled = true; Closed?.Invoke(this, EventArgs.Empty); };
+        if (blame.IsCommitted)
+        {
+            var open = Hint("Enter the change that introduced it", 1, y);
+            open.Accepting += (_, e) => { e.Handled = true; OpenChange?.Invoke(this, EventArgs.Empty); };
+            var separator = new Label { X = Pos.Right(open) + 1, Y = y, Text = "·" };
+            close.X = Pos.Right(separator) + 1;
+            Add(open, separator);
+        }
 
         _alert = new AlertView(DialogWidth - 2) { X = 0, Y = y + 1 };
         if (!blame.IsCommitted) _alert.Show(NotCommitted, AlertSeverity.Info);
@@ -74,6 +76,12 @@ public sealed class BlameView : Window
         _scopeKeybindings = new KeybindingService(_scopeCommands);
         _scopeCommands.Register(CommandIds.BlameClose, () => Closed?.Invoke(this, EventArgs.Empty));
         _scopeKeybindings.Bind("Esc", CommandIds.BlameClose);
+        // Bound either way, so Enter on an uncommitted line doesn't press the focused Esc hint.
+        _scopeCommands.Register(CommandIds.BlameOpenChange, () =>
+        {
+            if (blame.IsCommitted) OpenChange?.Invoke(this, EventArgs.Empty);
+        });
+        _scopeKeybindings.Bind("Enter", CommandIds.BlameOpenChange);
     }
 
     internal string Location { get; }
@@ -108,6 +116,17 @@ public sealed class BlameView : Window
     }
 
     private static string Plural(long count, string unit) => count == 1 ? $"1 {unit} ago" : $"{count} {unit}s ago";
+
+    private static Button Hint(string text, Pos x, int y) => new()
+    {
+        Text = text,
+        X = x,
+        Y = y,
+        NoDecorations = true,
+        NoPadding = true,
+        ShadowStyle = ShadowStyles.None,
+        HotKeySpecifier = (Rune)0xffff,
+    };
 
     private static Label Row(string text, ref int y) => new() { X = 1, Y = y++, Width = Dim.Fill(1), Height = 1, Text = text };
 

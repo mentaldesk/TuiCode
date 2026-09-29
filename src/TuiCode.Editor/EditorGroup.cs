@@ -176,6 +176,21 @@ public sealed class EditorGroup : PaneTabs
         return tab;
     }
 
+    /// <summary>Opens or focuses the diff of a file between two revisions (#331); there's no editor tab.</summary>
+    public DiffTab CompareRevisions(IFileInfo file, string leftLabel, IReadOnlyList<string> left, string rightLabel, IReadOnlyList<string> right)
+    {
+        var tab = _diffs.FirstOrDefault(d => d.RightLabel == rightLabel && d.LeftLabel == leftLabel && d.File.FullName == file.FullName);
+        if (tab is null)
+        {
+            tab = new DiffTab(file, leftLabel, left, rightLabel, right, _syntax) { Settings = Settings };
+            _diffs.Add(tab);
+            Add(tab);
+        }
+        if (ReferenceEquals(Value, tab)) tab.Refresh();
+        else Value = tab;
+        return tab;
+    }
+
     /// <summary>
     /// Opens <paramref name="lines"/> as an unsaved tab at <paramref name="file"/>'s path — the base version of a
     /// file this branch deleted (#247). Nothing is written; Ctrl+S is what puts the file back. An open tab for

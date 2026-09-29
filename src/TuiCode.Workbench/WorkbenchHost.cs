@@ -418,6 +418,7 @@ public sealed class WorkbenchHost : IDisposable
         var explorer = _workbench.Sidebar.Explorer;
         var review = _workbench.Sidebar.Review;
         bool EditorOpen() => group.ActiveTab is not null || group.ActiveDiffTab is not null;
+        bool NotPastChange() => group.ActiveDiffTab is not { RightLabel: not null };
         bool FileOpen() => group.ActiveTab is not null;
         bool Reviewing() => review.Review is { PullRequest: not null };
 
@@ -484,9 +485,9 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.CompareToSaved, "Compare to saved", CompareToSaved, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.NextChange, "Next change", () => MoveToChange(1), CommandScope.Diff);
         _commands.Register(CommandIds.PreviousChange, "Previous change", () => MoveToChange(-1), CommandScope.Diff);
-        _commands.Register(CommandIds.GoToChangeLine, "Go to line in file", GoToChangeLine, CommandScope.Diff);
-        _commands.Register(CommandIds.RevertChange, "Revert change", RevertChange, CommandScope.Diff);
-        _commands.Register(CommandIds.RevertAllChanges, "Revert all changes in file", RevertAllChanges, CommandScope.Diff);
+        _commands.Register(CommandIds.GoToChangeLine, "Go to line in file", GoToChangeLine, CommandScope.Diff, NotPastChange);
+        _commands.Register(CommandIds.RevertChange, "Revert change", RevertChange, CommandScope.Diff, NotPastChange);
+        _commands.Register(CommandIds.RevertAllChanges, "Revert all changes in file", RevertAllChanges, CommandScope.Diff, NotPastChange);
         _commands.Register(CommandIds.ScrollDiffLeft, "Scroll diff left", () => ScrollDiff(-1), CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffRight, "Scroll diff right", () => ScrollDiff(1), CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffPageLeft, "Scroll diff a page left", () => ScrollDiff(-1, page: true), CommandScope.Diff);
@@ -549,13 +550,14 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
         _workbench.DiffKeysHint = DiffKeys("revert");
         _workbench.DeletedDiffKeysHint = DiffKeys("restore");
+        _workbench.PastChangeKeysHint = DiffKeys(null);
 
-        string DiffKeys(string revert) => string.Join("  ", new[]
+        string DiffKeys(string? revert) => string.Join("  ", new[]
         {
             KeyHint(CommandIds.NextChange, "next"),
             KeyHint(CommandIds.PreviousChange, "prev"),
-            KeyHint(CommandIds.RevertChange, revert),
-            KeyHint(CommandIds.GoToChangeLine, "go to line"),
+            revert is null ? null : KeyHint(CommandIds.RevertChange, revert),
+            revert is null ? null : KeyHint(CommandIds.GoToChangeLine, "go to line"),
         }.OfType<string>());
     }
 
@@ -1686,16 +1688,21 @@ public sealed class WorkbenchHost : IDisposable
                 else if (blame.Result.Value is not { } line)
                     _workbench.StatusBar.SetMessage($"{name} isn't tracked by git.");
                 else
-                    OpenBlame(name, number, line);
+                    OpenBlame(name, number, line, tab.File.FileSystem, root.Result.Value);
             });
         });
     }
 
-    private void OpenBlame(string name, int number, GitBlameLine line)
+    private void OpenBlame(string name, int number, GitBlameLine line, IFileSystem fileSystem, string repoRoot)
     {
         if (_activeBlame is not null) return;
         var view = new BlameView(name, number, line, DateTimeOffset.Now);
         view.Closed += (_, _) => CloseBlame(view, refocus: true);
+        view.OpenChange += (_, _) =>
+        {
+            CloseBlame(view, refocus: true);
+            OpenIntroducingChange(fileSystem, repoRoot, line);
+        };
         // Deferred: TG is still moving focus when it reports the loss.
         view.FocusLeft += (_, _) => _app.Invoke(() => CloseBlame(view, refocus: false));
         _activeBlame = view;
@@ -1712,6 +1719,33 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         if (refocus) FocusCallingRegion();
+    }
+
+    /// <summary>The blamed line's file as its commit changed it (#331): the parent's version against the commit's.</summary>
+    private void OpenIntroducingChange(IFileSystem fileSystem, string repoRoot, GitBlameLine line)
+    {
+        var after = Task.Run(() => _git.ShowRepoFileAsync(repoRoot, line.Path, line.Hash));
+        var before = line.Previous is { } previous
+            ? Task.Run(() => _git.ShowRepoFileAsync(repoRoot, previous.Path, previous.Hash))
+            : Task.FromResult(GitResult<string?>.Success(null));
+        var both = Task.WhenAll(after, before);
+        WhenDone(both, () =>
+        {
+            if ((after.Result.Error ?? before.Result.Error) is { } error)
+            {
+                _workbench.StatusBar.SetMessage(error);
+                return;
+            }
+            if (after.Result.Value is not { } text)
+            {
+                _workbench.StatusBar.SetMessage($"{line.Path} isn't in {line.ShortHash}");
+                return;
+            }
+            var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(repoRoot, line.Path));
+            _workbench.Editor.Group.CompareRevisions(file, $"{line.ShortHash}^",
+                before.Result.Value is { } old ? DiffTab.SplitLines(old) : [], line.ShortHash, DiffTab.SplitLines(text));
+            MoveFocus(FocusRegion.Diff);
+        });
     }
 
     private void CompareToOtherFile()

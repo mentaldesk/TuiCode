@@ -14,7 +14,8 @@ public class BlameHostTests : StaticConfigurationTest
 {
     private static readonly GitBlameLine Committed = new(
         "4a91c0e2b7d1f3e5a6c8b9d0e1f2a3b4c5d6e7f8", "Nicky Baumann", new DateTimeOffset(2026, 9, 4, 10, 0, 0, TimeSpan.Zero),
-        "A clean tab shows what is actually on disk (#269)", "bravo");
+        "A clean tab shows what is actually on disk (#269)", "bravo", "a.txt",
+        new GitBlamePrevious("1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e", "a.txt"));
 
     private readonly MockFileSystem _fs = new();
     private readonly FakeGitCli _git = new();
@@ -25,6 +26,8 @@ public class BlameHostTests : StaticConfigurationTest
         _fs.AddFile("/work/a.txt", new MockFileData("alpha\nbravo\ncharlie\n"));
         _git.Root = "/work";
         _git.Blame = Committed;
+        _git.RepoFiles[$"{Committed.Hash}:a.txt"] = "alpha\nbravo\ncharlie\n";
+        _git.RepoFiles[$"{Committed.Previous!.Hash}:a.txt"] = "alpha\nb\ncharlie\n";
     }
 
     [Fact]
@@ -137,6 +140,156 @@ public class BlameHostTests : StaticConfigurationTest
 
         Assert.Equal("a.txt:3", second!.Location);
         Assert.Equal([2, 3], _git.Blames.Select(b => b.Line));
+    }
+
+    [Fact]
+    public async Task Enter_opens_the_change_that_introduced_the_line_as_a_diff_with_nothing_to_edit_or_revert()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+        string? status = null;
+        bool? revert = null, revertAll = null, goToLine = null;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, row: 1),
+            () => commands.TryExecute(CommandIds.GitBlame),
+            () => Dialog(workbench) is not null,
+            () => host.App.InjectKey(Key.Enter),
+            () => group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.X),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () =>
+            {
+                status = workbench.StatusBar.DisplayedText;
+                revert = commands.IsEnabled(CommandIds.RevertChange);
+                revertAll = commands.IsEnabled(CommandIds.RevertAllChanges);
+                goToLine = commands.IsEnabled(CommandIds.GoToChangeLine);
+            });
+
+        Assert.Null(Dialog(workbench));
+        var diff = Assert.Single(group.DiffTabs);
+        Assert.Equal("a.txt 4a91c0e^ ↔ 4a91c0e", diff.Title);
+        Assert.Equal(["alpha", "b", "charlie", ""], diff.LeftLines);
+        Assert.Equal(DiffRowKind.Modified, diff.Diff.Rows[1].Kind);
+        Assert.Equal("Change 1 of 1", diff.ChangeStatus);
+        Assert.EndsWith("  •  Change 1 of 1  •  Alt+↓ next  Alt+↑ prev", status);
+        Assert.False(revert);
+        Assert.False(revertAll);
+        Assert.False(goToLine);
+        Assert.False(group.Tabs.Single().IsDirty);
+        Assert.Equal((null, null), (diff.Source, diff.Review));
+    }
+
+    [Fact]
+    public async Task Clicking_the_Enter_hint_opens_the_change_too()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string[]? hints = null;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, row: 1),
+            () => commands.TryExecute(CommandIds.GitBlame),
+            () => Dialog(workbench) is not null,
+            () =>
+            {
+                var buttons = Dialog(workbench)!.SubViews.OfType<Button>().ToList();
+                hints = [.. buttons.OrderBy(b => b.Frame.X).Select(b => b.Text)];
+                buttons.Single(b => b.Text.StartsWith("Enter", StringComparison.Ordinal))
+                    .NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) });
+            },
+            () => workbench.Editor.Group.ActiveDiffTab is not null);
+
+        Assert.Equal(["Enter the change that introduced it", "Esc close"], hints);
+        Assert.Null(Dialog(workbench));
+    }
+
+    [Fact]
+    public async Task A_file_the_commit_created_or_a_root_commit_reads_as_all_added()
+    {
+        _git.Blame = Committed with { Previous = null };
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, row: 1),
+            () => commands.TryExecute(CommandIds.GitBlame),
+            () => Dialog(workbench) is not null,
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.Editor.Group.ActiveDiffTab is not null);
+
+        var diff = workbench.Editor.Group.ActiveDiffTab!;
+        Assert.Empty(diff.LeftLines);
+        Assert.All(diff.Diff.Rows, row => Assert.Equal(DiffRowKind.RightOnly, row.Kind));
+        Assert.Equal("a.txt 4a91c0e^ ↔ 4a91c0e", diff.Title);
+    }
+
+    [Fact]
+    public async Task A_file_renamed_in_the_commit_shows_the_old_name_s_content_on_the_left()
+    {
+        _git.Blame = Committed with { Path = "src/a.txt", Previous = Committed.Previous! with { Path = "old.txt" } };
+        _git.RepoFiles[$"{Committed.Hash}:src/a.txt"] = "alpha\nbravo\n";
+        _git.RepoFiles[$"{Committed.Previous!.Hash}:old.txt"] = "alpha\n";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, row: 1),
+            () => commands.TryExecute(CommandIds.GitBlame),
+            () => Dialog(workbench) is not null,
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.Editor.Group.ActiveDiffTab is not null);
+
+        var diff = workbench.Editor.Group.ActiveDiffTab!;
+        Assert.Equal(["alpha", ""], diff.LeftLines);
+        Assert.Equal(_fs.Path.GetFullPath("/work/src/a.txt"), diff.File.FullName);
+    }
+
+    [Fact]
+    public async Task On_an_uncommitted_line_there_is_no_Enter_hint_and_Enter_does_nothing()
+    {
+        _git.Blame = Committed with { Hash = new string('0', 40), Previous = null };
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        BlameView? shown = null;
+        string[]? hints = null;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, row: 1),
+            () => commands.TryExecute(CommandIds.GitBlame),
+            () => (shown = Dialog(workbench)) is not null,
+            () => host.App.InjectKey(Key.Enter),
+            () => { },
+            () =>
+            {
+                Assert.Same(shown, Dialog(workbench));
+                hints = [.. shown!.SubViews.OfType<Button>().Select(b => b.Text)];
+                host.App.InjectKey(Key.Esc);
+            });
+
+        Assert.Equal(["Esc close"], hints);
+        Assert.Empty(workbench.Editor.Group.DiffTabs);
+        Assert.Equal(0, _git.ShowCount);
+    }
+
+    [Fact]
+    public async Task When_git_can_t_read_a_side_no_tab_opens_and_the_status_bar_says_why()
+    {
+        _git.RepoFileError = "git didn't answer within 5 s";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, row: 1),
+            () => commands.TryExecute(CommandIds.GitBlame),
+            () => Dialog(workbench) is not null,
+            () => host.App.InjectKey(Key.Enter),
+            () => workbench.StatusBar.DisplayedText == "git didn't answer within 5 s");
+
+        Assert.Null(Dialog(workbench));
+        Assert.Empty(workbench.Editor.Group.DiffTabs);
+        Assert.True(workbench.Editor.Group.ActiveTab!.ContentHasFocus);
     }
 
     [Theory]
