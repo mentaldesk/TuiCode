@@ -9,7 +9,7 @@ namespace TuiCode.Editor;
 
 /// <summary>
 /// A read-only side-by-side diff of another version (left) against an editor tab's live buffer (right),
-/// or, for a file deleted in this branch (#182), against nothing.
+/// against nothing for a file deleted in this branch (#182), or against a later revision (#331).
 /// </summary>
 public sealed class DiffTab : FrameView
 {
@@ -24,7 +24,8 @@ public sealed class DiffTab : FrameView
 
     private readonly Func<IReadOnlyList<string>> _readLeft;
     private readonly SyntaxHighlighter? _syntax;
-    private readonly SyntaxLanguage? _deletedGrammar;
+    private readonly SyntaxLanguage? _ownGrammar;
+    private readonly IReadOnlyList<string>? _rightRevision;
     private readonly TokenPalette _palette = new();
     private readonly IFileInfo _file;
     private readonly ScrollBar _scrollBar;
@@ -56,6 +57,15 @@ public sealed class DiffTab : FrameView
     {
     }
 
+    /// <summary>A file as one commit changed it (#331): <paramref name="left"/> before, <paramref name="right"/> after, neither editable.</summary>
+    public DiffTab(IFileInfo file, string leftLabel, IReadOnlyList<string> left, string rightLabel, IReadOnlyList<string> right, SyntaxHighlighter? syntax = null)
+        : this(file, null, leftLabel, () => left, syntax, $"{leftLabel} ↔ {rightLabel}")
+    {
+        RightLabel = rightLabel;
+        _rightRevision = right;
+        UpdateTitle();
+    }
+
     private DiffTab(IFileInfo file, EditorTab? source, string leftLabel, Func<IReadOnlyList<string>> readLeft, SyntaxHighlighter? syntax, string? leftKey)
     {
         _file = file;
@@ -64,7 +74,7 @@ public sealed class DiffTab : FrameView
         LeftKey = leftKey ?? leftLabel;
         _readLeft = readLeft;
         _syntax = syntax;
-        if (source is null) _deletedGrammar = syntax?.LanguageForFile(file.Name);
+        if (source is null) _ownGrammar = syntax?.LanguageForFile(file.Name);
         BorderStyle = LineStyle.None;
         CanFocus = true;
         Diff = AlignedDiff.Compute([], []);
@@ -135,7 +145,10 @@ public sealed class DiffTab : FrameView
     public EditorTab? Source { get; }
 
     /// <summary>Whether this is a deleted file's diff, with nothing on the right (#182).</summary>
-    public bool IsDeleted => Source is null;
+    public bool IsDeleted => Source is null && RightLabel is null;
+
+    /// <summary>The revision on the right of a diff between two revisions (#331); null when the right is the buffer or nothing.</summary>
+    public string? RightLabel { get; }
 
     /// <summary>Indentation and line endings; a deleted file has no buffer to take them from.</summary>
     public EditorSettings Settings
@@ -356,10 +369,10 @@ public sealed class DiffTab : FrameView
     {
         _reverted = null;
         _left = _readLeft();
-        _right = Source is { } source ? [.. source.SnapshotLines] : [];
+        _right = Source is { } source ? [.. source.SnapshotLines] : _rightRevision ?? [];
         Diff = AlignedDiff.Compute(_left, _right, MaxEdits);
         _widest = null;
-        var grammar = Source?.Grammar ?? _deletedGrammar;
+        var grammar = Source?.Grammar ?? _ownGrammar;
         if (!Equals(LeftTokens?.Language, grammar))
         {
             LeftTokens = _syntax?.CreateCache(grammar);
@@ -375,7 +388,9 @@ public sealed class DiffTab : FrameView
 
     internal void UpdateTitle()
     {
-        Title = IsDeleted ? $"{File.Name} ↔ {LeftLabel} (deleted)" : $"{File.Name} ↔ {LeftLabel}";
+        Title = IsDeleted ? $"{File.Name} ↔ {LeftLabel} (deleted)"
+            : RightLabel is { } right ? $"{File.Name} {LeftLabel} ↔ {right}"
+            : $"{File.Name} ↔ {LeftLabel}";
         if (Border.View is BorderView { TitleView: ITitleView header }) header.MeasuredTabLength = 0;
         SetNeedsLayout();
     }
@@ -520,7 +535,7 @@ public sealed class DiffTab : FrameView
         PrepareSyntax();
         DrawText(0, 0, leftWidth, " " + LeftLabel, header);
         DrawSeparator(leftWidth, 0, normal);
-        DrawText(rightX, 0, rightWidth, IsDeleted ? " deleted" : " working copy", header);
+        DrawText(rightX, 0, rightWidth, " " + (RightLabel ?? (IsDeleted ? "deleted" : "working copy")), header);
 
         for (var y = 1; y < Viewport.Height; y++)
         {

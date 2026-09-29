@@ -290,10 +290,26 @@ public class GitCliTests
         Assert.Equal(new GitBlameLine(
             "93f4047d5fbc2a7433901c533b3ef70496e39db8", "Zoë \"Z\" O'Brien",
             DateTimeOffset.FromUnixTimeSeconds(1788480000).ToOffset(new TimeSpan(-5, -30, 0)),
-            "Add a — the first 🎉 (#12)", "    if (x)\tthen;"), line);
+            "Add a — the first 🎉 (#12)", "    if (x)\tthen;", "src/a b.cs"), line);
         Assert.True(line!.IsCommitted);
         Assert.Equal("93f4047", line.ShortHash);
         Assert.Equal(TimeSpan.FromMinutes(-330), line.Date.Offset);
+    }
+
+    [Fact]
+    public void ParseBlame_reads_the_parent_and_the_path_there()
+    {
+        var output =
+            "93f4047d5fbc2a7433901c533b3ef70496e39db8 2 2 1\n" +
+            "summary Move it\n" +
+            "previous 1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e old dir/a b.cs\n" +
+            "filename new/a.cs\n" +
+            "\tline\n";
+
+        var line = GitCli.ParseBlame(output)!;
+
+        Assert.Equal("new/a.cs", line.Path);
+        Assert.Equal(new GitBlamePrevious("1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e", "old dir/a b.cs"), line.Previous);
     }
 
     [Fact]
@@ -344,6 +360,31 @@ public class GitCliTests
         Assert.True(untracked.Succeeded);
         Assert.Null(untracked.Value);
         Assert.False(pastTheEnd.Succeeded);
+    }
+
+    [Fact]
+    public async Task Blame_names_each_line_s_path_in_its_commit_and_its_parent_there()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("old/a.cs", "one\ntwo\nthree\nfour\nfive\nsix\n", "First");
+        repo.Git("mv", "old/a.cs", "b ä.cs");
+        repo.Commit("b ä.cs", "one\ntwo\nthree\nFOUR\nfive\nsix\n", "Move and shout four");
+        repo.Commit("c.cs", "created\n", "Add c");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var moved = (await git.BlameAsync(repo.File("b ä.cs"), 4, cancellationToken: ct)).Value!;
+        var root = (await git.BlameAsync(repo.File("b ä.cs"), 1, cancellationToken: ct)).Value!;
+        var created = (await git.BlameAsync(repo.File("c.cs"), 1, cancellationToken: ct)).Value!;
+
+        Assert.Equal("b ä.cs", moved.Path);
+        Assert.Equal((root.Hash, "old/a.cs"), (moved.Previous!.Hash, moved.Previous.Path));
+        Assert.Equal("one\ntwo\nthree\nfour\nfive\nsix\n",
+            (await git.ShowRepoFileAsync(repo.Path, moved.Previous.Path, moved.Previous.Hash, ct)).Value);
+        Assert.Equal("old/a.cs", root.Path);
+        Assert.Null(root.Previous);
+        Assert.Equal("c.cs", created.Path);
+        Assert.Null(created.Previous);
     }
 
     [Fact]

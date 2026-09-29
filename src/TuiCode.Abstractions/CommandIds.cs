@@ -55,6 +55,7 @@ public static class CommandIds
     public const string AboutClose = "about.action.close";
     public const string DocumentInfoClose = "documentInfo.action.close";
     public const string BlameClose = "blame.action.close";
+    public const string BlameOpenChange = "blame.action.openChange";
 
     public const string ActionsExecute = "actions.action.execute";
     public const string ActionsCancel = "actions.action.cancel";

@@ -73,13 +73,20 @@ public sealed record GitRef(string Name, GitRefKind Kind);
 
 public sealed record GitCommit(string ShortHash, string Subject, DateTimeOffset Date);
 
-/// <summary>A line as <c>git blame</c> reports it. <see cref="Hash"/> is all zeros for a line no commit has yet.</summary>
-public sealed record GitBlameLine(string Hash, string Author, DateTimeOffset Date, string Subject, string Text)
+/// <summary>
+/// A line as <c>git blame</c> reports it. <see cref="Hash"/> is all zeros for a line no commit has yet. <see cref="Path"/>
+/// is the repo-relative path in that commit; <see cref="Previous"/> is the parent and the path there, or null when
+/// the commit created the file.
+/// </summary>
+public sealed record GitBlameLine(
+    string Hash, string Author, DateTimeOffset Date, string Subject, string Text, string Path = "", GitBlamePrevious? Previous = null)
 {
     public bool IsCommitted => Hash.Any(c => c != '0');
 
     public string ShortHash => Hash[..Math.Min(7, Hash.Length)];
 }
+
+public sealed record GitBlamePrevious(string Hash, string Path);
 
 public enum GitChangeKind
 {

@@ -172,7 +172,7 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
 
     public async Task<GitResult<GitBlameLine?>> BlameAsync(string filePath, int line, string? contents = null, CancellationToken cancellationToken = default)
     {
-        List<string> arguments = ["-c", "i18n.logOutputEncoding=UTF-8", "blame", "--line-porcelain", "-L", $"{line},{line}"];
+        List<string> arguments = ["-c", "i18n.logOutputEncoding=UTF-8", "-c", "core.quotePath=false", "blame", "--line-porcelain", "-L", $"{line},{line}"];
         if (contents is not null)
             arguments.AddRange(["--contents", "-"]);
         arguments.AddRange(["--", $"./{fileSystem.Path.GetFileName(filePath)}"]);
@@ -195,13 +195,15 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         if (hash.Length < 40)
             return null;
 
-        string author = "", subject = "";
+        string author = "", subject = "", path = "";
+        GitBlamePrevious? previous = null;
         long seconds = 0;
         var offset = TimeSpan.Zero;
         foreach (var line in lines.Skip(1).Select(l => l.TrimEnd('\r')))
         {
             if (line.StartsWith('\t'))
-                return new GitBlameLine(hash, author, DateTimeOffset.FromUnixTimeSeconds(seconds).ToOffset(offset), subject, line[1..]);
+                return new GitBlameLine(
+                    hash, author, DateTimeOffset.FromUnixTimeSeconds(seconds).ToOffset(offset), subject, line[1..], path, previous);
 
             var space = line.IndexOf(' ');
             if (space < 0)
@@ -213,6 +215,10 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
                 case "author-time": long.TryParse(value, CultureInfo.InvariantCulture, out seconds); break;
                 case "author-tz": offset = ParseTimeZone(value); break;
                 case "summary": subject = value; break;
+                case "filename": path = value; break;
+                case "previous" when value.IndexOf(' ') is > 0 and var split:
+                    previous = new GitBlamePrevious(value[..split], value[(split + 1)..]);
+                    break;
             }
         }
         return null;

@@ -81,9 +81,12 @@ internal sealed class FakeGitCli : IGitCli
     public Task<GitResult<string?>> FindWorktreeAsync(string repoRoot, string branch, CancellationToken cancellationToken = default) =>
         Task.FromResult(GitResult<string?>.Success(BranchWorktrees.GetValueOrDefault(branch)));
 
+    public string? RepoFileError { get; set; }
+
     public Task<GitResult<string?>> ShowRepoFileAsync(string repoRoot, string repoPath, string revision, CancellationToken cancellationToken = default)
     {
         ShowCount++;
+        if (RepoFileError is { } error) return Task.FromResult(GitResult<string?>.Failure(error));
         return Task.FromResult(GitResult<string?>.Success(RepoFiles.GetValueOrDefault($"{revision}:{repoPath}")));
     }
 
