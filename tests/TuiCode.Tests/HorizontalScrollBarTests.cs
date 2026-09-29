@@ -210,6 +210,37 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
         Assert.EndsWith("▼", screen[^2]);
     }
 
+    [Theory]
+    [InlineData(400, 1)]
+    [InlineData(145, 2)]
+    public void A_narrow_diffs_slider_shows_at_either_end_and_between(int widest, int size)
+    {
+        var diff = Diff("one", $"one\n{new string('x', widest)}");
+        var bar = diff.SidewaysBar;
+        Assert.Equal(size, bar.Slider.Size);
+
+        foreach (var value in new[] { 0, (bar.ScrollableContentSize - bar.VisibleContentSize) / 2, int.MaxValue })
+        {
+            bar.Value = value;
+            Assert.True(Tiles(Render(diff)[^1]) >= 1, $"no slider at {bar.Value}");
+        }
+    }
+
+    [Fact]
+    public void A_narrow_editors_one_cell_slider_shows_at_either_end_and_between()
+    {
+        using var tab = Tab(new string('x', 400));
+        tab.Width = 20;
+        tab.Layout();
+        var bar = tab.TextView.HorizontalScrollBar;
+
+        foreach (var value in new[] { 0, 100, int.MaxValue })
+        {
+            bar.Value = value;
+            Assert.Equal(1, Tiles(Render(tab)[^1]));
+        }
+    }
+
     private static int Tiles(string bar) => bar.Split(ThinScrollBar.Tile).Length - 1;
 
     private EditorTab Tab(string content)

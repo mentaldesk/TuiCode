@@ -22,8 +22,8 @@ internal static class ThinScrollBar
             if (bar.Orientation != Orientation.Horizontal) return;
             var slider = bar.Slider;
             var tiles = slider.Viewport with { Width = slider.Size };
-            if (slider.Frame.X <= 1) tiles = tiles with { X = tiles.X + 1, Width = tiles.Width - 1 };
-            if (slider.Frame.X + slider.Size >= bar.Viewport.Width - 1) tiles = tiles with { Width = tiles.Width - 1 };
+            if (slider.Frame.X <= 1 && tiles.Width > 1) tiles = tiles with { X = tiles.X + 1, Width = tiles.Width - 1 };
+            if (slider.Frame.X + slider.Size >= bar.Viewport.Width - 1 && tiles.Width > 1) tiles = tiles with { Width = tiles.Width - 1 };
             slider.SetAttributeForRole(VisualRole.Normal);
             slider.FillRect(slider.Viewport with { Width = slider.Size }, new Rune(' '));
             slider.FillRect(tiles, TileRune);
