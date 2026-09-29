@@ -211,6 +211,115 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
         Assert.Contains("▼", screen);
     }
 
+    // #324: resized while hidden, then shown with no key pressed.
+    [Theory]
+    [InlineData(80, 18)]
+    [InlineData(120, 40)]
+    public async Task A_tab_in_the_background_during_a_resize_keeps_its_place(int width, int height)
+    {
+        var fs = LongFile();
+        using var workbench = Workbench();
+        using var host = Host(workbench);
+        EditorTab? a = null;
+        var top = -1;
+
+        await HostSteps.Run(host,
+            Size(host, 100, 30),
+            () => { workbench.Editor.Open(fs.FileInfo.New("/work/a.txt")); },
+            () =>
+            {
+                a = Tab(workbench);
+                a.MoveCursor(450, 0);
+                a.RevealLines(450, 450);
+            },
+            () =>
+            {
+                top = a!.TopRow;
+                workbench.Editor.Open(fs.FileInfo.New("/work/b.txt"));
+            },
+            Size(host, width, height),
+            () => { },
+            () => { workbench.Editor.Open(fs.FileInfo.New("/work/a.txt")); },
+            () => { });
+
+        Assert.Same(a, Tab(workbench));
+        Assert.Equal(448, top);
+        Assert.Equal(top, a!.TopRow);
+        Assert.Equal(top, a.TextView.VerticalScrollBar.Value);
+        Assert.InRange(a.CursorRow, a.TopRow, a.TopRow + a.VisibleRows - 1);
+    }
+
+    [Theory]
+    [InlineData(80, 18)]
+    [InlineData(120, 40)]
+    public async Task A_diff_in_the_background_during_a_resize_keeps_its_place(int width, int height)
+    {
+        var fs = LongFile();
+        using var workbench = Workbench();
+        using var host = Host(workbench);
+        DiffTab? diff = null;
+        var top = -1;
+
+        await HostSteps.Run(host,
+            Size(host, 100, 30),
+            () => { workbench.Editor.Open(fs.FileInfo.New("/work/a.txt")); },
+            () =>
+            {
+                diff = workbench.Editor.Group.Compare(Tab(workbench), "before", () => ["changed"]);
+            },
+            () =>
+            {
+                for (var i = 0; i < 20; i++) diff!.NewKeyDownEvent(Key.PageDown);
+            },
+            () =>
+            {
+                top = diff!.TopRow;
+                workbench.Editor.Open(fs.FileInfo.New("/work/b.txt"));
+            },
+            Size(host, width, height),
+            () => { },
+            () => { workbench.Editor.Group.Value = diff; },
+            () => { });
+
+        Assert.Same(diff, workbench.Editor.Group.ActiveDiffTab);
+        Assert.InRange(top, 400, 800);
+        Assert.Equal(top, diff!.TopRow);
+        Assert.Equal(top, diff.ScrollBar.Value);
+    }
+
+    [Fact]
+    public async Task The_tab_in_front_keeps_its_top_line_across_a_resize()
+    {
+        var fs = LongFile();
+        using var workbench = Workbench();
+        using var host = Host(workbench);
+        var top = -1;
+
+        await HostSteps.Run(host,
+            Size(host, 100, 30),
+            () => { workbench.Editor.Open(fs.FileInfo.New("/work/a.txt")); },
+            () =>
+            {
+                Tab(workbench).MoveCursor(450, 0);
+                Tab(workbench).RevealLines(450, 450);
+            },
+            () => { top = Tab(workbench).TopRow; },
+            Size(host, 80, 18),
+            () => { });
+
+        Assert.Equal(448, top);
+        Assert.Equal(top, Tab(workbench).TopRow);
+        Assert.Equal(top, Tab(workbench).TextView.VerticalScrollBar.Value);
+    }
+
+    private static MockFileSystem LongFile()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData(string.Join('\n', Enumerable.Range(1, 900).Select(i => $"line {i}"))));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        return fs;
+    }
+
     private static Action Size(WorkbenchHost host, int width, int height) =>
         () => host.App.Driver!.SetScreenSize(width, height);
 
