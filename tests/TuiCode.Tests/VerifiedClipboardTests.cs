@@ -60,6 +60,39 @@ public class VerifiedClipboardTests
 
         Assert.IsType<CopyOutcome.Failed>(VerifiedClipboard.Write(clipboard, "abc"));
     }
+
+    [Fact]
+    public void Write_leaves_the_platform_program_alone_when_the_clipboard_took_the_text()
+    {
+        var program = new ClipboardProgram();
+
+        VerifiedClipboard.Write(new TestClipboard(), "a", ClipboardTools.For(true, false, false, program));
+
+        Assert.Empty(program.Ran);
+    }
+
+    [Fact]
+    public void Write_copies_through_the_platform_program_when_the_clipboard_did_not_take_the_text()
+    {
+        var program = new ClipboardProgram();
+
+        var outcome = VerifiedClipboard.Write(new TestClipboard { Transform = _ => null }, "one\ntwo",
+            ClipboardTools.For(true, false, false, program));
+
+        Assert.Equal(new CopyOutcome.Copied(2, 6), outcome);
+        Assert.Equal("one\ntwo", program.Stored);
+    }
+
+    [Fact]
+    public void Write_says_why_the_platform_program_failed_too()
+    {
+        var program = new ClipboardProgram { Answer = _ => new ToolRun.Exited(1, "", "no pasteboard") };
+
+        var outcome = VerifiedClipboard.Write(new TestClipboard { Transform = _ => null }, "a",
+            ClipboardTools.For(true, false, false, program));
+
+        Assert.Equal(new CopyOutcome.Failed("no pasteboard (pbcopy)"), outcome);
+    }
 }
 
 /// <summary>Stores what it's given, after <see cref="Transform"/>; null from it drops the write.</summary>

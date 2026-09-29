@@ -528,6 +528,7 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
     {
         var view = View("one 1", "two 2");
         _app.Driver!.Clipboard = new TestClipboard { Transform = _ => null };
+        view.ClipboardFallback = ClipboardTools.For(false, false, false, new ClipboardProgram { Answer = _ => new ToolRun.NotFound() });
         CopyOutcome? outcome = null;
         view.Copied += (_, o) => outcome = o;
         view.SetCarets(severalCarets ? [Selecting(0, 0, 3), Selecting(1, 0, 3)] : [Selecting(0, 0, 3)]);
@@ -536,6 +537,24 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
 
         Assert.IsType<CopyOutcome.Failed>(outcome);
         Assert.Equal(["one 1", "two 2"], view.LineStrings);
+    }
+
+    [Fact]
+    public void A_cut_the_platform_program_takes_removes_the_text()
+    {
+        var view = View("one 1");
+        _app.Driver!.Clipboard = new TestClipboard { Transform = _ => null };
+        var program = new ClipboardProgram();
+        view.ClipboardFallback = ClipboardTools.For(true, false, false, program);
+        CopyOutcome? outcome = null;
+        view.Copied += (_, o) => outcome = o;
+        view.SetCarets([Selecting(0, 0, 4)]);
+
+        view.NewKeyDownEvent(Key.X.WithCtrl);
+
+        Assert.Equal(new CopyOutcome.Copied(1, 4), outcome);
+        Assert.Equal("one ", program.Stored);
+        Assert.Equal(["1"], view.LineStrings);
     }
 
     [Fact]
