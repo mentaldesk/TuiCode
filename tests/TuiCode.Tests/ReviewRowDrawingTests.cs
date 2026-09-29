@@ -24,6 +24,8 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
     private readonly FakeGitHubCli _gitHub = new();
     private readonly FileIcons _icons = new(() => new FontDetection(true, "test"));
 
+    private string CSharp => _icons.ForFile("a.cs")!.Value.Glyph;
+
     public ReviewRowDrawingTests()
     {
         _fs.AddDirectory("/work");
@@ -46,7 +48,7 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         var rows = Render(view);
         var row = RowWith(rows, "a.cs");
 
-        Assert.Contains($"{Modified} a.cs  {Chat} 1", row);
+        Assert.Contains($"{Modified} {CSharp} a.cs  {Chat} 1", row);
         Assert.DoesNotContain("●", row);
         Assert.DoesNotContain(Chat, RowWith(rows, "b.cs"));
     }
@@ -58,7 +60,7 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
 
         var row = RowWith(Render(view), "a.cs");
 
-        Assert.Contains($"{Modified} a.cs  {ChatSettled} 1", row);
+        Assert.Contains($"{Modified} {CSharp} a.cs  {ChatSettled} 1", row);
         Assert.DoesNotContain("○", row);
     }
 
@@ -99,7 +101,7 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         var name = CellOf(row, "a");
         var mark = CellOf(row, Modified);
 
-        Assert.Contains($"{Modified} a.cs", Render(view)[row]);
+        Assert.Contains($"{Modified} {CSharp} a.cs", Render(view)[row]);
         Assert.Equal(IconDrawing.AttributeFor(_icons.ForChange(GitChangeKind.Modified)!.Value, name).Foreground, mark.Foreground);
         Assert.NotEqual(name.Foreground, mark.Foreground);
         Assert.False(name.Style.HasFlag(TextStyle.Faint));
@@ -113,7 +115,7 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
 
         var row = RowIndex(view, "a.cs");
 
-        Assert.Contains($"{Deleted} a.cs", Render(view)[row]);
+        Assert.Contains($"{Deleted} {CSharp} a.cs", Render(view)[row]);
         Assert.True(CellOf(row, "a").Style.HasFlag(TextStyle.Faint));
         Assert.True(CellOf(row, "s").Style.HasFlag(TextStyle.Faint));
     }
@@ -128,7 +130,7 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         var row = RowIndex(view, "a.cs");
         var name = CellOf(row, "a");
 
-        Assert.Contains("A a.cs", Render(view)[row]);
+        Assert.Contains("A 📄 a.cs", Render(view)[row]);
         Assert.Equal(IconDrawing.AttributeFor(_icons.ForChange(GitChangeKind.Added)!.Value, name).Foreground, CellOf(row, "A").Foreground);
     }
 
@@ -145,6 +147,49 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         Assert.Equal("  └─D a.cs", Render(view)[row].TrimEnd());
         Assert.Equal(name, CellOf(row, "D"));
         Assert.False(name.Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public async Task With_nerd_font_icons_a_file_shows_the_explorers_type_icon_between_the_mark_and_the_name()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "src/a.cs"), new GitChange(GitChangeKind.Added, "src/b.md")];
+        using var view = await Review();
+
+        var rows = Render(view);
+        var row = RowIndex(view, "b.md");
+
+        Assert.Contains($"{Modified} {CSharp} a.cs", RowWith(rows, "a.cs"));
+        Assert.Contains($"{_icons.ForFile("b.md")!.Value.Glyph} b.md", rows[row]);
+        Assert.Equal(IconDrawing.AttributeFor(_icons.ForFile("b.md")!.Value, CellOf(row, "b")).Foreground, CellOf(row, _icons.ForFile("b.md")!.Value.Glyph).Foreground);
+    }
+
+    [Theory]
+    [InlineData(FileIconStyle.NerdFont)]
+    [InlineData(FileIconStyle.Emoji)]
+    public async Task A_folder_shows_the_explorers_folder_icon(FileIconStyle style)
+    {
+        _icons.Setting = style;
+        using var view = await Review();
+
+        Assert.Contains($"{_icons.ForDirectory(expanded: true)!.Value.Glyph} src", RowWith(Render(view), "src"));
+    }
+
+    [Fact]
+    public async Task With_emoji_icons_a_file_shows_the_explorers_emoji_after_the_mark()
+    {
+        _icons.Setting = FileIconStyle.Emoji;
+        using var view = await Review();
+
+        Assert.Contains($"M {_icons.ForFile("a.cs")!.Value.Glyph} a.cs", RowWith(Render(view), "a.cs"));
+    }
+
+    [Fact]
+    public async Task With_icons_off_a_folder_is_its_bare_path()
+    {
+        _icons.Setting = FileIconStyle.Off;
+        using var view = await Review();
+
+        Assert.EndsWith("-src", RowWith(Render(view), "src").TrimEnd());
     }
 
     [Fact]
