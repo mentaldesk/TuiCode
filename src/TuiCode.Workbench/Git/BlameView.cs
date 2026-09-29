@@ -56,16 +56,14 @@ public sealed class BlameView : Window
         Add(Row(LineText, ref y));
         y++;
 
-        var close = Hint("Esc close", 1, y);
-        close.Accepting += (_, e) => { e.Handled = true; Closed?.Invoke(this, EventArgs.Empty); };
         if (blame.IsCommitted)
         {
-            var open = Hint("Enter the change that introduced it", 1, y);
+            var open = Hint("Enter view change", y);
             open.Accepting += (_, e) => { e.Handled = true; OpenChange?.Invoke(this, EventArgs.Empty); };
-            var separator = new Label { X = Pos.Right(open) + 1, Y = y, Text = "·" };
-            close.X = Pos.Right(separator) + 1;
-            Add(open, separator);
+            Add(open, new Label { X = Pos.Align(Alignment.Center), Y = y, Text = "·" });
         }
+        var close = Hint("Esc close", y);
+        close.Accepting += (_, e) => { e.Handled = true; Closed?.Invoke(this, EventArgs.Empty); };
 
         _alert = new AlertView(DialogWidth - 2) { X = 0, Y = y + 1 };
         if (!blame.IsCommitted) _alert.Show(NotCommitted, AlertSeverity.Info);
@@ -117,10 +115,10 @@ public sealed class BlameView : Window
 
     private static string Plural(long count, string unit) => count == 1 ? $"1 {unit} ago" : $"{count} {unit}s ago";
 
-    private static Button Hint(string text, Pos x, int y) => new()
+    private static Button Hint(string text, int y) => new()
     {
         Text = text,
-        X = x,
+        X = Pos.Align(Alignment.Center),
         Y = y,
         NoDecorations = true,
         NoPadding = true,

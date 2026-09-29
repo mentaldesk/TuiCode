@@ -187,6 +187,7 @@ public class BlameHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         string[]? hints = null;
+        (int Left, int Right) margins = default;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench, row: 1),
@@ -194,14 +195,17 @@ public class BlameHostTests : StaticConfigurationTest
             () => Dialog(workbench) is not null,
             () =>
             {
-                var buttons = Dialog(workbench)!.SubViews.OfType<Button>().ToList();
-                hints = [.. buttons.OrderBy(b => b.Frame.X).Select(b => b.Text)];
+                var dialog = Dialog(workbench)!;
+                var buttons = dialog.SubViews.OfType<Button>().OrderBy(b => b.Frame.X).ToList();
+                hints = [.. buttons.Select(b => b.Text)];
+                margins = (buttons[0].Frame.X, dialog.Viewport.Width - buttons[^1].Frame.Right);
                 buttons.Single(b => b.Text.StartsWith("Enter", StringComparison.Ordinal))
                     .NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) });
             },
             () => workbench.Editor.Group.ActiveDiffTab is not null);
 
-        Assert.Equal(["Enter the change that introduced it", "Esc close"], hints);
+        Assert.Equal(["Enter view change", "Esc close"], hints);
+        Assert.InRange(margins.Left - margins.Right, -1, 1);
         Assert.Null(Dialog(workbench));
     }
 
