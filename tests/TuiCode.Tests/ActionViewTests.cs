@@ -1,3 +1,4 @@
+using Terminal.Gui.Drawing;
 using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
@@ -118,6 +119,20 @@ public class ActionViewTests
         Assert.Equal(row.IndexOf("Ctrl+S", StringComparison.Ordinal), view.Header.IndexOf("Binding", StringComparison.Ordinal));
         Assert.EndsWith("Mnemonic", view.Header);
         Assert.EndsWith(CommandMnemonics.For(CommandIds.SaveActiveEditor)!, row);
+    }
+
+    [Fact]
+    public void The_column_headings_are_drawn_in_the_palettes_colours_inverted()
+    {
+        using var view = Build(CommandScope.Global);
+        view.Layout(new System.Drawing.Size(76, 22));
+        var header = view.SubViews.OfType<Label>().Single(l => l.Text == view.Header);
+
+        var palette = view.GetAttributeForRole(VisualRole.Normal);
+        var heading = header.GetAttributeForRole(VisualRole.Normal);
+
+        Assert.Equal(palette.Background, heading.Foreground);
+        Assert.Equal(palette.Foreground, heading.Background);
     }
 
     [Fact]

@@ -78,6 +78,12 @@ public sealed class ActionView : Window
             Width = Dim.Fill(1),
             Height = 1,
         };
+        _header.GettingAttributeForRole += (_, e) =>
+        {
+            var attribute = e.Result ?? GetAttributeForRole(e.Role);
+            e.Result = attribute with { Foreground = attribute.Background, Background = attribute.Foreground };
+            e.Handled = true;
+        };
 
         _list = new ListView
         {
