@@ -8,11 +8,17 @@ namespace TuiCode.Explorer;
 public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 {
     private readonly HashSet<string> _changedOnDisk = new(StringComparer.Ordinal);
+    private readonly List<string> _expandedFolders = [];
 
     public event EventHandler<IFileInfo>? FileActivated;
 
     /// <summary>Raised with the item whose cut mark was just cleared, whether pasted, cancelled, deleted or renamed.</summary>
     public event EventHandler<IFileSystemInfo>? CutCleared;
+
+    public event EventHandler? ExpandedFoldersChanged;
+
+    /// <summary>The full paths of the expanded folders, the root included, oldest expanded first.</summary>
+    public IReadOnlyList<string> ExpandedFolders => _expandedFolders;
 
     /// <summary>The directory the tree is currently rooted at, or null before the first <see cref="Open"/>.</summary>
     public IDirectoryInfo? Root { get; private set; }
@@ -68,6 +74,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         ClearObjects();
         AddObject(root);
         Expand(root);
+        NoteExpansion();
     }
 
     public void ActivateSelected()
@@ -222,6 +229,30 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         EnsureVisible(SelectedObject);
     }
 
+    /// <summary>
+    /// Re-read those of <paramref name="folders"/> that are expanded, as <see cref="Refresh()"/> does, but only scroll to
+    /// keep the selection in view if it already was.
+    /// </summary>
+    public void Refresh(IEnumerable<string> folders)
+    {
+        if (Root is not { } root) return;
+        var selected = SelectedObject;
+        var reselect = selected is not null ? SurvivingSelection(root, selected.FullName) : null;
+        var inView = selected is not null && GetObjectRow(selected) is { } row && row >= 0 && row < Viewport.Height;
+
+        var refreshed = new List<string>();
+        foreach (var folder in folders.OrderBy(f => f.Length))
+        {
+            if (refreshed.Any(done => FilePaths.IsSameOrUnder(folder, done))) continue;
+            if (Find(folder) is not { } node || !IsExpanded(node)) continue;
+            RefreshKeepingExpansion(node);
+            refreshed.Add(folder);
+        }
+        if (refreshed.Count == 0 || reselect is null) return;
+        SelectedObject = Find(reselect) ?? root;
+        if (inView) EnsureVisible(SelectedObject);
+    }
+
     // The tree still lists what was there before the refresh, so the neighbours of the first vanished entry on the path come from it.
     private string SurvivingSelection(IDirectoryInfo root, string selected)
     {
@@ -340,6 +371,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         }
 
         SelectedObject = current;
+        NoteExpansion();
         return current;
     }
 
@@ -371,6 +403,31 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         foreach (var path in expanded)
             if (Find(path) is { } again)
                 Expand(again);
+        NoteExpansion();
+    }
+
+    // TG raises nothing when a folder is expanded or collapsed, but it always redraws.
+    protected override bool OnDrawingContent(DrawContext? context)
+    {
+        var handled = base.OnDrawingContent(context);
+        NoteExpansion();
+        return handled;
+    }
+
+    private void NoteExpansion()
+    {
+        var now = new List<string>();
+        if (Root is { } root && IsExpanded(root))
+        {
+            now.Add(root.FullName);
+            CollectExpanded(root, now);
+        }
+        var kept = _expandedFolders.Intersect(now, StringComparer.Ordinal).ToList();
+        if (kept.Count == now.Count && kept.Count == _expandedFolders.Count) return;
+        kept.AddRange(now.Except(kept, StringComparer.Ordinal));
+        _expandedFolders.Clear();
+        _expandedFolders.AddRange(kept);
+        ExpandedFoldersChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void CollectExpanded(IFileSystemInfo node, List<string> expanded)
