@@ -14,6 +14,10 @@ public sealed class Workbench : Window
     public SidebarPart Sidebar { get; }
     public EditorPart Editor { get; }
     public StatusBarPart StatusBar { get; }
+    public MenuBar MenuBar { get; } = new();
+
+    /// <summary>A dialog is open over the workbench: every view the host adds beside the four parts is one.</summary>
+    public bool HasDialog => SubViews.Any(view => view != MenuBar && view != Sidebar && view != Editor && view != StatusBar);
 
     public bool IsSidebarVisible { get; private set; } = true;
 
@@ -39,12 +43,12 @@ public sealed class Workbench : Window
         BorderStyle = LineStyle.None;
 
         sidebar.X = 0;
-        sidebar.Y = 0;
+        sidebar.Y = Pos.Bottom(MenuBar);
         sidebar.Width = SidebarSizing.Default;
         sidebar.Height = Dim.Fill(1);
 
         editor.X = Pos.Right(sidebar);
-        editor.Y = 0;
+        editor.Y = Pos.Bottom(MenuBar);
         editor.Width = Dim.Fill();
         editor.Height = Dim.Fill(1);
 
@@ -53,7 +57,7 @@ public sealed class Workbench : Window
         statusBar.Width = Dim.Fill();
         statusBar.Height = 1;
 
-        Add(sidebar, editor, statusBar);
+        Add(MenuBar, sidebar, editor, statusBar);
 
         sidebar.Explorer.FileActivated += (_, file) => OpenFile(file);
 

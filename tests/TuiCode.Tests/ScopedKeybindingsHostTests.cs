@@ -347,7 +347,7 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             CommandIds.OpenSettings, CommandIds.PreviousEditor, CommandIds.PullRequestOverview,
             CommandIds.Quit, CommandIds.RefreshExplorer, CommandIds.ReplaceGlobally, CommandIds.ReplaceInFile, CommandIds.SaveActiveEditor,
             CommandIds.ShowAbout, CommandIds.ShowActions, CommandIds.ShowDiagnostics,
-            CommandIds.ShowExplorer, CommandIds.ShowHelp, CommandIds.ShowMnemonics,
+            CommandIds.ShowExplorer, CommandIds.ShowHelp, CommandIds.ShowMenu, CommandIds.ShowMnemonics,
             CommandIds.SubmitReview, CommandIds.ToggleGutter, CommandIds.ToggleSidebar, CommandIds.WidenSidebar,
             .. Enumerable.Range(1, 9).Select(CommandIds.FocusEditorByIndex),
         ];

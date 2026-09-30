@@ -17,6 +17,7 @@ using TuiCode.Workbench.Focus;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Help;
+using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
@@ -57,6 +58,11 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IGitCli _git;
     private readonly IGitHubCli _gitHub;
     private readonly TerminalCursors _terminalCursors;
+    private readonly CommandMenu _menu;
+    // Open menus take arrows, Enter and Esc for themselves, so no workbench key fires under one.
+    private readonly KeybindingService _menuKeys = new(new CommandService());
+    private FocusRegion _menuOpenedFrom;
+    private long _menuShownAt;
     private readonly FindController _find;
     private readonly FocusService _focus;
     private readonly DiskChanges _diskChanges;
@@ -146,6 +152,10 @@ public sealed class WorkbenchHost : IDisposable
         _focus = new FocusService(FocusedView);
 
         RegisterDefaultCommands();
+        _menu = new CommandMenu(_workbench.MenuBar, _commands, _keybindings, () => !_workbench.HasDialog,
+            id => IsAvailableFrom(id, _menu.IsOpen ? _menuOpenedFrom : _focus.Region));
+        _menu.Opened += (_, _) => OnMenuOpened();
+        _menu.Closed += (_, picked) => OnMenuClosed(picked);
         ApplyKeybindings(_settings.KeybindingOverrides);
         _workbench.Editor.Group.Settings = _settings.Editor;
         _workbench.SetSidebarWidth(_settings.SidebarWidth);
@@ -237,6 +247,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             var inSidebar = region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Review;
             _workbench.StatusBar.SetFocusRegion(FocusService.Label(region));
+            ShowAvailableMenus();
             sidebarBorder.Show(inSidebar);
             editorBorder.Show(!inSidebar);
         };
@@ -307,6 +318,8 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     public IApplication App => _app;
+
+    internal CommandMenu Menu => _menu;
     public Workbench Workbench => _workbench;
 
     public void Run() => _app.Run(_workbench, errorHandler: null!);
@@ -480,6 +493,7 @@ public sealed class WorkbenchHost : IDisposable
             () => { if (search.ReplaceVisible) search.RequestReplaceAll(); }, CommandScope.Find, () => search.InputsHaveFocus);
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
+        _commands.Register(CommandIds.ShowMenu, "Show menu", () => _menu.Open());
         _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Editor, FileOpen);
         // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
@@ -556,6 +570,7 @@ public sealed class WorkbenchHost : IDisposable
             }
         }
 
+        _menu.Refresh();
         var help = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ShowHelp);
         _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
         _workbench.DiffKeysHint = DiffKeys("revert");
@@ -633,6 +648,7 @@ public sealed class WorkbenchHost : IDisposable
         // the mnemonics it dispatches are fixed (CommandMnemonics).
         keybindings.Bind("Ctrl+Space", CommandIds.ShowMnemonics);
         keybindings.Bind("F1", CommandIds.ShowHelp);
+        keybindings.Bind("F10", CommandIds.ShowMenu);
         // Ctrl+G is a chord family (#35): L = go-to-line, P/N = previous/next cursor location, B = blame (#330).
         keybindings.Bind("Ctrl+G L", CommandIds.GoToLine);
         keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
@@ -939,6 +955,33 @@ public sealed class WorkbenchHost : IDisposable
         finally { _launchedFromExplorer = false; }
     }
 
+    private void OnMenuOpened()
+    {
+        _menuOpenedFrom = _focus.Region;
+        _scopes.Push(_menuKeys);
+    }
+
+    // The palette's rule: a command is offered where its key would run, in its scope and enabled.
+    private bool IsAvailableFrom(string id, FocusRegion region)
+    {
+        var scope = _commands.ScopeOf(id);
+        return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id);
+    }
+
+    private void ShowAvailableMenus()
+    {
+        _menuShownAt = Environment.TickCount64;
+        if (!_menu.IsOpen) _menu.ShowAvailable();
+    }
+
+    private void OnMenuClosed(string? picked)
+    {
+        _scopes.Pop(_menuKeys);
+        FocusCallingRegion();
+        if (picked is null || !IsAvailableFrom(picked, _menuOpenedFrom)) return;
+        RunLaunched(picked, _menuOpenedFrom == FocusRegion.Explorer);
+    }
+
     private void OpenMnemonics()
     {
         if (_activeMnemonics is not null) return;
@@ -1070,6 +1113,8 @@ public sealed class WorkbenchHost : IDisposable
         // Picks up focus Terminal.Gui moved on its own, and any move that didn't land where it was asked to.
         _focus.Reconcile();
         _activeSymbolPicker?.Advance();
+        // Some isEnabled checks touch the disk, so not on every iteration.
+        if (Environment.TickCount64 - _menuShownAt >= 250) ShowAvailableMenus();
     }
 
     private void OnEditorCursorMoved(object? sender, (IFileInfo File, int Row, int Column) e)

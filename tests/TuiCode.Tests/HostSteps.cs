@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using Terminal.Gui.Drivers;
 using TuiCode.Workbench;
 
 namespace TuiCode.Tests;
@@ -36,5 +38,27 @@ internal static class HostSteps
         }
 
         static bool Execute(Action act) { act(); return true; }
+    }
+
+    private static readonly ConditionalWeakTable<IDriver, StrongBox<System.Drawing.Size>> PinnedSizes = new();
+
+    // The Windows console answers TG's periodic size query with its own size, which would undo a test's resize.
+    public static void PinScreenSize(WorkbenchHost host, int width, int height)
+    {
+        var driver = host.App.Driver!;
+        var size = new System.Drawing.Size(width, height);
+        if (PinnedSizes.TryGetValue(driver, out var pinned))
+            pinned.Value = size;
+        else
+        {
+            pinned = new StrongBox<System.Drawing.Size>(size);
+            PinnedSizes.Add(driver, pinned);
+            driver.SizeChanged += (_, e) =>
+            {
+                if (e.Size is { } actual && actual != pinned.Value)
+                    driver.SetScreenSize(pinned.Value.Width, pinned.Value.Height);
+            };
+        }
+        driver.SetScreenSize(width, height);
     }
 }
