@@ -1,5 +1,7 @@
+using System.Globalization;
 using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.About;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Diagnostics;
@@ -16,6 +18,7 @@ public sealed class DiagnosticsView : Window
     private readonly Label _keyBase;
     private readonly Label _keyRune;
     private readonly Label _cursorColour;
+    private readonly Label _cellSize;
     private readonly string? _askedCursorColour;
 
     public IKeybindingService Scope => _scopeKeybindings;
@@ -35,7 +38,8 @@ public sealed class DiagnosticsView : Window
         var kittyStatusLines = WrapText(kittyNegotiationStatus, GetFieldWidth());
         var kittyStatusText = string.Join("\n", kittyStatusLines);
         var cursorColourY = 2 + kittyStatusLines.Length;
-        var keyHeadingY = cursorColourY + 2;
+        var cellSizeY = cursorColourY + 1;
+        var keyHeadingY = cellSizeY + 2;
         var nameY = keyHeadingY + 1;
         var hintY = nameY + 6;
         Height = hintY + 6;
@@ -73,6 +77,15 @@ public sealed class DiagnosticsView : Window
             Text = cursorColour is null ? "not set by the theme" : $"asked {cursorColour}  •  asking the terminal…",
         };
 
+        var cellSizeHeading = Heading("Cell size", cellSizeY);
+        _cellSize = new Label
+        {
+            X = FieldX,
+            Y = cellSizeY,
+            Width = GetFieldWidth(),
+            Text = "asking the terminal…",
+        };
+
         var keyHeading = Heading("Last key", keyHeadingY);
         var nameLabel = Heading("  Name", nameY);
         var hexLabel = Heading("  Hex", nameY + 1);
@@ -100,6 +113,7 @@ public sealed class DiagnosticsView : Window
 
         Add(driverHeading, driverNameLabel, kittyHeading, kittyStatusLabel,
             cursorColourHeading, _cursorColour,
+            cellSizeHeading, _cellSize,
             keyHeading, nameLabel, hexLabel, baseLabel, runeLabel,
             _keyName, _keyHex, _keyBase, _keyRune,
             hint, footer);
@@ -160,6 +174,21 @@ public sealed class DiagnosticsView : Window
             ? $"asked {_askedCursorColour}  •  terminal didn't answer"
             : $"asked {_askedCursorColour}  •  terminal reports {reported}  "
               + (CursorColourProbe.Matches(_askedCursorColour, reported) ? "✓" : "✗");
+    }
+
+    public string CellSizeText => _cellSize.Text;
+
+    internal void ShowCellSize(CellMeasurement cell) => _cellSize.Text = DescribeCellSize(cell);
+
+    private static string DescribeCellSize(CellMeasurement cell)
+    {
+        var source = cell.Source switch
+        {
+            CellSizeSource.Iterm2Report => string.Create(CultureInfo.InvariantCulture, $"iTerm2 report, scale {cell.Scale:0.0##}"),
+            CellSizeSource.CellResolutionReply => "CSI 16 t",
+            _ => "no answer, assumed",
+        };
+        return string.Create(CultureInfo.InvariantCulture, $"{cell.Pixels.Width:0.#} × {cell.Pixels.Height:0.#} px  •  {source}");
     }
 
     public void UpdateLastKey(Key key)
