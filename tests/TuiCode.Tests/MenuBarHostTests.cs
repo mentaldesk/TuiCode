@@ -252,7 +252,7 @@ public class MenuBarHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void The_bar_takes_the_themes_menu_colours_and_follows_a_switch()
+    public void The_bar_takes_the_themes_menu_colours_and_stands_apart_from_the_explorer()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
@@ -262,15 +262,17 @@ public class MenuBarHostTests : StaticConfigurationTest
             ConfigurationManager.RuntimeConfig = BundledThemes.Config;
             ConfigurationManager.Load(ConfigLocations.LibraryResources | ConfigLocations.Runtime);
             var drawn = new List<Attribute>();
-            foreach (var theme in new[] { BundledThemes.Default, BundledThemes.Daylight })
+            foreach (var theme in BundledThemes.Names)
             {
                 ThemeManager.Theme = theme;
                 ConfigurationManager.Apply();
                 var menu = SchemeManager.GetScheme(Schemes.Menu).GetAttributeForRole(VisualRole.Normal, null);
+                var sidebar = SchemeManager.GetScheme("Sidebar").GetAttributeForRole(VisualRole.Normal, null);
                 Assert.Equal(menu, workbench.MenuBar.GetAttributeForRole(VisualRole.Normal));
+                Assert.NotEqual(sidebar.Background, menu.Background);
                 drawn.Add(menu);
             }
-            Assert.NotEqual(drawn[0], drawn[1]);
+            Assert.True(drawn.Distinct().Count() > 1);
         }
         finally
         {
