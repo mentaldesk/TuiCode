@@ -9,7 +9,21 @@ namespace TuiCode.Workbench.Menus;
 public sealed class CommandMenu
 {
     public const string Separator = "-";
-    public const string FocusEditorTab = "Focus editor tab";
+
+    /// <summary>Commands with a mnemonic but no menu item: opening the menu moves focus itself.</summary>
+    public static readonly string[] Unlisted =
+    [
+        CommandIds.FocusSidebar, CommandIds.FocusEditorBody, CommandIds.FocusEditorTabStrip,
+        .. Enumerable.Range(1, 9).Select(CommandIds.FocusEditorByIndex),
+    ];
+
+    /// <summary>Items titled for their menu rather than with the command's label.</summary>
+    public static readonly IReadOnlyDictionary<string, string> Titles = new Dictionary<string, string>
+    {
+        [CommandIds.ShowExplorer] = "Explorer",
+        [CommandIds.FindGlobally] = "Find",
+        [CommandIds.FocusReview] = "Review",
+    };
 
     public static readonly (string Title, string[] Ids)[] Layout =
     [
@@ -21,13 +35,15 @@ public sealed class CommandMenu
             Separator,
             CommandIds.ShowDocumentInfo,
             Separator,
-            CommandIds.OpenSettings, CommandIds.Quit,
+            CommandIds.OpenSettings,
+            Separator,
+            CommandIds.Quit,
         ]),
         ("_Edit",
         [
             CommandIds.MoveLinesUp, CommandIds.MoveLinesDown, CommandIds.DuplicateLinesUp, CommandIds.DuplicateLinesDown,
             Separator,
-            CommandIds.FindInFile, CommandIds.ReplaceInFile, CommandIds.FindGlobally, CommandIds.ReplaceGlobally,
+            CommandIds.FindInFile, CommandIds.ReplaceInFile, CommandIds.ReplaceGlobally,
             Separator,
             CommandIds.ChangeGrammar,
         ]),
@@ -41,13 +57,13 @@ public sealed class CommandMenu
         ]),
         ("_View",
         [
-            CommandIds.ToggleSidebar, CommandIds.ShowExplorer, CommandIds.RefreshExplorer, CommandIds.FocusSidebar,
+            CommandIds.ShowExplorer, CommandIds.FindGlobally, CommandIds.FocusReview,
             Separator,
-            CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
+            CommandIds.ToggleSidebar, CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
+            Separator,
+            CommandIds.RefreshExplorer,
             Separator,
             CommandIds.ToggleGutter,
-            Separator,
-            CommandIds.FocusEditorBody, CommandIds.FocusEditorTabStrip,
         ]),
         ("_Go",
         [
@@ -55,7 +71,7 @@ public sealed class CommandMenu
             Separator,
             CommandIds.NavigateBack, CommandIds.NavigateForward,
             Separator,
-            CommandIds.NextEditor, CommandIds.PreviousEditor, FocusEditorTab,
+            CommandIds.NextEditor, CommandIds.PreviousEditor,
         ]),
         ("_Diff",
         [
@@ -69,7 +85,7 @@ public sealed class CommandMenu
         ]),
         ("_Review",
         [
-            CommandIds.OpenPullRequest, CommandIds.PullRequestOverview, CommandIds.FocusReview,
+            CommandIds.OpenPullRequest, CommandIds.PullRequestOverview,
             Separator,
             CommandIds.CreateComment, CommandIds.SubmitReview,
         ]),
@@ -80,9 +96,6 @@ public sealed class CommandMenu
             CommandIds.ShowDiagnostics, CommandIds.ShowAbout,
         ]),
     ];
-
-    public static IEnumerable<string> FocusEditorTabIds =>
-        Enumerable.Range(1, 9).Select(CommandIds.FocusEditorByIndex);
 
     private readonly MenuBar _bar;
     private readonly ICommandService _commands;
@@ -164,18 +177,13 @@ public sealed class CommandMenu
         return menu;
     }
 
-    private View Entry(string id) => id switch
-    {
-        Separator => new Line(),
-        FocusEditorTab => new MenuItem(FocusEditorTab, string.Empty, new Menu(FocusEditorTabIds.Select(Item))),
-        _ => Item(id),
-    };
+    private View Entry(string id) => id == Separator ? new Line() : Item(id);
 
     private MenuItem Item(string id)
     {
         var item = new MenuItem
         {
-            Title = _commands.Registered.FirstOrDefault(c => c.Id == id)?.Label ?? id,
+            Title = Titles.GetValueOrDefault(id) ?? _commands.Registered.FirstOrDefault(c => c.Id == id)?.Label ?? id,
             // The workbench already dispatches the key; binding it here too would run the command twice.
             BindKeyToApplication = false,
             Action = () => _picked = id,

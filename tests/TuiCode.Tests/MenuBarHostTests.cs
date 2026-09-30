@@ -29,13 +29,15 @@ public class MenuBarHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Every_command_with_a_mnemonic_has_exactly_one_menu_item()
+    public void Every_command_with_a_mnemonic_but_the_focus_moves_has_exactly_one_menu_item()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var mapped = MenuIds().ToList();
 
-        Assert.All(CommandMnemonics.All, pair => Assert.Single(mapped, id => id == pair.Key));
+        Assert.All(CommandMnemonics.All.Where(pair => !CommandMenu.Unlisted.Contains(pair.Key)),
+            pair => Assert.Single(mapped, id => id == pair.Key));
+        Assert.All(CommandMenu.Unlisted, id => Assert.DoesNotContain(id, mapped));
         Assert.Contains(CommandIds.ShowActions, mapped);
         Assert.Contains(CommandIds.ShowMnemonics, mapped);
         Assert.Equal(mapped.Count, mapped.Distinct().Count());
@@ -297,15 +299,26 @@ public class MenuBarHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Focus_editor_tab_opens_a_submenu_of_tabs_one_to_nine()
+    public void View_opens_with_the_sidebar_panels_by_name_then_toggle_widen_and_narrow()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
-        var go = Title(workbench, "Go").PopoverMenu!.Root!;
-        var parent = go.SubViews.OfType<MenuItem>().Single(i => i.Title == CommandMenu.FocusEditorTab);
+        var view = Title(workbench, "View").PopoverMenu!.Root!.SubViews.ToList();
 
-        Assert.Equal(CommandMenu.FocusEditorTabIds,
-            parent.SubMenu!.SubViews.OfType<MenuItem>().Select(i => Id(host, i)));
+        Assert.Equal(["Explorer", "Find", "Review", "-", "Toggle sidebar", "Widen sidebar", "Narrow sidebar"],
+            view.Take(7).Select(v => v is MenuItem item ? item.Title : "-"));
+    }
+
+    [Fact]
+    public void Quit_stands_apart_from_Open_settings()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var file = Title(workbench, "File").PopoverMenu!.Root!.SubViews.ToList();
+        var quit = file.IndexOf(Item(host, CommandIds.Quit));
+
+        Assert.IsType<Line>(file[quit - 1]);
+        Assert.Same(Item(host, CommandIds.OpenSettings), file[quit - 2]);
     }
 
     [Fact]
@@ -339,9 +352,7 @@ public class MenuBarHostTests : StaticConfigurationTest
     }
 
     private static IEnumerable<string> MenuIds() =>
-        CommandMenu.Layout.SelectMany(menu => menu.Ids)
-            .Where(id => id != CommandMenu.Separator)
-            .SelectMany(id => id == CommandMenu.FocusEditorTab ? CommandMenu.FocusEditorTabIds : [id]);
+        CommandMenu.Layout.SelectMany(menu => menu.Ids).Where(id => id != CommandMenu.Separator);
 
     private static string? Focused(Workbench.Workbench workbench) =>
         workbench.MenuBar.SubViews.OfType<MenuBarItem>().FirstOrDefault(m => m.PopoverMenuOpen)?.PopoverMenu?.Root?.Focused is MenuItem item
@@ -355,8 +366,6 @@ public class MenuBarHostTests : StaticConfigurationTest
         workbench.MenuBar.SubViews.OfType<MenuBarItem>().Single(m => m.Title.Replace("_", "") == title);
 
     private static MenuItem Item(WorkbenchHost host, string id) => host.Menu.Items.Single(i => i.Id == id).Item;
-
-    private static string Id(WorkbenchHost host, MenuItem item) => host.Menu.Items.Single(i => i.Item == item).Id;
 
     private static string KeyShown(WorkbenchHost host, string id) => Item(host, id).KeyView.Text;
 
