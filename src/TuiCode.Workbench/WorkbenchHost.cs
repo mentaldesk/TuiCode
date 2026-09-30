@@ -150,7 +150,7 @@ public sealed class WorkbenchHost : IDisposable
         _focus = new FocusService(FocusedView);
 
         RegisterDefaultCommands();
-        _menu = new CommandMenu(_workbench.MenuBar, _commands, _keybindings, () => !_workbench.HasDialog);
+        _menu = new CommandMenu(_workbench.MenuBar, _commands, _keybindings, () => !_workbench.HasDialog, IsAvailableFromMenu);
         _menu.Opened += (_, _) => OnMenuOpened();
         _menu.Closed += (_, picked) => OnMenuClosed(picked);
         ApplyKeybindings(_settings.KeybindingOverrides);
@@ -950,15 +950,18 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(_menuKeys);
     }
 
-    // A picked command runs as its key would where the menu opened: not at all out of scope or disabled.
+    // The palette's rule: a command is offered where its key would run, in its scope and enabled.
+    private bool IsAvailableFromMenu(string id)
+    {
+        var scope = _commands.ScopeOf(id);
+        return (scope == CommandScope.Global || scope == FocusService.ScopeOf(_menuOpenedFrom)) && _commands.IsEnabled(id);
+    }
+
     private void OnMenuClosed(string? picked)
     {
         _scopes.Pop(_menuKeys);
         FocusCallingRegion();
-        if (picked is null) return;
-        var scope = _commands.ScopeOf(picked);
-        if (scope != CommandScope.Global && scope != FocusService.ScopeOf(_menuOpenedFrom)) return;
-        if (!_commands.IsEnabled(picked)) return;
+        if (picked is null || !IsAvailableFromMenu(picked)) return;
         RunLaunched(picked, _menuOpenedFrom == FocusRegion.Explorer);
     }
 

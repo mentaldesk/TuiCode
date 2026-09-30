@@ -148,10 +148,6 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.CompareToSaved),
             () => workbench.StatusBar.DisplayedFocus == "Diff",
             () => host.App.InjectKey(Key.D.WithAlt),
-            () => Focused(workbench) == "Compare to saved",
-            () => host.App.InjectKey(Key.CursorDown),
-            () => host.App.InjectKey(Key.CursorDown),
-            () => host.App.InjectKey(Key.CursorDown),
             () => Focused(workbench) == "Next change",
             () => host.App.InjectKey(Key.Enter),
             () => !workbench.MenuBar.IsOpen() && workbench.Editor.Group.ActiveDiffTab?.CurrentChange == 1);
@@ -159,12 +155,35 @@ public class MenuBarHostTests : StaticConfigurationTest
         Assert.Equal("Diff", workbench.StatusBar.DisplayedFocus);
     }
 
-    // Move line down's key does nothing in the explorer, so neither does picking it there.
+    // The palette's rule: an item is live only where its key would run.
     [Fact]
-    public async Task An_editor_command_picked_from_the_explorer_does_nothing()
+    public async Task With_no_editor_open_the_editor_commands_are_greyed_out()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        string? first = null;
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.E.WithAlt),
+            () => workbench.MenuBar.IsOpen(),
+            () => { first = Focused(workbench); host.App.InjectKey(Key.Esc); },
+            () => !workbench.MenuBar.IsOpen());
+
+        Assert.False(Item(host, CommandIds.MoveLinesUp).Enabled);
+        Assert.False(Item(host, CommandIds.ChangeGrammar).Enabled);
+        Assert.False(Item(host, CommandIds.AddCursorAbove).Enabled);
+        Assert.False(Item(host, CommandIds.NextChange).Enabled);
+        Assert.True(Item(host, CommandIds.FindInFile).Enabled);
+        Assert.True(Item(host, CommandIds.ToggleSidebar).Enabled);
+        Assert.Equal("Find in file", first);
+    }
+
+    [Fact]
+    public async Task The_items_follow_where_the_menu_was_opened_from()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
+        bool fromExplorer = true, fromEditor = false;
 
         await HostSteps.Run(host,
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
@@ -172,14 +191,18 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusSidebar),
             () => workbench.StatusBar.DisplayedFocus == "Explorer",
             () => host.App.InjectKey(Key.E.WithAlt),
-            () => Focused(workbench) == "Move line up",
-            () => host.App.InjectKey(Key.CursorDown),
-            () => Focused(workbench) == "Move line down",
-            () => host.App.InjectKey(Key.Enter),
+            () => workbench.MenuBar.IsOpen(),
+            () => { fromExplorer = Item(host, CommandIds.MoveLinesDown).Enabled; host.App.InjectKey(Key.Esc); },
+            () => !workbench.MenuBar.IsOpen() && workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => commands.TryExecute(CommandIds.FocusEditorBody),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.E.WithAlt),
+            () => workbench.MenuBar.IsOpen(),
+            () => { fromEditor = Item(host, CommandIds.MoveLinesDown).Enabled; host.App.InjectKey(Key.Esc); },
             () => !workbench.MenuBar.IsOpen());
 
-        Assert.Equal("one\ntwo\nthree\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
-        Assert.Equal("Explorer", workbench.StatusBar.DisplayedFocus);
+        Assert.False(fromExplorer);
+        Assert.True(fromEditor);
     }
 
     [Fact]

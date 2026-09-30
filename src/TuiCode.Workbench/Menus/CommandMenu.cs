@@ -88,15 +88,18 @@ public sealed class CommandMenu
     private readonly ICommandService _commands;
     private readonly IKeybindingService _keybindings;
     private readonly Func<bool> _canOpen;
+    private readonly Func<string, bool> _isAvailable;
     private readonly List<(string Id, MenuItem Item)> _items = [];
     private string? _picked;
 
-    public CommandMenu(MenuBar bar, ICommandService commands, IKeybindingService keybindings, Func<bool> canOpen)
+    public CommandMenu(MenuBar bar, ICommandService commands, IKeybindingService keybindings, Func<bool> canOpen,
+        Func<string, bool> isAvailable)
     {
         _bar = bar;
         _commands = commands;
         _keybindings = keybindings;
         _canOpen = canOpen;
+        _isAvailable = isAvailable;
         // Our own keybinding service opens it, so the key can be rebound.
         _bar.HotKeyBindings.Remove(_bar.Key);
         _bar.Menus = [.. Layout.Select(Build)];
@@ -179,6 +182,7 @@ public sealed class CommandMenu
             IsOpen = true;
             _picked = null;
             Opened?.Invoke(this, EventArgs.Empty);
+            foreach (var (id, item) in _items) item.Enabled = _isAvailable(id);
             return;
         }
         _bar.App?.AddTimeout(TimeSpan.Zero, () =>
