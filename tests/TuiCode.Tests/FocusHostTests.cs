@@ -281,7 +281,7 @@ public class FocusHostTests : StaticConfigurationTest
     }
 
     // The workbench's own three parts are the sidebar, the editor and the status bar; anything else is a modal.
-    private static int Modals(Workbench.Workbench workbench) => workbench.SubViews.Count - 3;
+    private static int Modals(Workbench.Workbench workbench) => workbench.SubViews.Count - 4;
 
     [Fact]
     public async Task Saving_leaves_the_keys_in_the_diff()

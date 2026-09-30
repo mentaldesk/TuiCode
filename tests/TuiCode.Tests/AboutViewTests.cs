@@ -1,4 +1,5 @@
 using Terminal.Gui.Drawing;
+using Terminal.Gui.Drivers;
 using Terminal.Gui.Views;
 using TuiCode.Workbench.About;
 
@@ -70,18 +71,77 @@ public class AboutImageTests
 
 public class SixelProbeTests
 {
-    [Fact]
-    public void ParseIterm2CellSize_reads_width_and_height()
-    {
-        var size = SixelProbe.ParseIterm2CellSize("\x1b]1337;ReportCellSize=26.5;11.0;2.0\x1b\\");
+    [Theory]
+    [InlineData("17.50;8.00;2.0", 16, 35)]
+    [InlineData("26.0;11.0;2.0", 22, 52)]
+    [InlineData("26.5;11.0;1.0", 11, 26.5)]
+    [InlineData("26.5;11.0", 11, 26.5)]
+    [InlineData("17.5;8.0;1.5", 12, 26)]
+    [InlineData("20;10;400", 40, 80)]
+    [InlineData("20;10;0", 10, 20)]
+    [InlineData("20;10;1.2.3", 10, 20)]
+    public void ParseIterm2CellSize_reads_the_cell_in_device_pixels(string reply, float width, float height) =>
+        Assert.Equal(
+            new System.Drawing.SizeF(width, height),
+            SixelProbe.ParseIterm2CellSize($"\x1b]1337;ReportCellSize={reply}\x1b\\")?.Pixels);
 
-        Assert.Equal(new System.Drawing.SizeF(11f, 26.5f), size);
+    [Theory]
+    [InlineData("17.50;8.00;2.0", 2f)]
+    [InlineData("17.50;8.00;1.0", 1f)]
+    [InlineData("17.50;8.00", 1f)]
+    public void ParseIterm2CellSize_reports_the_scale_it_used(string reply, float scale)
+    {
+        var cell = SixelProbe.ParseIterm2CellSize($"\x1b]1337;ReportCellSize={reply}\x1b\\");
+
+        Assert.Equal(CellSizeSource.Iterm2Report, cell?.Source);
+        Assert.Equal(scale, cell?.Scale);
+    }
+
+    [Fact]
+    public void MeasureCell_reports_the_query_that_answered_first()
+    {
+        var requests = new List<AnsiEscapeSequenceRequest>();
+        var found = new List<CellMeasurement>();
+        SixelProbe.MeasureCell(requests.Add, found.Add);
+
+        requests[1].ResponseReceived!("\x1b[6;20;10t");
+        requests[0].ResponseReceived!("\x1b]1337;ReportCellSize=17.5;8.0;2.0\x1b\\");
+
+        Assert.Equal([new CellMeasurement(new System.Drawing.SizeF(10, 20), CellSizeSource.CellResolutionReply)], found);
+    }
+
+    [Fact]
+    public void MeasureCell_takes_the_other_query_when_the_first_goes_unanswered()
+    {
+        var requests = new List<AnsiEscapeSequenceRequest>();
+        var found = new List<CellMeasurement>();
+        SixelProbe.MeasureCell(requests.Add, found.Add);
+
+        requests[1].Abandoned!();
+        requests[0].ResponseReceived!("\x1b]1337;ReportCellSize=17.5;8.0;2.0\x1b\\");
+
+        Assert.Equal([new CellMeasurement(new System.Drawing.SizeF(16, 35), CellSizeSource.Iterm2Report, 2)], found);
+    }
+
+    [Fact]
+    public void MeasureCell_assumes_a_size_when_neither_query_is_answered()
+    {
+        var requests = new List<AnsiEscapeSequenceRequest>();
+        var found = new List<CellMeasurement>();
+        SixelProbe.MeasureCell(requests.Add, found.Add);
+
+        requests[0].Abandoned!();
+        requests[1].Abandoned!();
+
+        Assert.Equal([new CellMeasurement(new System.Drawing.SizeF(10, 20), CellSizeSource.Assumed)], found);
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("\x1b[?64;1;2;4c")]
     [InlineData("\x1b]1337;ReportCellSize=0;11\x1b\\")]
+    [InlineData("\x1b]1337;ReportCellSize=0;11;2.0\x1b\\")]
+    [InlineData("\x1b]1337;ReportCellSize=1.2.3;11;2.0\x1b\\")]
     public void ParseIterm2CellSize_rejects_other_replies(string? response) =>
         Assert.Null(SixelProbe.ParseIterm2CellSize(response));
 

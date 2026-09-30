@@ -101,6 +101,40 @@ public class ClipboardToolsTests
 
         Assert.Equal([0xFF, 0xFE, 0xE9, 0x00], program.Input);
     }
+
+    // #347
+    [Fact]
+    public void Write_runs_pbcopy_and_pbpaste_in_a_UTF_8_locale()
+    {
+        var program = new ClipboardProgram();
+
+        ClipboardTools.For(true, false, false, program).Write("a — b");
+
+        Assert.Equal(["LC_ALL=en_US.UTF-8", "LC_ALL=en_US.UTF-8"], program.Environments);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public void Write_leaves_the_locale_of_byte_transparent_programs_alone(bool wayland, bool windows)
+    {
+        var program = new ClipboardProgram();
+
+        ClipboardTools.For(false, windows, wayland, program).Write("a — b");
+
+        Assert.All(program.Environments, environment => Assert.Equal("", environment));
+    }
+
+    [Fact]
+    public void The_programs_keep_the_rest_of_TuiCode_s_environment()
+    {
+        var inherited = new Dictionary<string, string?> { ["LC_ALL"] = "C", ["DISPLAY"] = ":0", ["WAYLAND_DISPLAY"] = "wayland-0" };
+
+        ProcessRunner.Override(inherited, new Dictionary<string, string> { ["LC_ALL"] = "en_US.UTF-8" });
+
+        Assert.Equal(new Dictionary<string, string?> { ["LC_ALL"] = "en_US.UTF-8", ["DISPLAY"] = ":0", ["WAYLAND_DISPLAY"] = "wayland-0" }, inherited);
+    }
 }
 
 /// <summary>Stands in for every clipboard program: a copy stores its input as UTF-8, a paste returns it; <see cref="Answer"/> overrides either.</summary>
@@ -110,11 +144,13 @@ internal sealed class ClipboardProgram : IProcessRunner
     public byte[] Input { get; private set; } = [];
     public TimeSpan Timeout { get; private set; }
     public List<string> Ran { get; } = [];
+    public List<string> Environments { get; } = [];
     public Func<string[], ToolRun?> Answer { get; init; } = _ => null;
 
-    public ToolRun Run(string[] command, byte[] input, bool readOutput, TimeSpan timeout)
+    public ToolRun Run(string[] command, IReadOnlyDictionary<string, string> environment, byte[] input, bool readOutput, TimeSpan timeout)
     {
         Ran.Add(string.Join(' ', command));
+        Environments.Add(string.Join(' ', environment.Select(variable => $"{variable.Key}={variable.Value}")));
         Timeout = timeout;
         if (Answer(command) is { } answer) return answer;
         if (readOutput) return new ToolRun.Exited(0, Stored, "");

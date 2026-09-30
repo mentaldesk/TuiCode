@@ -61,7 +61,7 @@ public class DiskReloadHostTests : StaticConfigurationTest
     {
         var full = _fs.Path.GetFullPath(path);
         _fs.File.WriteAllText(full, content);
-        _fs.Watchers.For(_fs.Path.GetDirectoryName(full)!).RaiseChanged(full);
+        foreach (var watcher in _fs.Watchers.At(_fs.Path.GetDirectoryName(full)!)) watcher.RaiseChanged(full);
     }
 
     private Workbench.Workbench BuildWorkbench()

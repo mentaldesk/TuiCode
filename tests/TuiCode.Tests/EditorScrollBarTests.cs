@@ -321,7 +321,7 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
     }
 
     private static Action Size(WorkbenchHost host, int width, int height) =>
-        () => host.App.Driver!.SetScreenSize(width, height);
+        () => HostSteps.PinScreenSize(host, width, height);
 
     private static EditorTab Tab(Workbench.Workbench workbench) => workbench.Editor.Group.ActiveTab!;
 

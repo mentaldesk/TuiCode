@@ -29,8 +29,11 @@ internal sealed class FakeWatcherFactory(IFileSystem fileSystem) : IFileSystemWa
 
     public IEnumerable<FakeFileSystemWatcher> Live => All.Where(w => w is { Disposed: false, EnableRaisingEvents: true });
 
-    public FakeFileSystemWatcher For(string directory) =>
-        Live.Single(w => string.Equals(w.Path, directory, StringComparison.Ordinal));
+    public FakeFileSystemWatcher For(string directory) => At(directory).Single();
+
+    /// <summary>Every live watcher on <paramref name="directory"/>: in the host the Explorer and the open tabs each watch their own.</summary>
+    public IEnumerable<FakeFileSystemWatcher> At(string directory) =>
+        Live.Where(w => string.Equals(w.Path, directory, StringComparison.Ordinal)).ToList();
 
     public IFileSystemWatcher New() => throw new NotSupportedException();
 

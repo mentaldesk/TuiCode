@@ -5,7 +5,11 @@ using System.Text;
 namespace TuiCode.Editor;
 
 /// <summary>A platform's own clipboard program, e.g. <c>pbcopy</c>, and the one that reads the clipboard back.</summary>
-internal sealed record ClipboardTool(string Name, string[] Copy, string[] Paste, Encoding InputEncoding);
+internal sealed record ClipboardTool(string Name, string[] Copy, string[] Paste, Encoding InputEncoding)
+{
+    /// <summary>Variables set for both programs on top of TuiCode's own environment.</summary>
+    public IReadOnlyDictionary<string, string> Environment { get; init; } = new Dictionary<string, string>();
+}
 
 internal abstract record ToolRun
 {
@@ -18,7 +22,7 @@ internal abstract record ToolRun
 
 internal interface IProcessRunner
 {
-    ToolRun Run(string[] command, byte[] input, bool readOutput, TimeSpan timeout);
+    ToolRun Run(string[] command, IReadOnlyDictionary<string, string> environment, byte[] input, bool readOutput, TimeSpan timeout);
 }
 
 /// <summary>Copies through the platform's clipboard program when Terminal.Gui's clipboard didn't take the text (#319).</summary>
@@ -30,7 +34,11 @@ internal sealed class ClipboardTools(IReadOnlyList<ClipboardTool> candidates, st
         OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(),
         !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")), new ProcessRunner());
 
-    private static readonly ClipboardTool PbCopy = new("pbcopy", ["pbcopy"], ["pbpaste"], new UTF8Encoding(false));
+    // Without a UTF-8 locale pbcopy stores the bytes as Mac Roman and pbpaste undoes it, so the read-back can't tell (#347).
+    private static readonly ClipboardTool PbCopy = new("pbcopy", ["pbcopy"], ["pbpaste"], new UTF8Encoding(false))
+    {
+        Environment = new Dictionary<string, string> { ["LC_ALL"] = "en_US.UTF-8" },
+    };
     private static readonly ClipboardTool WlCopy = new("wl-copy", ["wl-copy"], ["wl-paste", "--no-newline"], new UTF8Encoding(false));
     private static readonly ClipboardTool XClip = new("xclip", ["xclip", "-selection", "clipboard"], ["xclip", "-selection", "clipboard", "-o"], new UTF8Encoding(false));
     // clip.exe reads UTF-16 only when it starts with a byte order mark; otherwise it uses the console code page.
@@ -51,11 +59,11 @@ internal sealed class ClipboardTools(IReadOnlyList<ClipboardTool> candidates, st
         foreach (var tool in candidates)
         {
             var input = tool.InputEncoding.GetPreamble().Concat(tool.InputEncoding.GetBytes(text)).ToArray();
-            var copied = runner.Run(tool.Copy, input, readOutput: false, Timeout);
+            var copied = runner.Run(tool.Copy, tool.Environment, input, readOutput: false, Timeout);
             if (copied is ToolRun.NotFound) continue;
             if (Failure(tool, copied) is { } copyFailed) return copyFailed;
 
-            var pasted = runner.Run(tool.Paste, [], readOutput: true, Timeout);
+            var pasted = runner.Run(tool.Paste, tool.Environment, [], readOutput: true, Timeout);
             if (pasted is ToolRun.NotFound) return new CopyOutcome.Failed($"{tool.Paste[0]} not found ({tool.Name})");
             if (Failure(tool, pasted) is { } pasteFailed) return pasteFailed;
             return ((ToolRun.Exited)pasted).Output.ReplaceLineEndings("\n") == text.ReplaceLineEndings("\n")
@@ -78,7 +86,7 @@ internal sealed class ClipboardTools(IReadOnlyList<ClipboardTool> candidates, st
 
 internal sealed class ProcessRunner : IProcessRunner
 {
-    public ToolRun Run(string[] command, byte[] input, bool readOutput, TimeSpan timeout)
+    public ToolRun Run(string[] command, IReadOnlyDictionary<string, string> environment, byte[] input, bool readOutput, TimeSpan timeout)
     {
         var info = new ProcessStartInfo(command[0])
         {
@@ -91,6 +99,7 @@ internal sealed class ProcessRunner : IProcessRunner
             StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var argument in command.Skip(1)) info.ArgumentList.Add(argument);
+        Override(info.Environment, environment);
 
         Process process;
         try
@@ -137,5 +146,10 @@ internal sealed class ProcessRunner : IProcessRunner
                 return new ToolRun.TimedOut();
             return new ToolRun.Exited(process.ExitCode, output.Result, error.Result);
         }
+    }
+
+    internal static void Override(IDictionary<string, string?> inherited, IReadOnlyDictionary<string, string> environment)
+    {
+        foreach (var (name, value) in environment) inherited[name] = value;
     }
 }
