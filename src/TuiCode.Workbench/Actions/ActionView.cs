@@ -20,6 +20,7 @@ public sealed class ActionView : Window
 
     private readonly Action<string> _execute;
     private readonly TextField _search;
+    private readonly Label _header;
     private readonly ListView _list;
 
     private readonly ICommandService _scopeCommands;
@@ -58,9 +59,11 @@ public sealed class ActionView : Window
         // Required for descendant focus — same reason as KeybindingsPickerView.
         CanFocus = true;
 
+        var filterLabel = new Label { X = 1, Y = 0, Text = "Filter:" };
+
         _search = new TextField
         {
-            X = 1,
+            X = Pos.Right(filterLabel) + 1,
             Y = 0,
             Width = Dim.Fill(1),
             Height = 1,
@@ -68,16 +71,24 @@ public sealed class ActionView : Window
         _search.TextChanged += (_, _) => RebuildVisible();
         _search.MouseEvent += (_, _) => _search.SetFocus();
 
-        _list = new ListView
+        _header = new Label
         {
             X = 1,
             Y = Pos.Bottom(_search) + 1,
+            Width = Dim.Fill(1),
+            Height = 1,
+        };
+
+        _list = new ListView
+        {
+            X = 1,
+            Y = Pos.Bottom(_header),
             Width = Dim.Fill(1),
             Height = Dim.Fill(1),
         };
         _list.MouseEvent += (_, _) => _list.SetFocus();
 
-        Add(_search, _list);
+        Add(filterLabel, _search, _header, _list);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -89,6 +100,17 @@ public sealed class ActionView : Window
     }
 
     public bool FocusSearch() => _search.SetFocus();
+
+    /// <summary>The column headings over the list.</summary>
+    public string Header => _header.Text;
+
+    protected override void OnSubViewsLaidOut(LayoutEventArgs args)
+    {
+        base.OnSubViewsLaidOut(args);
+        var header = ActionRow.Header(_list.Viewport.Width);
+        if (_header.Text != header)
+            _header.Text = header;
+    }
 
     private static List<ActionRow> BuildRows(ICommandService commands, IKeybindingService keybindings, CommandScope scope)
     {

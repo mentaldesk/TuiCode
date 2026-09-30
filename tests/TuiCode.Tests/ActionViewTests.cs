@@ -64,7 +64,7 @@ public class ActionViewTests
 
         Assert.EndsWith($"  {CommandMnemonics.For(CommandIds.SaveActiveEditor)}", view.Row("Save active editor", 72));
         Assert.EndsWith($"  {CommandMnemonics.For(CommandIds.SelectAllOccurrences)}", view.Row("Select all occurrences", 72));
-        Assert.Equal(view.Row("Quit", 72).TrimEnd(), "Quit");
+        Assert.Equal("Quit", view.Row("Quit", 72).TrimEnd());
     }
 
     [Theory]
@@ -93,14 +93,39 @@ public class ActionViewTests
         using var view = new ActionView(commands, keybindings, CommandScope.Editor, _ => { });
 
         var wide = view.Row("Select all occurrences", 72);
-        var narrow = view.Row("Select all occurrences", 32);
+        var narrow = view.Row("Select all occurrences", 37);
 
         Assert.Equal(72, wide.Length);
         Assert.Equal(view.Row("Save active editor", 72).Length, wide.Length);
-        Assert.Equal(32, narrow.Length);
+        Assert.Equal(37, narrow.Length);
         Assert.EndsWith("sao", narrow);
         Assert.Contains("…", narrow);
         Assert.Contains("Ctrl+Shift+L", narrow);
+    }
+
+    [Fact]
+    public void The_columns_are_headed_Command_Binding_and_Mnemonic_over_the_values_they_name()
+    {
+        var commands = Registered();
+        var keybindings = new KeybindingService(commands);
+        keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
+        using var view = new ActionView(commands, keybindings, CommandScope.Editor, _ => { });
+        view.Layout(new System.Drawing.Size(76, 22));
+
+        var row = view.Row("Save active editor", view.Header.Length);
+
+        Assert.StartsWith("Command", view.Header);
+        Assert.Equal(row.IndexOf("Ctrl+S", StringComparison.Ordinal), view.Header.IndexOf("Binding", StringComparison.Ordinal));
+        Assert.EndsWith("Mnemonic", view.Header);
+        Assert.EndsWith(CommandMnemonics.For(CommandIds.SaveActiveEditor)!, row);
+    }
+
+    [Fact]
+    public void The_filter_field_is_labelled()
+    {
+        using var view = Build(CommandScope.Global);
+
+        Assert.Contains(view.SubViews.OfType<Label>(), l => l.Text == "Filter:");
     }
 
     private static ActionView Build(CommandScope scope)
