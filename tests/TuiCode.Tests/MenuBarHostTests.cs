@@ -179,6 +179,40 @@ public class MenuBarHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_menu_with_nothing_that_can_run_is_hidden_and_the_rest_close_up()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        string[] before = [], after = [];
+        var viewX = 0;
+
+        await HostSteps.Run(host,
+            () => !Titles(workbench).Contains("Selection"),
+            () =>
+            {
+                before = Titles(workbench);
+                viewX = Title(workbench, "View").Frame.X;
+                host.App.InjectKey(Key.S.WithAlt);
+            },
+            () => { },
+            () => Assert.False(workbench.MenuBar.IsOpen()),
+            () => host.App.InjectKey(Key.E.WithAlt),
+            () => workbench.MenuBar.IsOpen(),
+            () => host.App.InjectKey(Key.CursorRight),
+            () => Title(workbench, "View").PopoverMenuOpen,
+            () => host.App.InjectKey(Key.Esc),
+            () => !workbench.MenuBar.IsOpen(),
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor" && Titles(workbench).Contains("Selection"),
+            () => { after = Titles(workbench); });
+
+        Assert.DoesNotContain("Selection", before);
+        Assert.Contains("Selection", after);
+        Assert.Equal(Title(workbench, "Edit").Frame.Right, viewX);
+        Assert.Equal(Title(workbench, "Selection").Frame.Right, Title(workbench, "View").Frame.X);
+    }
+
+    [Fact]
     public async Task The_items_follow_where_the_menu_was_opened_from()
     {
         using var workbench = BuildWorkbench();
@@ -313,6 +347,9 @@ public class MenuBarHostTests : StaticConfigurationTest
         workbench.MenuBar.SubViews.OfType<MenuBarItem>().FirstOrDefault(m => m.PopoverMenuOpen)?.PopoverMenu?.Root?.Focused is MenuItem item
             ? item.Title
             : null;
+
+    private static string[] Titles(Workbench.Workbench workbench) =>
+        [.. workbench.MenuBar.SubViews.OfType<MenuBarItem>().Select(m => m.Title.Replace("_", ""))];
 
     private static MenuBarItem Title(Workbench.Workbench workbench, string title) =>
         workbench.MenuBar.SubViews.OfType<MenuBarItem>().Single(m => m.Title.Replace("_", "") == title);

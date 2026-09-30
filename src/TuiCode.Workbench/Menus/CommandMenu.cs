@@ -90,6 +90,7 @@ public sealed class CommandMenu
     private readonly Func<bool> _canOpen;
     private readonly Func<string, bool> _isAvailable;
     private readonly List<(string Id, MenuItem Item)> _items = [];
+    private readonly List<(MenuBarItem Menu, (string Id, MenuItem Item)[] Items)> _menus = [];
     private string? _picked;
 
     public CommandMenu(MenuBar bar, ICommandService commands, IKeybindingService keybindings, Func<bool> canOpen,
@@ -135,9 +136,25 @@ public sealed class CommandMenu
         }
     }
 
+    /// <summary>Greys out each item that can't run, and takes a menu with none that can off the bar.</summary>
+    public void ShowAvailable()
+    {
+        GreyOutUnavailable();
+        var shown = _menus.Where(m => m.Items.Any(i => i.Item.Enabled)).Select(m => m.Menu).ToArray();
+        // TG's bar keeps a hidden item's place, so an empty menu leaves the bar rather than hiding.
+        if (!shown.SequenceEqual(_bar.SubViews.OfType<MenuBarItem>())) _bar.Menus = shown;
+    }
+
+    private void GreyOutUnavailable()
+    {
+        foreach (var (id, item) in _items) item.Enabled = _isAvailable(id);
+    }
+
     private MenuBarItem Build((string Title, string[] Ids) entry)
     {
+        var first = _items.Count;
         var menu = new MenuBarItem(entry.Title, entry.Ids.Select(Entry).ToArray());
+        _menus.Add((menu, _items[first..].ToArray()));
         // A title's bare letter would open its menu from anywhere and swallow typing; keep only Alt+letter.
         menu.HotKeyBindings.Remove(menu.HotKey);
         menu.HotKeyBindings.Remove(menu.HotKey.WithShift);
@@ -182,7 +199,7 @@ public sealed class CommandMenu
             IsOpen = true;
             _picked = null;
             Opened?.Invoke(this, EventArgs.Empty);
-            foreach (var (id, item) in _items) item.Enabled = _isAvailable(id);
+            GreyOutUnavailable();
             return;
         }
         _bar.App?.AddTimeout(TimeSpan.Zero, () =>

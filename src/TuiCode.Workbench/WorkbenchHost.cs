@@ -62,6 +62,7 @@ public sealed class WorkbenchHost : IDisposable
     // Open menus take arrows, Enter and Esc for themselves, so no workbench key fires under one.
     private readonly KeybindingService _menuKeys = new(new CommandService());
     private FocusRegion _menuOpenedFrom;
+    private long _menuShownAt;
     private readonly FindController _find;
     private readonly FocusService _focus;
     private readonly DiskChanges _diskChanges;
@@ -150,7 +151,8 @@ public sealed class WorkbenchHost : IDisposable
         _focus = new FocusService(FocusedView);
 
         RegisterDefaultCommands();
-        _menu = new CommandMenu(_workbench.MenuBar, _commands, _keybindings, () => !_workbench.HasDialog, IsAvailableFromMenu);
+        _menu = new CommandMenu(_workbench.MenuBar, _commands, _keybindings, () => !_workbench.HasDialog,
+            id => IsAvailableFrom(id, _menu.IsOpen ? _menuOpenedFrom : _focus.Region));
         _menu.Opened += (_, _) => OnMenuOpened();
         _menu.Closed += (_, picked) => OnMenuClosed(picked);
         ApplyKeybindings(_settings.KeybindingOverrides);
@@ -237,6 +239,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             var inSidebar = region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Review;
             _workbench.StatusBar.SetFocusRegion(FocusService.Label(region));
+            ShowAvailableMenus();
             sidebarBorder.Show(inSidebar);
             editorBorder.Show(!inSidebar);
         };
@@ -951,17 +954,23 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     // The palette's rule: a command is offered where its key would run, in its scope and enabled.
-    private bool IsAvailableFromMenu(string id)
+    private bool IsAvailableFrom(string id, FocusRegion region)
     {
         var scope = _commands.ScopeOf(id);
-        return (scope == CommandScope.Global || scope == FocusService.ScopeOf(_menuOpenedFrom)) && _commands.IsEnabled(id);
+        return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id);
+    }
+
+    private void ShowAvailableMenus()
+    {
+        _menuShownAt = Environment.TickCount64;
+        if (!_menu.IsOpen) _menu.ShowAvailable();
     }
 
     private void OnMenuClosed(string? picked)
     {
         _scopes.Pop(_menuKeys);
         FocusCallingRegion();
-        if (picked is null || !IsAvailableFromMenu(picked)) return;
+        if (picked is null || !IsAvailableFrom(picked, _menuOpenedFrom)) return;
         RunLaunched(picked, _menuOpenedFrom == FocusRegion.Explorer);
     }
 
@@ -1096,6 +1105,8 @@ public sealed class WorkbenchHost : IDisposable
         // Picks up focus Terminal.Gui moved on its own, and any move that didn't land where it was asked to.
         _focus.Reconcile();
         _activeSymbolPicker?.Advance();
+        // Some isEnabled checks touch the disk, so not on every iteration.
+        if (Environment.TickCount64 - _menuShownAt >= 250) ShowAvailableMenus();
     }
 
     private void OnEditorCursorMoved(object? sender, (IFileInfo File, int Row, int Column) e)
