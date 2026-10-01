@@ -21,6 +21,8 @@ public sealed class DiffTab : FrameView
     private static readonly Color DefaultRemoved = new(0x5A, 0x1E, 0x1E);
     private static readonly Color DefaultInserted = new(0x1E, 0x4A, 0x28);
     private static readonly Color DefaultComment = new(0x3A, 0x2C, 0x50);
+    internal static readonly Color DefaultRemovedText = new(0x8A, 0x2E, 0x2E);
+    internal static readonly Color DefaultInsertedText = new(0x2E, 0x72, 0x3E);
 
     private readonly Func<IReadOnlyList<string>> _readLeft;
     private readonly SyntaxHighlighter? _syntax;
@@ -170,6 +172,10 @@ public sealed class DiffTab : FrameView
     public IReadOnlyList<string> LeftLines => _left;
 
     public AlignedDiff Diff { get; private set; }
+
+    /// <summary>The changed words on each side of each edited row, by row of <see cref="Diff"/> (#369).</summary>
+    internal IReadOnlyDictionary<int, (TextRange[] Left, TextRange[] Right)> WordChanges { get; private set; } =
+        new Dictionary<int, (TextRange[] Left, TextRange[] Right)>();
 
     /// <summary>A row on screen: a row of the diff, or a row of a thread (#186) or draft (#188) sitting under one.</summary>
     private readonly record struct Row(int Diff, GitHubReviewThread? Thread, DraftComment? Draft, ThreadRow Text)
@@ -371,6 +377,7 @@ public sealed class DiffTab : FrameView
         _left = _readLeft();
         _right = Source is { } source ? [.. source.SnapshotLines] : _rightRevision ?? [];
         Diff = AlignedDiff.Compute(_left, _right, MaxEdits);
+        WordChanges = ComputeWordChanges();
         _widest = null;
         var grammar = Source?.Grammar ?? _ownGrammar;
         if (!Equals(LeftTokens?.Language, grammar))
@@ -384,6 +391,18 @@ public sealed class DiffTab : FrameView
         UpdateTitle();
         ScrollTo(_top);
         MoveTo(_current);
+    }
+
+    private Dictionary<int, (TextRange[] Left, TextRange[] Right)> ComputeWordChanges()
+    {
+        var changes = new Dictionary<int, (TextRange[] Left, TextRange[] Right)>();
+        for (var i = 0; i < Diff.Rows.Count; i++)
+        {
+            if (Diff.Rows[i] is not { Kind: DiffRowKind.Modified, Left: { } left, Right: { } right }) continue;
+            var words = WordDiff.Changes(_left[left], _right[right]);
+            if (words.Left.Length > 0 || words.Right.Length > 0) changes[i] = words;
+        }
+        return changes;
     }
 
     internal void UpdateTitle()
@@ -525,6 +544,8 @@ public sealed class DiffTab : FrameView
         var removed = normal with { Background = ThemeColor("diffEditor.removedLineBackground") ?? DefaultRemoved };
         var inserted = normal with { Background = ThemeColor("diffEditor.insertedLineBackground") ?? DefaultInserted };
         var comment = normal with { Background = ThemeColor("editorCommentsWidget.rangeBackground") ?? DefaultComment };
+        var removedText = ThemeColor("diffEditor.removedTextBackground") ?? DefaultRemovedText;
+        var insertedText = ThemeColor("diffEditor.insertedTextBackground") ?? DefaultInsertedText;
         var (leftWidth, rightWidth) = SideWidths();
         var rightX = leftWidth + 1;
         var digits = Digits;
@@ -552,9 +573,10 @@ public sealed class DiffTab : FrameView
             var changed = row?.Kind is DiffRowKind.Modified or DiffRowKind.LeftOnly or DiffRowKind.RightOnly;
             Attribute? marked = row is not null && index == _current ? current : null;
             var tinted = IsReverted(row) ? reverted : normal;
-            DrawSide(0, y, leftWidth, row?.Left, _left, LeftTokens, digits, changed ? '-' : ' ', changed ? removed : tinted, normal, marked);
+            var words = index < _rows.Count && WordChanges.TryGetValue(_rows[index].Diff, out var found) ? found : ([], []);
+            DrawSide(0, y, leftWidth, row?.Left, _left, LeftTokens, digits, changed ? '-' : ' ', changed ? removed : tinted, normal, marked, words.Left, removedText);
             DrawSeparator(leftWidth, y, normal);
-            DrawSide(rightX, y, rightWidth, row?.Right, _right, RightTokens, digits, changed ? '+' : ' ', changed ? inserted : tinted, normal, marked);
+            DrawSide(rightX, y, rightWidth, row?.Right, _right, RightTokens, digits, changed ? '+' : ' ', changed ? inserted : tinted, normal, marked, words.Right, insertedText);
         }
         return true;
     }
@@ -579,13 +601,13 @@ public sealed class DiffTab : FrameView
         if (!done) App?.Invoke(SetNeedsDraw);
     }
 
-    private void DrawSide(int x, int y, int width, int? line, IReadOnlyList<string> lines, LineTokenCache? tokens, int digits, char marker, Attribute tint, Attribute normal, Attribute? current)
+    private void DrawSide(int x, int y, int width, int? line, IReadOnlyList<string> lines, LineTokenCache? tokens, int digits, char marker, Attribute tint, Attribute normal, Attribute? current, TextRange[] words, Color wordBackground)
     {
         var prefix = line is { } i ? $"{(i + 1).ToString().PadLeft(digits)}{marker} " : new string(' ', digits + 2);
         var number = marker == ' ' ? tint with { Style = tint.Style | TextStyle.Faint } : tint;
         var used = Math.Min(width, prefix.Length);
         DrawText(x, y, used, prefix, current ?? (line is null ? normal : number));
-        if (line is { } l) DrawText(x + used, y, width - used, lines[l], tint, tokens?.TokensFor(l), _column);
+        if (line is { } l) DrawText(x + used, y, width - used, lines[l], tint, tokens?.TokensFor(l), _column, words, wordBackground);
         else DrawText(x + used, y, width - used, "", normal);
     }
 
@@ -605,29 +627,37 @@ public sealed class DiffTab : FrameView
         AddStr(x, y, "│");
     }
 
-    // Pads to width; the first `skip` columns and whatever passes width are cut. Token offsets are UTF-16 chars, not cells.
-    private void DrawText(int x, int y, int width, string text, Attribute attribute, int[]? tokens = null, int skip = 0)
+    // Pads to width; the first `skip` columns and whatever passes width are cut. Token and word offsets are UTF-16 chars, not cells.
+    private void DrawText(int x, int y, int width, string text, Attribute attribute, int[]? tokens = null, int skip = 0, TextRange[]? words = null, Color wordBackground = default)
     {
         SetAttribute(attribute);
         var col = 0;
         var chars = 0;
         var token = -1;
+        var word = 0;
+        var inWord = false;
         var elements = StringInfo.GetTextElementEnumerator(text);
         while (elements.MoveNext() && col - skip < width)
         {
             var grapheme = elements.GetTextElement();
+            var next = token;
             if (tokens is { Length: > 0 })
             {
-                var next = Math.Max(token, 0);
+                next = Math.Max(token, 0);
                 while (next + 2 < tokens.Length && tokens[next + 2] <= chars)
                     next += 2;
-                if (next != token)
-                {
-                    SetAttribute(_palette.Apply(attribute, tokens[next + 1]));
-                    token = next;
-                }
-                chars += grapheme.Length;
             }
+            while (words is not null && word < words.Length && words[word].End <= chars)
+                word++;
+            var nowInWord = words is not null && word < words.Length && words[word].Start <= chars;
+            if (next != token || nowInWord != inWord)
+            {
+                var background = nowInWord ? attribute with { Background = wordBackground } : attribute;
+                SetAttribute(next < 0 ? background : _palette.Apply(background, tokens![next + 1]));
+                token = next;
+                inWord = nowInWord;
+            }
+            chars += grapheme.Length;
             var cols = Columns(grapheme, col);
             if (grapheme == "\t" || col < skip)
             {
