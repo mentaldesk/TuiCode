@@ -185,7 +185,8 @@ public sealed class WorkbenchHost : IDisposable
             _workbench.Sidebar.Explorer,
             _workbench.StatusBar.SetMessage,
             new DiskWatcher(fileSystem, ScheduleFlush, _logger));
-        _baselines = new CommittedBaselines(_workbench.Editor.Group, _git, action => _app.Invoke(action));
+        _baselines = new CommittedBaselines(
+            _workbench.Editor.Group, _git, action => _app.Invoke(action), new HeadWatcher(fileSystem, ScheduleFlush, _logger));
 
         var explorer = _workbench.Sidebar.Explorer;
         _folderWatcher = new FolderWatcher(fileSystem, ScheduleFlush, _logger);
@@ -2718,6 +2719,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
         _diskChanges.Dispose();
+        _baselines.Dispose();
         _folderWatcher.Dispose();
         _find.Dispose();
         _terminalCursors.Dispose();

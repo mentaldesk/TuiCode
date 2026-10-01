@@ -60,7 +60,7 @@ internal sealed class FakeFileSystemWatcher(IFileSystem fileSystem, string path)
     /// <summary>What an editor that writes a temp file and renames it over the original looks like.</summary>
     public void Raise(WatcherChangeTypes change, string fullPath)
     {
-        var name = FileSystem.Path.GetFileName(fullPath);
+        var name = FileSystem.Path.GetRelativePath(Path, fullPath);
         var args = new FileSystemEventArgs(change, Path, name);
         switch (change)
         {
