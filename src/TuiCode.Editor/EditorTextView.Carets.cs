@@ -51,6 +51,13 @@ internal sealed partial class EditorTextView
     private Caret PrimaryCaret => new(InsertionPoint,
         IsSelecting ? new Point(SelectionStartColumn, SelectionStartRow) : null, ColumnTrack(this), IsSelecting && ShiftSelecting(this));
 
+    /// <summary>Selects as Shift would, so a plain move lets the selection go and Shift+move grows it from <paramref name="anchor"/>.</summary>
+    internal void Select(Point anchor, Point position)
+    {
+        Load(new Caret(position, anchor, Extending: true), reveal: true);
+        SetNeedsDraw();
+    }
+
     public void RemoveSecondaryCarets()
     {
         // Going back to one caret ends any column-select box too (#114).

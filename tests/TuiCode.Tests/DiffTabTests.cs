@@ -452,7 +452,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
             Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(1, col).Foreground);
             Assert.NotEqual(Color.Parse(DarkKeyword), AttributeAt(1, col + 4).Foreground);
             Assert.NotEqual(normal.Background, BackgroundAt(1, col));
-            Assert.Equal(BackgroundAt(1, col), BackgroundAt(1, col + 4));
+            Assert.Equal(BackgroundAt(1, col), BackgroundAt(1, col + 3));
         }
     }
 
@@ -564,6 +564,94 @@ public class DiffTabDrawTests : StaticConfigurationTest
         Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.
 
         Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(1, 5).Foreground);
+    }
+
+    [Fact]
+    public void Changed_words_are_marked_over_the_line_tint_on_both_sides()
+    {
+        var diff = Diff("Log(a, count);\nkeep", "Log(a, total);\nkeep\nadded");
+
+        Render(diff);
+
+        var removed = BackgroundAt(1, 5);
+        var inserted = BackgroundAt(1, 21);
+        Assert.Equal(DiffTab.DefaultRemovedText, BackgroundAt(1, 12));
+        Assert.Equal(DiffTab.DefaultRemovedText, BackgroundAt(1, 14));
+        Assert.Equal(removed, BackgroundAt(1, 11));
+        Assert.Equal(DiffTab.DefaultInsertedText, BackgroundAt(1, 28));
+        Assert.Equal(inserted, BackgroundAt(1, 27));
+        Assert.All(Enumerable.Range(21, 10), col => Assert.NotEqual(DiffTab.DefaultInsertedText, BackgroundAt(3, col)));
+    }
+
+    [Fact]
+    public void Changed_words_keep_their_syntax_colours()
+    {
+        var diff = Diff("int a;", "long a;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/a.cs");
+
+        Render(diff);
+        Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.
+
+        Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(1, 5).Foreground);
+        Assert.Equal(DiffTab.DefaultRemovedText, BackgroundAt(1, 5));
+        Assert.Equal(Color.Parse(DarkKeyword), AttributeAt(1, 21).Foreground);
+        Assert.Equal(DiffTab.DefaultInsertedText, BackgroundAt(1, 21));
+    }
+
+    [Fact]
+    public void Changed_words_take_their_colours_from_the_token_theme()
+    {
+        var syntax = new SyntaxHighlighter(GrammarBundle.Load());
+        syntax.UseTheme("midnight.json");
+        var diff = Diff("a = 1;", "a = 2;", syntax);
+
+        Render(diff);
+
+        Assert.Equal(Color.Parse(syntax.EditorColors["diffEditor.removedTextBackground"]), BackgroundAt(1, 9));
+        Assert.Equal(Color.Parse(syntax.EditorColors["diffEditor.insertedTextBackground"]), BackgroundAt(1, 25));
+    }
+
+    [Fact]
+    public void A_rewritten_line_gets_no_word_marks()
+    {
+        var diff = Diff("alpha beta", "gamma delta");
+
+        Render(diff);
+
+        Assert.All(Enumerable.Range(5, 10), col => Assert.Equal(BackgroundAt(1, 5), BackgroundAt(1, col)));
+        Assert.All(Enumerable.Range(21, 10), col => Assert.Equal(BackgroundAt(1, 21), BackgroundAt(1, col)));
+    }
+
+    [Fact]
+    public void Changed_words_stay_with_the_text_when_scrolled_sideways()
+    {
+        var diff = Diff("Log(a, count);", "Log(a, total);");
+
+        Press(diff, Key.CursorRight, 3);
+        Render(diff);
+
+        Assert.Equal(DiffTab.DefaultRemovedText, BackgroundAt(1, 9));
+        Assert.NotEqual(DiffTab.DefaultRemovedText, BackgroundAt(1, 8));
+        Assert.Equal(DiffTab.DefaultInsertedText, BackgroundAt(1, 25));
+        Assert.NotEqual(DiffTab.DefaultInsertedText, BackgroundAt(1, 24));
+    }
+
+    [Fact]
+    public void Changed_words_are_worked_out_once_per_refresh_not_per_draw()
+    {
+        var diff = Diff("Log(a, count);", "Log(a, total);");
+        var words = diff.WordChanges;
+
+        Render(diff);
+        Render(diff);
+        Assert.Same(words, diff.WordChanges);
+
+        diff.Source!.Content = "Log(b, count);";
+        diff.Refresh();
+        Render(diff);
+
+        Assert.NotSame(words, diff.WordChanges);
+        Assert.Equal(DiffTab.DefaultRemovedText, BackgroundAt(1, 9));
+        Assert.NotEqual(DiffTab.DefaultRemovedText, BackgroundAt(1, 12));
     }
 
     // A file deleted in this branch (#182): the base version on the left, no editor tab at all.
