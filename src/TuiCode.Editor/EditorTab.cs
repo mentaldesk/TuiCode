@@ -419,12 +419,7 @@ public sealed class EditorTab : FrameView
         var start = ToCellColumn(match.Row, match.Column);
         var end = ToCellColumn(match.Row, match.End);
         _textView.RemoveSecondaryCarets();
-        _textView.IsSelecting = false;
-        _textView.InsertionPoint = new System.Drawing.Point(start, match.Row);
-        // Row before column: the column setter clamps against the selection-start row's line.
-        _textView.SelectionStartRow = match.Row;
-        _textView.SelectionStartColumn = start;
-        _textView.InsertionPoint = new System.Drawing.Point(end, match.Row);
+        _textView.Select(new System.Drawing.Point(start, match.Row), new System.Drawing.Point(end, match.Row));
     }
 
     public void ClearSelection()
