@@ -25,6 +25,7 @@ using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 using TuiCode.Workbench.Themes;
+using TuiCode.Workbench.Workspace;
 
 namespace TuiCode.Workbench;
 
@@ -89,6 +90,7 @@ public sealed class WorkbenchHost : IDisposable
     private ConfirmView? _activeConfirm;
     private RevisionPickerView? _activeRevisionPicker;
     private PullRequestPickerView? _activePullRequestPicker;
+    private RecentFolderPickerView? _activeRecentFolderPicker;
     private WorktreePickerView? _activeWorktreePicker;
     private SubmitReviewView? _activeSubmitReview;
     private CommentView? _activeComment;
@@ -469,6 +471,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect, CommandScope.Editor);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
+        // No default key (#357).
+        _commands.Register(CommandIds.OpenRecentFolder, "Open recent folder", OpenRecentFolder);
         // No default key (#184, #185, #187, #188).
         _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest,
             CommandScope.Global, () => GitRepository.Contains(explorer.Root));
@@ -2538,6 +2542,45 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeSubmitReview = null;
+        FocusCallingRegion();
+    }
+
+    private void OpenRecentFolder()
+    {
+        if (_activeRecentFolderPicker is not null) return;
+        var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
+        var folders = RecentFolderList.Rows(
+            _workbench.RecentFolders,
+            _workbench.Sidebar.Explorer.Root?.FullName,
+            fileSystem.Directory.Exists,
+            _environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        if (folders.Count == 0)
+        {
+            _workbench.StatusBar.SetMessage("No other folders in your history yet.");
+            return;
+        }
+
+        var view = new RecentFolderPickerView(folders);
+        view.Cancelled += (_, _) => CloseRecentFolderPicker(view);
+        view.Submitted += (_, folder) =>
+        {
+            CloseRecentFolderPicker(view);
+            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(folder.Path));
+        };
+
+        _activeRecentFolderPicker = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusFilter();
+    }
+
+    private void CloseRecentFolderPicker(RecentFolderPickerView view)
+    {
+        if (!ReferenceEquals(_activeRecentFolderPicker, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeRecentFolderPicker = null;
         FocusCallingRegion();
     }
 

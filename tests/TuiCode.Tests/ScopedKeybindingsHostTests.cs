@@ -343,7 +343,7 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             CommandIds.FindGlobally, CommandIds.FindInFile, CommandIds.FocusEditorBody,
             CommandIds.FocusEditorTabStrip, CommandIds.FocusReview, CommandIds.FocusSidebar,
             CommandIds.NarrowSidebar,
-            CommandIds.New, CommandIds.NextEditor, CommandIds.Open, CommandIds.OpenPullRequest,
+            CommandIds.New, CommandIds.NextEditor, CommandIds.Open, CommandIds.OpenPullRequest, CommandIds.OpenRecentFolder,
             CommandIds.OpenSettings, CommandIds.OpenWorktree, CommandIds.PreviousEditor, CommandIds.PullRequestOverview,
             CommandIds.Quit, CommandIds.RefreshExplorer, CommandIds.ReplaceGlobally, CommandIds.ReplaceInFile, CommandIds.SaveActiveEditor,
             CommandIds.ShowAbout, CommandIds.ShowActions, CommandIds.ShowDiagnostics,

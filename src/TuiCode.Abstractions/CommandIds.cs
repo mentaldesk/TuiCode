@@ -19,6 +19,7 @@ public static class CommandIds
     public const string OpenSettings = "workbench.action.openSettings";
     public const string Open = "workbench.action.open";
     public const string OpenPullRequest = "workbench.action.openPullRequest";
+    public const string OpenRecentFolder = "workbench.action.openRecentFolder";
     public const string OpenWorktree = "workbench.action.openWorktree";
     public const string PullRequestOverview = "workbench.action.pullRequestOverview";
     public const string SubmitReview = "workbench.action.submitReview";
@@ -110,6 +111,13 @@ public static class CommandIds
     public const string PullRequestPickerDown = "pullRequestPicker.action.down";
     public const string PullRequestPickerPageUp = "pullRequestPicker.action.pageUp";
     public const string PullRequestPickerPageDown = "pullRequestPicker.action.pageDown";
+
+    public const string RecentFolderPickerConfirm = "recentFolderPicker.action.confirm";
+    public const string RecentFolderPickerCancel = "recentFolderPicker.action.cancel";
+    public const string RecentFolderPickerUp = "recentFolderPicker.action.up";
+    public const string RecentFolderPickerDown = "recentFolderPicker.action.down";
+    public const string RecentFolderPickerPageUp = "recentFolderPicker.action.pageUp";
+    public const string RecentFolderPickerPageDown = "recentFolderPicker.action.pageDown";
 
     public const string WorktreePickerConfirm = "worktreePicker.action.confirm";
     public const string WorktreePickerCancel = "worktreePicker.action.cancel";

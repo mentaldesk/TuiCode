@@ -21,6 +21,26 @@ public class WorkspaceStateStoreTests
     }
 
     [Fact]
+    public void Folders_lists_every_saved_folder_most_recently_used_first()
+    {
+        var store = new WorkspaceStateStore(new MockFileSystem(), StatePath);
+        store.Save("/a", new WorkspaceState([], null));
+        store.Save("/b", new WorkspaceState([], null));
+        store.Save("/c", new WorkspaceState([], null));
+        store.Save("/a", new WorkspaceState([], null));
+
+        Assert.Equal(["/a", "/c", "/b"], store.Folders());
+    }
+
+    [Fact]
+    public void Folders_is_empty_with_no_state_file()
+    {
+        var store = new WorkspaceStateStore(new MockFileSystem(), StatePath);
+
+        Assert.Empty(store.Folders());
+    }
+
+    [Fact]
     public void Load_returns_null_for_a_folder_never_saved()
     {
         var store = new WorkspaceStateStore(new MockFileSystem(), StatePath);
