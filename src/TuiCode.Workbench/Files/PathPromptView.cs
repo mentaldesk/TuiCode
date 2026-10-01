@@ -66,6 +66,7 @@ public sealed class PathPromptView : Window
             Text = string.Empty,
         };
 
+        _input.TextChanged += (_, _) => _error.Text = string.Empty;
         Add(hintLabel, _input, _error);
 
         _scopeCommands = new CommandService();
@@ -74,6 +75,8 @@ public sealed class PathPromptView : Window
     }
 
     public string Path => _input.Text ?? string.Empty;
+
+    internal string Error => _error.Text ?? string.Empty;
 
     public string SelectedText => _input.SelectedText ?? string.Empty;
 

@@ -20,7 +20,6 @@ public class OpenRecentFolderHostTests : StaticConfigurationTest
         _fs.AddFile("/work/a.txt", new MockFileData("alpha\n"));
         _fs.AddFile("/code/vault/v.txt", new MockFileData("vault\n"));
         _fs.AddFile("/code/zmk/z.txt", new MockFileData("zmk\n"));
-        _fs.AddFile("/elsewhere/new/n.txt", new MockFileData("new\n"));
         _store = new WorkspaceStateStore(_fs, StatePath);
         _store.Save(Full("/code/zmk"), new WorkspaceState([Full("/code/zmk/z.txt")], Full("/code/zmk/z.txt")));
         _store.Save(Full("/code/gone"), new WorkspaceState([], null));
@@ -117,72 +116,6 @@ public class OpenRecentFolderHostTests : StaticConfigurationTest
         Assert.Null(Picker(workbench));
     }
 
-    [Fact]
-    public async Task A_typed_path_is_offered_as_a_single_row_and_Enter_opens_it_and_remembers_it()
-    {
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands);
-        IReadOnlyList<string> rows = [];
-        var hint = "";
-
-        await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.OpenRecentFolder),
-            () => Picker(workbench) is not null,
-            () => Type(host, "/elsewhere/new/"),
-            () => Picker(workbench)!.VisibleItems is ["Open /elsewhere/new/"],
-            () => { rows = Picker(workbench)!.VisibleItems; hint = Picker(workbench)!.HintText; },
-            () => host.App.InjectKey(Key.Enter),
-            () => Picker(workbench) is null);
-
-        Assert.Equal(["Open /elsewhere/new/"], rows);
-        Assert.Equal("Type to filter · Enter open this path · Esc cancel", hint);
-        Assert.Equal(Full("/elsewhere/new"), workbench.Sidebar.Explorer.Root?.FullName);
-        Assert.Equal(Full("/elsewhere/new"), workbench.RecentFolders[0]);
-    }
-
-    [Fact]
-    public async Task A_leading_tilde_is_the_home_directory()
-    {
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands,
-            new FakeEnvironment().SetFolder(Environment.SpecialFolder.UserProfile, Full("/elsewhere")));
-
-        await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.OpenRecentFolder),
-            () => Picker(workbench) is not null,
-            () => Type(host, "~/new"),
-            () => Picker(workbench)!.VisibleItems is ["Open ~/new"],
-            () => host.App.InjectKey(Key.Enter),
-            () => Picker(workbench) is null);
-
-        Assert.Equal(Full("/elsewhere/new"), workbench.Sidebar.Explorer.Root?.FullName);
-    }
-
-    [Theory]
-    [InlineData("/code/nope")]
-    [InlineData("/code/zmk/z.txt")]
-    public async Task A_path_that_is_not_a_folder_says_so_in_the_dialog_until_the_filter_changes(string path)
-    {
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands);
-        var status = "";
-
-        await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.OpenRecentFolder),
-            () => Picker(workbench) is not null,
-            () => Type(host, path),
-            () => Picker(workbench)!.Filter == path,
-            () => host.App.InjectKey(Key.Enter),
-            () => Picker(workbench)!.Status != "",
-            () => { status = Picker(workbench)!.Status; },
-            () => host.App.InjectKey(Key.Backspace),
-            () => Picker(workbench)!.Status == "");
-
-        Assert.Equal($"No such folder: {path}", status);
-        Assert.NotNull(Picker(workbench));
-        Assert.Equal(Full("/work"), workbench.Sidebar.Explorer.Root?.FullName);
-    }
-
     private string Full(string path) => _fs.Path.GetFullPath(path);
 
     private static RecentFolderPickerView? Picker(Workbench.Workbench workbench) =>
@@ -200,10 +133,10 @@ public class OpenRecentFolderHostTests : StaticConfigurationTest
         return workbench;
     }
 
-    private static WorkbenchHost BuildHost(Workbench.Workbench workbench, out CommandService commands, IEnvironment? environment = null)
+    private static WorkbenchHost BuildHost(Workbench.Workbench workbench, out CommandService commands)
     {
         commands = new CommandService();
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
-            new InMemorySettingsService(), environment: environment, driverName: DriverRegistry.Names.ANSI);
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
     }
 }

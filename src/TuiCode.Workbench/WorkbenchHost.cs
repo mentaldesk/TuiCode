@@ -473,6 +473,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         // No default key (#357).
         _commands.Register(CommandIds.OpenRecentFolder, "Open recent folder", OpenRecentFolder);
+        // No default key (#358).
+        _commands.Register(CommandIds.OpenPath, "Open path", OpenPath);
         // No default key (#184, #185, #187, #188).
         _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest,
             CommandScope.Global, () => GitRepository.Contains(explorer.Root));
@@ -2549,40 +2551,51 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeRecentFolderPicker is not null) return;
         var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
-        var home = _environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var folders = RecentFolderList.Rows(
             _workbench.RecentFolders,
             _workbench.Sidebar.Explorer.Root?.FullName,
             fileSystem.Directory.Exists,
-            home);
+            _environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         if (folders.Count == 0)
         {
             _workbench.StatusBar.SetMessage("No other folders in your history yet.");
             return;
         }
 
-        var view = new RecentFolderPickerView(folders, home);
+        var view = new RecentFolderPickerView(folders);
         view.Cancelled += (_, _) => CloseRecentFolderPicker(view);
         view.Submitted += (_, folder) =>
         {
             CloseRecentFolderPicker(view);
             _workbench.OpenFolder(fileSystem.DirectoryInfo.New(folder.Path));
         };
-        view.PathSubmitted += (_, path) =>
-        {
-            if (!fileSystem.Directory.Exists(path))
-            {
-                view.ShowNoSuchFolder();
-                return;
-            }
-            CloseRecentFolderPicker(view);
-            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(path));
-        };
 
         _activeRecentFolderPicker = view;
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusFilter();
+    }
+
+    private void OpenPath()
+    {
+        if (_activePathPrompt is not null) return;
+        var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
+        var home = _environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var view = new PathPromptView("Open path", "Folder to open (~ is your home folder)", "");
+        view.Cancelled += (_, _) => ClosePathPrompt(view);
+        view.Submitted += (_, typed) =>
+        {
+            var path = FolderPath.Expand(typed, home);
+            if (!fileSystem.Path.IsPathRooted(path) || !fileSystem.Directory.Exists(path))
+            {
+                view.ShowError($"No such folder: {typed.Trim()}");
+                return;
+            }
+            ClosePathPrompt(view);
+            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(path));
+        };
+
+        ShowPathPrompt(view);
     }
 
     private void CloseRecentFolderPicker(RecentFolderPickerView view)

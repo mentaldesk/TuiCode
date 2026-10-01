@@ -74,28 +74,6 @@ public class RecentFolderListTests
         Assert.Equal(expected, string.Join(",", names));
     }
 
-    [Theory]
-    [InlineData("~/code/zmk", true)]
-    [InlineData("~", true)]
-    [InlineData("code/zmk", true)]
-    [InlineData("  /tmp  ", true)]
-    [InlineData("vault", false)]
-    [InlineData("code~", false)]
-    [InlineData("", false)]
-    public void IsPath_is_a_filter_with_a_slash_or_a_leading_tilde(string filter, bool expected) =>
-        Assert.Equal(expected, RecentFolderList.IsPath(filter));
-
-    [Theory]
-    [InlineData("~/code/zmk", "/Users/me/code/zmk")]
-    [InlineData("~", "/Users/me")]
-    [InlineData("~/", "/Users/me")]
-    [InlineData("~/code/zmk/", "/Users/me/code/zmk")]
-    [InlineData(" /tmp/x/ ", "/tmp/x")]
-    [InlineData("/", "/")]
-    [InlineData("~other/x", "~other/x")]
-    public void ExpandPath_turns_a_leading_tilde_into_home_and_drops_a_trailing_separator(string filter, string expected) =>
-        Assert.Equal(expected, RecentFolderList.ExpandPath(filter, Home));
-
     [Fact]
     public void Display_lines_the_parents_up_in_a_column_after_the_names()
     {
