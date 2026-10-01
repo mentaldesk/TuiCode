@@ -46,6 +46,9 @@ public interface IGitCli
     /// <summary>The worktree of <paramref name="repoRoot"/> that has <paramref name="branch"/> checked out, or null when none has.</summary>
     Task<GitResult<string?>> FindWorktreeAsync(string repoRoot, string branch, CancellationToken cancellationToken = default);
 
+    /// <summary>The worktrees of <paramref name="repoRoot"/> in git's order, the main worktree first; bare and missing ones are left out.</summary>
+    Task<GitResult<IReadOnlyList<GitWorktree>>> GetWorktreesAsync(string repoRoot, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// The commit behind 1-based <paramref name="line"/> of the file, or null when git doesn't track it. With
     /// <paramref name="contents"/>, the file is blamed as that text, so unsaved edits don't shift the line.
@@ -70,6 +73,12 @@ public enum GitRefKind
 }
 
 public sealed record GitRef(string Name, GitRefKind Kind);
+
+/// <summary>A worktree as <c>worktree list --porcelain</c> reports it; <see cref="Branch"/> is null when its HEAD is detached.</summary>
+public sealed record GitWorktree(string Path, string? Branch, string Head = "")
+{
+    public string ShortHead => Head[..Math.Min(7, Head.Length)];
+}
 
 public sealed record GitCommit(string ShortHash, string Subject, DateTimeOffset Date);
 

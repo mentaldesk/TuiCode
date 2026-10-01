@@ -63,6 +63,7 @@ public class GitCliTests
         Assert.False((await git.ShowRepoFileAsync("/repo", "a.cs", "main", ct)).Succeeded);
         Assert.False((await git.AddWorktreeAsync("/repo", "/repo/../pr-1", ct)).Succeeded);
         Assert.False((await git.FindWorktreeAsync("/repo", "main", ct)).Succeeded);
+        Assert.False((await git.GetWorktreesAsync("/repo", ct)).Succeeded);
         Assert.False((await git.BlameAsync("/repo/a.cs", 1, cancellationToken: ct)).Succeeded);
     }
 
@@ -85,15 +86,46 @@ public class GitCliTests
     }
 
     [Fact]
-    public void ParseWorktrees_reads_the_path_and_branch_of_each_worktree_in_the_porcelain_listing()
+    public void ParseWorktrees_reads_the_path_branch_and_head_of_each_worktree_in_the_porcelain_listing()
     {
-        var output = "worktree /code/TuiCode/main\nHEAD abc\nbranch refs/heads/main\n\nworktree /code/pr-184\nHEAD def\ndetached\n";
+        var output = "worktree /code/TuiCode/main\nHEAD abc1234567\nbranch refs/heads/main\n\n"
+            + "worktree /code/pr-184\nHEAD def4567890\ndetached\n\n"
+            + "worktree /code/feat x\nHEAD 0123456789\nbranch refs/heads/feat/x\nlocked\n";
 
         Assert.Equal(
         [
-            new GitCli.Worktree("/code/TuiCode/main", "main"),
-            new GitCli.Worktree("/code/pr-184", null),
+            new GitWorktree("/code/TuiCode/main", "main", "abc1234567"),
+            new GitWorktree("/code/pr-184", null, "def4567890"),
+            new GitWorktree("/code/feat x", "feat/x", "0123456789"),
         ], GitCli.ParseWorktrees(output));
+    }
+
+    [Fact]
+    public void ParseWorktrees_leaves_out_a_bare_repo_and_worktrees_whose_folder_is_gone()
+    {
+        var output = "worktree /code/repo.git\nbare\n\n"
+            + "worktree /code/gone\nHEAD abc\nbranch refs/heads/gone\nprunable gitdir file points to non-existent location\n\n"
+            + "worktree /code/here\nHEAD def\nbranch refs/heads/here\n";
+
+        Assert.Equal([new GitWorktree("/code/here", "here", "def")], GitCli.ParseWorktrees(output));
+    }
+
+    [Fact]
+    public async Task A_repo_s_worktrees_are_listed_main_first_with_their_branch_or_detached_head()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        repo.Git("worktree", "add", "-q", "-b", "feature", repo.File("feature"));
+        repo.Git("worktree", "add", "-q", "--detach", repo.File("pr-1"));
+        var git = new GitCli(new FileSystem());
+
+        var listed = await git.GetWorktreesAsync(repo.Path, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["feature", "pr-1"], listed.Value.Skip(1).Select(w => Path.GetFileName(w.Path)));
+        Assert.Equal("feature", listed.Value[1].Branch);
+        Assert.Null(listed.Value[2].Branch);
+        Assert.Equal(7, listed.Value[2].ShortHead.Length);
+        Assert.True(Directory.Exists(listed.Value[0].Path));
     }
 
     [Fact]

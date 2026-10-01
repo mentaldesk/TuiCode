@@ -29,7 +29,7 @@ public sealed class CommandMenu
     [
         ("_File",
         [
-            CommandIds.New, CommandIds.Open, CommandIds.OpenRecentFolder, CommandIds.SaveActiveEditor, CommandIds.ReloadFromDisk, CommandIds.CloseActiveEditor,
+            CommandIds.New, CommandIds.Open, CommandIds.OpenRecentFolder, CommandIds.OpenWorktree, CommandIds.SaveActiveEditor, CommandIds.ReloadFromDisk, CommandIds.CloseActiveEditor,
             Separator,
             CommandIds.RenameFile, CommandIds.CutFile, CommandIds.PasteFile, CommandIds.DeleteFile,
             Separator,
