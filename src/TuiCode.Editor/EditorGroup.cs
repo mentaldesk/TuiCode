@@ -17,6 +17,8 @@ public sealed class EditorGroup : PaneTabs
     /// <summary>Raised whenever tabs are opened, closed or moved, so what to watch can be re-read (#268).</summary>
     public event EventHandler? TabsChanged;
 
+    public event EventHandler<EditorTab>? BaselineReset;
+
     /// <summary>Raised when any tab's grammar changes, e.g. from the grammar picker or new associations.</summary>
     public event EventHandler<EditorTab>? GrammarChanged;
 
@@ -130,6 +132,7 @@ public sealed class EditorGroup : PaneTabs
         tab.IconStyle = IconStyle;
         tab.Settings = Settings;
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
+        tab.BaselineReset += (_, _) => BaselineReset?.Invoke(this, tab);
         tab.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         tab.GrammarChanged += (_, _) => GrammarChanged?.Invoke(this, tab);
