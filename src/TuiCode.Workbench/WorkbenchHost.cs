@@ -91,6 +91,7 @@ public sealed class WorkbenchHost : IDisposable
     private RevisionPickerView? _activeRevisionPicker;
     private PullRequestPickerView? _activePullRequestPicker;
     private RecentFolderPickerView? _activeRecentFolderPicker;
+    private WorktreePickerView? _activeWorktreePicker;
     private SubmitReviewView? _activeSubmitReview;
     private CommentView? _activeComment;
     private DraftComments? _draftComments;
@@ -475,6 +476,8 @@ public sealed class WorkbenchHost : IDisposable
         // No default key (#184, #185, #187, #188).
         _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest,
             CommandScope.Global, () => GitRepository.Contains(explorer.Root));
+        // Ungated, so outside a repo it can say so (#359).
+        _commands.Register(CommandIds.OpenWorktree, "Open worktree", OpenWorktree);
         _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment, CommandScope.Diff, Reviewing);
@@ -2215,6 +2218,66 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusFilter();
+    }
+
+    /// <summary>Open worktree (<c>ow</c>): the repo's other worktrees, listed before the picker opens.</summary>
+    private void OpenWorktree()
+    {
+        if (_activeWorktreePicker is not null) return;
+        if (_workbench.Sidebar.Explorer.Root is not { } root)
+        {
+            _workbench.StatusBar.SetMessage("Not in a git repository.");
+            return;
+        }
+
+        var folder = root.FullName;
+        var listing = Task.Run(async () =>
+        {
+            var repoRoot = await _git.GetRepoRootAsync(folder);
+            if (repoRoot.Error is { } error) return (Error: error, Rows: (IReadOnlyList<WorktreeRow>)[]);
+            if (repoRoot.Value is not { } repo) return (Error: "Not in a git repository.", Rows: []);
+            var worktrees = await _git.GetWorktreesAsync(repo);
+            return worktrees.Error is { } listError
+                ? (Error: listError, Rows: [])
+                : (Error: (string?)null, Rows: WorktreeList.Rows(worktrees.Value, repo, _environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+        });
+        WhenDone(listing, () =>
+        {
+            var (error, rows) = listing.Result;
+            if (error is not null)
+                _workbench.StatusBar.SetMessage(error);
+            else if (rows.Count == 0)
+                _workbench.StatusBar.SetMessage("This repo has no other worktrees.");
+            else
+                OpenWorktreePicker(root.FileSystem, rows);
+        });
+    }
+
+    private void OpenWorktreePicker(IFileSystem fileSystem, IReadOnlyList<WorktreeRow> worktrees)
+    {
+        if (_activeWorktreePicker is not null) return;
+        var view = new WorktreePickerView(worktrees);
+        view.Cancelled += (_, _) => CloseWorktreePicker(view);
+        view.Submitted += (_, worktree) =>
+        {
+            CloseWorktreePicker(view);
+            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(worktree.Path));
+        };
+
+        _activeWorktreePicker = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusFilter();
+    }
+
+    private void CloseWorktreePicker(WorktreePickerView view)
+    {
+        if (!ReferenceEquals(_activeWorktreePicker, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeWorktreePicker = null;
+        FocusCallingRegion();
     }
 
     /// <summary>

@@ -81,6 +81,16 @@ internal sealed class FakeGitCli : IGitCli
     public Task<GitResult<string?>> FindWorktreeAsync(string repoRoot, string branch, CancellationToken cancellationToken = default) =>
         Task.FromResult(GitResult<string?>.Success(BranchWorktrees.GetValueOrDefault(branch)));
 
+    /// <summary>What <see cref="GetWorktreesAsync"/> lists, unless <see cref="ListWorktreesError"/> is set.</summary>
+    public IReadOnlyList<GitWorktree> ListedWorktrees { get; set; } = [];
+
+    public string? ListWorktreesError { get; set; }
+
+    public Task<GitResult<IReadOnlyList<GitWorktree>>> GetWorktreesAsync(string repoRoot, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Missing ? GitResult<IReadOnlyList<GitWorktree>>.Failure(NoGit)
+            : ListWorktreesError is { } error ? GitResult<IReadOnlyList<GitWorktree>>.Failure(error)
+            : GitResult<IReadOnlyList<GitWorktree>>.Success(ListedWorktrees));
+
     public string? RepoFileError { get; set; }
 
     public Task<GitResult<string?>> ShowRepoFileAsync(string repoRoot, string repoPath, string revision, CancellationToken cancellationToken = default)
