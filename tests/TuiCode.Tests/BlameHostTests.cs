@@ -173,7 +173,7 @@ public class BlameHostTests : StaticConfigurationTest
         Assert.Equal(["alpha", "b", "charlie", ""], diff.LeftLines);
         Assert.Equal(DiffRowKind.Modified, diff.Diff.Rows[1].Kind);
         Assert.Equal("Change 1 of 1", diff.ChangeStatus);
-        Assert.EndsWith("  •  Change 1 of 1  •  Alt+↓ next  Alt+↑ prev", status);
+        Assert.EndsWith("  •  Change 1 of 1  •  Alt+↓ next  Alt+↑ prev  Shift+←/→ page", status);
         Assert.False(revert);
         Assert.False(revertAll);
         Assert.False(goToLine);

@@ -204,7 +204,7 @@ public class DiffRevertDrawTests : StaticConfigurationTest
 // Drives `rc` through the host. Boots a TG Application — serialised (#77).
 public class RevertChangeHostTests : StaticConfigurationTest
 {
-    private const string Keys = "Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line";
+    private const string Keys = "Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page";
 
     private readonly MockFileSystem _fs = new();
 
@@ -334,7 +334,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.F9));
 
-        Assert.Equal("Reverted 1 line from saved  •  2 changes  •  Alt+↓ next  Alt+↑ prev  F9 revert  Enter go to line",
+        Assert.Equal("Reverted 1 line from saved  •  2 changes  •  Alt+↓ next  Alt+↑ prev  F9 revert  Enter go to line  Shift+←/→ page",
             workbench.StatusBar.DisplayedText);
     }
 
@@ -515,7 +515,7 @@ public class RestoreDeletedHostTests : StaticConfigurationTest
             () => group.ActiveDiffTab is { IsFocused: true },
             () => workbench.StatusBar.DisplayedText.Contains("restore", StringComparison.Ordinal));
 
-        Assert.EndsWith("Alt+↓ next  Alt+↑ prev  F9 restore  Enter go to line", workbench.StatusBar.DisplayedText);
+        Assert.EndsWith("Alt+↓ next  Alt+↑ prev  F9 restore  Enter go to line  Shift+←/→ page", workbench.StatusBar.DisplayedText);
     }
 
     [Fact]

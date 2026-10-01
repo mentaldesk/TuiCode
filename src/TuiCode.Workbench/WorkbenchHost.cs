@@ -590,7 +590,22 @@ public sealed class WorkbenchHost : IDisposable
             KeyHint(CommandIds.PreviousChange, "prev"),
             revert is null ? null : KeyHint(CommandIds.RevertChange, revert),
             revert is null ? null : KeyHint(CommandIds.GoToChangeLine, "go to line"),
+            KeyPairHint(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "page"),
         }.OfType<string>());
+    }
+
+    /// <summary><c>Shift+←/→ page</c>: both keys, sharing their modifiers when they have the same ones.</summary>
+    private string? KeyPairHint(string backId, string forwardId, string label)
+    {
+        var back = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == backId)?.Display;
+        var forward = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == forwardId)?.Display;
+        if (back is null || forward is null) return (back ?? forward) is { } one ? $"{one} {label}" : null;
+        var modifiers = Modifiers(back);
+        var keys = modifiers == Modifiers(forward) ? $"{back}/{forward[modifiers.Length..]}" : $"{back}/{forward}";
+        return $"{keys} {label}";
+
+        static string Modifiers(string display) =>
+            display.Length < 2 ? "" : display[..(display.LastIndexOf('+', display.Length - 2) + 1)];
     }
 
     private string? KeyHint(string commandId, string label) =>
