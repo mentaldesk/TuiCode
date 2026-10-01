@@ -258,14 +258,15 @@ public sealed class EditorTab : FrameView
     public bool ContentHasFocus => _textView.HasFocus;
 
     /// <summary>
-    /// Move the cursor to the given (zero-based) row/column. Out-of-range values clamp
-    /// to the nearest valid position.
+    /// Move the cursor to the given (zero-based) row/column, leaving one caret and nothing selected.
+    /// Out-of-range values clamp to the nearest valid position.
     /// </summary>
     public void MoveCursor(int row, int col)
     {
         row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
         col = Math.Clamp(col, 0, _textView.GetLine(row).Count);
         _textView.RemoveSecondaryCarets();
+        _textView.IsSelecting = false;
         _textView.InsertionPoint = new System.Drawing.Point(col, row);
     }
 
@@ -418,6 +419,7 @@ public sealed class EditorTab : FrameView
         var start = ToCellColumn(match.Row, match.Column);
         var end = ToCellColumn(match.Row, match.End);
         _textView.RemoveSecondaryCarets();
+        _textView.IsSelecting = false;
         _textView.InsertionPoint = new System.Drawing.Point(start, match.Row);
         // Row before column: the column setter clamps against the selection-start row's line.
         _textView.SelectionStartRow = match.Row;

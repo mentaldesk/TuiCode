@@ -74,6 +74,22 @@ public class EditorTabCursorTests
         Assert.All(moves, move => Assert.Equal((0, 2), move));
     }
 
+    [Fact]
+    public void MoveCursor_with_a_selection_at_several_cursors_leaves_one_cursor_and_nothing_selected()
+    {
+        using var tab = OpenTab("alpha\nbravo\ncharlie\n");
+        var text = tab.SubViews.OfType<EditorTextView>().Single();
+        tab.AddCursor(LineDirection.Down);
+        text.NewKeyDownEvent(Key.CursorRight.WithShift);
+        text.NewKeyDownEvent(Key.CursorRight.WithShift);
+
+        tab.MoveCursor(2, 1);
+
+        Assert.Equal(1, tab.CaretCount);
+        Assert.Equal("", tab.SelectedText);
+        Assert.Equal((2, 1), (tab.CursorRow, tab.CursorColumn));
+    }
+
     [Theory]
     [InlineData(50, 48)]
     [InlineData(2, 0)]
