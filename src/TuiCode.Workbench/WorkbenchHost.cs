@@ -2486,23 +2486,34 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeRecentFolderPicker is not null) return;
         var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
+        var home = _environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var folders = RecentFolderList.Rows(
             _workbench.RecentFolders,
             _workbench.Sidebar.Explorer.Root?.FullName,
             fileSystem.Directory.Exists,
-            _environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            home);
         if (folders.Count == 0)
         {
             _workbench.StatusBar.SetMessage("No other folders in your history yet.");
             return;
         }
 
-        var view = new RecentFolderPickerView(folders);
+        var view = new RecentFolderPickerView(folders, home);
         view.Cancelled += (_, _) => CloseRecentFolderPicker(view);
         view.Submitted += (_, folder) =>
         {
             CloseRecentFolderPicker(view);
             _workbench.OpenFolder(fileSystem.DirectoryInfo.New(folder.Path));
+        };
+        view.PathSubmitted += (_, path) =>
+        {
+            if (!fileSystem.Directory.Exists(path))
+            {
+                view.ShowNoSuchFolder();
+                return;
+            }
+            CloseRecentFolderPicker(view);
+            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(path));
         };
 
         _activeRecentFolderPicker = view;

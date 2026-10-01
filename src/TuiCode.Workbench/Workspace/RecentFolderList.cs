@@ -33,6 +33,22 @@ internal static class RecentFolderList
                 || r.Parent.Contains(filter, StringComparison.OrdinalIgnoreCase))];
     }
 
+    /// <summary>A filter containing <c>/</c> or starting with <c>~</c> is a folder to open rather than a filter.</summary>
+    public static bool IsPath(string filter)
+    {
+        filter = filter.Trim();
+        return filter.Contains('/') || filter.StartsWith('~');
+    }
+
+    /// <summary>The typed path with a leading <c>~</c> as <paramref name="home"/> and no trailing separator.</summary>
+    public static string ExpandPath(string filter, string home)
+    {
+        var path = filter.Trim();
+        if (home.Length > 0 && (path == "~" || (path.Length > 1 && path[0] == '~' && Separators.Contains(path[1]))))
+            path = TrimEnd(home) + path[1..];
+        return TrimEnd(path);
+    }
+
     /// <summary>The name in a column <paramref name="nameWidth"/> wide, then the parent.</summary>
     public static string Display(RecentFolder row, int nameWidth, int width)
     {
