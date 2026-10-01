@@ -102,8 +102,8 @@ public sealed class CommandMenu
     private readonly IKeybindingService _keybindings;
     private readonly Func<bool> _canOpen;
     private readonly Func<string, bool> _isAvailable;
-    private readonly List<(string Id, MenuItem Item)> _items = [];
-    private readonly List<(MenuBarItem Menu, (string Id, MenuItem Item)[] Items)> _menus = [];
+    private readonly List<(string Id, CommandMenuItem Item)> _items = [];
+    private readonly List<(MenuBarItem Menu, (string Id, CommandMenuItem Item)[] Items)> _menus = [];
     private string? _picked;
 
     public CommandMenu(MenuBar bar, ICommandService commands, IKeybindingService keybindings, Func<bool> canOpen,
@@ -122,7 +122,7 @@ public sealed class CommandMenu
 
     public bool IsOpen { get; private set; }
 
-    public IReadOnlyList<(string Id, MenuItem Item)> Items => _items;
+    public IReadOnlyList<(string Id, CommandMenuItem Item)> Items => _items;
 
     public event EventHandler? Opened;
 
@@ -149,18 +149,18 @@ public sealed class CommandMenu
         }
     }
 
-    /// <summary>Greys out each item that can't run, and takes a menu with none that can off the bar.</summary>
+    /// <summary>Dims each item that can't run, and takes a menu with none that can off the bar.</summary>
     public void ShowAvailable()
     {
-        GreyOutUnavailable();
-        var shown = _menus.Where(m => m.Items.Any(i => i.Item.Enabled)).Select(m => m.Menu).ToArray();
+        DimUnavailable();
+        var shown = _menus.Where(m => m.Items.Any(i => !i.Item.Dimmed)).Select(m => m.Menu).ToArray();
         // TG's bar keeps a hidden item's place, so an empty menu leaves the bar rather than hiding.
         if (!shown.SequenceEqual(_bar.SubViews.OfType<MenuBarItem>())) _bar.Menus = shown;
     }
 
-    private void GreyOutUnavailable()
+    private void DimUnavailable()
     {
-        foreach (var (id, item) in _items) item.Enabled = _isAvailable(id);
+        foreach (var (id, item) in _items) item.Dimmed = !_isAvailable(id);
     }
 
     private MenuBarItem Build((string Title, string[] Ids) entry)
@@ -179,9 +179,9 @@ public sealed class CommandMenu
 
     private View Entry(string id) => id == Separator ? new Line() : Item(id);
 
-    private MenuItem Item(string id)
+    private CommandMenuItem Item(string id)
     {
-        var item = new MenuItem
+        var item = new CommandMenuItem
         {
             Title = Titles.GetValueOrDefault(id) ?? _commands.Registered.FirstOrDefault(c => c.Id == id)?.Label ?? id,
             // The workbench already dispatches the key; binding it here too would run the command twice.
@@ -207,7 +207,7 @@ public sealed class CommandMenu
             IsOpen = true;
             _picked = null;
             Opened?.Invoke(this, EventArgs.Empty);
-            GreyOutUnavailable();
+            DimUnavailable();
             return;
         }
         _bar.App?.AddTimeout(TimeSpan.Zero, () =>

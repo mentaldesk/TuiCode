@@ -6,6 +6,7 @@ using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
@@ -150,6 +151,10 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.CompareToSaved),
             () => workbench.StatusBar.DisplayedFocus == "Diff",
             () => host.App.InjectKey(Key.D.WithAlt),
+            () => Focused(workbench) == "Compare to saved",
+            () => host.App.InjectKey(Key.CursorDown),
+            () => host.App.InjectKey(Key.CursorDown),
+            () => host.App.InjectKey(Key.CursorDown),
             () => Focused(workbench) == "Next change",
             () => host.App.InjectKey(Key.Enter),
             () => !workbench.MenuBar.IsOpen() && workbench.Editor.Group.ActiveDiffTab?.CurrentChange == 1);
@@ -159,7 +164,7 @@ public class MenuBarHostTests : StaticConfigurationTest
 
     // The palette's rule: an item is live only where its key would run.
     [Fact]
-    public async Task With_no_editor_open_the_editor_commands_are_greyed_out()
+    public async Task With_no_editor_open_the_editor_commands_are_dimmed()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
@@ -171,13 +176,13 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => { first = Focused(workbench); host.App.InjectKey(Key.Esc); },
             () => !workbench.MenuBar.IsOpen());
 
-        Assert.False(Item(host, CommandIds.MoveLinesUp).Enabled);
-        Assert.False(Item(host, CommandIds.ChangeGrammar).Enabled);
-        Assert.False(Item(host, CommandIds.AddCursorAbove).Enabled);
-        Assert.False(Item(host, CommandIds.NextChange).Enabled);
-        Assert.True(Item(host, CommandIds.FindInFile).Enabled);
-        Assert.True(Item(host, CommandIds.ToggleSidebar).Enabled);
-        Assert.Equal("Find in file", first);
+        Assert.True(Item(host, CommandIds.MoveLinesUp).Dimmed);
+        Assert.True(Item(host, CommandIds.ChangeGrammar).Dimmed);
+        Assert.True(Item(host, CommandIds.AddCursorAbove).Dimmed);
+        Assert.True(Item(host, CommandIds.NextChange).Dimmed);
+        Assert.False(Item(host, CommandIds.FindInFile).Dimmed);
+        Assert.False(Item(host, CommandIds.ToggleSidebar).Dimmed);
+        Assert.Equal("Move line up", first);
     }
 
     [Fact]
@@ -228,17 +233,119 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => workbench.StatusBar.DisplayedFocus == "Explorer",
             () => host.App.InjectKey(Key.E.WithAlt),
             () => workbench.MenuBar.IsOpen(),
-            () => { fromExplorer = Item(host, CommandIds.MoveLinesDown).Enabled; host.App.InjectKey(Key.Esc); },
+            () => { fromExplorer = !Item(host, CommandIds.MoveLinesDown).Dimmed; host.App.InjectKey(Key.Esc); },
             () => !workbench.MenuBar.IsOpen() && workbench.StatusBar.DisplayedFocus == "Explorer",
             () => commands.TryExecute(CommandIds.FocusEditorBody),
             () => workbench.StatusBar.DisplayedFocus == "Editor",
             () => host.App.InjectKey(Key.E.WithAlt),
             () => workbench.MenuBar.IsOpen(),
-            () => { fromEditor = Item(host, CommandIds.MoveLinesDown).Enabled; host.App.InjectKey(Key.Esc); },
+            () => { fromEditor = !Item(host, CommandIds.MoveLinesDown).Dimmed; host.App.InjectKey(Key.Esc); },
             () => !workbench.MenuBar.IsOpen());
 
         Assert.False(fromExplorer);
         Assert.True(fromEditor);
+    }
+
+    public static TheoryData<string> Contexts => ["no file", "explorer", "editor", "diff", "no git repo", "pull request"];
+
+    // The menu follows the palette's rule, so what one offers the other leaves undimmed (#342).
+    [Theory]
+    [MemberData(nameof(Contexts))]
+    public async Task The_undimmed_items_are_the_palettes_commands(string context)
+    {
+        _fs.AddFile("/scratch/b.txt", new MockFileData("one\n"));
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.RepoFiles["b45e:a.txt"] = "one\nTWO\n";
+        if (context == "pull request")
+            _gitHub.PullRequest = new GitHubPullRequest(342, "Dim the menu", "main", "feature", default);
+        using var workbench = BuildWorkbench(context == "no git repo" ? "/scratch" : "/work");
+        using var host = BuildHost(workbench, out var commands);
+        IReadOnlyList<string> palette = [];
+        string[] undimmed = [];
+
+        await HostSteps.Run(host, [
+            .. Arrive(workbench, commands, context),
+            () => host.App.InjectKey(Key.E.WithCtrl),
+            () => workbench.SubViews.OfType<ActionView>().Any(),
+            () => { palette = workbench.SubViews.OfType<ActionView>().Single().Labels; host.App.InjectKey(Key.Esc); },
+            () => !workbench.HasDialog,
+            () => host.App.InjectKey(Key.F10),
+            () => workbench.MenuBar.IsOpen(),
+            () => { undimmed = [.. host.Menu.Items.Where(i => !i.Item.Dimmed).Select(i => i.Id)]; host.App.InjectKey(Key.Esc); },
+            () => !workbench.MenuBar.IsOpen()]);
+
+        var offered = MenuIds().Where(id => palette.Contains(commands.Registered.Single(c => c.Id == id).Label));
+        Assert.Equal(offered.Order(), undimmed.Order());
+        if (context == "pull request") Assert.Contains(CommandIds.SubmitReview, undimmed);
+        if (context == "diff") Assert.Contains(CommandIds.RevertChange, undimmed);
+    }
+
+    [Fact]
+    public async Task The_arrows_stop_on_dimmed_items_and_Enter_on_one_does_nothing()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var calls = 0;
+        host.Menu.Closed += (_, _) => calls++;
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.E.WithAlt),
+            () => Focused(workbench) == "Move line up",
+            () => host.App.InjectKey(Key.CursorDown),
+            () => Focused(workbench) == "Move line down",
+            () => host.App.InjectKey(Key.Enter),
+            () => { },
+            () => Assert.True(workbench.MenuBar.IsOpen()),
+            () => host.App.InjectKey(Key.Esc),
+            () => !workbench.MenuBar.IsOpen());
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task Clicking_a_dimmed_item_does_nothing()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            Click(host, () => Title(workbench, "Edit").FrameToScreen().Location),
+            () => workbench.MenuBar.IsOpen() && Item(host, CommandIds.MoveLinesDown).Dimmed,
+            Click(host, () => Item(host, CommandIds.MoveLinesDown).FrameToScreen().Location),
+            () => { },
+            () => Assert.True(workbench.MenuBar.IsOpen()),
+            () => host.App.InjectKey(Key.Esc),
+            () => !workbench.MenuBar.IsOpen());
+
+        Assert.Equal("one\ntwo\nthree\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
+    public async Task A_dimmed_item_takes_the_themes_disabled_colour()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        Attribute dimmed = default, disabled = default, live = default;
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.E.WithAlt),
+            () => workbench.MenuBar.IsOpen(),
+            () =>
+            {
+                var item = Item(host, CommandIds.MoveLinesDown);
+                dimmed = item.GetAttributeForRole(VisualRole.Normal);
+                disabled = item.GetScheme().GetAttributeForRole(VisualRole.Disabled, null);
+                live = Item(host, CommandIds.FindInFile).GetAttributeForRole(VisualRole.Normal);
+                host.App.InjectKey(Key.Esc);
+            },
+            () => !workbench.MenuBar.IsOpen());
+
+        Assert.Equal(disabled, dimmed);
+        Assert.NotEqual(live, dimmed);
     }
 
     [Fact]
@@ -354,6 +461,37 @@ public class MenuBarHostTests : StaticConfigurationTest
     private static IEnumerable<string> MenuIds() =>
         CommandMenu.Layout.SelectMany(menu => menu.Ids).Where(id => id != CommandMenu.Separator);
 
+    private IEnumerable<Func<bool>> Arrive(Workbench.Workbench workbench, CommandService commands, string context)
+    {
+        Func<bool> Do(Action action) => () => { action(); return true; };
+        switch (context)
+        {
+            case "no file":
+                yield break;
+            case "no git repo":
+                yield return Do(() => workbench.OpenFile(_fs.FileInfo.New("/scratch/b.txt")));
+                yield return () => workbench.StatusBar.DisplayedFocus == "Editor";
+                yield break;
+            case "pull request":
+                yield return Do(() => commands.TryExecute(CommandIds.FocusReview));
+                yield return () => workbench.Sidebar.Review.Review?.PullRequest is not null;
+                yield break;
+        }
+        yield return Do(() => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")));
+        yield return () => workbench.StatusBar.DisplayedFocus == "Editor";
+        if (context == "explorer")
+        {
+            yield return Do(() => commands.TryExecute(CommandIds.FocusSidebar));
+            yield return () => workbench.StatusBar.DisplayedFocus == "Explorer";
+        }
+        if (context == "diff")
+        {
+            yield return Do(() => workbench.Editor.Group.ActiveTab!.Content = "one\nTWO\nthree\n");
+            yield return Do(() => commands.TryExecute(CommandIds.CompareToSaved));
+            yield return () => workbench.StatusBar.DisplayedFocus == "Diff";
+        }
+    }
+
     private static string? Focused(Workbench.Workbench workbench) =>
         workbench.MenuBar.SubViews.OfType<MenuBarItem>().FirstOrDefault(m => m.PopoverMenuOpen)?.PopoverMenu?.Root?.Focused is MenuItem item
             ? item.Title
@@ -365,7 +503,7 @@ public class MenuBarHostTests : StaticConfigurationTest
     private static MenuBarItem Title(Workbench.Workbench workbench, string title) =>
         workbench.MenuBar.SubViews.OfType<MenuBarItem>().Single(m => m.Title.Replace("_", "") == title);
 
-    private static MenuItem Item(WorkbenchHost host, string id) => host.Menu.Items.Single(i => i.Id == id).Item;
+    private static CommandMenuItem Item(WorkbenchHost host, string id) => host.Menu.Items.Single(i => i.Id == id).Item;
 
     private static string KeyShown(WorkbenchHost host, string id) => Item(host, id).KeyView.Text;
 
