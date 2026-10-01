@@ -170,6 +170,16 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
             .FirstOrDefault(w => string.Equals(w.Branch, branch, StringComparison.Ordinal))?.Path);
     }
 
+    public async Task<GitResult<IReadOnlyList<GitWorktree>>> GetWorktreesAsync(string repoRoot, CancellationToken cancellationToken = default)
+    {
+        var listed = await RunAsync(repoRoot, ["worktree", "list", "--porcelain"], cancellationToken);
+        if (listed.Failure is not null || listed.ExitCode != 0)
+            return GitResult<IReadOnlyList<GitWorktree>>.Failure(ErrorMessage(listed));
+
+        return GitResult<IReadOnlyList<GitWorktree>>.Success(
+            [.. ParseWorktrees(listed.Output).Select(w => w with { Path = fileSystem.Path.GetFullPath(w.Path) })]);
+    }
+
     public async Task<GitResult<GitBlameLine?>> BlameAsync(string filePath, int line, string? contents = null, CancellationToken cancellationToken = default)
     {
         List<string> arguments = ["-c", "i18n.logOutputEncoding=UTF-8", "-c", "core.quotePath=false", "blame", "--line-porcelain", "-L", $"{line},{line}"];
@@ -251,25 +261,31 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return lines.Length > 1 && lines[0].Length > 0 && lines[1].Length == 0 ? lines[0] : null;
     }
 
-    /// <summary>A worktree as <c>worktree list --porcelain</c> reports it; <see cref="Branch"/> is null when its HEAD is detached.</summary>
-    internal sealed record Worktree(string Path, string? Branch);
-
-    internal static IReadOnlyList<Worktree> ParseWorktrees(string output)
+    /// <summary>Reads <c>worktree list --porcelain</c>: blank-line separated records of <c>key value</c> lines.</summary>
+    internal static IReadOnlyList<GitWorktree> ParseWorktrees(string output)
     {
-        const string head = "worktree ", onBranch = "branch refs/heads/";
-        var worktrees = new List<Worktree>();
-        string? path = null, branch = null;
-        foreach (var line in output.Split('\n').Select(l => l.TrimEnd('\r')))
+        var worktrees = new List<GitWorktree>();
+        string? path = null, branch = null, head = "";
+        var skip = false;
+        foreach (var line in output.Split('\n').Select(l => l.TrimEnd('\r')).Append(""))
         {
-            if (line.StartsWith(head, StringComparison.Ordinal))
+            if (line.Length == 0)
             {
-                if (path is not null) worktrees.Add(new Worktree(path, branch));
-                (path, branch) = (line[head.Length..], null);
+                if (path is not null && !skip) worktrees.Add(new GitWorktree(path, branch, head));
+                (path, branch, head, skip) = (null, null, "", false);
+                continue;
             }
-            else if (line.StartsWith(onBranch, StringComparison.Ordinal))
-                branch = line[onBranch.Length..];
+
+            var space = line.IndexOf(' ');
+            var (key, value) = space < 0 ? (line, "") : (line[..space], line[(space + 1)..]);
+            switch (key)
+            {
+                case "worktree": path = value; break;
+                case "HEAD": head = value; break;
+                case "branch": branch = value.StartsWith("refs/heads/", StringComparison.Ordinal) ? value["refs/heads/".Length..] : value; break;
+                case "bare" or "prunable": skip = true; break;
+            }
         }
-        if (path is not null) worktrees.Add(new Worktree(path, branch));
         return worktrees;
     }
 

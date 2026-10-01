@@ -48,6 +48,7 @@ public static class CommandMnemonics
             [CommandIds.Open] = "of",
             [CommandIds.OpenSettings] = "os",
             [CommandIds.OpenPullRequest] = "opr",
+            [CommandIds.OpenWorktree] = "ow",
             [CommandIds.PullRequestOverview] = "pro",
             [CommandIds.SubmitReview] = "sr",
             [CommandIds.CreateComment] = "cc",
