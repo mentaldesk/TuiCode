@@ -2,7 +2,7 @@ using TuiCode.Syntax;
 
 namespace TuiCode.Editor;
 
-/// <summary>Line numbers and unsaved-change markers (#23), drawn beside the text view and scrolled with it.</summary>
+/// <summary>Line numbers and change markers (#23), drawn beside the text view and scrolled with it.</summary>
 internal sealed class EditorGutter : View
 {
     private const int MinDigits = 3;
@@ -13,21 +13,33 @@ internal sealed class EditorGutter : View
 
     private readonly EditorTextView _text;
     private readonly SyntaxHighlighter? _syntax;
-    private string[] _baseline;
+    private string[] _saved;
+    private IReadOnlyList<string>? _committed;
     private LineChange[]? _changes;
 
     public EditorGutter(EditorTextView text, SyntaxHighlighter? syntax = null)
     {
         _text = text;
         _syntax = syntax;
-        _baseline = [.. text.Snapshot.Refresh(text.GetAllLines())];
+        _saved = [.. text.Snapshot.Refresh(text.GetAllLines())];
         Width = WidthFor(text.Lines);
         _text.ViewportChanged += (_, _) => SetNeedsDraw();
         _text.UnwrappedCursorPositionChanged += (_, _) => SetNeedsDraw();
     }
 
     /// <summary>How each buffer line differs from the baseline; recomputed lazily after an edit.</summary>
-    public IReadOnlyList<LineChange> Changes => _changes ??= LineDiff.Compute(_baseline, _text.Snapshot.Refresh(_text.GetAllLines()));
+    public IReadOnlyList<LineChange> Changes => _changes ??= LineDiff.Compute(_committed ?? _saved, _text.Snapshot.Refresh(_text.GetAllLines()));
+
+    /// <summary>The file's lines at <c>HEAD</c>, which win over the saved state; null when git has none.</summary>
+    public IReadOnlyList<string>? Committed
+    {
+        get => _committed;
+        set
+        {
+            _committed = value;
+            OnContentChanged();
+        }
+    }
 
     public void OnContentChanged()
     {
@@ -38,10 +50,10 @@ internal sealed class EditorGutter : View
         SetNeedsDraw();
     }
 
-    /// <summary>Take the current buffer as the saved state, clearing every change marker.</summary>
+    /// <summary>Take the current buffer as the saved state, which is the baseline while there's no <see cref="Committed"/>.</summary>
     public void ResetBaseline()
     {
-        _baseline = [.. _text.Snapshot.Refresh(_text.GetAllLines())];
+        _saved = [.. _text.Snapshot.Refresh(_text.GetAllLines())];
         OnContentChanged();
     }
 

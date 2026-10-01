@@ -179,6 +179,22 @@ public class GitCliTests
     }
 
     [Fact]
+    public async Task ShowCheckedOutFileAsync_reads_HEAD_with_the_checkouts_line_endings()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Git("config", "core.autocrlf", "true");
+        repo.Commit("src/a.cs", "one\ntwo\n", "First");
+        repo.Write("src/new.cs", "new\n");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.Equal("one\r\ntwo\r\n", (await git.ShowCheckedOutFileAsync(repo.File("src/a.cs"), ct)).Value);
+        var untracked = await git.ShowCheckedOutFileAsync(repo.File("src/new.cs"), ct);
+        Assert.True(untracked.Succeeded);
+        Assert.Null(untracked.Value);
+    }
+
+    [Fact]
     public async Task Queries_outside_a_repo_find_no_root_and_fail()
     {
         using var dir = new TempRepo(init: false);

@@ -75,6 +75,9 @@ public sealed class EditorTab : FrameView
     /// <summary>Raised on every edit, whether typed, pasted, replaced or set via <see cref="Content"/>.</summary>
     public event EventHandler? ContentChanged;
     public event EventHandler? Saved;
+
+    /// <summary>Raised when the buffer is taken as the file again, by a save or a reload, so its <c>HEAD</c> baseline can be re-read.</summary>
+    public event EventHandler? BaselineReset;
     public event EventHandler<CopyOutcome>? Copied;
 
     /// <summary>
@@ -172,6 +175,13 @@ public sealed class EditorTab : FrameView
 
     internal IReadOnlyList<LineChange> LineChanges => _gutter.Changes;
 
+    /// <summary>The file's lines at <c>HEAD</c>, which the gutter marks changes against; null falls back to the last save.</summary>
+    public IReadOnlyList<string>? CommittedLines
+    {
+        get => _gutter.Committed;
+        set => _gutter.Committed = value;
+    }
+
     /// <summary>Whether syntax colouring is available at all; without it every tab is plain text.</summary>
     public bool HasSyntax => _syntax is not null;
 
@@ -228,6 +238,7 @@ public sealed class EditorTab : FrameView
         MoveCursor(row, column);
         _edits++;
         _gutter.ResetBaseline();
+        BaselineReset?.Invoke(this, EventArgs.Empty);
         _disk = DiskState.Unchanged;
         if (_dirty)
         {
@@ -484,6 +495,7 @@ public sealed class EditorTab : FrameView
         File.FileSystem.File.WriteAllText(File.FullName, content);
         OnDisk = FileSnapshot.Of(File, content);
         _gutter.ResetBaseline();
+        BaselineReset?.Invoke(this, EventArgs.Empty);
         _disk = DiskState.Unchanged;
         if (_dirty)
         {
