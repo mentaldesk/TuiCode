@@ -96,8 +96,11 @@ public class GrammarBundleTests
                      "editorCursor.foreground", "editorLineNumber.foreground", "editorLineNumber.activeForeground",
                      "editorGutter.addedBackground", "editorGutter.modifiedBackground", "editorGutter.deletedBackground",
                      "diffEditor.removedLineBackground", "diffEditor.insertedLineBackground",
+                     "diffEditor.removedTextBackground", "diffEditor.insertedTextBackground",
                  })
             Assert.True(highlighter.EditorColors.ContainsKey(key), $"{theme} has no {key}");
+        Assert.NotEqual(highlighter.EditorColors["diffEditor.removedLineBackground"], highlighter.EditorColors["diffEditor.removedTextBackground"]);
+        Assert.NotEqual(highlighter.EditorColors["diffEditor.insertedLineBackground"], highlighter.EditorColors["diffEditor.insertedTextBackground"]);
     }
 
     [Fact]
