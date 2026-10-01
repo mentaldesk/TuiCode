@@ -35,14 +35,19 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return await ShowAsync(DirectoryOf(filePath), $"./{fileSystem.Path.GetFileName(filePath)}", revision, cancellationToken);
     }
 
+    public Task<GitResult<string?>> ShowCheckedOutFileAsync(string filePath, CancellationToken cancellationToken = default) =>
+        ShowAsync(DirectoryOf(filePath), $"./{fileSystem.Path.GetFileName(filePath)}", "HEAD", cancellationToken, filters: true);
+
     public Task<GitResult<string?>> ShowRepoFileAsync(string repoRoot, string repoPath, string revision, CancellationToken cancellationToken = default) =>
         IsSafeRevision(revision)
             ? ShowAsync(repoRoot, repoPath, revision, cancellationToken)
             : Task.FromResult(GitResult<string?>.Failure($"Unknown revision '{revision}'"));
 
-    private async Task<GitResult<string?>> ShowAsync(string directory, string path, string revision, CancellationToken cancellationToken)
+    private async Task<GitResult<string?>> ShowAsync(
+        string directory, string path, string revision, CancellationToken cancellationToken, bool filters = false)
     {
-        var run = await RunAsync(directory, ["show", $"{revision}:{path}"], cancellationToken);
+        string[] arguments = filters ? ["cat-file", "--filters", $"{revision}:{path}"] : ["show", $"{revision}:{path}"];
+        var run = await RunAsync(directory, arguments, cancellationToken);
         if (run.Failure is { } failure)
             return GitResult<string?>.Failure(failure);
         if (run.ExitCode == 0)

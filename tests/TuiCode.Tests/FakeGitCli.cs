@@ -38,6 +38,25 @@ internal sealed class FakeGitCli : IGitCli
         return Task.FromResult(GitResult<string?>.Success(Files.GetValueOrDefault(revision)));
     }
 
+    /// <summary>Content at <c>HEAD</c> by full path; a path with no entry isn't in <c>HEAD</c>.</summary>
+    public Dictionary<string, string> HeadFiles { get; } = new(StringComparer.Ordinal);
+
+    public string? HeadFileError { get; set; }
+
+    /// <summary>When set, answers <see cref="ShowCheckedOutFileAsync"/> in place of <see cref="HeadFiles"/>, for the tests of reads that return late.</summary>
+    public Func<string, Task<string?>>? HeadFileSource { get; set; }
+
+    public List<string> HeadReads { get; } = [];
+
+    public async Task<GitResult<string?>> ShowCheckedOutFileAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        lock (HeadReads) HeadReads.Add(filePath);
+        if (HeadFileSource is { } source) return GitResult<string?>.Success(await source(filePath));
+        if (Missing) return GitResult<string?>.Failure(NoGit);
+        if (HeadFileError is { } error) return GitResult<string?>.Failure(error);
+        return GitResult<string?>.Success(HeadFiles.GetValueOrDefault(filePath));
+    }
+
     public async Task<GitResult<IReadOnlyList<GitRef>>> GetRefsAsync(string path, CancellationToken cancellationToken = default)
     {
         await RefsGate;

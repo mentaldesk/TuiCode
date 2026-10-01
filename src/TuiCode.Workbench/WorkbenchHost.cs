@@ -67,6 +67,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly FindController _find;
     private readonly FocusService _focus;
     private readonly DiskChanges _diskChanges;
+    private readonly CommittedBaselines _baselines;
     private readonly FolderWatcher _folderWatcher;
     private readonly CursorLocationHistory _history = new();
     // Set while we drive the cursor ourselves (Back/Forward, Go-to-line) so those moves
@@ -184,6 +185,7 @@ public sealed class WorkbenchHost : IDisposable
             _workbench.Sidebar.Explorer,
             _workbench.StatusBar.SetMessage,
             new DiskWatcher(fileSystem, ScheduleFlush, _logger));
+        _baselines = new CommittedBaselines(_workbench.Editor.Group, _git, action => _app.Invoke(action));
 
         var explorer = _workbench.Sidebar.Explorer;
         _folderWatcher = new FolderWatcher(fileSystem, ScheduleFlush, _logger);

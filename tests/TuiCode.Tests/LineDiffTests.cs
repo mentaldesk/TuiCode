@@ -63,10 +63,21 @@ public class LineDiffTests
     }
 
     [Fact]
-    public void Compute_marks_the_whole_differing_region_when_edits_exceed_the_budget()
+    public void Compute_still_marks_line_by_line_when_edits_exceed_the_budget()
     {
         var baseline = Enumerable.Range(0, 2 * LineDiff.MaxEdits).Select(i => $"line{i}").ToArray();
         var current = baseline.Select((line, i) => i % 2 == 0 ? line : $"edited{i}").ToArray();
+
+        var changes = LineDiff.Compute(baseline, current);
+
+        Assert.Equal(baseline.Select((_, i) => i % 2 == 0 ? None : Modified), changes);
+    }
+
+    [Fact]
+    public void Compute_marks_the_whole_differing_region_when_edits_exceed_the_budget_and_no_line_is_unique()
+    {
+        var baseline = Enumerable.Repeat("same", 2 * LineDiff.MaxEdits).Prepend("top").ToArray();
+        var current = Enumerable.Repeat("other", 2 * LineDiff.MaxEdits).Prepend("top").ToArray();
 
         var changes = LineDiff.Compute(baseline, current);
 

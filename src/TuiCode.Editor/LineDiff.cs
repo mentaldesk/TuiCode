@@ -11,7 +11,7 @@ public enum LineChange
 
 internal readonly record struct Hunk(int OldStart, int OldCount, int NewStart, int NewCount);
 
-/// <summary>Classifies each current line against a baseline (the last-saved buffer) for the gutter (#23).</summary>
+/// <summary>Classifies each current line against a baseline (the file at <c>HEAD</c>, else the last save) for the gutter (#23).</summary>
 public static class LineDiff
 {
     // Past this many line edits the diff gives up and marks the whole differing region modified.
@@ -20,7 +20,9 @@ public static class LineDiff
     public static LineChange[] Compute(IReadOnlyList<string> baseline, IReadOnlyList<string> current)
     {
         var changes = new LineChange[current.Count];
-        foreach (var hunk in Hunks(baseline, current))
+        var hunks = new List<Hunk>();
+        AddHunks(hunks, baseline, 0, baseline.Count, current, 0, current.Count, MaxEdits, anchored: true);
+        foreach (var hunk in hunks)
             MarkHunk(changes, hunk.NewStart, hunk.NewCount, hunk.OldCount);
         return changes;
     }
@@ -29,26 +31,50 @@ public static class LineDiff
     internal static List<Hunk> Hunks(IReadOnlyList<string> a, IReadOnlyList<string> b, int maxEdits = MaxEdits)
     {
         var hunks = new List<Hunk>();
+        AddHunks(hunks, a, 0, a.Count, b, 0, b.Count, maxEdits, anchored: false);
+        return hunks;
+    }
 
-        var prefix = 0;
-        while (prefix < a.Count && prefix < b.Count && a[prefix] == b[prefix])
-            prefix++;
-        var suffix = 0;
-        while (suffix < a.Count - prefix && suffix < b.Count - prefix
-               && a[a.Count - 1 - suffix] == b[b.Count - 1 - suffix])
-            suffix++;
-
-        var oldLength = a.Count - prefix - suffix;
-        var newLength = b.Count - prefix - suffix;
-        if (oldLength == 0 && newLength == 0) return hunks;
-
-        if (EditScript(a, b, prefix, oldLength, newLength, maxEdits) is not { } edits)
+    // Anchored, a region past maxEdits is split at lines unique to each side (as patience diff does), not marked whole.
+    private static void AddHunks(
+        List<Hunk> hunks, IReadOnlyList<string> a, int aStart, int aEnd, IReadOnlyList<string> b, int bStart, int bEnd,
+        int maxEdits, bool anchored)
+    {
+        while (aStart < aEnd && bStart < bEnd && a[aStart] == b[bStart])
         {
-            hunks.Add(new Hunk(prefix, oldLength, prefix, newLength));
-            return hunks;
+            aStart++;
+            bStart++;
+        }
+        while (aStart < aEnd && bStart < bEnd && a[aEnd - 1] == b[bEnd - 1])
+        {
+            aEnd--;
+            bEnd--;
         }
 
-        int oldRow = prefix, newRow = prefix, inserted = 0, deleted = 0;
+        var oldLength = aEnd - aStart;
+        var newLength = bEnd - bStart;
+        if (oldLength == 0 && newLength == 0) return;
+
+        if (EditScript(a, aStart, oldLength, b, bStart, newLength, maxEdits) is not { } edits)
+        {
+            if (anchored && Anchors(a, aStart, aEnd, b, bStart, bEnd) is { Count: > 0 } anchors)
+            {
+                foreach (var (oldAnchor, newAnchor) in anchors)
+                {
+                    AddHunks(hunks, a, aStart, oldAnchor, b, bStart, newAnchor, maxEdits, anchored);
+                    aStart = oldAnchor + 1;
+                    bStart = newAnchor + 1;
+                }
+                AddHunks(hunks, a, aStart, aEnd, b, bStart, bEnd, maxEdits, anchored);
+            }
+            else
+            {
+                hunks.Add(new Hunk(aStart, oldLength, bStart, newLength));
+            }
+            return;
+        }
+
+        int oldRow = aStart, newRow = bStart, inserted = 0, deleted = 0;
         foreach (var edit in edits)
         {
             switch (edit)
@@ -72,7 +98,42 @@ public static class LineDiff
         }
         if (inserted > 0 || deleted > 0)
             hunks.Add(new Hunk(oldRow - deleted, deleted, newRow - inserted, inserted));
-        return hunks;
+    }
+
+    // The longest run, in order on both sides, of lines that occur exactly once in each range.
+    private static List<(int Old, int New)> Anchors(
+        IReadOnlyList<string> a, int aStart, int aEnd, IReadOnlyList<string> b, int bStart, int bEnd)
+    {
+        var counts = new Dictionary<string, (int Old, int OldAt, int New, int NewAt)>(StringComparer.Ordinal);
+        for (var i = aStart; i < aEnd; i++)
+            counts[a[i]] = counts.TryGetValue(a[i], out var c) ? c with { Old = c.Old + 1 } : (1, i, 0, -1);
+        for (var j = bStart; j < bEnd; j++)
+            if (counts.TryGetValue(b[j], out var c))
+                counts[b[j]] = c with { New = c.New + 1, NewAt = j };
+
+        var unique = counts.Values.Where(c => c is { Old: 1, New: 1 }).OrderBy(c => c.OldAt).ToArray();
+        // Longest increasing subsequence of the new positions.
+        var tails = new List<int>();
+        var previous = new int[unique.Length];
+        for (var i = 0; i < unique.Length; i++)
+        {
+            int lo = 0, hi = tails.Count;
+            while (lo < hi)
+            {
+                var mid = (lo + hi) / 2;
+                if (unique[tails[mid]].NewAt < unique[i].NewAt) lo = mid + 1;
+                else hi = mid;
+            }
+            previous[i] = lo > 0 ? tails[lo - 1] : -1;
+            if (lo == tails.Count) tails.Add(i);
+            else tails[lo] = i;
+        }
+
+        var anchors = new List<(int Old, int New)>();
+        for (var i = tails.Count > 0 ? tails[^1] : -1; i >= 0; i = previous[i])
+            anchors.Add((unique[i].OldAt, unique[i].NewAt));
+        anchors.Reverse();
+        return anchors;
     }
 
     private static void MarkHunk(LineChange[] changes, int start, int inserted, int deleted)
@@ -92,8 +153,8 @@ public static class LineDiff
 
     private enum Edit { Equal, Insert, Delete }
 
-    // Myers' O(ND) diff of a[start..start+n) against b[start..start+m); null if it needs more than maxEdits.
-    private static List<Edit>? EditScript(IReadOnlyList<string> a, IReadOnlyList<string> b, int start, int n, int m, int maxEdits)
+    // Myers' O(ND) diff of a[aStart..aStart+n) against b[bStart..bStart+m); null if it needs more than maxEdits.
+    private static List<Edit>? EditScript(IReadOnlyList<string> a, int aStart, int n, IReadOnlyList<string> b, int bStart, int m, int maxEdits)
     {
         var max = Math.Min(n + m, maxEdits);
         var offset = max + 1;
@@ -109,7 +170,7 @@ public static class LineDiff
                     ? v[offset + k + 1]
                     : v[offset + k - 1] + 1;
                 var y = x - k;
-                while (x < n && y < m && a[start + x] == b[start + y])
+                while (x < n && y < m && a[aStart + x] == b[bStart + y])
                 {
                     x++;
                     y++;

@@ -13,6 +13,12 @@ public interface IGitCli
     /// <summary>The file's content at <paramref name="revision"/>, or null when the file isn't in that revision.</summary>
     Task<GitResult<string?>> ShowFileAsync(string filePath, string revision, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The file's content at <c>HEAD</c> as a checkout would write it (line endings and <c>.gitattributes</c> filters
+    /// applied), or null when <c>HEAD</c> doesn't have it.
+    /// </summary>
+    Task<GitResult<string?>> ShowCheckedOutFileAsync(string filePath, CancellationToken cancellationToken = default);
+
     /// <summary>Local branches, remote branches and tags of the repo containing <paramref name="path"/>, in that order.</summary>
     Task<GitResult<IReadOnlyList<GitRef>>> GetRefsAsync(string path, CancellationToken cancellationToken = default);
 
