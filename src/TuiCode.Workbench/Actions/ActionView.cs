@@ -6,7 +6,8 @@ namespace TuiCode.Workbench.Actions;
 /// <summary>
 /// Modal command-palette overlay (VS Code's F1). Lists the commands that apply where the keys were when it
 /// opened — Global plus that <see cref="CommandScope"/>, less the ones disabled right now — with their
-/// current key bindings; typing filters; Enter executes the highlighted command and closes; Esc cancels.
+/// current key bindings; typing filters, even while the list has focus; Enter executes the highlighted command
+/// and closes; Esc cancels.
 /// Settings › Keyboard Shortcuts is the unfiltered reference.
 ///
 /// Owns its own <see cref="ICommandService"/> + <see cref="IKeybindingService"/>
@@ -16,9 +17,12 @@ namespace TuiCode.Workbench.Actions;
 /// </summary>
 public sealed class ActionView : Window
 {
+    private const int PreferredWidth = 76;
+
     private readonly Action<string> _execute;
     private readonly TextField _search;
-    private readonly ListView _list;
+    private readonly Label _header;
+    private readonly CommandList _list;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
@@ -51,14 +55,16 @@ public sealed class ActionView : Window
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
         Y = Pos.Center();
-        Width = 76;
+        Width = Dim.Func(_ => Math.Min(PreferredWidth, SuperView?.Viewport.Width ?? PreferredWidth));
         Height = 22;
         // Required for descendant focus — same reason as KeybindingsPickerView.
         CanFocus = true;
 
+        var filterLabel = new Label { X = 1, Y = 0, Text = "Filter:" };
+
         _search = new TextField
         {
-            X = 1,
+            X = Pos.Right(filterLabel) + 1,
             Y = 0,
             Width = Dim.Fill(1),
             Height = 1,
@@ -66,16 +72,30 @@ public sealed class ActionView : Window
         _search.TextChanged += (_, _) => RebuildVisible();
         _search.MouseEvent += (_, _) => _search.SetFocus();
 
-        _list = new ListView
+        _header = new Label
         {
             X = 1,
             Y = Pos.Bottom(_search) + 1,
+            Width = Dim.Fill(1),
+            Height = 1,
+        };
+        _header.GettingAttributeForRole += (_, e) =>
+        {
+            var attribute = e.Result ?? GetAttributeForRole(e.Role);
+            e.Result = attribute with { Foreground = attribute.Background, Background = attribute.Foreground };
+            e.Handled = true;
+        };
+
+        _list = new CommandList(TypeIntoSearch)
+        {
+            X = 1,
+            Y = Pos.Bottom(_header),
             Width = Dim.Fill(1),
             Height = Dim.Fill(1),
         };
         _list.MouseEvent += (_, _) => _list.SetFocus();
 
-        Add(_search, _list);
+        Add(filterLabel, _search, _header, _list);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -88,6 +108,31 @@ public sealed class ActionView : Window
 
     public bool FocusSearch() => _search.SetFocus();
 
+    private bool TypeIntoSearch(Key key)
+    {
+        if (!key.IsCtrl && !key.IsAlt && key.TryGetPrintableRune(out var rune))
+            _search.Text += rune.ToString();
+        else if (key == Key.Backspace && _search.Text.Length > 0)
+            _search.Text = _search.Text[..^1];
+        else
+            return false;
+
+        _search.SetFocus();
+        _search.InsertionPoint = _search.Text.Length;
+        return true;
+    }
+
+    /// <summary>The column headings over the list.</summary>
+    public string Header => _header.Text;
+
+    protected override void OnSubViewsLaidOut(LayoutEventArgs args)
+    {
+        base.OnSubViewsLaidOut(args);
+        var header = ActionRow.Header(_list.Viewport.Width);
+        if (_header.Text != header)
+            _header.Text = header;
+    }
+
     private static List<ActionRow> BuildRows(ICommandService commands, IKeybindingService keybindings, CommandScope scope)
     {
         var bindingsByCommand = keybindings.Bindings
@@ -99,7 +144,8 @@ public sealed class ActionView : Window
             .Select(c => new ActionRow(
                 c.Id,
                 c.Label,
-                bindingsByCommand.TryGetValue(c.Id, out var seqs) ? string.Join(", ", seqs) : ""))
+                bindingsByCommand.TryGetValue(c.Id, out var seqs) ? string.Join(", ", seqs) : "",
+                CommandMnemonics.For(c.Id) ?? ""))
             .OrderBy(r => r.Label, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -111,21 +157,18 @@ public sealed class ActionView : Window
             ? _allRows
             : _allRows.Where(r => Matches(r, query)).ToList();
 
-        var lines = _visibleRows.Select(FormatRow).ToList();
-        _list.Source = new ListWrapper<string>(new(lines));
+        _list.Source = new ActionListSource(_visibleRows);
         _list.SelectedItem = _visibleRows.Count > 0 ? 0 : null;
     }
 
     private static bool Matches(ActionRow r, string needle) =>
         r.Label.Contains(needle, StringComparison.OrdinalIgnoreCase)
         || r.Bindings.Contains(needle, StringComparison.OrdinalIgnoreCase)
-        || r.CommandId.Contains(needle, StringComparison.OrdinalIgnoreCase);
+        || r.CommandId.Contains(needle, StringComparison.OrdinalIgnoreCase)
+        || r.Mnemonic.StartsWith(needle, StringComparison.OrdinalIgnoreCase);
 
-    private static string FormatRow(ActionRow r) =>
-        $"{Truncate(r.Label, 48).PadRight(50)}{r.Bindings}";
-
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s[..(max - 1)] + "…";
+    /// <summary>The row for <paramref name="label"/> as the list draws it <paramref name="width"/> columns wide.</summary>
+    internal string Row(string label, int width) => _visibleRows.Single(r => r.Label == label).Display(width);
 
     private void RegisterScopeBindings()
     {
@@ -145,5 +188,9 @@ public sealed class ActionView : Window
         _execute(commandId);
     }
 
-    private sealed record ActionRow(string CommandId, string Label, string Bindings);
+    // TG's ListView jumps to a row on a typed key in OnKeyDown, before KeyDown subscribers see it.
+    private sealed class CommandList(Func<Key, bool> typeIntoSearch) : ListView
+    {
+        protected override bool OnKeyDown(Key key) => typeIntoSearch(key) || base.OnKeyDown(key);
+    }
 }
