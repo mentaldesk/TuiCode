@@ -6,7 +6,8 @@ namespace TuiCode.Workbench.Actions;
 /// <summary>
 /// Modal command-palette overlay (VS Code's F1). Lists the commands that apply where the keys were when it
 /// opened — Global plus that <see cref="CommandScope"/>, less the ones disabled right now — with their
-/// current key bindings; typing filters; Enter executes the highlighted command and closes; Esc cancels.
+/// current key bindings; typing filters, even while the list has focus; Enter executes the highlighted command
+/// and closes; Esc cancels.
 /// Settings › Keyboard Shortcuts is the unfiltered reference.
 ///
 /// Owns its own <see cref="ICommandService"/> + <see cref="IKeybindingService"/>
@@ -21,7 +22,7 @@ public sealed class ActionView : Window
     private readonly Action<string> _execute;
     private readonly TextField _search;
     private readonly Label _header;
-    private readonly ListView _list;
+    private readonly CommandList _list;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
@@ -85,7 +86,7 @@ public sealed class ActionView : Window
             e.Handled = true;
         };
 
-        _list = new ListView
+        _list = new CommandList(TypeIntoSearch)
         {
             X = 1,
             Y = Pos.Bottom(_header),
@@ -106,6 +107,20 @@ public sealed class ActionView : Window
     }
 
     public bool FocusSearch() => _search.SetFocus();
+
+    private bool TypeIntoSearch(Key key)
+    {
+        if (!key.IsCtrl && !key.IsAlt && key.TryGetPrintableRune(out var rune))
+            _search.Text += rune.ToString();
+        else if (key == Key.Backspace && _search.Text.Length > 0)
+            _search.Text = _search.Text[..^1];
+        else
+            return false;
+
+        _search.SetFocus();
+        _search.InsertionPoint = _search.Text.Length;
+        return true;
+    }
 
     /// <summary>The column headings over the list.</summary>
     public string Header => _header.Text;
@@ -173,5 +188,9 @@ public sealed class ActionView : Window
         _execute(commandId);
     }
 
+    // TG's ListView jumps to a row on a typed key in OnKeyDown, before KeyDown subscribers see it.
+    private sealed class CommandList(Func<Key, bool> typeIntoSearch) : ListView
+    {
+        protected override bool OnKeyDown(Key key) => typeIntoSearch(key) || base.OnKeyDown(key);
+    }
 }
-

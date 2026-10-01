@@ -1,4 +1,5 @@
 using Terminal.Gui.Drawing;
+using Terminal.Gui.Input;
 using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Actions;
@@ -141,6 +142,34 @@ public class ActionViewTests
         using var view = Build(CommandScope.Global);
 
         Assert.Contains(view.SubViews.OfType<Label>(), l => l.Text == "Filter:");
+    }
+
+    [Fact]
+    public void Typing_while_the_list_has_focus_filters_instead_of_jumping_to_a_row()
+    {
+        using var view = Build(CommandScope.Editor);
+        var list = view.SubViews.OfType<ListView>().Single();
+        list.SetFocus();
+
+        foreach (var key in new[] { Key.M, Key.O, Key.V, Key.E, Key.Space, Key.L, Key.Backspace, Key.L })
+            list.NewKeyDownEvent(key);
+
+        Assert.Equal("move l", view.SubViews.OfType<TextField>().Single().Text);
+        Assert.Equal(["Move line up"], view.Labels);
+    }
+
+    [Fact]
+    public void Arrow_keys_in_the_list_still_move_the_selection_and_leave_the_filter_alone()
+    {
+        using var view = Build(CommandScope.Editor);
+        var list = view.SubViews.OfType<ListView>().Single();
+        view.Layout(new System.Drawing.Size(76, 22));
+        list.SetFocus();
+
+        list.NewKeyDownEvent(Key.CursorDown);
+
+        Assert.Equal(1, list.SelectedItem);
+        Assert.Equal("", view.SubViews.OfType<TextField>().Single().Text);
     }
 
     private static ActionView Build(CommandScope scope)
