@@ -47,6 +47,9 @@ public sealed class WorkspaceStateStore
         return null;
     }
 
+    /// <summary>Every folder with saved state, most recently used first.</summary>
+    public IReadOnlyList<string> Folders() => [.. ReadEntries().Select(FolderOf).OfType<string>()];
+
     public void Save(string folder, WorkspaceState state)
     {
         var files = new JsonArray();
