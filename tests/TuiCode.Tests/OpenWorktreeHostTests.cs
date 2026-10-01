@@ -35,16 +35,18 @@ public class OpenWorktreeHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench("/code/main/sub");
         using var host = BuildHost(workbench, out _);
         IReadOnlyList<string> rows = [];
+        var header = "";
 
         await HostSteps.Run(host,
             () => host.App.InjectKey(Key.Space.WithCtrl),
             () => host.App.InjectKey(Key.O),
             () => host.App.InjectKey(Key.W),
-            () => Picker(workbench) is not null,
-            () => { rows = Picker(workbench)!.VisibleItems; },
+            () => Picker(workbench) is { Header.Length: > 0 },
+            () => { rows = Picker(workbench)!.VisibleItems; header = Picker(workbench)!.Header; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal(["feature", "pr-7"], rows);
+        Assert.Matches(@"^Branch +Worktree +Location$", header);
         Assert.Null(Picker(workbench));
         Assert.Equal(Full("/code/main/sub"), workbench.Sidebar.Explorer.Root?.FullName);
     }

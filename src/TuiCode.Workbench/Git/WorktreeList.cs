@@ -12,6 +12,8 @@ internal static class WorktreeList
 
     private static readonly char[] Separators = ['/', '\\'];
 
+    public static readonly WorktreeRow Headings = new("", "Branch", "Worktree", "Location");
+
     /// <summary>Every worktree in git's order, less the one at <paramref name="current"/>.</summary>
     public static IReadOnlyList<WorktreeRow> Rows(IEnumerable<GitWorktree> worktrees, string current, string home) =>
         [.. worktrees.Where(w => TrimEnd(w.Path) != TrimEnd(current)).Select(w => Row(w, home))];
@@ -48,6 +50,8 @@ internal static class WorktreeList
             + row.Parent;
         return Truncate(line, width);
     }
+
+    public static string Header(int branchWidth, int nameWidth, int width) => Display(Headings, branchWidth, nameWidth, width);
 
     private static string ShortenHome(string parent, string home)
     {

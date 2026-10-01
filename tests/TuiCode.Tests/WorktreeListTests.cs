@@ -67,4 +67,10 @@ public class WorktreeListTests
 
         Assert.Equal("feature/…  a-long-f…  ~/somewher…", WorktreeList.Display(row, 40, 40, 33));
     }
+
+    [Fact]
+    public void Header_names_each_column_lined_up_with_the_rows()
+    {
+        Assert.Equal("Branch              Worktree      Location", WorktreeList.Header(18, 12, 60));
+    }
 }

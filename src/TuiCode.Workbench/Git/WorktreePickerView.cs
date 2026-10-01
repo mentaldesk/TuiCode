@@ -11,6 +11,7 @@ public sealed class WorktreePickerView : Window
     private const string Hint = "Type to filter · Up/Down/PgUp/PgDn · Enter open · Esc cancel";
 
     private readonly TextField _filter;
+    private readonly Label _header;
     private readonly ListView _list;
 
     private readonly ICommandService _scopeCommands;
@@ -30,22 +31,30 @@ public sealed class WorktreePickerView : Window
     public WorktreePickerView(IReadOnlyList<WorktreeRow> worktrees)
     {
         _all = worktrees;
-        _branchWidth = worktrees.Max(w => w.Branch.Length);
-        _nameWidth = worktrees.Max(w => w.Name.Length);
+        _branchWidth = worktrees.Append(WorktreeList.Headings).Max(w => w.Branch.Length);
+        _nameWidth = worktrees.Append(WorktreeList.Headings).Max(w => w.Name.Length);
         Title = "Open worktree";
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
         Y = Pos.Center();
         Width = 78;
-        Height = 16;
+        Height = 18;
         CanFocus = true;
 
         _filter = new TextField { X = 1, Y = 0, Width = Dim.Fill(1) };
         _filter.TextChanged += (_, _) => ShowEntries();
 
-        _list = new ListView { X = 1, Y = 1, Width = Dim.Fill(1), Height = Dim.Fill(1) };
+        _header = new Label { X = 1, Y = Pos.Bottom(_filter) + 1, Width = Dim.Fill(1), Height = 1 };
+        _header.GettingAttributeForRole += (_, e) =>
+        {
+            var attribute = e.Result ?? GetAttributeForRole(e.Role);
+            e.Result = attribute with { Foreground = attribute.Background, Background = attribute.Foreground };
+            e.Handled = true;
+        };
+
+        _list = new ListView { X = 1, Y = Pos.Bottom(_header), Width = Dim.Fill(1), Height = Dim.Fill(1) };
         var hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
-        Add(_filter, _list, hint);
+        Add(_filter, _header, _list, hint);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -56,8 +65,17 @@ public sealed class WorktreePickerView : Window
     internal string Filter => _filter.Text ?? "";
     internal IReadOnlyList<string> VisibleItems => [.. _visible.Select(w => w.Name)];
     internal int? SelectedItem => _list.SelectedItem;
+    internal string Header => _header.Text;
 
     public bool FocusFilter() => _filter.SetFocus();
+
+    protected override void OnSubViewsLaidOut(LayoutEventArgs args)
+    {
+        base.OnSubViewsLaidOut(args);
+        var header = WorktreeList.Header(_branchWidth, _nameWidth, _list.Viewport.Width);
+        if (_header.Text != header)
+            _header.Text = header;
+    }
 
     private void RegisterScopeBindings()
     {
