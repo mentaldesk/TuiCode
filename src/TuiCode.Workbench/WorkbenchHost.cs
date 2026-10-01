@@ -474,7 +474,7 @@ public sealed class WorkbenchHost : IDisposable
         // No default key (#357).
         _commands.Register(CommandIds.OpenRecentFolder, "Open recent folder", OpenRecentFolder);
         // No default key (#358).
-        _commands.Register(CommandIds.OpenPath, "Open path", OpenPath);
+        _commands.Register(CommandIds.OpenFilePath, "Open file path", OpenFilePath);
         // No default key (#184, #185, #187, #188).
         _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest,
             CommandScope.Global, () => GitRepository.Contains(explorer.Root));
@@ -2576,12 +2576,12 @@ public sealed class WorkbenchHost : IDisposable
         view.FocusFilter();
     }
 
-    private void OpenPath()
+    private void OpenFilePath()
     {
         if (_activePathPrompt is not null) return;
         var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
         var home = _environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var view = new PathPromptView("Open path", "Folder to open (~ is your home folder)", "");
+        var view = new PathPromptView("Open file path", "Folder to open (~ is your home folder)", "");
         view.Cancelled += (_, _) => ClosePathPrompt(view);
         view.Submitted += (_, typed) =>
         {

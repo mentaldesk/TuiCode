@@ -9,12 +9,12 @@ using TuiCode.Workbench.Workspace;
 namespace TuiCode.Tests;
 
 // Drives `opa` through the host against a mock file system. Boots a TG Application — serialised (#77).
-public class OpenPathHostTests : StaticConfigurationTest
+public class OpenFilePathHostTests : StaticConfigurationTest
 {
     private readonly MockFileSystem _fs = new();
     private readonly WorkspaceStateStore _store;
 
-    public OpenPathHostTests()
+    public OpenFilePathHostTests()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("alpha\n"));
         _fs.AddFile("/elsewhere/new/n.txt", new MockFileData("new\n"));
@@ -50,7 +50,7 @@ public class OpenPathHostTests : StaticConfigurationTest
             new FakeEnvironment().SetFolder(Environment.SpecialFolder.UserProfile, Full("/elsewhere")));
 
         await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.OpenPath),
+            () => commands.TryExecute(CommandIds.OpenFilePath),
             () => Prompt(workbench) is not null,
             () => Type(host, "~/new"),
             () => Prompt(workbench)!.Path == "~/new",
@@ -71,7 +71,7 @@ public class OpenPathHostTests : StaticConfigurationTest
         var error = "";
 
         await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.OpenPath),
+            () => commands.TryExecute(CommandIds.OpenFilePath),
             () => Prompt(workbench) is not null,
             () => Type(host, path),
             () => Prompt(workbench)!.Path == path,
