@@ -539,6 +539,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Down)), CommandScope.Editor);
         _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => group.ActiveTab?.RemoveSecondaryCursors(),
             CommandScope.Editor, () => group.ActiveTab is { HasSecondaryCursors: true });
+        _commands.Register(CommandIds.ClearSelection, "Clear selection", () => group.ActiveTab?.ClearSelectionAndCursors(),
+            CommandScope.Editor, () => group.ActiveTab is { HasSecondaryCursors: true } or { HasSelection: true });
         // No default keys (#113).
         _commands.Register(CommandIds.SelectNextOccurrence, "Select next occurrence", () => EditActiveTab(tab => tab.SelectNextOccurrence()), CommandScope.Editor);
         _commands.Register(CommandIds.SelectPreviousOccurrence, "Select previous occurrence", () => EditActiveTab(tab => tab.SelectPreviousOccurrence()), CommandScope.Editor);
@@ -570,7 +572,8 @@ public sealed class WorkbenchHost : IDisposable
             // user-supplied overrides get this tolerance. Where these logs surface is a follow-up (#92).
             try
             {
-                if (o.IsRemoval) _keybindings.Unbind(o.Keys, _commands.ScopeOf(o.EffectiveCommand));
+                // Only while the key still runs that command, so a default that has since moved stays (#362).
+                if (o.IsRemoval) _keybindings.Unbind(o.Keys, _commands.ScopeOf(o.EffectiveCommand), o.EffectiveCommand);
                 else _keybindings.Bind(o.Keys, o.EffectiveCommand);
             }
             catch (ArgumentException ex)
@@ -682,7 +685,7 @@ public sealed class WorkbenchHost : IDisposable
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
 
-        keybindings.Bind("Esc", CommandIds.RemoveSecondaryCursors);
+        keybindings.Bind("Esc", CommandIds.ClearSelection);
 
         keybindings.Bind("Delete", CommandIds.DeleteFile);
         // Our iTerm2 profile sends forward-delete as ^D (Iterm2Integration).

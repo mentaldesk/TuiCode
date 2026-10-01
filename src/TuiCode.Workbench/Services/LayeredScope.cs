@@ -37,7 +37,7 @@ internal sealed class LayeredScope : IKeybindingService
     public void Bind(string keySequence, string commandId) => _own.Bind(keySequence, commandId);
     public void Bind(IReadOnlyList<Key> chord, string commandId) => _own.Bind(chord, commandId);
     public bool Unbind(string keySequence, CommandScope scope = CommandScope.Global) => _own.Unbind(keySequence, scope);
-    public bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => _own.Unbind(chord, scope);
+    public bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global, string? commandId = null) => _own.Unbind(chord, scope, commandId);
     public void Reset() => _own.Reset();
     public KeybindingConflict? CheckConflict(string keySequence, CommandScope scope = CommandScope.Global) => _own.CheckConflict(keySequence, scope);
     public KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => _own.CheckConflict(chord, scope);

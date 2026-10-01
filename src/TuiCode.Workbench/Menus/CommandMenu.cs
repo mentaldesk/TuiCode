@@ -49,7 +49,7 @@ public sealed class CommandMenu
         ]),
         ("_Selection",
         [
-            CommandIds.AddCursorAbove, CommandIds.AddCursorBelow, CommandIds.RemoveSecondaryCursors,
+            CommandIds.AddCursorAbove, CommandIds.AddCursorBelow, CommandIds.RemoveSecondaryCursors, CommandIds.ClearSelection,
             Separator,
             CommandIds.ToggleColumnSelect,
             Separator,

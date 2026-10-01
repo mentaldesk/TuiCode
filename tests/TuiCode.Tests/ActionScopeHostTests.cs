@@ -276,6 +276,8 @@ public class ActionScopeHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench, out _);
         IReadOnlyList<string> alone = [];
         IReadOnlyList<string> withCursors = [];
+        var clearRow = "";
+        var removeRow = "";
 
         await HostSteps.Run(host,
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
@@ -288,11 +290,21 @@ public class ActionScopeHostTests : StaticConfigurationTest
             () => workbench.Editor.Group.ActiveTab!.HasSecondaryCursors,
             () => host.App.InjectKey(Key.E.WithCtrl),
             () => Palette(workbench) is not null,
-            () => { withCursors = Palette(workbench)!.Labels; host.App.InjectKey(Key.Esc); },
+            () =>
+            {
+                withCursors = Palette(workbench)!.Labels;
+                clearRow = Palette(workbench)!.Row("Clear selection", 72);
+                removeRow = Palette(workbench)!.Row("Remove secondary cursors", 72);
+                host.App.InjectKey(Key.Esc);
+            },
             () => Palette(workbench) is null);
 
         Assert.DoesNotContain("Remove secondary cursors", alone);
+        Assert.DoesNotContain("Clear selection", alone);
         Assert.Contains("Remove secondary cursors", withCursors);
+        Assert.Contains("Clear selection", withCursors);
+        Assert.Contains("Esc", clearRow);
+        Assert.DoesNotContain("Esc", removeRow);
     }
 
     private static ActionView? Palette(Workbench.Workbench workbench) =>

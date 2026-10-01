@@ -46,7 +46,7 @@ public sealed class KeybindingService : IKeybindingService
     public bool Unbind(string keySequence, CommandScope scope = CommandScope.Global) =>
         Unbind(ParseSequence(keySequence), scope);
 
-    public bool Unbind(IReadOnlyList<Key> keys, CommandScope scope = CommandScope.Global)
+    public bool Unbind(IReadOnlyList<Key> keys, CommandScope scope = CommandScope.Global, string? commandId = null)
     {
         ArgumentNullException.ThrowIfNull(keys);
         if (keys.Count == 0) throw new ArgumentException("A chord needs at least one key.", nameof(keys));
@@ -62,7 +62,7 @@ public sealed class KeybindingService : IKeybindingService
             node = child;
         }
 
-        if (node.CommandId is null) return false;
+        if (node.CommandId is null || (commandId is not null && node.CommandId != commandId)) return false;
         node.CommandId = null;
 
         // Prune empty subtrees from the leaf upwards.

@@ -255,7 +255,7 @@ public sealed class OpenView : Window
         public void Bind(string keySequence, string commandId) => inner.Bind(keySequence, commandId);
         public void Bind(IReadOnlyList<Key> chord, string commandId) => inner.Bind(chord, commandId);
         public bool Unbind(string keySequence, CommandScope scope = CommandScope.Global) => inner.Unbind(keySequence, scope);
-        public bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => inner.Unbind(chord, scope);
+        public bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global, string? commandId = null) => inner.Unbind(chord, scope, commandId);
         public void Reset() => inner.Reset();
         public KeybindingConflict? CheckConflict(string keySequence, CommandScope scope = CommandScope.Global) => inner.CheckConflict(keySequence, scope);
         public KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => inner.CheckConflict(chord, scope);
