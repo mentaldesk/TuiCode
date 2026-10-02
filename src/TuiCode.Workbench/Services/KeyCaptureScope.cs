@@ -28,7 +28,7 @@ internal sealed class KeyCaptureScope : IKeybindingService
     public void Bind(string keySequence, string commandId) { }
     public void Bind(IReadOnlyList<Key> chord, string commandId) { }
     public bool Unbind(string keySequence, CommandScope scope = CommandScope.Global) => false;
-    public bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => false;
+    public bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global, string? commandId = null) => false;
     public void Reset() { }
     public KeybindingConflict? CheckConflict(string keySequence, CommandScope scope = CommandScope.Global) => null;
     public KeybindingConflict? CheckConflict(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global) => null;

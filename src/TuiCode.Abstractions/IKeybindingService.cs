@@ -70,8 +70,8 @@ public interface IKeybindingService
     /// </summary>
     void Bind(IReadOnlyList<Key> chord, string commandId);
 
-    /// <summary>Remove the binding at <paramref name="chord"/> in <paramref name="scope"/>. Returns true if a binding was removed.</summary>
-    bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global);
+    /// <summary>Remove the binding at <paramref name="chord"/> in <paramref name="scope"/>, only if it runs <paramref name="commandId"/> when one is given. Returns true if a binding was removed.</summary>
+    bool Unbind(IReadOnlyList<Key> chord, CommandScope scope = CommandScope.Global, string? commandId = null);
 
     /// <summary>
     /// Report whether <paramref name="chord"/> would conflict with any existing binding in

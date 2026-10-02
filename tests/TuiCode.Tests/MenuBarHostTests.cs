@@ -385,6 +385,35 @@ public class MenuBarHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void Esc_shows_on_Clear_selection_and_an_older_rebind_of_either_still_applies()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+
+        Assert.Equal("Esc", KeyShown(host, CommandIds.ClearSelection));
+        Assert.Equal("", KeyShown(host, CommandIds.RemoveSecondaryCursors));
+
+        host.ApplyKeybindings(
+        [
+            new KeybindingOverride(TestKeys.Chord("Esc"), "-" + CommandIds.RemoveSecondaryCursors),
+            new KeybindingOverride(TestKeys.Chord("F7"), CommandIds.RemoveSecondaryCursors),
+        ]);
+        Assert.Equal("Esc", KeyShown(host, CommandIds.ClearSelection));
+        Assert.Equal("F7", KeyShown(host, CommandIds.RemoveSecondaryCursors));
+
+        host.ApplyKeybindings([new KeybindingOverride(TestKeys.Chord("Esc"), CommandIds.RemoveSecondaryCursors)]);
+        Assert.Equal("", KeyShown(host, CommandIds.ClearSelection));
+        Assert.Equal("Esc", KeyShown(host, CommandIds.RemoveSecondaryCursors));
+
+        host.ApplyKeybindings(
+        [
+            new KeybindingOverride(TestKeys.Chord("Esc"), "-" + CommandIds.ClearSelection),
+            new KeybindingOverride(TestKeys.Chord("F8"), CommandIds.ClearSelection),
+        ]);
+        Assert.Equal("F8", KeyShown(host, CommandIds.ClearSelection));
+    }
+
+    [Fact]
     public void Each_item_shows_its_current_key_and_follows_a_rebind()
     {
         using var workbench = BuildWorkbench();

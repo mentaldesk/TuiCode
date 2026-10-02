@@ -373,7 +373,7 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
 
         var rows = KeybindingRows.Build(_commands.Registered, [.. _keybindings.Bindings], "editor");
         var rescoped = rows.Where(r => r.CommandId.StartsWith("editor.action.", StringComparison.Ordinal)
-            && r.CommandId != CommandIds.RemoveSecondaryCursors).ToArray();
+            && r.CommandId is not (CommandIds.RemoveSecondaryCursors or CommandIds.ClearSelection)).ToArray();
 
         Assert.Equal(
             ["Add cursor above", "Add cursor below", "Duplicate line down", "Duplicate line up", "Move line down",

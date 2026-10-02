@@ -155,6 +155,7 @@ public static class CommandIds
     public const string SelectPreviousOccurrence = "editor.action.addSelectionToPreviousFindMatch";
     public const string SelectAllOccurrences = "editor.action.selectHighlights";
     public const string RemoveSecondaryCursors = "editor.action.removeSecondaryCursors";
+    public const string ClearSelection = "editor.action.clearSelection";
     public const string ToggleColumnSelect = "editor.action.toggleColumnSelection";
 
     public const string ChangeGrammar = "workbench.action.changeGrammar";

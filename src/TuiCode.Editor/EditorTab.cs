@@ -366,6 +366,16 @@ public sealed class EditorTab : FrameView
 
     public void RemoveSecondaryCursors() => _textView.RemoveSecondaryCarets();
 
+    public bool HasSelection => _textView.IsSelecting
+        && (_textView.SelectionStartRow, _textView.SelectionStartColumn) != (_textView.CurrentRow, _textView.CurrentColumn);
+
+    /// <summary>Back to one cursor, where the primary one is, with nothing selected.</summary>
+    public void ClearSelectionAndCursors()
+    {
+        _textView.RemoveSecondaryCarets();
+        ClearSelection();
+    }
+
     public void SelectNextOccurrence() => _textView.SelectNextOccurrence();
 
     public void SelectPreviousOccurrence() => _textView.SelectPreviousOccurrence();

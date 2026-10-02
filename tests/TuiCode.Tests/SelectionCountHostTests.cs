@@ -2,6 +2,7 @@ using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using Point = System.Drawing.Point;
@@ -33,7 +34,7 @@ public class SelectionCountHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Several_carets_show_their_total_and_Esc_goes_back_to_one()
+    public async Task Several_carets_show_their_total_and_one_Esc_goes_back_to_one_with_nothing_selected()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("alpha\nbravo\ncharlie\n"));
         using var workbench = BuildWorkbench();
@@ -51,7 +52,76 @@ public class SelectionCountHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Esc),
             () => shown.Add(workbench.StatusBar.DisplayedPosition));
 
-        Assert.Equal(["3 selections", "3 selections (6 selected)", "Ln 1, Col 3 (2 selected)"], shown);
+        Assert.Equal(["3 selections", "3 selections (6 selected)", "Ln 1, Col 3"], shown);
+    }
+
+    [Fact]
+    public async Task Esc_clears_the_selection_and_leaves_the_cursor()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("alpha bravo\ncharlie\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        List<string> shown = [];
+        var focused = false;
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.Editor.Group.ActiveTab!.MoveCursor(0, 6),
+            () => host.App.InjectKey(Key.End.WithShift),
+            () => shown.Add(workbench.StatusBar.DisplayedPosition),
+            () => host.App.InjectKey(Key.Esc),
+            () =>
+            {
+                shown.Add(workbench.StatusBar.DisplayedPosition);
+                focused = workbench.Editor.Group.ActiveTab!.ContentHasFocus;
+            });
+
+        Assert.Equal(["Ln 1, Col 12 (5 selected)", "Ln 1, Col 12"], shown);
+        Assert.True(focused);
+    }
+
+    [Fact]
+    public async Task Esc_closes_the_find_bar_before_it_clears_the_selection()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("foo\nfoo\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        EditorTab? tab = null;
+        var selectedWithBar = "";
+        var barOpenAfterEsc = true;
+
+        await HostSteps.Run(host,
+            () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); tab = workbench.Editor.Group.ActiveTab; },
+            () => { tab!.FocusContent(); host.App.InjectKey(Key.F.WithCtrl); },
+            () => { foreach (var c in "foo") host.App.InjectKey(new Key(c)); },
+            () => { tab!.FocusContent(); selectedWithBar = tab.SelectedText; },
+            () => host.App.InjectKey(Key.Esc),
+            () => { barOpenAfterEsc = workbench.SubViewsDeep().OfType<FindBarView>().Any(); });
+
+        Assert.Equal("foo", selectedWithBar);
+        Assert.False(barOpenAfterEsc);
+    }
+
+    [Fact]
+    public async Task Clear_selection_is_enabled_only_with_a_selection_or_extra_cursors()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("alpha\nbravo\n"));
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        using var host = BuildHost(workbench, commands);
+        List<bool> enabled = [];
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => enabled.Add(commands.IsEnabled(CommandIds.ClearSelection)),
+            () => host.App.InjectKey(Key.CursorRight.WithShift),
+            () => enabled.Add(commands.IsEnabled(CommandIds.ClearSelection)),
+            () => host.App.InjectKey(Key.Esc),
+            () => enabled.Add(commands.IsEnabled(CommandIds.ClearSelection)),
+            () => host.App.InjectKey(Key.CursorDown.WithCtrl.WithAlt),
+            () => enabled.Add(commands.IsEnabled(CommandIds.ClearSelection)));
+
+        Assert.Equal([false, true, false, true], enabled);
     }
 
     [Fact]
@@ -91,9 +161,9 @@ public class SelectionCountHostTests : StaticConfigurationTest
         return workbench;
     }
 
-    private static WorkbenchHost BuildHost(Workbench.Workbench workbench)
+    private static WorkbenchHost BuildHost(Workbench.Workbench workbench, CommandService? commands = null)
     {
-        var commands = new CommandService();
+        commands ??= new CommandService();
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
     }
