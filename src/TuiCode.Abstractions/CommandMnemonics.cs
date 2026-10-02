@@ -50,6 +50,7 @@ public static class CommandMnemonics
             [CommandIds.OpenPullRequest] = "opr",
             [CommandIds.OpenRecentFolder] = "or",
             [CommandIds.OpenWorktree] = "ow",
+            [CommandIds.OpenFilePath] = "opa",
             [CommandIds.PullRequestOverview] = "pro",
             [CommandIds.SubmitReview] = "sr",
             [CommandIds.CreateComment] = "cc",

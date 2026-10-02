@@ -21,6 +21,7 @@ public static class CommandIds
     public const string OpenPullRequest = "workbench.action.openPullRequest";
     public const string OpenRecentFolder = "workbench.action.openRecentFolder";
     public const string OpenWorktree = "workbench.action.openWorktree";
+    public const string OpenFilePath = "workbench.action.openFilePath";
     public const string PullRequestOverview = "workbench.action.pullRequestOverview";
     public const string SubmitReview = "workbench.action.submitReview";
     public const string CreateComment = "workbench.action.createComment";
