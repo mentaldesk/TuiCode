@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging.Abstractions;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Git;
@@ -8,20 +9,21 @@ namespace TuiCode.Tests;
 
 public class CommittedBaselinesTests
 {
-    private readonly MockFileSystem _fs = new();
+    private readonly WatchableFileSystem _fs = new();
     private readonly FakeGitCli _git = new();
     private readonly EditorGroup _group = new();
     private readonly CommittedBaselines _baselines;
     private readonly SemaphoreSlim _applied = new(0);
+    private readonly List<Action> _flushes = [];
 
     public CommittedBaselinesTests()
     {
-        _fs.AddDirectory(Full("/repo/.git"));
+        Repo("/repo");
         _baselines = new CommittedBaselines(_group, _git, action =>
         {
             action();
             _applied.Release();
-        });
+        }, new HeadWatcher(_fs, (_, flush) => _flushes.Add(flush), NullLogger.Instance));
     }
 
     [Fact]
@@ -148,6 +150,177 @@ public class CommittedBaselinesTests
         Assert.All(tab.LineChanges, c => Assert.Equal(None, c));
     }
 
+    [Fact]
+    public async Task A_commit_elsewhere_clears_the_markers_on_every_tab_from_that_repo()
+    {
+        _git.HeadFiles[Full("/repo/a.cs")] = "one\n";
+        _git.HeadFiles[Full("/repo/b.cs")] = "uno\n";
+        var a = await Open("/repo/a.cs", "ONE\n");
+        var b = await Open("/repo/b.cs", "UNO\n");
+
+        _git.HeadFiles[Full("/repo/a.cs")] = "ONE\n";
+        _git.HeadFiles[Full("/repo/b.cs")] = "UNO\n";
+        await Commit("/repo/.git", "refs/heads/main");
+
+        Assert.All(a.LineChanges, c => Assert.Equal(None, c));
+        Assert.All(b.LineChanges, c => Assert.Equal(None, c));
+    }
+
+    [Fact]
+    public async Task A_partial_commit_leaves_only_the_uncommitted_lines_marked()
+    {
+        _git.HeadFiles[Full("/repo/a.cs")] = "one\ntwo\n";
+        var tab = await Open("/repo/a.cs", "ONE\nTWO\n");
+
+        _git.HeadFiles[Full("/repo/a.cs")] = "ONE\ntwo\n";
+        await Commit("/repo/.git", "refs/heads/main");
+
+        Assert.Equal([None, Modified, None], tab.LineChanges);
+    }
+
+    [Fact]
+    public async Task Undoing_a_commit_brings_its_markers_back()
+    {
+        _git.HeadFiles[Full("/repo/a.cs")] = "ONE\n";
+        var tab = await Open("/repo/a.cs", "ONE\n");
+
+        _git.HeadFiles[Full("/repo/a.cs")] = "one\n";
+        await Commit("/repo/.git", "refs/heads/main");
+
+        Assert.Equal([Modified, None], tab.LineChanges);
+    }
+
+    [Theory]
+    [InlineData("HEAD")]
+    [InlineData("packed-refs")]
+    public async Task Switching_branch_or_packing_refs_reads_HEAD_again(string file)
+    {
+        await Open("/repo/a.cs", "one\n");
+
+        await Commit("/repo/.git", file, watched: "/repo/.git");
+
+        Assert.Equal(2, _git.HeadReads.Count);
+    }
+
+    [Fact]
+    public async Task A_branch_with_a_slash_in_its_name_is_followed_into_its_folder()
+    {
+        _fs.File.WriteAllText(Full("/repo/.git/HEAD"), "ref: refs/heads/feat/x\n");
+        await Open("/repo/a.cs", "one\n");
+
+        await Commit("/repo/.git", "refs/heads/feat/x");
+
+        Assert.Equal(2, _git.HeadReads.Count);
+    }
+
+    [Theory]
+    [InlineData("refs/heads/other")]
+    [InlineData("index")]
+    [InlineData("refs/heads/main.lock")]
+    public async Task Nothing_but_HEAD_and_its_branch_reads_HEAD_again(string file)
+    {
+        await Open("/repo/a.cs", "one\n");
+
+        await Commit("/repo/.git", file, watched: file == "index" ? "/repo/.git" : "/repo/.git/refs/heads");
+
+        Assert.Single(_git.HeadReads);
+    }
+
+    [Fact]
+    public async Task Tabs_from_another_repo_and_outside_any_repo_are_left_alone()
+    {
+        Repo("/other");
+        await Open("/repo/a.cs", "one\n");
+        await Open("/other/b.cs", "one\n");
+        await Open("/elsewhere/c.cs", "one\n");
+
+        await Commit("/repo/.git", "refs/heads/main");
+
+        Assert.Equal([Full("/repo/a.cs"), Full("/other/b.cs"), Full("/repo/a.cs")], _git.HeadReads);
+    }
+
+    [Fact]
+    public async Task A_rebase_reads_HEAD_once_when_it_settles()
+    {
+        await Open("/repo/a.cs", "one\n");
+        var branches = _fs.Watchers.For(Full("/repo/.git/refs/heads"));
+
+        for (var i = 0; i < 5; i++) branches.Raise(WatcherChangeTypes.Renamed, Full("/repo/.git/refs/heads/main"));
+        _fs.Watchers.For(Full("/repo/.git")).Raise(WatcherChangeTypes.Renamed, Full("/repo/.git/HEAD"));
+        await Flush();
+
+        Assert.Equal(2, _git.HeadReads.Count);
+    }
+
+    [Fact]
+    public async Task A_linked_worktree_follows_its_own_HEAD_and_the_shared_branches()
+    {
+        _fs.AddFile(Full("/repo/.git/worktrees/wt/HEAD"), new MockFileData("ref: refs/heads/wt\n"));
+        _fs.AddFile(Full("/repo/.git/worktrees/wt/commondir"), new MockFileData("../..\n"));
+        _fs.AddFile(Full("/wt/.git"), new MockFileData($"gitdir: {Full("/repo/.git/worktrees/wt")}\n"));
+        await Open("/wt/a.cs", "one\n");
+
+        await Commit("/repo/.git", "refs/heads/wt");
+        await Commit("/repo/.git/worktrees/wt", "HEAD", watched: "/repo/.git/worktrees/wt");
+        await Commit("/repo/.git", "refs/heads/main");
+
+        Assert.Equal(3, _git.HeadReads.Count);
+    }
+
+    [Fact]
+    public async Task A_detached_HEAD_moves_with_HEAD_alone()
+    {
+        _fs.File.WriteAllText(Full("/repo/.git/HEAD"), "4a91c0e2f00d\n");
+        await Open("/repo/a.cs", "one\n");
+
+        await Commit("/repo/.git", "refs/heads/main");
+        await Commit("/repo/.git", "HEAD", watched: "/repo/.git");
+
+        Assert.Equal(2, _git.HeadReads.Count);
+    }
+
+    [Fact]
+    public async Task A_repo_that_cant_be_watched_catches_up_when_its_tab_is_shown()
+    {
+        _fs.Watchers.FailFor.Add(Full("/repo/.git/refs/heads"));
+        var a = await Open("/repo/a.cs", "ONE\n");
+        await Open("/elsewhere/b.cs", "one\n");
+        var reads = _git.HeadReads.Count;
+
+        _git.HeadFiles[Full("/repo/a.cs")] = "one\n";
+        _group.Focus(a.File.FullName);
+        await _baselines.Idle;
+
+        Assert.Equal(reads + 1, _git.HeadReads.Count);
+        Assert.Equal([Modified, None], a.LineChanges);
+    }
+
+    [Fact]
+    public async Task A_watched_repo_reads_nothing_when_its_tab_is_shown()
+    {
+        var a = await Open("/repo/a.cs", "one\n");
+        await Open("/repo/b.cs", "one\n");
+
+        _group.Focus(a.File.FullName);
+        await _baselines.Idle;
+
+        Assert.Equal(2, _git.HeadReads.Count);
+    }
+
+    [Fact]
+    public async Task The_watch_ends_when_the_last_tab_from_its_repo_closes()
+    {
+        var a = await Open("/repo/a.cs", "one\n");
+        await Open("/repo/b.cs", "one\n");
+
+        _group.CloseUnder(a.File.FullName);
+        var whileOneOpen = _fs.Watchers.Live.Count();
+        _group.CloseAll();
+
+        Assert.Equal(2, whileOneOpen);
+        Assert.Empty(_fs.Watchers.Live);
+    }
+
     private async Task<EditorTab> Open(string path, string content)
     {
         var tab = _group.OpenOrFocus(Write(path, content));
@@ -162,4 +335,25 @@ public class CommittedBaselinesTests
     }
 
     private string Full(string path) => _fs.Path.GetFullPath(path);
+
+    private void Repo(string root)
+    {
+        _fs.AddFile(Full($"{root}/.git/HEAD"), new MockFileData("ref: refs/heads/main\n"));
+        _fs.AddDirectory(Full($"{root}/.git/refs/heads"));
+    }
+
+    /// <summary>Git writes <paramref name="file"/> under <paramref name="gitDir"/> the way it does: to a lock, renamed into place.</summary>
+    private async Task Commit(string gitDir, string file, string? watched = null)
+    {
+        var path = Full($"{gitDir}/{file}");
+        _fs.Watchers.For(Full(watched ?? $"{gitDir}/refs/heads")).Raise(WatcherChangeTypes.Renamed, path);
+        await Flush();
+    }
+
+    private async Task Flush()
+    {
+        foreach (var flush in _flushes.ToList()) flush();
+        _flushes.Clear();
+        await _baselines.Idle;
+    }
 }
