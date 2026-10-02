@@ -268,15 +268,44 @@ public class DiffTabDrawTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Shift_left_and_right_scroll_a_quarter_of_the_narrower_text_width()
+    public void Shift_right_scrolls_a_page_keeping_the_last_two_columns_in_view()
+    {
+        var diff = Diff("one\nabcdefghijklmnopqrstuvwxyz", "one\nabcdefghijklmnopqrstuvwxyZ");
+        Assert.Equal("  2- abcdefghij│  2+ abcdefghij", Render(diff)[2]);
+
+        Press(diff, Key.CursorRight.WithShift, 1);
+
+        Assert.Equal(8, diff.LeftColumn);
+        Assert.Equal("  2- ijklmnopqr│  2+ ijklmnopqr", Render(diff)[2]);
+    }
+
+    [Fact]
+    public void Shift_left_scrolls_a_page_back_and_stops_at_the_left_edge()
     {
         var diff = Diff("one\nabcdefghijklmnopqrstuvwxyz", "one\nabcdefghijklmnopqrstuvwxyZ");
 
-        Press(diff, Key.CursorRight.WithShift, 3);
-        Assert.Equal(6, diff.LeftColumn);
-
+        Press(diff, Key.CursorRight.WithShift, 2);
+        Assert.Equal(16, diff.LeftColumn);
         Press(diff, Key.CursorLeft.WithShift, 1);
-        Assert.Equal(4, diff.LeftColumn);
+        Assert.Equal(8, diff.LeftColumn);
+
+        Press(diff, Key.CursorLeft, 3);
+        Press(diff, Key.CursorLeft.WithShift, 1);
+        Assert.Equal(0, diff.LeftColumn);
+    }
+
+    [Theory]
+    [InlineData(31, 8)]
+    [InlineData(61, 23)]
+    [InlineData(13, 1)]
+    public void The_page_is_one_side_s_text_width_less_two_and_follows_the_width(int width, int step)
+    {
+        var diff = Diff("one", "two");
+
+        diff.Width = width;
+        diff.Layout();
+
+        Assert.Equal(step, diff.LargeSidewaysStep);
     }
 
     [Fact]
@@ -325,7 +354,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
         buffer[9] = "A LONG LINE NUMBER 10";
         buffer[24] = "A LONG LINE NUMBER 25";
         var diff = Diff(string.Join('\n', saved), string.Join('\n', buffer));
-        Press(diff, Key.CursorRight.WithShift, 3);
+        Press(diff, Key.CursorRight.WithShift, 1);
 
         diff.NextChange();
         diff.PreviousChange();
@@ -333,7 +362,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
         diff.NewKeyDownEvent(Key.Home);
         diff.Refresh();
 
-        Assert.Equal(6, diff.LeftColumn);
+        Assert.Equal(7, diff.LeftColumn);
     }
 
     [Fact]
@@ -413,7 +442,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
     {
         var diff = Diff("int ab; int bbbbbbbbbbbbbbbbbb;", "int ab; int cccccccccccccccccc;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/a.cs");
 
-        Press(diff, Key.CursorRight.WithShift, 4);
+        Press(diff, Key.CursorRight.WithShift, 1);
         Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.
 
         Assert.Equal("  1- int bbbbbb│  1+ int cccccc", Render(diff)[1]);
@@ -769,7 +798,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         commands.TryExecute(CommandIds.CompareToSaved);
     }
 
-    private const string ThreeChangesStatus = "a.txt ↔ saved  •  Change {0} of 3  •  Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line";
+    private const string ThreeChangesStatus = "a.txt ↔ saved  •  Change {0} of 3  •  Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page";
 
     [Fact]
     public async Task Alt_down_and_alt_up_step_through_changes_and_stop_at_the_last()
@@ -845,7 +874,30 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusSidebar),
             () => workbench.StatusBar.DisplayedText == "a.txt ↔ saved");
 
-        Assert.Equal("a.txt ↔ saved  •  Change 1 of 3  •  F8 next  Alt+↑ prev  Ctrl+R revert  Enter go to line", rebound);
+        Assert.Equal("a.txt ↔ saved  •  Change 1 of 3  •  F8 next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page", rebound);
+    }
+
+    [Theory]
+    [InlineData("Ctrl+CursorRight", "Shift+←/Ctrl+→ page")]
+    [InlineData(null, "Shift+← page")]
+    public async Task The_page_keys_in_the_hint_follow_a_rebind(string? pageRight, string expected)
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string? hint = null;
+        List<KeybindingOverride> overrides = [new(TestKeys.Chord("Shift+CursorRight"), "-" + CommandIds.ScrollDiffPageRight)];
+        if (pageRight is not null) overrides.Add(new(TestKeys.Chord(pageRight), CommandIds.ScrollDiffPageRight));
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                host.ApplyKeybindings(overrides);
+                OpenThreeChanges(workbench, commands);
+            },
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => { hint = workbench.StatusBar.DisplayedText; });
+
+        Assert.EndsWith($"Enter go to line  {expected}", hint);
     }
 
     // Changes at rows 4 (modified), 14 (line 15 removed) and 30 (modified).

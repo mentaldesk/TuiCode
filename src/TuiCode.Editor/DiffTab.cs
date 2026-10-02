@@ -536,7 +536,9 @@ public sealed class DiffTab : FrameView
 
     private int NarrowerTextWidth => Math.Max(0, SideWidths().Left - Digits - 2);
 
-    private int LargeSidewaysStep => Math.Max(1, NarrowerTextWidth / 4);
+    private const int PageOverlap = 2;
+
+    internal int LargeSidewaysStep => Math.Max(1, NarrowerTextWidth - PageOverlap);
 
     protected override bool OnDrawingContent(DrawContext? context)
     {
