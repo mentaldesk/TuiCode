@@ -659,7 +659,7 @@ internal sealed partial class EditorTextView : TextView
         if (Autocomplete.Suggestions.Count > 0 && base.OnKeyDown(key)) return true;
         if (SoftWrap) SetNeedsDraw();
         var bound = KeyBindings.TryGet(key, out var binding);
-        if (ColumnSelect && !SoftWrap && bound && ExtendColumnSelection(binding)) return true;
+        if (ColumnSelect && bound && ExtendColumnSelection(binding)) return true;
         // Anything else ends the box, so the next extend starts one from where the caret now is.
         _box = null;
         if (!bound) return false;

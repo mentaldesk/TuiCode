@@ -157,5 +157,5 @@ public sealed class StatusBarPart : View
     private void UpdateLabel() =>
         _label.Text = _chord is not null
             ? $"{_chord}…"
-            : string.Join("  •  ", new[] { _hint ?? _message, _diff, _grammar, _wrap, _mode }.Where(part => part is not null));
+            : string.Join("  •  ", new[] { _hint ?? _message, _diff, _grammar, _mode, _wrap }.Where(part => part is not null));
 }

@@ -14,7 +14,7 @@ internal sealed partial class EditorTextView
     private bool _barScrolling;
     private bool _followingBar;
     private Point? _dragAnchor;
-    private (Point At, int X)? _rowTrack;
+    private Dictionary<Point, int> _rowTracks = [];
 
     public bool SoftWrap
     {
@@ -24,7 +24,6 @@ internal sealed partial class EditorTextView
             if (field == value) return;
             var topLine = TopLine;
             field = value;
-            RemoveSecondaryCarets();
             _followed = null;
             if (value)
             {
@@ -113,7 +112,11 @@ internal sealed partial class EditorTextView
         var caret = (CurrentRow, CurrentColumn);
         if (_followed == caret) return;
         _followed = caret;
-        var row = Locate(InsertionPoint).Row;
+        ScrollRowIntoView(Locate(InsertionPoint).Row);
+    }
+
+    private void ScrollRowIntoView(int row)
+    {
         if (row < Viewport.Y) ScrollToRow(row);
         else if (row >= Viewport.Y + Viewport.Height) ScrollToRow(row - Viewport.Height + 1);
     }
@@ -145,17 +148,24 @@ internal sealed partial class EditorTextView
         if (rows == 0) return false;
 
         RefreshWrap();
-        var from = InsertionPoint;
-        var (row, x) = Locate(from);
-        if (_rowTrack is { } track && track.At == from) x = track.X;
-        var (line, sub) = _wrap.At(row + rows);
-        var to = new Point(WrapLayout.ColumnAt(Graphemes(line), _wrap.Starts(line), sub, x, TabWidth), line);
-
         if (rows is not (1 or -1)) ScrollToRow(Viewport.Y + rows);
-        Load(extend ? new Caret(to, PrimaryCaret.Anchor ?? from, Extending: true) : new Caret(to), reveal: false);
-        _rowTrack = (to, x);
+        Dictionary<Point, int> tracks = [];
+        if (HasSecondaryCarets) AtEachCaret(_ => MoveCaretByRows(rows, extend, tracks));
+        else MoveCaretByRows(rows, extend, tracks);
+        _rowTracks = tracks;
         RaiseCursorMoved(this, null, null);
         return true;
+    }
+
+    private void MoveCaretByRows(int rows, bool extend, Dictionary<Point, int> tracks)
+    {
+        var from = InsertionPoint;
+        var (row, x) = Locate(from);
+        if (_rowTracks.TryGetValue(from, out var tracked)) x = tracked;
+        var (line, sub) = _wrap.At(row + rows);
+        var to = new Point(WrapLayout.ColumnAt(Graphemes(line), _wrap.Starts(line), sub, x, TabWidth), line);
+        Load(extend ? new Caret(to, PrimaryCaret.Anchor ?? from, Extending: true) : new Caret(to), reveal: false);
+        tracks[to] = x;
     }
 
     private Point PositionAt(Point viewportPoint)
@@ -211,8 +221,13 @@ internal sealed partial class EditorTextView
         if ((flags & buttons) == 0 || mouse.Position is not { } point) return false;
 
         if (CanFocus && !HasFocus) SetFocus();
-        RemoveSecondaryCarets();
         RefreshWrap();
+        if (flags.HasFlag(MouseFlags.Alt))
+        {
+            if (flags.HasFlag(MouseFlags.LeftButtonClicked)) ToggleCaret(Carets, PositionAt(point));
+            return true;
+        }
+        RemoveSecondaryCarets();
 
         if (flags.HasFlag(MouseFlags.LeftButtonPressed) && flags.HasFlag(MouseFlags.PositionReport))
         {
