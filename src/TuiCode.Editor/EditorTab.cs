@@ -358,6 +358,14 @@ public sealed class EditorTab : FrameView
 
     public void OutdentLines() => _textView.OutdentLines();
 
+    /// <summary>Toggles the grammar's line comment on the lines under every caret; false when the grammar has none (#387).</summary>
+    public bool ToggleLineComment()
+    {
+        if (Grammar?.LineComment is not { } marker) return false;
+        _textView.ToggleLineComment(marker);
+        return true;
+    }
+
     /// <summary>Replaces <paramref name="count"/> lines from <paramref name="start"/> with <paramref name="lines"/>, as one undo step (#245).</summary>
     public void ReplaceLines(int start, int count, IReadOnlyList<string> lines) => _textView.ReplaceLines(start, count, lines);
 
