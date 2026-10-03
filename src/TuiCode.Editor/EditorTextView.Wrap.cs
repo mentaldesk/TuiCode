@@ -14,6 +14,7 @@ internal sealed partial class EditorTextView
     private bool _barScrolling;
     private bool _followingBar;
     private Point? _dragAnchor;
+    private (Point At, int X)? _rowTrack;
 
     public bool SoftWrap
     {
@@ -124,6 +125,37 @@ internal sealed partial class EditorTextView
         var cells = Graphemes(line);
         var column = Math.Clamp(position.X, 0, cells.Count);
         return (_wrap.FirstRow(line) + WrapLayout.RowOf(starts, column), WrapLayout.X(cells, starts, column, TabWidth));
+    }
+
+    // ↑/↓ and the page keys step through screen rows, keeping the screen column the caret started from.
+    private bool MoveByRows(Command[] commands)
+    {
+        var (rows, extend) = commands switch
+        {
+            [Command.Up] => (-1, false),
+            [Command.UpExtend] => (-1, true),
+            [Command.Down] => (1, false),
+            [Command.DownExtend] => (1, true),
+            [Command.PageUp] => (-Viewport.Height, false),
+            [Command.PageUpExtend] => (-Viewport.Height, true),
+            [Command.PageDown] => (Viewport.Height, false),
+            [Command.PageDownExtend] => (Viewport.Height, true),
+            _ => (0, false),
+        };
+        if (rows == 0) return false;
+
+        RefreshWrap();
+        var from = InsertionPoint;
+        var (row, x) = Locate(from);
+        if (_rowTrack is { } track && track.At == from) x = track.X;
+        var (line, sub) = _wrap.At(row + rows);
+        var to = new Point(WrapLayout.ColumnAt(Graphemes(line), _wrap.Starts(line), sub, x, TabWidth), line);
+
+        if (rows is not (1 or -1)) ScrollToRow(Viewport.Y + rows);
+        Load(extend ? new Caret(to, PrimaryCaret.Anchor ?? from, Extending: true) : new Caret(to), reveal: false);
+        _rowTrack = (to, x);
+        RaiseCursorMoved(this, null, null);
+        return true;
     }
 
     private Point PositionAt(Point viewportPoint)

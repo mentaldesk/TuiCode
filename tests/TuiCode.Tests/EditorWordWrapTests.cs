@@ -254,18 +254,132 @@ public class EditorWordWrapTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Up_and_down_move_by_file_line_onto_the_right_row()
+    public void Down_moves_onto_the_next_row_of_a_wrapped_line_and_then_the_next_line()
     {
-        using var tab = Tab($"end\n{Paragraph}");
+        using var tab = Tab($"{Paragraph}\nend");
         tab.WordWrap = true;
         tab.MoveCursor(0, 2);
         Render(tab);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+        List<(int, int)> stops = [];
+        for (var i = 0; i < 3; i++)
+        {
+            tab.TextView.NewKeyDownEvent(Key.CursorDown);
+            stops.Add((tab.CursorRow, tab.CursorColumn));
+        }
         Render(tab);
 
+        Assert.Equal([(0, 16), (0, 30), (1, 2)], stops);
+        Assert.Equal(tab.TextView.ViewportToScreen(new Point(2, 3)), tab.TextView.Cursor.Position);
+    }
+
+    [Fact]
+    public void Up_moves_back_through_the_rows_of_the_line_above()
+    {
+        using var tab = Tab($"{Paragraph}\nend");
+        tab.WordWrap = true;
+        tab.MoveCursor(1, 2);
+        Render(tab);
+
+        List<(int, int)> stops = [];
+        for (var i = 0; i < 3; i++)
+        {
+            tab.TextView.NewKeyDownEvent(Key.CursorUp);
+            stops.Add((tab.CursorRow, tab.CursorColumn));
+        }
+
+        Assert.Equal([(0, 30), (0, 16), (0, 2)], stops);
+    }
+
+    [Fact]
+    public void Up_on_the_first_row_and_down_on_the_last_stay_put()
+    {
+        using var tab = Tab(Paragraph);
+        tab.WordWrap = true;
+        tab.MoveCursor(0, 2);
+
+        tab.TextView.NewKeyDownEvent(Key.CursorUp);
+        var top = (tab.CursorRow, tab.CursorColumn);
+        tab.MoveCursor(0, 30);
+        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+
+        Assert.Equal((0, 2), top);
+        Assert.Equal((0, 30), (tab.CursorRow, tab.CursorColumn));
+    }
+
+    [Fact]
+    public void The_screen_column_sticks_through_a_shorter_row()
+    {
+        using var tab = Tab($"{Paragraph}\nab\n{Paragraph}");
+        tab.WordWrap = true;
+        tab.MoveCursor(0, 22);
+
+        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+        var shortRow = (tab.CursorRow, tab.CursorColumn);
+        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+
+        Assert.Equal((1, 2), shortRow);
+        Assert.Equal((2, 8), (tab.CursorRow, tab.CursorColumn));
+    }
+
+    [Fact]
+    public void Shift_down_and_up_extend_the_selection_one_row()
+    {
+        using var tab = Tab(Paragraph);
+        tab.WordWrap = true;
+        tab.MoveCursor(0, 4);
+
+        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
+        var down = tab.SelectedText;
+        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
+        tab.TextView.NewKeyDownEvent(Key.CursorUp.WithShift);
+
+        Assert.Equal("two three four", down);
+        Assert.Equal("two three four", tab.SelectedText);
+    }
+
+    [Fact]
+    public void Page_down_and_up_move_a_page_of_screen_rows()
+    {
+        using var tab = Tab(string.Join('\n', Enumerable.Repeat(Paragraph, 5)));
+        tab.WordWrap = true;
+        tab.MoveCursor(0, 2);
+        Render(tab);
+
+        tab.TextView.NewKeyDownEvent(Key.PageDown);
+        var down = (tab.CursorRow, tab.CursorColumn);
+        Render(tab);
+        var top = tab.TextView.Viewport.Y;
+        tab.TextView.NewKeyDownEvent(Key.PageUp);
+
+        Assert.Equal((2, 2), down);
+        Assert.Equal(Height, top);
+        Assert.Equal((0, 2), (tab.CursorRow, tab.CursorColumn));
+    }
+
+    [Fact]
+    public void Shift_page_down_selects_a_page_of_screen_rows()
+    {
+        using var tab = Tab(string.Join('\n', Enumerable.Repeat(Paragraph, 5)));
+        tab.WordWrap = true;
+        tab.MoveCursor(0, 0);
+        Render(tab);
+
+        tab.TextView.NewKeyDownEvent(Key.PageDown.WithShift);
+
+        Assert.Equal($"{Paragraph}\n{Paragraph}\n".ReplaceLineEndings(), tab.SelectedText.ReplaceLineEndings());
+    }
+
+    [Fact]
+    public void Unwrapped_down_still_moves_a_whole_line()
+    {
+        using var tab = Tab($"{Paragraph}\nend");
+        tab.MoveCursor(0, 2);
+
+        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+
         Assert.Equal((1, 2), (tab.CursorRow, tab.CursorColumn));
-        Assert.Equal(tab.TextView.ViewportToScreen(new Point(2, 1)), tab.TextView.Cursor.Position);
     }
 
     [Fact]

@@ -663,6 +663,7 @@ internal sealed partial class EditorTextView : TextView
         // Anything else ends the box, so the next extend starts one from where the caret now is.
         _box = null;
         if (!bound) return false;
+        if (SoftWrap && MoveByRows(binding.Commands)) return true;
         if (HasSecondaryCarets) return InvokeAtCarets(binding);
         if (!binding.Commands.Any(EditCommands.Contains)) return false;
 
