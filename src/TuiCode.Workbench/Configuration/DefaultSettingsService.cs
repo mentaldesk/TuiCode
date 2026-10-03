@@ -119,6 +119,8 @@ public sealed class DefaultSettingsService : ISettingsService
             root["LineEnding"] = Editor.LineEnding.ToString();
         if (Editor.InsertFinalNewline != defaults.InsertFinalNewline)
             root["InsertFinalNewline"] = Editor.InsertFinalNewline;
+        if (Editor.WordWrap != defaults.WordWrap)
+            root["WordWrap"] = Editor.WordWrap;
         if (SidebarWidth != SidebarSizing.Default)
             root["SidebarWidth"] = SidebarWidth;
 
@@ -209,6 +211,7 @@ public sealed class DefaultSettingsService : ISettingsService
             InsertSpaces = Read(root, "InsertSpaces", defaults.InsertSpaces),
             LineEnding = ReadEnum(root, "LineEnding", defaults.LineEnding),
             InsertFinalNewline = Read(root, "InsertFinalNewline", defaults.InsertFinalNewline),
+            WordWrap = Read(root, "WordWrap", defaults.WordWrap),
         };
         // A width above the spinner's maximum is legitimate on a wide terminal, so only the floor is validated.
         SidebarWidth = Read(root, "SidebarWidth", SidebarSizing.Default) is var width && width >= SidebarSizing.Min

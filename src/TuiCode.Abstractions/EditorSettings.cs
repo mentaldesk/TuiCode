@@ -18,6 +18,9 @@ public sealed record EditorSettings
 
     /// <summary>Whether saving a non-empty file makes sure it ends with a line break.</summary>
     public bool InsertFinalNewline { get; init; } = true;
+
+    /// <summary>Whether a tab opens wrapped (#380); <c>Ctrl+T W</c> still flips each tab on its own.</summary>
+    public bool WordWrap { get; init; }
 }
 
 public enum LineEnding

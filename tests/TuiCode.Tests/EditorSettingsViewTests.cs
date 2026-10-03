@@ -1,4 +1,6 @@
+using Terminal.Gui.Views;
 using TuiCode.Abstractions;
+using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Parts;
@@ -27,6 +29,8 @@ public class EditorSettingsViewTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Space),
             () => host.App.InjectKey(Key.Tab),
             () => host.App.InjectKey(Key.Space),
+            () => host.App.InjectKey(Key.Tab),
+            () => host.App.InjectKey(Key.Space),
             () => host.App.InjectKey(Key.Enter.WithCtrl));
 
         var expected = new EditorSettings
@@ -35,10 +39,52 @@ public class EditorSettingsViewTests : StaticConfigurationTest
             InsertSpaces = false,
             LineEnding = LineEnding.LF,
             InsertFinalNewline = false,
+            WordWrap = true,
         };
         Assert.Equal(expected, _settings.Editor);
         Assert.Equal(expected, workbench.Editor.Group.Settings);
         Assert.Equal(1, _settings.SaveCount);
+    }
+
+    [Fact]
+    public async Task Wrap_long_lines_shows_the_saved_value_and_unchecking_it_saves_it()
+    {
+        _settings.Editor = EditorSettings.Default with { WordWrap = true };
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var shown = CheckState.UnChecked;
+
+        await HostSteps.Run(host, OpenEditorSettings(host, workbench),
+            () => { shown = WrapCheckBox(workbench).Value; },
+            () => WrapCheckBox(workbench).SetFocus(),
+            () => host.App.InjectKey(Key.Space),
+            () => host.App.InjectKey(Key.Enter.WithCtrl));
+
+        Assert.Equal(CheckState.Checked, shown);
+        Assert.False(_settings.Editor.WordWrap);
+    }
+
+    [Fact]
+    public async Task Saving_wrap_long_lines_wraps_files_opened_afterwards_but_not_open_ones()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("alpha\n"));
+        fs.AddFile("/work/b.txt", new MockFileData("bravo\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        EditorTab? open = null, later = null;
+
+        await HostSteps.Run(host,
+            () => { open = workbench.Editor.Open(fs.FileInfo.New("/work/a.txt")); },
+            OpenEditorSettings(host, workbench),
+            () => WrapCheckBox(workbench).SetFocus(),
+            () => host.App.InjectKey(Key.Space),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => { later = workbench.Editor.Open(fs.FileInfo.New("/work/b.txt")); });
+
+        Assert.True(_settings.Editor.WordWrap);
+        Assert.False(open!.WordWrap);
+        Assert.True(later!.WordWrap);
     }
 
     [Theory]
@@ -118,6 +164,10 @@ public class EditorSettingsViewTests : StaticConfigurationTest
             }
         };
     }
+
+    private static CheckBox WrapCheckBox(Workbench.Workbench workbench) =>
+        workbench.SubViews.OfType<SettingsView>().Single().SubViews.OfType<EditorSettingsView>().Single()
+            .SubViews.OfType<CheckBox>().Single(c => c.Text == "Wrap long lines");
 
     private WorkbenchHost BuildHost(Workbench.Workbench workbench)
     {
