@@ -46,6 +46,14 @@ foreach (var resource in resources.Order(StringComparer.Ordinal))
         else
             Console.WriteLine($"Skipping {package}/{path}: not embedded in the package");
     }
+    foreach (var language in manifest["contributes"]?["languages"]?.AsArray() ?? [])
+    {
+        if (language?["configuration"]?.GetValue<string>() is not { } configuration) continue;
+        var path = configuration.TrimStart('.', '/');
+        var configurationResource = grammarPrefix + package + "." + path.Replace('/', '.');
+        if (resources.Contains(configurationResource))
+            entries[$"grammars/{package}/{path}"] = configurationResource;
+    }
 }
 
 var zipPath = Path.Combine(root, "src", "TuiCode.Syntax", "Grammars.zip");

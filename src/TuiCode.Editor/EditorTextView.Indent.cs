@@ -47,10 +47,10 @@ internal sealed partial class EditorTextView
     private void ShiftLines(Caret[] carets, bool outdent)
     {
         var unit = Cell.ToCellList(InsertSpaces ? new string(' ', TabWidth) : "\t");
-        var shifted = new Dictionary<int, (int At, int By)>();
-        Edit(() =>
+        EditLines(carets, blocks =>
         {
-            foreach (var (first, last) in RowBlocks(carets))
+            var shifted = new Dictionary<int, (int At, int By)>();
+            foreach (var (first, last) in blocks)
             {
                 for (var row = first; row <= last; row++)
                 {
@@ -69,14 +69,27 @@ internal sealed partial class EditorTextView
                     shifted[row] = (kept, kept - leading);
                 }
             }
-            return [.. carets.Select(c => c with { Position = Shifted(c.Position), Anchor = c.Anchor is { } a ? Shifted(a) : null })];
+            return shifted;
         });
+    }
 
-        // A point at the start of the line stays there, so a selection of whole lines still is one.
-        Point Shifted(Point point) =>
-            shifted.TryGetValue(point.Y, out var shift) && point.X > shift.At
-                ? point with { X = Math.Max(shift.At, point.X + shift.By) }
-                : point;
+    /// <summary>
+    /// Edits the lines under <paramref name="carets"/> as one undo step. The edit reports each row it changed as the column the
+    /// change starts at and the cells it added (or removed, if negative), so carets after that column follow their text.
+    /// </summary>
+    private void EditLines(Caret[] carets, Func<List<(int First, int Last)>, Dictionary<int, (int At, int By)>> edit)
+    {
+        Edit(() =>
+        {
+            var shifted = edit(RowBlocks(carets));
+            return [.. carets.Select(c => c with { Position = Shifted(c.Position), Anchor = c.Anchor is { } a ? Shifted(a) : null })];
+
+            // A point at the start of the change stays there, so a selection of whole lines still is one.
+            Point Shifted(Point point) =>
+                shifted.TryGetValue(point.Y, out var shift) && point.X > shift.At
+                    ? point with { X = Math.Max(shift.At, point.X + shift.By) }
+                    : point;
+        });
     }
 
     // Trims the leading whitespace from its end back to the previous tab stop, so mixed tabs and spaces stay as they were.
