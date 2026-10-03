@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Text;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 using Point = System.Drawing.Point;
 
 namespace TuiCode.Editor;
@@ -437,9 +438,7 @@ internal sealed partial class EditorTextView
     internal IEnumerable<Point> SecondaryCaretsOnScreen() =>
         _secondary.Select(ViewportPosition).OfType<Point>().Select(point => ViewportToScreen(point));
 
-    internal const string Bar = "\u258f";
-
-    // Where the terminal can't draw the extra carets, every caret, the primary included, is painted as the bar it would have drawn.
+    // Where the terminal can't draw the extra carets, every caret, the primary included, is painted as a block over the character it's before.
     private void DrawCarets()
     {
         var paint = HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
@@ -447,11 +446,14 @@ internal sealed partial class EditorTextView
         if (Cursor.Style != style) Cursor = Cursor with { Style = style };
         if (!paint) return;
 
+        var block = new Attribute(_editable.Background, _editable.Foreground);
         foreach (var caret in Carets)
         {
             if (ViewportPosition(caret) is not { } point) continue;
-            SetAttribute(_editable);
-            AddStr(point.X, point.Y, Bar);
+            var line = GetLine(caret.Position.Y);
+            var grapheme = caret.Position.X < line.Count ? line[caret.Position.X].Grapheme : " ";
+            SetAttribute(block);
+            AddStr(point.X, point.Y, grapheme == "\t" ? " " : grapheme);
         }
     }
 

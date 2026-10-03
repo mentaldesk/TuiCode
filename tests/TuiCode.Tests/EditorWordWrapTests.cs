@@ -406,8 +406,12 @@ public class EditorWordWrapTests : StaticConfigurationTest
         var screen = Render(tab);
 
         Assert.Equal([new Point(16, 0), new Point(16, 1)], tab.TextView.Carets.Select(c => c.Position));
-        Assert.Equal(EditorTextView.Bar, screen[1][7..8]);
-        Assert.Equal(EditorTextView.Bar, screen[4][7..8]);
+        var editable = tab.TextView.GetAttributeForRole(VisualRole.Editable);
+        foreach (var row in new[] { 1, 4 })
+        {
+            Assert.Equal("u", screen[row][7..8]);
+            Assert.Equal(new Attribute(editable.Background, editable.Foreground), AttributeAt(tab.TextView, row, 2));
+        }
     }
 
     [Fact]
@@ -467,28 +471,54 @@ public class EditorWordWrapTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Column_select_takes_file_lines_and_highlights_each_lines_range_on_whichever_rows_it_falls()
+    public void Column_select_sweeps_the_cells_on_screen_not_the_columns_in_the_file()
     {
-        using var tab = Tab($"{Paragraph}\n{Paragraph}");
+        using var tab = Tab($"{Paragraph}\nend");
         tab.WordWrap = true;
         tab.ColumnSelect = true;
-        tab.MoveCursor(0, 12);
+        tab.MoveCursor(0, 4);
 
         tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
-        for (var i = 0; i < 6; i++)
-            tab.TextView.NewKeyDownEvent(Key.CursorRight.WithShift);
+        tab.TextView.NewKeyDownEvent(Key.CursorRight.WithShift);
         Render(tab);
 
         var view = tab.TextView;
         var selected = view.GetAttributeForRole(VisualRole.Active);
-        Assert.Equal([(new Point(12, 1), new Point(18, 1)), (new Point(12, 0), new Point(18, 0))],
+        Assert.Equal([(new Point(18, 0), new Point(19, 0)), (new Point(4, 0), new Point(5, 0))],
             view.Carets.Select(c => (c.Start, c.End)));
-        foreach (var top in new[] { 0, 3 })
-        {
-            Assert.Equal(selected, AttributeAt(view, top, 12));
-            Assert.Equal(selected, AttributeAt(view, top + 1, 3));
-            Assert.Equal(view.GetAttributeForRole(VisualRole.Editable), AttributeAt(view, top + 1, 4));
-        }
+        Assert.Equal(selected, AttributeAt(view, 0, 4));
+        Assert.Equal(selected, AttributeAt(view, 1, 4));
+        Assert.Equal(view.GetAttributeForRole(VisualRole.Editable), AttributeAt(view, 1, 6));
+    }
+
+    [Fact]
+    public void Column_select_reaches_from_a_wrapped_line_into_the_next_line()
+    {
+        using var tab = Tab($"{Paragraph}\nend");
+        tab.WordWrap = true;
+        tab.ColumnSelect = true;
+        tab.MoveCursor(0, 30);
+
+        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
+        for (var i = 0; i < 2; i++) tab.TextView.NewKeyDownEvent(Key.CursorLeft.WithShift);
+
+        Assert.Equal([(new Point(0, 1), new Point(2, 1)), (new Point(28, 0), new Point(30, 0))],
+            tab.TextView.Carets.Select(c => (c.Start, c.End)));
+    }
+
+    [Fact]
+    public void Shift_End_in_column_select_takes_each_row_to_its_own_end()
+    {
+        using var tab = Tab(Paragraph);
+        tab.WordWrap = true;
+        tab.ColumnSelect = true;
+        tab.MoveCursor(0, 0);
+
+        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
+        tab.TextView.NewKeyDownEvent(Key.End.WithShift);
+
+        Assert.Equal([(new Point(14, 0), new Point(27, 0)), (new Point(0, 0), new Point(13, 0))],
+            tab.TextView.Carets.Select(c => (c.Start, c.End)));
     }
 
     [Fact]

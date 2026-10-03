@@ -25,6 +25,7 @@ internal sealed partial class EditorTextView
             var topLine = TopLine;
             field = value;
             _followed = null;
+            _box = null;
             if (value)
             {
                 FollowVerticalBar();
@@ -170,10 +171,61 @@ internal sealed partial class EditorTextView
 
     private Point PositionAt(Point viewportPoint)
     {
-        var (line, row) = _wrap.At(Viewport.Y + Math.Clamp(viewportPoint.Y, 0, Math.Max(Viewport.Height - 1, 0)));
         if (Viewport.Y + viewportPoint.Y >= _wrap.Rows) return new Point(GetLine(Lines - 1).Count, Lines - 1);
-        var x = Math.Clamp(viewportPoint.X, 0, Math.Max(Viewport.Width - 1, 0));
-        return new Point(WrapLayout.ColumnAt(Graphemes(line), _wrap.Starts(line), row, x, TabWidth), line);
+        var row = Viewport.Y + Math.Clamp(viewportPoint.Y, 0, Math.Max(Viewport.Height - 1, 0));
+        return PositionOnRow(row, Math.Clamp(viewportPoint.X, 0, Math.Max(Viewport.Width - 1, 0)));
+    }
+
+    private Point PositionOnRow(int screenRow, int x)
+    {
+        var (line, sub) = _wrap.At(screenRow);
+        return new Point(WrapLayout.ColumnAt(Graphemes(line), _wrap.Starts(line), sub, x, TabWidth), line);
+    }
+
+    private Point ScreenPoint(Point position)
+    {
+        var (row, x) = Locate(position);
+        return new Point(x, row);
+    }
+
+    // Column select while wrapped sweeps a box of screen rows and cells, as the text is laid out on screen.
+    private bool ExtendWrappedColumnSelection(KeyBinding binding)
+    {
+        RefreshWrap();
+        var (anchor, active) = _box ?? (ScreenPoint(PrimaryCaret.Anchor ?? InsertionPoint), ScreenPoint(InsertionPoint));
+        var rows = binding.Commands switch
+        {
+            [Command.UpExtend] => -1,
+            [Command.DownExtend] => 1,
+            [Command.PageUpExtend] => -Viewport.Height,
+            [Command.PageDownExtend] => Viewport.Height,
+            _ => 0,
+        };
+        if (rows != 0)
+            active = active with { Y = Math.Clamp(active.Y + rows, 0, _wrap.Rows - 1) };
+        else if (binding.Commands is [Command.LeftStartExtend])
+            active = active with { X = 0 };
+        else if (binding.Commands is [Command.RightEndExtend])
+            active = active with { X = int.MaxValue };
+        else
+        {
+            Load(new Caret(PositionOnRow(active.Y, active.X)), reveal: false);
+            InvokeCommands(binding.Commands, binding);
+            active = ScreenPoint(InsertionPoint);
+        }
+
+        _box = (anchor, active);
+        var step = Math.Sign(anchor.Y - active.Y);
+        List<Caret> carets = [];
+        // From the active row, so its caret stays primary and the view follows it.
+        for (var row = active.Y; ; row += step)
+        {
+            var (start, end) = (PositionOnRow(row, anchor.X), PositionOnRow(row, active.X));
+            carets.Add(start == end ? new Caret(end) : new Caret(end, start, Extending: true));
+            if (row == anchor.Y) break;
+        }
+        SetCarets(carets);
+        return true;
     }
 
     private void DrawWrappedRows(int right, int bottom, ref int row)

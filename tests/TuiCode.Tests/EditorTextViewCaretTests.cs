@@ -4,6 +4,7 @@ using Terminal.Gui.Views;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Input;
 using TuiCode.Editor;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 using Point = System.Drawing.Point;
 
 namespace TuiCode.Tests;
@@ -558,7 +559,7 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Every_caret_is_a_bar_in_place_of_the_terminal_cursor()
+    public void Every_caret_is_a_block_that_keeps_its_character_in_place_of_the_terminal_cursor()
     {
         var view = View("abcdef", "abcdef");
         view.SetCarets([At(0, 0), Selecting(1, 1, 3)]);
@@ -567,8 +568,10 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
         view.Draw();
 
         var contents = _app.Driver!.Contents!;
-        Assert.Equal(EditorTextView.Bar, contents[1, 3].Grapheme);
-        Assert.Equal(EditorTextView.Bar, contents[0, 0].Grapheme);
+        var editable = view.GetAttributeForRole(VisualRole.Editable);
+        var block = new Attribute(editable.Background, editable.Foreground);
+        Assert.Equal(("d", block), (contents[1, 3].Grapheme, contents[1, 3].Attribute));
+        Assert.Equal(("a", block), (contents[0, 0].Grapheme, contents[0, 0].Attribute));
         Assert.Equal(CursorStyle.Hidden, view.Cursor.Style);
         Assert.Equal(view.GetAttributeForRole(VisualRole.Active), contents[1, 1].Attribute);
         Assert.Equal(view.GetAttributeForRole(VisualRole.Editable), contents[1, 4].Attribute);
