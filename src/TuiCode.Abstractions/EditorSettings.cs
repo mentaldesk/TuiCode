@@ -24,7 +24,7 @@ public sealed record EditorSettings
 
     /// <summary>Languages that wrap whatever <see cref="WordWrap"/> says, keyed by grammar id (#381).</summary>
     public static IReadOnlyDictionary<string, bool> DefaultWrapByLanguage { get; } =
-        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["markdown"] = true };
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["markdown"] = true, ["plaintext"] = true };
 
     /// <summary>The user's per-language wrap, over <see cref="DefaultWrapByLanguage"/>, keyed by grammar id.</summary>
     public IReadOnlyDictionary<string, bool> WrapByLanguage { get; init; } =

@@ -16,8 +16,10 @@ public class WrapByLanguageTests
     [InlineData("markdown", true, true)]
     [InlineData("csharp", false, false)]
     [InlineData("csharp", true, true)]
+    [InlineData("plaintext", false, true)]
+    [InlineData(null, false, false)]
     [InlineData(null, true, true)]
-    public void Without_overrides_markdown_wraps_and_everything_else_follows_wrap_long_lines(
+    public void Without_overrides_markdown_and_plain_text_wrap_and_everything_else_follows_wrap_long_lines(
         string? language, bool wordWrap, bool expected)
     {
         Assert.Equal(expected, (EditorSettings.Default with { WordWrap = wordWrap }).WrapsLanguage(language));
@@ -49,12 +51,12 @@ public class WrapByLanguageTests
     }
 
     [Fact]
-    public void Markdown_is_listed_on_by_default()
+    public void Markdown_and_plain_text_are_listed_on_by_default()
     {
-        var row = Assert.Single(Build([], ""));
+        var rows = Build([], "");
 
-        Assert.Equal(WrapLanguageKind.Default, row.Kind);
-        Assert.Equal($"{"Markdown",-28}On  (default)", row.Display);
+        Assert.All(rows, r => Assert.Equal(WrapLanguageKind.Default, r.Kind));
+        Assert.Equal([$"{"Markdown",-28}On  (default)", $"{"Plain Text",-28}On  (default)"], rows.Select(r => r.Display));
     }
 
     [Fact]
@@ -117,6 +119,27 @@ public class WrapByLanguageTests
     }
 
     [Fact]
+    public void A_txt_file_opens_wrapped_as_plain_text_unless_turned_off()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/notes.txt", new MockFileData("notes"));
+        using var group = new EditorGroup(Syntax);
+        using var off = new EditorGroup(Syntax)
+        {
+            Settings = EditorSettings.Default with
+            {
+                WrapByLanguage = new Dictionary<string, bool> { [SyntaxHighlighter.PlainText] = false },
+            },
+        };
+
+        var tab = group.OpenOrFocus(fs.FileInfo.New("/work/notes.txt"));
+
+        Assert.Null(tab.Grammar);
+        Assert.True(tab.WordWrap);
+        Assert.False(off.OpenOrFocus(fs.FileInfo.New("/work/notes.txt")).WordWrap);
+    }
+
+    [Fact]
     public void A_language_set_off_stays_unwrapped_with_wrap_long_lines_on()
     {
         using var group = new EditorGroup(Syntax)
@@ -173,7 +196,7 @@ public class WrapByLanguageTests
     {
         using var view = new EditorSettingsView(EditorSettings.Default, Syntax);
 
-        Assert.Equal("markdown", Assert.Single(view.LanguageRows).Id);
+        Assert.Equal(["markdown", "plaintext"], view.LanguageRows.Select(r => r.Id));
         Assert.Contains(view.SubViews.OfType<Label>(),
             l => l.Text == "Enter: On / Off / Default   Delete: reset   Type to add");
         Assert.Contains(view.SubViews.OfType<Label>(), l => l.Text == "Wrap by language");

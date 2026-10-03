@@ -36,6 +36,7 @@ internal static class WrapLanguageRows
         var names = languages
             .GroupBy(l => l.Id, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
+        names[SyntaxHighlighter.PlainText] = Workbench.PlainTextName;
         string NameOf(string id) => names.GetValueOrDefault(id) ?? $"{id} (unknown)";
 
         var rows = new List<WrapLanguageRow>();
