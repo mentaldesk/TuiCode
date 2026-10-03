@@ -88,6 +88,18 @@ public class AlignedDiffTests
         Assert.Equal([0], diff.ChangeBlocks);
     }
 
+    [Theory]
+    [InlineData(new[] { "a", "c" }, new[] { "a", "x", "y", "c" }, 2, 0)]
+    [InlineData(new[] { "a", "b", "c", "d" }, new[] { "a", "d" }, 0, 2)]
+    [InlineData(new[] { "a", "old", "z", "q" }, new[] { "a", "new1", "new2", "z" }, 2, 2)]
+    [InlineData(new[] { "a", "b", "c" }, new[] { "a", "b", "c" }, 0, 0)]
+    public void Compute_counts_the_lines_drawn_as_added_and_removed(string[] left, string[] right, int added, int removed)
+    {
+        var diff = AlignedDiff.Compute(left, right);
+
+        Assert.Equal((added, removed), (diff.AddedLines, diff.RemovedLines));
+    }
+
     [Fact]
     public void Compute_lists_the_first_row_of_each_change_block_in_order()
     {

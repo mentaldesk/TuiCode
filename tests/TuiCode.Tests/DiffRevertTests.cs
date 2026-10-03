@@ -231,7 +231,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.R.WithCtrl));
 
-        Assert.Equal($"Reverted 1 line from saved  •  Change 1 of 2  •  {Keys}", workbench.StatusBar.DisplayedText);
+        Assert.Equal($"Reverted 1 line from saved  •  +2 −2  •  Change 1 of 2  •  {Keys}", workbench.StatusBar.DisplayedText);
         Assert.Equal(40, workbench.Editor.Group.Tabs[0].Lines.Count);
         Assert.Equal("line 15", workbench.Editor.Group.Tabs[0].Lines[14]);
     }
@@ -291,7 +291,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => OpenThreeChanges(workbench, commands),
             () => host.App.InjectKey(Key.R.WithCtrl));
 
-        Assert.Equal($"Reverted 1 line from saved  •  2 changes  •  {Keys}", workbench.StatusBar.DisplayedText);
+        Assert.Equal($"Reverted 1 line from saved  •  +1 −2  •  2 changes  •  {Keys}", workbench.StatusBar.DisplayedText);
         Assert.Equal("line 5", workbench.Editor.Group.Tabs[0].Lines[4]);
     }
 
@@ -334,7 +334,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.F9));
 
-        Assert.Equal("Reverted 1 line from saved  •  2 changes  •  Alt+↓ next  Alt+↑ prev  F9 revert  Enter go to line  Shift+←/→ page",
+        Assert.Equal("Reverted 1 line from saved  •  +1 −2  •  2 changes  •  Alt+↓ next  Alt+↑ prev  F9 revert  Enter go to line  Shift+←/→ page",
             workbench.StatusBar.DisplayedText);
     }
 

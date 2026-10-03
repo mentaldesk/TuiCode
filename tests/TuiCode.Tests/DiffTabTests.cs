@@ -416,6 +416,30 @@ public class DiffTabDrawTests : StaticConfigurationTest
         Assert.Equal("No changes", diff.ChangeStatus);
     }
 
+    [Theory]
+    [InlineData("a\nb\nc", "a\nB\nc\nd\ne", "+3 −1")]
+    [InlineData("a", "a\nb\nc", "+2")]
+    [InlineData("a\nb\nc", "a", "−2")]
+    [InlineData("a\nb", "a\nb", "")]
+    public void Line_counts_show_only_the_sides_with_lines(string saved, string buffer, string expected)
+    {
+        var diff = Diff(saved, buffer);
+
+        Assert.Equal(expected, diff.LineCounts);
+    }
+
+    [Fact]
+    public void Line_counts_follow_edits_to_the_buffer_when_the_diff_refreshes()
+    {
+        var diff = Diff("a\nb", "a\nB");
+        Assert.Equal("+1 −1", diff.LineCounts);
+
+        diff.Source!.Content = "a\nB\nc\nd";
+        diff.Refresh();
+
+        Assert.Equal("+3 −1", diff.LineCounts);
+    }
+
     private const string DarkKeyword = "#569CD6";
     private const string LightKeyword = "#0000FF";
 
@@ -743,7 +767,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         Assert.Equal("a.txt ↔ saved", diff.Title);
         Assert.Same(diff, group.ActiveDiffTab);
         Assert.Equal(1, diff.CurrentRow);
-        Assert.StartsWith("a.txt ↔ saved  •  Change 1 of 1", workbench.StatusBar.DisplayedText);
+        Assert.StartsWith("a.txt ↔ saved  •  +1 −1  •  Change 1 of 1", workbench.StatusBar.DisplayedText);
     }
 
     [Fact]
@@ -798,7 +822,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         commands.TryExecute(CommandIds.CompareToSaved);
     }
 
-    private const string ThreeChangesStatus = "a.txt ↔ saved  •  Change {0} of 3  •  Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page";
+    private const string ThreeChangesStatus = "a.txt ↔ saved  •  +2 −3  •  Change {0} of 3  •  Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page";
 
     [Fact]
     public async Task Alt_down_and_alt_up_step_through_changes_and_stop_at_the_last()
@@ -874,7 +898,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusSidebar),
             () => workbench.StatusBar.DisplayedText == "a.txt ↔ saved");
 
-        Assert.Equal("a.txt ↔ saved  •  Change 1 of 3  •  F8 next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page", rebound);
+        Assert.Equal("a.txt ↔ saved  •  +2 −3  •  Change 1 of 3  •  F8 next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page", rebound);
     }
 
     [Theory]
