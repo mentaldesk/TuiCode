@@ -131,6 +131,7 @@ public sealed class EditorGroup : PaneTabs
         tab.ColumnSelect = ColumnSelect;
         tab.IconStyle = IconStyle;
         tab.Settings = Settings;
+        tab.WordWrap = Settings.WordWrap;
         tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
         tab.BaselineReset += (_, _) => BaselineReset?.Invoke(this, tab);
         tab.Copied += (_, outcome) => Copied?.Invoke(this, outcome);

@@ -621,6 +621,30 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task With_wrap_on_in_settings_a_file_opens_wrapped_and_Ctrl_T_W_still_unwraps_it()
+    {
+        var (fs, statusBar, workbench, host) = Start(EditorSettings.Default with { WordWrap = true });
+        using var _ = workbench;
+        using var __ = host;
+        EditorTab? tab = null;
+        string opened = "";
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                tab = workbench.Editor.Open(fs.FileInfo.New("/work/a.txt"));
+                tab.FocusContent();
+            },
+            () => { opened = statusBar.DisplayedText; },
+            () => host.App.InjectKey(Key.T.WithCtrl),
+            () => host.App.InjectKey(Key.W));
+
+        Assert.EndsWith("  •  Wrap", opened);
+        Assert.False(tab!.WordWrap);
+        Assert.DoesNotContain("Wrap", statusBar.DisplayedText);
+    }
+
+    [Fact]
     public void Wrap_shows_after_the_grammar()
     {
         var statusBar = new StatusBarPart();
@@ -631,7 +655,8 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
         Assert.EndsWith("Markdown  •  Wrap", statusBar.DisplayedText);
     }
 
-    private static (MockFileSystem Fs, StatusBarPart StatusBar, Workbench.Workbench Workbench, WorkbenchHost Host) Start()
+    private static (MockFileSystem Fs, StatusBarPart StatusBar, Workbench.Workbench Workbench, WorkbenchHost Host) Start(
+        EditorSettings? editor = null)
     {
         var fs = new MockFileSystem();
         fs.AddFile("/work/a.txt", new MockFileData("one two three four five six seven eight nine ten eleven twelve\nend\n"));
@@ -640,7 +665,7 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
         var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), statusBar);
         var commands = new CommandService();
         var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
-            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+            new InMemorySettingsService { Editor = editor ?? EditorSettings.Default }, driverName: DriverRegistry.Names.ANSI);
         return (fs, statusBar, workbench, host);
     }
 }

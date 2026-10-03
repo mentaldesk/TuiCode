@@ -242,7 +242,7 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     public void Editor_settings_round_trip_through_the_settings_file()
     {
         var fs = new MockFileSystem();
-        var editor = new EditorSettings { IndentSize = 2, InsertSpaces = false, LineEnding = LineEnding.CRLF, InsertFinalNewline = false };
+        var editor = new EditorSettings { IndentSize = 2, InsertSpaces = false, LineEnding = LineEnding.CRLF, InsertFinalNewline = false, WordWrap = true };
         var svc = new DefaultSettingsService(fs) { Editor = editor };
 
         svc.Save();
@@ -260,6 +260,15 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         svc.Save();
 
         Assert.False(fs.File.Exists(SettingsPath(fs)));
+    }
+
+    [Fact]
+    public void Word_wrap_is_off_when_the_settings_file_does_not_mention_it()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{ \"IndentSize\": 2 }"));
+
+        Assert.False(new DefaultSettingsService(fs).Editor.WordWrap);
     }
 
     [Fact]

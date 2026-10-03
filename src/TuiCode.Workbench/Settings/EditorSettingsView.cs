@@ -12,6 +12,7 @@ public sealed class EditorSettingsView : View
     private readonly CheckBox _insertSpaces;
     private readonly OptionSelector<LineEnding> _lineEnding;
     private readonly CheckBox _insertFinalNewline;
+    private readonly CheckBox _wordWrap;
 
     public EditorSettings Current => _original with
     {
@@ -19,6 +20,7 @@ public sealed class EditorSettingsView : View
         InsertSpaces = _insertSpaces.Value == CheckState.Checked,
         LineEnding = _lineEnding.Value ?? LineEnding.Auto,
         InsertFinalNewline = _insertFinalNewline.Value == CheckState.Checked,
+        WordWrap = _wordWrap.Value == CheckState.Checked,
     };
 
     public EditorSettingsView(EditorSettings settings)
@@ -57,7 +59,9 @@ public sealed class EditorSettingsView : View
             Value = Check(settings.InsertFinalNewline),
         };
 
-        Add(indentSizeLabel, _indentSize, _insertSpaces, lineEndingLabel, _lineEnding, _insertFinalNewline);
+        _wordWrap = new CheckBox { X = 0, Y = 8, Text = "Wrap long lines", Value = Check(settings.WordWrap) };
+
+        Add(indentSizeLabel, _indentSize, _insertSpaces, lineEndingLabel, _lineEnding, _insertFinalNewline, _wordWrap);
         KeyDown += OnKey;
     }
 

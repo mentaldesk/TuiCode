@@ -31,6 +31,7 @@ internal sealed partial class EditorTextView
         set
         {
             _secondary.Clear();
+            _autoIndents.Clear();
             base.Text = value;
             _undo.Clear();
             _undone = 0;
@@ -50,6 +51,7 @@ internal sealed partial class EditorTextView
         try
         {
             after = edit();
+            TrimAutoIndents(after);
         }
         finally
         {
@@ -82,6 +84,7 @@ internal sealed partial class EditorTextView
         try
         {
             edit();
+            TrimAutoIndents(Carets);
         }
         finally
         {
@@ -139,6 +142,7 @@ internal sealed partial class EditorTextView
         var group = undo ? _undo[_undo.Count - 1 - _undone++] : _undo[_undo.Count - _undone--];
         // The carets are set afterwards; until then TG mustn't read a selection the change has invalidated.
         IsSelecting = false;
+        _autoIndents.Clear();
         Replay(group.Changes, undo, applyToModel: true);
         SetCarets(undo ? group.Before : group.After);
         RaiseContentsChanged();
