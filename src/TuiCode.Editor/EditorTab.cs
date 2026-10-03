@@ -276,9 +276,7 @@ public sealed class EditorTab : FrameView
     {
         row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
         col = Math.Clamp(col, 0, _textView.GetLine(row).Count);
-        _textView.RemoveSecondaryCarets();
-        _textView.IsSelecting = false;
-        _textView.InsertionPoint = new System.Drawing.Point(col, row);
+        _textView.MoveCaret(new System.Drawing.Point(col, row));
     }
 
     internal EditorTextView TextView => _textView;
@@ -669,7 +667,10 @@ internal sealed partial class EditorTextView : TextView
             }
             IsSelecting = false;
         }
-        InvokeCommands(commands, binding);
+        if (commands is [Command.NewLine])
+            NewLineKeepingIndent(() => InvokeCommands(commands, binding));
+        else
+            InvokeCommands(commands, binding);
     }
 
     // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
