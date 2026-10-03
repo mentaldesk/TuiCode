@@ -179,9 +179,9 @@ public class GrammarHostTests : StaticConfigurationTest
             () => { host.App.InjectKey(Key.Enter); },
             () => !workbench.SubViews.OfType<GrammarPickerView>().Any());
 
-        Assert.Equal($"{_fs.Path.GetFullPath("/work/notes.txt")}  •  Plain Text", before);
+        Assert.Equal($"{_fs.Path.GetFullPath("/work/notes.txt")}  •  Plain Text  •  Wrap", before);
         Assert.Equal("json", tab!.Grammar?.Id);
-        Assert.EndsWith("  •  JSON", workbench.StatusBar.DisplayedText);
+        Assert.EndsWith("  •  JSON  •  Wrap", workbench.StatusBar.DisplayedText);
     }
 
     [Fact]
