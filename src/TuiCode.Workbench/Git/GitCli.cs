@@ -145,6 +145,18 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
             : GitResult<IReadOnlyList<GitChange>>.Failure(ErrorMessage(run));
     }
 
+    public async Task<GitResult<IReadOnlyDictionary<string, GitLineCount>>> GetLineCountsAsync(string path, string revision, CancellationToken cancellationToken = default)
+    {
+        if (!IsSafeRevision(revision))
+            return GitResult<IReadOnlyDictionary<string, GitLineCount>>.Failure($"Unknown revision '{revision}'");
+
+        var run = await RunAsync(DirectoryOf(path),
+            ["diff", "--numstat", "-z", "-M", "--no-ext-diff", revision, "--"], cancellationToken);
+        return run.Failure is null && run.ExitCode == 0
+            ? GitResult<IReadOnlyDictionary<string, GitLineCount>>.Success(ParseLineCounts(run.Output))
+            : GitResult<IReadOnlyDictionary<string, GitLineCount>>.Failure(ErrorMessage(run));
+    }
+
     public async Task<GitResult<bool>> AddWorktreeAsync(string repoRoot, string worktreePath, CancellationToken cancellationToken = default)
     {
         if (fileSystem.Directory.Exists(worktreePath))
@@ -321,6 +333,34 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
             changes.Add(new GitChange(kind, fields[i + 1]));
         }
         return changes;
+    }
+
+    /// <summary>
+    /// Reads <c>--numstat -z</c>: <c>added\tdeleted\tpath</c>, or for a rename an empty path followed by the old and
+    /// new paths as fields of their own. A binary file's counts are <c>-</c>.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, GitLineCount> ParseLineCounts(string output)
+    {
+        var fields = output.Split('\0');
+        var counts = new Dictionary<string, GitLineCount>(StringComparer.Ordinal);
+        for (var i = 0; i < fields.Length; i++)
+        {
+            var parts = fields[i].Split('\t', 3);
+            if (parts.Length < 3) continue;
+            var path = parts[2];
+            if (path.Length == 0)
+            {
+                if (i + 2 >= fields.Length) break;
+                path = fields[i + 2];
+                i += 2;
+            }
+            if (parts[0] == "-" && parts[1] == "-")
+                counts[path] = new GitLineCount(0, 0, Binary: true);
+            else if (int.TryParse(parts[0], CultureInfo.InvariantCulture, out var added)
+                     && int.TryParse(parts[1], CultureInfo.InvariantCulture, out var deleted))
+                counts[path] = new GitLineCount(added, deleted);
+        }
+        return counts;
     }
 
     internal static IReadOnlyList<GitRef> ParseRefs(string output)

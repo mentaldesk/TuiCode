@@ -1,7 +1,11 @@
+using System.Globalization;
+using System.Text;
+using Terminal.Gui.Text;
 using TuiCode.Abstractions;
 using TuiCode.Icons;
 using TuiCode.Syntax;
 using TuiCode.Workbench.Git;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Workbench.Review;
 
@@ -119,9 +123,8 @@ public sealed class ReviewView : View
         _files.AspectGetter = node => ReviewRow.Display(node, ThreadIcon(node) is not null);
         _files.DrawLine += (_, e) =>
         {
-            MarkThreads(e);
-            MarkChange(e);
-            if (e.Model is ReviewFolderNode && _icons?.ForDirectory(_files.IsExpanded(e.Model)) is { } folder) IconDrawing.Prepend(e, folder);
+            if (e.Model is ReviewFileNode file) DrawFile(e, file);
+            else if (e.Model is ReviewFolderNode && _icons?.ForDirectory(_files.IsExpanded(e.Model)) is { } folder) IconDrawing.Prepend(e, folder);
         };
         if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
         Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files, _draftReview);
@@ -151,42 +154,80 @@ public sealed class ReviewView : View
 
     private static Label Line() => new() { X = 0, Y = 0, Width = Dim.Fill(), Text = string.Empty, Visible = false };
 
-    /// <summary>Marks a file the review has threads on (#186): a chat icon in place of the badge's circle, both styled.</summary>
-    private void MarkThreads(DrawTreeViewLineEventArgs<ReviewNode> e)
+    /// <summary>
+    /// Lays out a file's row: what the branch did to it (#320) and its type icon (#321), its name, any thread badge (#186),
+    /// and its line counts at the right edge (#393), cutting the name rather than the counts when they don't all fit.
+    /// </summary>
+    private void DrawFile(DrawTreeViewLineEventArgs<ReviewNode> e, ReviewFileNode file)
     {
-        if (e.Model is not ReviewFileNode file || e.Cells is not { } cells) return;
-        var icon = ThreadIcon(file);
-        if (file.Badge(icon is not null) is not { } badge) return;
+        var start = e.IndexOfModelText;
+        if (e.Cells is not { } cells || start < 0 || start >= cells.Count) return;
 
-        var at = e.IndexOfModelText + ReviewRow.Display(file, icon is not null).Length - badge.Length;
-        for (var i = Math.Max(0, at); i < Math.Min(cells.Count, at + badge.Length); i++)
-            cells[i] = Styled(cells[i], file.BadgeStyle);
+        var row = cells[start].Attribute ?? default;
+        var change = _icons?.ForChange(file.Change.Kind, _syntax?.EditorColors);
+        var mark = change ?? new FileIcon(file.Mark.ToString());
+        var icons = _icons?.ForFile(file.Name) is { } type ? [mark, type] : new[] { mark };
+        var name = change is not null && file.Change.Kind == GitChangeKind.Deleted ? Styled(row, TextStyle.Faint) : row;
 
-        if (icon is { } chat && IconDrawing.InsertAt(e, chat, at)) cells[at] = Styled(cells[at], file.BadgeStyle);
+        var tail = new List<Cell>();
+        var chat = ThreadIcon(file);
+        if (file.Badge(chat is not null) is { } badge)
+        {
+            var style = Styled(row, file.BadgeStyle);
+            tail.AddRange(CellsOf("  ", row));
+            if (chat is { } glyph) tail.AddRange([new Cell { Grapheme = glyph.Glyph, Attribute = Styled(IconDrawing.AttributeFor(glyph, row), file.BadgeStyle) }, Space(row)]);
+            tail.AddRange(CellsOf(badge, style));
+        }
+
+        var counts = new List<Cell>();
+        foreach (var (text, color) in file.Counts)
+        {
+            if (counts.Count > 0) counts.Add(Space(row));
+            counts.AddRange(CellsOf(text, color is { } kind ? CountColor(kind, text, row) : Styled(row, TextStyle.Faint)));
+        }
+
+        var lead = cells.Take(start).ToList();
+        var used = Columns(lead) + icons.Sum(i => i.Glyph.GetColumns() + 1) + Columns(tail) + Columns(counts);
+        var label = file.Name;
+        var gap = counts.Count > 0 ? 1 : 0;
+        if (counts.Count > 0 && used + gap + label.GetColumns() > _files.Viewport.Width)
+            label = Cut(label, Math.Max(1, _files.Viewport.Width - used - gap));
+        var pad = Math.Max(gap, _files.Viewport.Width - used - label.GetColumns());
+
+        cells.Clear();
+        cells.AddRange([.. lead, .. CellsOf(label, name), .. tail, .. Enumerable.Repeat(Space(row), pad), .. counts]);
+        foreach (var icon in icons.Reverse()) IconDrawing.Prepend(e, icon);
     }
 
-    /// <summary>Draws what the branch did to a file (#320), then its type icon (#321), in front of its name; a deleted file's name is faint too.</summary>
-    private void MarkChange(DrawTreeViewLineEventArgs<ReviewNode> e)
+    private Attribute CountColor(GitChangeKind kind, string text, Attribute row)
     {
-        if (e.Model is not ReviewFileNode file || e.Cells is not { } cells) return;
-        var mark = _icons?.ForChange(file.Change.Kind, _syntax?.EditorColors);
-        if (mark is not null && file.Change.Kind == GitChangeKind.Deleted)
-        {
-            for (var i = Math.Max(0, e.IndexOfModelText); i < Math.Min(cells.Count, e.IndexOfModelText + file.Name.Length); i++)
-                cells[i] = Styled(cells[i], TextStyle.Faint);
-        }
-        if (_icons?.ForFile(file.Name) is { } type) IconDrawing.Prepend(e, type);
-        IconDrawing.Prepend(e, mark ?? new FileIcon(file.Mark.ToString()));
+        var (dark, light) = FileIcons.ChangeColors(kind, _syntax?.EditorColors);
+        return IconDrawing.AttributeFor(new FileIcon(text, dark, light), row);
+    }
+
+    private static string Cut(string text, int columns)
+    {
+        var kept = new StringBuilder();
+        var enumerator = StringInfo.GetTextElementEnumerator(text);
+        while (enumerator.MoveNext() && kept.ToString().GetColumns() + enumerator.GetTextElement().GetColumns() <= columns - 1)
+            kept.Append(enumerator.GetTextElement());
+        return kept.Append('…').ToString();
+    }
+
+    private static int Columns(IEnumerable<Cell> cells) => cells.Sum(c => Math.Max(1, c.Grapheme.GetColumns()));
+
+    private static Cell Space(Attribute attribute) => new() { Grapheme = " ", Attribute = attribute };
+
+    private static IEnumerable<Cell> CellsOf(string text, Attribute attribute)
+    {
+        var enumerator = StringInfo.GetTextElementEnumerator(text);
+        while (enumerator.MoveNext()) yield return new Cell { Grapheme = enumerator.GetTextElement(), Attribute = attribute };
     }
 
     private FileIcon? ThreadIcon(ReviewNode node) =>
         node is ReviewFileNode { Threads.Count: > 0 } file ? _icons?.ForThreads(file.UnresolvedCount > 0) : null;
 
-    private static Cell Styled(Cell cell, TextStyle style)
-    {
-        var attribute = cell.Attribute ?? default;
-        return cell with { Attribute = attribute with { Style = attribute.Style | style } };
-    }
+    private static Attribute Styled(Attribute attribute, TextStyle style) => attribute with { Style = attribute.Style | style };
 
     /// <summary>Shows what the review carries in drafts (#188), at the foot of the tab under the file list.</summary>
     public void ShowDraftReview(string line)
@@ -245,8 +286,13 @@ public sealed class ReviewView : View
             Apply(app, cts, () => Show(branch));
             if (branch.Value is not { } review) return;
 
+            // After the list, so counting every line never holds it up (#393).
+            review = await CountLinesAsync(app, cts, review).ConfigureAwait(false);
+
             var pullRequest = await Task.Run(() => BranchReview.WithPullRequestAsync(_git, _gitHub, review, cts.Token), cts.Token).ConfigureAwait(false);
             Apply(app, cts, () => ShowPullRequest(pullRequest));
+            if (pullRequest.Value is { } relisted && relisted.MergeBase != review.MergeBase)
+                await CountLinesAsync(app, cts, relisted).ConfigureAwait(false);
             if (pullRequest.Value?.PullRequest is not { } pr) return;
 
             // Last, in its own step: the file list and the header are worth having before the threads are in (#186).
@@ -256,6 +302,20 @@ public sealed class ReviewView : View
         catch (OperationCanceledException)
         {
         }
+    }
+
+    /// <summary>The review with its line counts, shown once they're in; as it was when git can't count them.</summary>
+    private async Task<BranchReview> CountLinesAsync(IApplication? app, CancellationTokenSource cts, BranchReview review)
+    {
+        var counts = await Task.Run(() => _git.GetLineCountsAsync(review.RepoRoot, review.MergeBase, cts.Token), cts.Token).ConfigureAwait(false);
+        if (!counts.Succeeded) return review;
+
+        Apply(app, cts, () =>
+        {
+            if (Review is { } shown && shown.MergeBase == review.MergeBase)
+                Show(GitResult<BranchReview?>.Success(shown with { LineCounts = counts.Value }));
+        });
+        return review with { LineCounts = counts.Value };
     }
 
     private void Apply(IApplication? app, CancellationTokenSource cts, Action show)
@@ -293,7 +353,7 @@ public sealed class ReviewView : View
         if (result.Value is { Changes.Count: > 0 } review)
         {
             _headerText = review.Header;
-            _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads));
+            _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads, review.LineCounts));
             _files.ExpandAll();
             _files.SelectedObject = FindThread(selectedThread) ?? (ReviewNode?)FindFile(selected) ?? FirstFile();
             _files.Visible = true;

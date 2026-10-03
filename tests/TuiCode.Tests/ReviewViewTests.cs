@@ -205,6 +205,94 @@ public class ReviewViewTests
     }
 
     [Fact]
+    public async Task Each_file_carries_its_line_counts_a_rename_under_its_new_path()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "src/a.cs"), new GitChange(GitChangeKind.Renamed, "src/New.cs", "src/Old.cs")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["src/a.cs"] = new(3, 1), ["src/New.cs"] = new(2, 2) };
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal(new GitLineCount(3, 1), File(view, "a.cs").Lines);
+        Assert.Equal(new GitLineCount(2, 2), File(view, "New.cs").Lines);
+    }
+
+    [Fact]
+    public async Task When_git_cant_count_the_lines_the_files_still_show_without_counts()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.LineCountsError = "git diff timed out";
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal(["M a.txt"], Rows(view));
+        Assert.Null(File(view, "a.txt").Lines);
+        Assert.Equal(string.Empty, view.HintText);
+    }
+
+    [Fact]
+    public async Task A_pull_request_against_another_base_counts_the_lines_against_that_base()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(1, 1) };
+        _gitHub.PullRequest = new GitHubPullRequest(9, "Fix", "release/1.0", "feature", default);
+        _git.Resolvable.Add("origin/release/1.0");
+        _git.MergeBases["origin/release/1.0"] = "cafe";
+        _git.ChangesByRevision["cafe"] = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.LineCountsByRevision["cafe"] = new Dictionary<string, GitLineCount> { ["a.txt"] = new(7, 4) };
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal(new GitLineCount(7, 4), File(view, "a.txt").Lines);
+    }
+
+    [Fact]
+    public async Task A_pull_request_keeps_the_counts_and_threads_keep_them_too()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(1, 2) };
+        _gitHub.PullRequest = new GitHubPullRequest(9, "Fix", "main", "feature", default);
+        _gitHub.ReviewThreads = [new GitHubReviewThread("a.txt", 1, false, Outdated: false, [new GitHubComment("octocat", default, "Hm.")])];
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Single(File(view, "a.txt").Threads);
+        Assert.Equal(new GitLineCount(1, 2), File(view, "a.txt").Lines);
+    }
+
+    [Fact]
+    public async Task Refreshing_after_an_edit_shows_the_new_counts()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(1, 0) };
+        using var view = Build();
+        await view.Refresh();
+
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(4, 0) };
+        await view.Refresh();
+
+        Assert.Equal(new GitLineCount(4, 0), File(view, "a.txt").Lines);
+    }
+
+    [Theory]
+    [InlineData(GitChangeKind.Modified, 3, 1, false, "+3 −1")]
+    [InlineData(GitChangeKind.Modified, 3, 0, false, "+3 −0")]
+    [InlineData(GitChangeKind.Added, 12, 0, false, "+12")]
+    [InlineData(GitChangeKind.Deleted, 0, 40, false, "−40")]
+    [InlineData(GitChangeKind.Renamed, 0, 0, false, "")]
+    [InlineData(GitChangeKind.Renamed, 2, 1, false, "+2 −1")]
+    [InlineData(GitChangeKind.Modified, 0, 0, true, "bin")]
+    public void A_files_counts_say_only_what_its_change_did(GitChangeKind kind, int added, int deleted, bool binary, string expected)
+    {
+        var file = new ReviewFileNode(new GitChange(kind, "a.cs"), lines: new GitLineCount(added, deleted, binary));
+
+        Assert.Equal(expected, string.Join(" ", file.Counts.Select(c => c.Text)));
+    }
+
+    [Fact]
     public async Task A_pull_request_that_gh_cant_answer_for_leaves_the_files_alone_and_says_why()
     {
         _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
@@ -335,6 +423,9 @@ public class ReviewViewTests
         view.Layout();
         return view;
     }
+
+    private static ReviewFileNode File(ReviewView view, string name) =>
+        view.Files.Objects!.SelectMany(n => n is ReviewFileNode file ? [file] : n.Children.OfType<ReviewFileNode>()).Single(f => f.Name == name);
 
     private static List<string> Rows(ReviewView view) =>
         view.Files.Objects!.SelectMany(n => n is ReviewFolderNode
