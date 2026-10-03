@@ -121,6 +121,13 @@ public sealed class DefaultSettingsService : ISettingsService
             root["InsertFinalNewline"] = Editor.InsertFinalNewline;
         if (Editor.WordWrap != defaults.WordWrap)
             root["WordWrap"] = Editor.WordWrap;
+        if (Editor.WrapByLanguage.Count > 0)
+        {
+            var wrapByLanguage = new JsonObject();
+            foreach (var (language, wrap) in Editor.WrapByLanguage.OrderBy(w => w.Key, StringComparer.OrdinalIgnoreCase))
+                wrapByLanguage[language] = wrap;
+            root["WrapByLanguage"] = wrapByLanguage;
+        }
         if (SidebarWidth != SidebarSizing.Default)
             root["SidebarWidth"] = SidebarWidth;
 
@@ -212,11 +219,24 @@ public sealed class DefaultSettingsService : ISettingsService
             LineEnding = ReadEnum(root, "LineEnding", defaults.LineEnding),
             InsertFinalNewline = Read(root, "InsertFinalNewline", defaults.InsertFinalNewline),
             WordWrap = Read(root, "WordWrap", defaults.WordWrap),
+            WrapByLanguage = ReadWrapByLanguage(root),
         };
         // A width above the spinner's maximum is legitimate on a wide terminal, so only the floor is validated.
         SidebarWidth = Read(root, "SidebarWidth", SidebarSizing.Default) is var width && width >= SidebarSizing.Min
             ? width
             : SidebarSizing.Default;
+    }
+
+    private static Dictionary<string, bool> ReadWrapByLanguage(JsonObject? root)
+    {
+        var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        if (root?["WrapByLanguage"] is not JsonObject languages) return result;
+        foreach (var (language, value) in languages)
+        {
+            if (value is JsonValue v && v.TryGetValue<bool>(out var wrap) && language.Length > 0)
+                result[language] = wrap;
+        }
+        return result;
     }
 
     private static T Read<T>(JsonObject? root, string key, T fallback) =>

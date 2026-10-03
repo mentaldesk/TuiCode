@@ -21,6 +21,34 @@ public sealed record EditorSettings
 
     /// <summary>Whether a tab opens wrapped (#380); <c>Ctrl+T W</c> still flips each tab on its own.</summary>
     public bool WordWrap { get; init; }
+
+    /// <summary>Languages that wrap whatever <see cref="WordWrap"/> says, keyed by grammar id (#381).</summary>
+    public static IReadOnlyDictionary<string, bool> DefaultWrapByLanguage { get; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["markdown"] = true };
+
+    /// <summary>The user's per-language wrap, over <see cref="DefaultWrapByLanguage"/>, keyed by grammar id.</summary>
+    public IReadOnlyDictionary<string, bool> WrapByLanguage { get; init; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Whether a tab whose grammar is <paramref name="languageId"/> opens wrapped.</summary>
+    public bool WrapsLanguage(string? languageId) =>
+        languageId is null ? WordWrap
+        : WrapByLanguage.TryGetValue(languageId, out var wrap) ? wrap
+        : DefaultWrapByLanguage.TryGetValue(languageId, out var builtIn) ? builtIn
+        : WordWrap;
+
+    public bool Equals(EditorSettings? other) =>
+        other is not null
+        && IndentSize == other.IndentSize
+        && InsertSpaces == other.InsertSpaces
+        && LineEnding == other.LineEnding
+        && InsertFinalNewline == other.InsertFinalNewline
+        && WordWrap == other.WordWrap
+        && WrapByLanguage.Count == other.WrapByLanguage.Count
+        && WrapByLanguage.All(w => other.WrapByLanguage.TryGetValue(w.Key, out var v) && v == w.Value);
+
+    public override int GetHashCode() =>
+        HashCode.Combine(IndentSize, InsertSpaces, LineEnding, InsertFinalNewline, WordWrap, WrapByLanguage.Count);
 }
 
 public enum LineEnding
