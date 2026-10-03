@@ -472,6 +472,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.ToggleGutter, "Toggle gutter", ToggleGutter, CommandScope.Global, EditorOpen);
         _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect, CommandScope.Editor);
+        _commands.Register(CommandIds.ToggleWordWrap, "Toggle word wrap", ToggleWordWrap, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
         // No default key (#357).
@@ -538,8 +539,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)), CommandScope.Editor);
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)), CommandScope.Editor);
         _commands.Register(CommandIds.DuplicateLinesDown, "Duplicate line down", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Down)), CommandScope.Editor);
-        _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Up)), CommandScope.Editor);
-        _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => EditActiveTab(tab => tab.AddCursor(LineDirection.Down)), CommandScope.Editor);
+        _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => AddCursor(LineDirection.Up), CommandScope.Editor);
+        _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => AddCursor(LineDirection.Down), CommandScope.Editor);
         _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => group.ActiveTab?.RemoveSecondaryCursors(),
             CommandScope.Editor, () => group.ActiveTab is { HasSecondaryCursors: true });
         _commands.Register(CommandIds.ClearSelection, "Clear selection", () => group.ActiveTab?.ClearSelectionAndCursors(),
@@ -692,6 +693,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Alt+CursorUp", CommandIds.AddCursorAbove);
         keybindings.Bind("Ctrl+Alt+CursorDown", CommandIds.AddCursorBelow);
         keybindings.Bind("Ctrl+T C", CommandIds.ToggleColumnSelect);
+        keybindings.Bind("Ctrl+T W", CommandIds.ToggleWordWrap);
         keybindings.Bind("Ctrl+F", CommandIds.FindInFile);
         keybindings.Bind("Ctrl+H", CommandIds.ReplaceInFile);
         // Ctrl+Shift+letter needs a terminal that doesn't collapse it onto Ctrl+letter (see AGENTS.md).
@@ -777,10 +779,35 @@ public sealed class WorkbenchHost : IDisposable
     // Unlike the gutter this mode is invisible until a selection is swept, so flag it in the status bar.
     private void ToggleColumnSelect()
     {
+        if (RefusedWhileWrapped()) return;
         var group = _workbench.Editor.Group;
         group.ColumnSelect = !group.ColumnSelect;
         _workbench.StatusBar.SetMode(group.ColumnSelect ? "Column select" : null);
         FocusEditorBody();
+    }
+
+    private void ToggleWordWrap()
+    {
+        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
+        tab.WordWrap = !tab.WordWrap;
+        _workbench.StatusBar.SetWrap(tab.WordWrap);
+        FocusEditorBody();
+    }
+
+    private void AddCursor(LineDirection direction)
+    {
+        if (RefusedWhileWrapped()) return;
+        EditActiveTab(tab => tab.AddCursor(direction));
+    }
+
+    // Multiple cursors and column select don't know about wrapped rows yet (#382).
+    private bool RefusedWhileWrapped()
+    {
+        if (_workbench.Editor.Group.ActiveTab is not { WordWrap: true }) return false;
+        var toggle = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ToggleWordWrap)?.Display
+                     ?? CommandMnemonics.For(CommandIds.ToggleWordWrap);
+        _workbench.StatusBar.SetMessage($"Not available with word wrap on — {toggle} to turn it off");
+        return true;
     }
 
     // A sidebar item's shortcut (#33) shows its tab, revealing the sidebar if needed, and never hides it:

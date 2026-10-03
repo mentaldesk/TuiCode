@@ -279,10 +279,12 @@ public sealed class EditorTab : FrameView
         _textView.RemoveSecondaryCarets();
         _textView.IsSelecting = false;
         _textView.InsertionPoint = new System.Drawing.Point(col, row);
+        if (WordWrap) _textView.SetNeedsDraw();
     }
 
     internal EditorTextView TextView => _textView;
 
+    /// <summary>A screen row while wrapped.</summary>
     public int TopRow => _textView.Viewport.Y;
 
     public int VisibleRows => _textView.Viewport.Height;
@@ -293,6 +295,11 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public void RevealLines(int first, int last)
     {
+        if (WordWrap)
+        {
+            _textView.RevealWrappedLines(first, last);
+            return;
+        }
         var viewport = _textView.Viewport;
         if (Reveal.TopRow(viewport.Y, viewport.Height, _textView.Lines, first, last) is not { } top) return;
         _textView.ScrollTo(new System.Drawing.Point(viewport.X, top));
@@ -353,6 +360,12 @@ public sealed class EditorTab : FrameView
     public void ReplaceLines(int start, int count, IReadOnlyList<string> lines) => _textView.ReplaceLines(start, count, lines);
 
     public bool HasSecondaryCursors => _textView.HasSecondaryCarets;
+
+    public bool WordWrap
+    {
+        get => _textView.SoftWrap;
+        set => _textView.SoftWrap = value;
+    }
 
     /// <summary>Whether extending the selection sweeps a rectangle rather than a run of text (#114).</summary>
     public bool ColumnSelect
@@ -644,8 +657,9 @@ internal sealed partial class EditorTextView : TextView
     {
         // TG's OnKeyDown reads SelectedLength, which builds the selection in quadratic time: minutes after select-all on a large file.
         if (Autocomplete.Suggestions.Count > 0 && base.OnKeyDown(key)) return true;
+        if (SoftWrap) SetNeedsDraw();
         var bound = KeyBindings.TryGet(key, out var binding);
-        if (ColumnSelect && bound && ExtendColumnSelection(binding)) return true;
+        if (ColumnSelect && !SoftWrap && bound && ExtendColumnSelection(binding)) return true;
         // Anything else ends the box, so the next extend starts one from where the caret now is.
         _box = null;
         if (!bound) return false;
@@ -675,6 +689,7 @@ internal sealed partial class EditorTextView : TextView
     // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
     protected override bool OnDrawingContent(DrawContext? context)
     {
+        if (SoftWrap) FollowCaret();
         _editable = GetAttributeForRole(VisualRole.Editable);
         _highlight = GetAttributeForRole(VisualRole.Highlight);
         (_selectionStart, _selectionEnd) = SelectionBounds();
@@ -685,9 +700,20 @@ internal sealed partial class EditorTextView : TextView
         var right = Viewport.Width;
         var bottom = Viewport.Height;
         var row = 0;
-        for (var idxRow = Viewport.Y; idxRow < Lines && row < bottom; idxRow++, row++)
-            DrawRow(GetLine(idxRow), idxRow, row, right);
+        if (SoftWrap)
+        {
+            DrawWrappedRows(right, bottom, ref row);
+        }
+        else
+        {
+            for (var idxRow = Viewport.Y; idxRow < Lines && row < bottom; idxRow++, row++)
+            {
+                var line = GetLine(idxRow);
+                DrawRow(line, idxRow, row, right, FirstVisibleGlyph(line), line.Count);
+            }
+        }
         DrawCarets();
+        if (SoftWrap) PlaceWrappedCursor();
 
         if (row < bottom)
         {
@@ -704,14 +730,15 @@ internal sealed partial class EditorTextView : TextView
 
         // Refreshed every frame rather than on edit: TG doesn't report every edit (see ContentsChanged in AGENTS.md).
         Syntax.Update(Snapshot.Refresh(GetAllLines()));
-        var lastVisible = Math.Min(Viewport.Y + Viewport.Height, Lines) - 1;
+        var lastVisible = SoftWrap ? _wrap.At(Viewport.Y + Viewport.Height - 1).Line : Math.Min(Viewport.Y + Viewport.Height, Lines) - 1;
         if (!Syntax.TokenizeThrough(lastVisible, SyntaxBudget))
             App?.Invoke(SetNeedsDraw);
     }
 
-    private void DrawRow(List<Cell> line, int idxRow, int row, int right)
+    // Tab stops count from first.ColWidths.
+    private void DrawRow(List<Cell> line, int idxRow, int row, int right, (int ColWidths, int Col, int Index) first, int end)
     {
-        var (colWidths, col, idxCol) = FirstVisibleGlyph(line);
+        var (colWidths, col, idxCol) = first;
         var wasPreviousWideGlyphNegativeCol = false;
         Move(0, row);
 
@@ -721,7 +748,7 @@ internal sealed partial class EditorTextView : TextView
         var attributeToken = -1;
         _cellAttribute = _editable;
 
-        for (; idxCol < line.Count; idxCol++)
+        for (; idxCol < end; idxCol++)
         {
             var text = line[idxCol].Grapheme;
             var cols = text.GetColumns(false);
@@ -767,7 +794,7 @@ internal sealed partial class EditorTextView : TextView
             col += cols;
             colWidths += cols;
 
-            if (idxCol + 1 < line.Count && col + line[idxCol + 1].Grapheme.GetColumns() > right) break;
+            if (idxCol + 1 < end && col + line[idxCol + 1].Grapheme.GetColumns() > right) break;
         }
 
         if (wasPreviousWideGlyphNegativeCol) AddStr(0, row, " ");
@@ -841,7 +868,6 @@ internal sealed partial class EditorTextView : TextView
         SetAttribute(IsHighlighted(idxCol, idxRow) ? _highlight : line[idxCol].Attribute ?? _cellAttribute);
     }
 
-    // We never enable WordWrap, so draw coordinates are model coordinates.
     private bool IsHighlighted(int idxCol, int idxRow)
     {
         if (!Highlights.TryGetValue(idxRow, out var ranges)) return false;

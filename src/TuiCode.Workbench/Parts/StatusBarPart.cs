@@ -12,6 +12,7 @@ public sealed class StatusBarPart : View
     private string? _hint;
     private string? _grammar;
     private string? _diff;
+    private string? _wrap;
     private string? _mode;
     private (int Row, int Column)? _cursor;
     private (int Carets, int? Selected) _selection = (1, null);
@@ -94,6 +95,13 @@ public sealed class StatusBarPart : View
         UpdateLabel();
     }
 
+    /// <summary>Whether the active tab wraps long lines, shown as <c>Wrap</c> after the grammar.</summary>
+    public void SetWrap(bool wraps)
+    {
+        _wrap = wraps ? "Wrap" : null;
+        UpdateLabel();
+    }
+
     /// <summary>An editor mode to flag after the grammar, e.g. column select; null hides it.</summary>
     public void SetMode(string? mode)
     {
@@ -149,5 +157,5 @@ public sealed class StatusBarPart : View
     private void UpdateLabel() =>
         _label.Text = _chord is not null
             ? $"{_chord}…"
-            : string.Join("  •  ", new[] { _hint ?? _message, _diff, _grammar, _mode }.Where(part => part is not null));
+            : string.Join("  •  ", new[] { _hint ?? _message, _diff, _grammar, _wrap, _mode }.Where(part => part is not null));
 }
