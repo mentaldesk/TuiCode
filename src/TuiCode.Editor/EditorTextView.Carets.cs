@@ -71,9 +71,10 @@ internal sealed partial class EditorTextView
     public void SetCarets(IReadOnlyList<Caret> carets, bool reveal = true)
     {
         var merged = Merge([.. carets.Select(c => c with { Position = Clamp(c.Position), Anchor = c.Anchor is { } a ? Clamp(a) : null })]);
-        Load(merged[0], reveal);
+        // Before the primary moves, so anything watching the move sees every caret where it will be.
         _secondary.Clear();
         _secondary.AddRange(merged.Skip(1));
+        Load(merged[0], reveal);
         SetNeedsDraw();
     }
 
