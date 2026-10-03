@@ -42,6 +42,7 @@ public sealed class CommandMenu
         ("_Edit",
         [
             CommandIds.MoveLinesUp, CommandIds.MoveLinesDown, CommandIds.DuplicateLinesUp, CommandIds.DuplicateLinesDown,
+            CommandIds.IndentLines, CommandIds.OutdentLines,
             Separator,
             CommandIds.FindInFile, CommandIds.ReplaceInFile, CommandIds.ReplaceGlobally,
             Separator,

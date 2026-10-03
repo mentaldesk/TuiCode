@@ -19,8 +19,8 @@ internal sealed partial class EditorTextView
     {
         AddCommand(Command.Undo, () => Undo());
         AddCommand(Command.Redo, () => Redo());
-        AddCommand(Command.NextTabStop, () => Indent());
-        AddCommand(Command.PreviousTabStop, () => Outdent());
+        AddCommand(Command.NextTabStop, () => IndentLines());
+        AddCommand(Command.PreviousTabStop, () => OutdentLines());
         AddCommand(Command.Copy, () => CopyAtCarets(cut: false));
         AddCommand(Command.Cut, () => CopyAtCarets(cut: true));
     }

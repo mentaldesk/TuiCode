@@ -56,23 +56,6 @@ public class EditorSettingsTests
         Assert.Equal(["a   ", "abc "], view.LineStrings);
     }
 
-    [Theory]
-    [InlineData("        ", 8, "    ")]
-    [InlineData("      ", 6, "    ")]
-    [InlineData("ab  ", 4, "ab")]
-    [InlineData("  x ", 4, "  x")]
-    [InlineData("ab", 2, "ab")]
-    [InlineData("\t\t", 2, "\t")]
-    public void Shift_Tab_removes_spaces_back_to_the_previous_tab_stop(string line, int column, string expected)
-    {
-        var view = View(4, insertSpaces: true, line);
-        view.InsertionPoint = new Point(column, 0);
-
-        view.NewKeyDownEvent(Key.Tab.WithShift);
-
-        Assert.Equal([expected], view.LineStrings);
-    }
-
     [Fact]
     public void Tab_is_one_undo_step()
     {

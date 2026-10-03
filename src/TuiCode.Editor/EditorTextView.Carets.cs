@@ -26,7 +26,7 @@ internal sealed partial class EditorTextView
         Command.WordLeft, Command.WordLeftExtend, Command.WordRight, Command.WordRightExtend,
         Command.PageUp, Command.PageUpExtend, Command.PageDown, Command.PageDownExtend, Command.ToggleExtend,
         Command.NewLine, Command.DeleteCharLeft, Command.DeleteCharRight, Command.KillWordLeft, Command.KillWordRight,
-        Command.CutToEndOfLine, Command.CutToStartOfLine, Command.NextTabStop, Command.PreviousTabStop,
+        Command.CutToEndOfLine, Command.CutToStartOfLine,
     ];
 
     private static readonly HashSet<Command> CaretIndependentCommands =
@@ -204,6 +204,10 @@ internal sealed partial class EditorTextView
             case [Command.Paste]:
                 PasteAtCarets();
                 return true;
+            case [Command.NextTabStop]:
+                return IndentLines();
+            case [Command.PreviousTabStop]:
+                return OutdentLines();
         }
         if (!commands.All(CaretCommands.Contains))
         {

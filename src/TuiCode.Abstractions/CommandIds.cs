@@ -149,6 +149,8 @@ public static class CommandIds
     public const string MoveLinesDown = "editor.action.moveLinesDown";
     public const string DuplicateLinesUp = "editor.action.duplicateLinesUp";
     public const string DuplicateLinesDown = "editor.action.duplicateLinesDown";
+    public const string IndentLines = "editor.action.indentLines";
+    public const string OutdentLines = "editor.action.outdentLines";
     public const string AddCursorAbove = "editor.action.addCursorAbove";
     public const string AddCursorBelow = "editor.action.addCursorBelow";
     public const string SelectNextOccurrence = "editor.action.addSelectionToNextFindMatch";

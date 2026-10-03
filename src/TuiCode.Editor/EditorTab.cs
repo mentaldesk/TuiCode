@@ -354,6 +354,10 @@ public sealed class EditorTab : FrameView
 
     public void DuplicateLines(LineDirection direction) => _textView.DuplicateLines(direction);
 
+    public void IndentLines() => _textView.IndentLines();
+
+    public void OutdentLines() => _textView.OutdentLines();
+
     /// <summary>Replaces <paramref name="count"/> lines from <paramref name="start"/> with <paramref name="lines"/>, as one undo step (#245).</summary>
     public void ReplaceLines(int start, int count, IReadOnlyList<string> lines) => _textView.ReplaceLines(start, count, lines);
 
@@ -607,7 +611,7 @@ internal sealed partial class EditorTextView : TextView
     private static readonly HashSet<Command> EditCommands =
     [
         .. KillCommands, Command.NewLine, Command.DeleteCharLeft, Command.DeleteCharRight,
-        Command.NextTabStop, Command.PreviousTabStop, Command.Paste, Command.DeleteAll,
+        Command.Paste, Command.DeleteAll,
     ];
 
     private bool _holdContentsChanged;

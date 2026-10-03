@@ -376,8 +376,8 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             && r.CommandId is not (CommandIds.RemoveSecondaryCursors or CommandIds.ClearSelection)).ToArray();
 
         Assert.Equal(
-            ["Add cursor above", "Add cursor below", "Duplicate line down", "Duplicate line up", "Move line down",
-                "Move line up", "Select all occurrences", "Select next occurrence", "Select previous occurrence",
+            ["Add cursor above", "Add cursor below", "Duplicate line down", "Duplicate line up", "Indent lines", "Move line down",
+                "Move line up", "Outdent lines", "Select all occurrences", "Select next occurrence", "Select previous occurrence",
                 "Toggle column select", "Toggle word wrap"],
             rescoped.Select(r => r.Label));
         Assert.All(rescoped, r => Assert.Equal(CommandScope.Editor, r.Scope));
