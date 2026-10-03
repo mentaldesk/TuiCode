@@ -19,11 +19,13 @@ public sealed class AlignedDiff
 {
     private readonly int _rightCount;
 
-    private AlignedDiff(List<DiffRow> rows, List<int> changeBlocks, int rightCount)
+    private AlignedDiff(List<DiffRow> rows, List<int> changeBlocks, int rightCount, int addedLines, int removedLines)
     {
         Rows = rows;
         ChangeBlocks = changeBlocks;
         _rightCount = rightCount;
+        AddedLines = addedLines;
+        RemovedLines = removedLines;
     }
 
     public IReadOnlyList<DiffRow> Rows { get; }
@@ -31,17 +33,25 @@ public sealed class AlignedDiff
     /// <summary>The index of each change block's first row, in order.</summary>
     public IReadOnlyList<int> ChangeBlocks { get; }
 
+    /// <summary>The lines drawn as added: right-only and modified rows.</summary>
+    public int AddedLines { get; }
+
+    /// <summary>The lines drawn as removed: left-only and modified rows.</summary>
+    public int RemovedLines { get; }
+
     public static AlignedDiff Compute(IReadOnlyList<string> left, IReadOnlyList<string> right, int maxEdits = LineDiff.MaxEdits)
     {
         var rows = new List<DiffRow>();
         var changeBlocks = new List<int>();
-        int l = 0, r = 0;
+        int l = 0, r = 0, added = 0, removed = 0;
         foreach (var hunk in LineDiff.Hunks(left, right, maxEdits))
         {
             while (l < hunk.OldStart)
                 rows.Add(new DiffRow(DiffRowKind.Both, l++, r++));
 
             changeBlocks.Add(rows.Count);
+            added += hunk.NewCount;
+            removed += hunk.OldCount;
             var paired = Math.Min(hunk.OldCount, hunk.NewCount);
             for (var i = 0; i < paired; i++)
                 rows.Add(new DiffRow(DiffRowKind.Modified, l++, r++));
@@ -53,7 +63,7 @@ public sealed class AlignedDiff
         while (l < left.Count)
             rows.Add(new DiffRow(DiffRowKind.Both, l++, r++));
 
-        return new AlignedDiff(rows, changeBlocks, right.Count);
+        return new AlignedDiff(rows, changeBlocks, right.Count, added, removed);
     }
 
     /// <summary>The block of changed rows starting at <paramref name="start"/>, one of <see cref="ChangeBlocks"/>.</summary>

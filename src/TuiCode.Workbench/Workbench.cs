@@ -134,7 +134,7 @@ public sealed class Workbench : Window
         StatusBar.SetPosition(tab is null ? null : (tab.CursorRow, tab.CursorColumn));
         StatusBar.SetSelection(tab?.CaretCount ?? 1, tab?.CountSelection()?.Characters);
         StatusBar.SetDiffStatus(Editor.Group.ActiveDiffTab is { IsFocused: true } diff
-            ? string.Join("  •  ", new[] { diff.Review?.Label, diff.ChangeStatus, diff.IsDeleted ? DeletedDiffKeysHint : diff.RightLabel is null ? DiffKeysHint : PastChangeKeysHint }.Where(part => !string.IsNullOrEmpty(part)))
+            ? string.Join("  •  ", new[] { diff.Review?.Label, diff.LineCounts, diff.ChangeStatus, diff.IsDeleted ? DeletedDiffKeysHint : diff.RightLabel is null ? DiffKeysHint : PastChangeKeysHint }.Where(part => !string.IsNullOrEmpty(part)))
             : null);
     }
 

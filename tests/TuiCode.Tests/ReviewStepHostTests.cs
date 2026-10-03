@@ -130,7 +130,7 @@ public class ReviewStepHostTests : StaticConfigurationTest
         [
             .. OpenDiff(host, workbench, commands, rowsDown: 3),
             () => group.ActiveDiffTab is { IsDeleted: true, IsFocused: true },
-            () => workbench.StatusBar.DisplayedText.Contains("File 4 of 4  \u2022  Change 1 of 1", StringComparison.Ordinal),
+            () => workbench.StatusBar.DisplayedText.Contains("File 4 of 4  \u2022  \u22123  \u2022  Change 1 of 1", StringComparison.Ordinal),
         ]);
 
         var selected = Assert.IsType<ReviewFileNode>(workbench.Sidebar.Review.Files.SelectedObject);
@@ -170,7 +170,7 @@ public class ReviewStepHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.NextChange),
             () => commands.TryExecute(CommandIds.NextChange),
             () => group.ActiveDiffTab?.File.Name == "c.txt",
-            () => workbench.StatusBar.DisplayedText.Contains("File 3 of 4  •  Change 1 of 1", StringComparison.Ordinal),
+            () => workbench.StatusBar.DisplayedText.Contains("File 3 of 4  •  +1 −1  •  Change 1 of 1", StringComparison.Ordinal),
         ]);
 
         var selected = Assert.IsType<ReviewFileNode>(workbench.Sidebar.Review.Files.SelectedObject);

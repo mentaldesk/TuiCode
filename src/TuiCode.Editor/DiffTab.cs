@@ -307,6 +307,13 @@ public sealed class DiffTab : FrameView
         var (count, current) => $"Change {current} of {count}",
     };
 
+    /// <summary>The diff's added and removed line counts, e.g. <c>+96 −21</c>, leaving out a side with none.</summary>
+    public string LineCounts => string.Join(' ', new[]
+    {
+        Diff.AddedLines > 0 ? $"+{Diff.AddedLines}" : null,
+        Diff.RemovedLines > 0 ? $"−{Diff.RemovedLines}" : null,
+    }.OfType<string>());
+
     /// <summary>Stops at the last change rather than wrapping; false when it's already there.</summary>
     public bool NextChange() => ShowChange(Diff.ChangeBlocks.FirstOrDefault(s => s > CurrentDiffRow, -1));
 
