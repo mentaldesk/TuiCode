@@ -89,14 +89,21 @@ public sealed class FileIcons
     /// </summary>
     public FileIcon? ForChange(GitChangeKind kind, IReadOnlyDictionary<string, string>? themeColors = null)
     {
-        var (glyph, letter, key, dark, light) = Changes[kind];
-        if (themeColors?.GetValueOrDefault(key) is { } hex && ParseRgb(hex) is { } themed) dark = light = themed;
+        var (glyph, letter, _, _, _) = Changes[kind];
+        var (dark, light) = ChangeColors(kind, themeColors);
         return Style switch
         {
             FileIconStyle.NerdFont => new FileIcon(glyph, dark, light),
             FileIconStyle.Emoji => new FileIcon(letter, dark, light),
             _ => null,
         };
+    }
+
+    /// <summary>The colours of <paramref name="kind"/>'s mark, whatever the icon style: the theme's <c>gitDecoration.*</c> where set.</summary>
+    public static (int Dark, int Light) ChangeColors(GitChangeKind kind, IReadOnlyDictionary<string, string>? themeColors = null)
+    {
+        var (_, _, key, dark, light) = Changes[kind];
+        return themeColors?.GetValueOrDefault(key) is { } hex && ParseRgb(hex) is { } themed ? (themed, themed) : (dark, light);
     }
 
     private static int? ParseRgb(string hex) =>

@@ -14,6 +14,9 @@ public sealed record BranchReview(
     /// <summary>The PR's review threads (#186): empty until they've loaded, and without a PR there are none.</summary>
     public IReadOnlyList<GitHubReviewThread> Threads { get; init; } = [];
 
+    /// <summary>The lines each file adds and removes, by path (#393): empty until they've loaded, or when git couldn't count them.</summary>
+    public IReadOnlyDictionary<string, GitLineCount> LineCounts { get; init; } = new Dictionary<string, GitLineCount>();
+
     /// <summary>The threads on one file, in the order GitHub listed them.</summary>
     public IReadOnlyList<GitHubReviewThread> ThreadsOn(string path) =>
         [.. Threads.Where(t => string.Equals(t.Path, path, StringComparison.Ordinal))];
@@ -110,6 +113,7 @@ public sealed record BranchReview(
                 Base = candidate,
                 MergeBase = baseCommit,
                 Changes = changes.Value,
+                LineCounts = new Dictionary<string, GitLineCount>(),
                 PullRequest = pullRequest,
             });
         }

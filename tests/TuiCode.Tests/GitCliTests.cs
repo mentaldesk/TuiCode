@@ -86,6 +86,24 @@ public class GitCliTests
     }
 
     [Fact]
+    public void ParseLineCounts_reads_plain_files_both_forms_of_a_rename_binaries_and_odd_paths()
+    {
+        var output = "3\t1\tsrc/a.cs\0" + "5\t2\t\0old dir/b.cs\0new dir/b.cs\0" + "0\t0\t\0c.cs\0d.cs\0"
+            + "-\t-\timg.png\0" + "1\t0\tnaïve file.md\0";
+
+        var counts = GitCli.ParseLineCounts(output);
+
+        Assert.Equal(new Dictionary<string, GitLineCount>
+        {
+            ["src/a.cs"] = new(3, 1),
+            ["new dir/b.cs"] = new(5, 2),
+            ["d.cs"] = new(0, 0),
+            ["img.png"] = new(0, 0, Binary: true),
+            ["naïve file.md"] = new(1, 0),
+        }, counts);
+    }
+
+    [Fact]
     public void ParseWorktrees_reads_the_path_branch_and_head_of_each_worktree_in_the_porcelain_listing()
     {
         var output = "worktree /code/TuiCode/main\nHEAD abc1234567\nbranch refs/heads/main\n\n"
@@ -278,6 +296,32 @@ public class GitCliTests
         ], changes.OrderBy(c => c.Path, StringComparer.Ordinal));
         Assert.Equal("a file long enough for git to spot the rename\n", (await git.ShowRepoFileAsync(repo.Path, "old/moved.cs", mergeBase, ct)).Value);
         Assert.Null((await git.ShowRepoFileAsync(repo.Path, "src/new.cs", mergeBase, ct)).Value);
+    }
+
+    [Fact]
+    public async Task Counts_the_lines_each_change_adds_and_removes_uncommitted_edits_included()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("mod.cs", "one\ntwo\nthree\n", "Base");
+        repo.Commit("gone.cs", "a\nb\n", "Add gone");
+        repo.Commit("old.cs", "a file long enough\nfor git to spot\nthe rename\n", "Add old");
+        repo.Git("checkout", "-q", "-b", "feature");
+        repo.Commit("mod.cs", "one\n2\nthree\nfour\n", "Change mod");
+        repo.Git("rm", "-q", "gone.cs");
+        repo.Git("mv", "old.cs", "new.cs");
+        System.IO.File.WriteAllBytes(repo.File("img.bin"), [0, 1, 2, 0]);
+        repo.Git("add", "img.bin");
+        repo.Write("mod.cs", "one\n2\nthree\nfour\nfive\n");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+        var mergeBase = (await git.GetMergeBaseAsync(repo.Path, "HEAD", "main", ct)).Value!;
+
+        var counts = (await git.GetLineCountsAsync(repo.Path, mergeBase, ct)).Value;
+
+        Assert.Equal(new GitLineCount(3, 1), counts["mod.cs"]);
+        Assert.Equal(new GitLineCount(0, 2), counts["gone.cs"]);
+        Assert.Equal(new GitLineCount(0, 0), counts["new.cs"]);
+        Assert.True(counts["img.bin"].Binary);
     }
 
     [Fact]
