@@ -3,7 +3,7 @@ using Point = System.Drawing.Point;
 
 namespace TuiCode.Editor;
 
-// Tab and Shift+Tab (#14): TG's own only insert and remove tab characters.
+// Tab and Shift+Tab (#14, #386): TG's own only insert and remove tab characters.
 internal sealed partial class EditorTextView
 {
     public bool InsertSpaces { get; set; }
@@ -22,27 +22,72 @@ internal sealed partial class EditorTextView
         return true;
     }
 
-    // Removes a tab, or the spaces back to the previous tab stop, just left of the caret.
-    private bool Outdent()
+    /// <summary>Indents every line a multi-line selection touches, or else inserts an indent at every caret, as one undo step.</summary>
+    public bool IndentLines()
     {
         if (!TabKeyAddsTab || ReadOnly) return false;
-        if (IsSelecting || CurrentColumn == 0) return true;
-
-        var line = GetLine(CurrentRow);
-        var col = Math.Min(CurrentColumn, line.Count);
-        if (line[col - 1].Grapheme == "\t")
-        {
-            DeleteCharLeft();
-            return true;
-        }
-
-        var toStop = DisplayColumn() % TabWidth is var partial and > 0 ? partial : TabWidth;
-        var spaces = 0;
-        while (spaces < toStop && col - spaces > 0 && line[col - spaces - 1].Grapheme == " ")
-            spaces++;
-        for (var i = 0; i < spaces; i++)
-            DeleteCharLeft();
+        var carets = Carets;
+        if (carets.Any(c => c.Start.Y != c.End.Y))
+            ShiftLines(carets, outdent: false);
+        else if (_secondary.Count == 0)
+            EditAtPrimary(() => Indent());
+        else
+            AtEachCaret(_ => Indent());
         return true;
+    }
+
+    /// <summary>Outdents every line under a caret or selection by up to one level, as one undo step.</summary>
+    public bool OutdentLines()
+    {
+        if (!TabKeyAddsTab || ReadOnly) return false;
+        ShiftLines(Carets, outdent: true);
+        return true;
+    }
+
+    private void ShiftLines(Caret[] carets, bool outdent)
+    {
+        var unit = Cell.ToCellList(InsertSpaces ? new string(' ', TabWidth) : "\t");
+        var shifted = new Dictionary<int, (int At, int By)>();
+        Edit(() =>
+        {
+            foreach (var (first, last) in RowBlocks(carets))
+            {
+                for (var row = first; row <= last; row++)
+                {
+                    var line = GetLine(row);
+                    if (!outdent)
+                    {
+                        if (line.Count == 0) continue;
+                        line.InsertRange(0, unit);
+                        shifted[row] = (0, unit.Count);
+                        continue;
+                    }
+                    var leading = LeadingWhitespace(line);
+                    var kept = OutdentedLength(line, leading);
+                    if (kept == leading) continue;
+                    line.RemoveRange(kept, leading - kept);
+                    shifted[row] = (kept, kept - leading);
+                }
+            }
+            return [.. carets.Select(c => c with { Position = Shifted(c.Position), Anchor = c.Anchor is { } a ? Shifted(a) : null })];
+        });
+
+        // A point at the start of the line stays there, so a selection of whole lines still is one.
+        Point Shifted(Point point) =>
+            shifted.TryGetValue(point.Y, out var shift) && point.X > shift.At
+                ? point with { X = Math.Max(shift.At, point.X + shift.By) }
+                : point;
+    }
+
+    // Trims the leading whitespace from its end back to the previous tab stop, so mixed tabs and spaces stay as they were.
+    private int OutdentedLength(List<Cell> line, int leading)
+    {
+        var width = ColumnsBefore(line, leading);
+        var target = Math.Max(width % TabWidth == 0 ? width - TabWidth : width - width % TabWidth, 0);
+        var kept = leading;
+        while (kept > 0 && ColumnsBefore(line, kept) > target)
+            kept--;
+        return kept;
     }
 
     private int DisplayColumn()

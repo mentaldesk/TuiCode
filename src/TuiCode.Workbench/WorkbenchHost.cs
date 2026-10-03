@@ -539,6 +539,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.MoveLinesDown, "Move line down", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Down)), CommandScope.Editor);
         _commands.Register(CommandIds.DuplicateLinesUp, "Duplicate line up", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Up)), CommandScope.Editor);
         _commands.Register(CommandIds.DuplicateLinesDown, "Duplicate line down", () => EditActiveTab(tab => tab.DuplicateLines(LineDirection.Down)), CommandScope.Editor);
+        _commands.Register(CommandIds.IndentLines, "Indent lines", () => EditActiveTab(tab => tab.IndentLines()), CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.OutdentLines, "Outdent lines", () => EditActiveTab(tab => tab.OutdentLines()), CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => AddCursor(LineDirection.Up), CommandScope.Editor);
         _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => AddCursor(LineDirection.Down), CommandScope.Editor);
         _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => group.ActiveTab?.RemoveSecondaryCursors(),
@@ -690,6 +692,8 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Alt+CursorDown", CommandIds.MoveLinesDown);
         keybindings.Bind("Alt+Shift+CursorUp", CommandIds.DuplicateLinesUp);
         keybindings.Bind("Alt+Shift+CursorDown", CommandIds.DuplicateLinesDown);
+        keybindings.Bind("Tab", CommandIds.IndentLines);
+        keybindings.Bind("Shift+Tab", CommandIds.OutdentLines);
         keybindings.Bind("Ctrl+Alt+CursorUp", CommandIds.AddCursorAbove);
         keybindings.Bind("Ctrl+Alt+CursorDown", CommandIds.AddCursorBelow);
         keybindings.Bind("Ctrl+T C", CommandIds.ToggleColumnSelect);
