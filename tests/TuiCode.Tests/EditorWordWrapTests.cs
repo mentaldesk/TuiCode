@@ -396,14 +396,129 @@ public class EditorWordWrapTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Adding_a_cursor_does_nothing_while_wrapped()
+    public void Every_caret_is_drawn_on_its_own_row_including_continuation_rows()
+    {
+        using var tab = Tab($"{Paragraph}\n{Paragraph}");
+        tab.WordWrap = true;
+        tab.MoveCursor(0, 16);
+
+        tab.AddCursor(LineDirection.Down);
+        var screen = Render(tab);
+
+        Assert.Equal([new Point(16, 0), new Point(16, 1)], tab.TextView.Carets.Select(c => c.Position));
+        var editable = tab.TextView.GetAttributeForRole(VisualRole.Editable);
+        foreach (var row in new[] { 1, 4 })
+        {
+            Assert.Equal("u", screen[row][7..8]);
+            Assert.Equal(new Attribute(editable.Background, editable.Foreground), AttributeAt(tab.TextView, row, 2));
+        }
+    }
+
+    [Fact]
+    public void Alt_clicking_a_continuation_row_adds_a_caret_there_and_again_removes_it()
+    {
+        using var tab = Tab(Paragraph);
+        tab.WordWrap = true;
+        tab.MoveCursor(0, 2);
+        Render(tab);
+        Mouse AltClick() => new() { Flags = MouseFlags.LeftButtonClicked | MouseFlags.Alt, Position = new Point(5, 1) };
+
+        tab.TextView.NewMouseEvent(AltClick());
+        var added = tab.TextView.Carets.Select(c => c.Position).ToArray();
+        tab.TextView.NewMouseEvent(AltClick());
+
+        Assert.Equal([new Point(2, 0), new Point(19, 0)], added);
+        Assert.Equal([new Point(2, 0)], tab.TextView.Carets.Select(c => c.Position));
+    }
+
+    [Fact]
+    public void Typing_and_deleting_at_several_carets_edits_each_line_and_rewraps_it()
+    {
+        using var tab = Tab($"{Paragraph}\n{Paragraph}");
+        tab.WordWrap = true;
+        tab.MoveCursor(0, 14);
+        tab.AddCursor(LineDirection.Down);
+
+        tab.TextView.NewKeyDownEvent(Key.X);
+        tab.TextView.NewKeyDownEvent(Key.X);
+        var typedLines = tab.Lines.ToArray();
+        var typed = Render(tab);
+        tab.TextView.NewKeyDownEvent(Key.Backspace);
+
+        Assert.Equal(["one two three xxfour five six seven", "one two three xxfour five six seven"], typedLines);
+        Assert.Equal(["    six seven", "  2 one two three", "    six seven"],
+            new[] { typed[2], typed[3], typed[5] }.Select(row => row.Remove(4, 1).TrimEnd()));
+        Assert.Equal(["one two three xfour five six seven", "one two three xfour five six seven"], tab.Lines);
+    }
+
+    [Fact]
+    public void Down_and_up_with_several_carets_move_each_one_screen_row()
+    {
+        using var tab = Tab($"{Paragraph}\n{Paragraph}");
+        tab.WordWrap = true;
+        tab.MoveCursor(0, 2);
+        tab.AddCursor(LineDirection.Down);
+
+        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+        var once = tab.TextView.Carets.Select(c => c.Position).ToArray();
+        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+        var twice = tab.TextView.Carets.Select(c => c.Position).ToArray();
+        tab.TextView.NewKeyDownEvent(Key.CursorUp);
+
+        Assert.Equal([new Point(16, 0), new Point(16, 1)], once);
+        Assert.Equal([new Point(30, 0), new Point(30, 1)], twice);
+        Assert.Equal([new Point(16, 0), new Point(16, 1)], tab.TextView.Carets.Select(c => c.Position));
+    }
+
+    [Fact]
+    public void Column_select_sweeps_the_cells_on_screen_not_the_columns_in_the_file()
     {
         using var tab = Tab($"{Paragraph}\nend");
         tab.WordWrap = true;
+        tab.ColumnSelect = true;
+        tab.MoveCursor(0, 4);
 
-        tab.AddCursor(LineDirection.Down);
+        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
+        tab.TextView.NewKeyDownEvent(Key.CursorRight.WithShift);
+        Render(tab);
 
-        Assert.False(tab.HasSecondaryCursors);
+        var view = tab.TextView;
+        var selected = view.GetAttributeForRole(VisualRole.Active);
+        Assert.Equal([(new Point(18, 0), new Point(19, 0)), (new Point(4, 0), new Point(5, 0))],
+            view.Carets.Select(c => (c.Start, c.End)));
+        Assert.Equal(selected, AttributeAt(view, 0, 4));
+        Assert.Equal(selected, AttributeAt(view, 1, 4));
+        Assert.Equal(view.GetAttributeForRole(VisualRole.Editable), AttributeAt(view, 1, 6));
+    }
+
+    [Fact]
+    public void Column_select_reaches_from_a_wrapped_line_into_the_next_line()
+    {
+        using var tab = Tab($"{Paragraph}\nend");
+        tab.WordWrap = true;
+        tab.ColumnSelect = true;
+        tab.MoveCursor(0, 30);
+
+        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
+        for (var i = 0; i < 2; i++) tab.TextView.NewKeyDownEvent(Key.CursorLeft.WithShift);
+
+        Assert.Equal([(new Point(0, 1), new Point(2, 1)), (new Point(28, 0), new Point(30, 0))],
+            tab.TextView.Carets.Select(c => (c.Start, c.End)));
+    }
+
+    [Fact]
+    public void Shift_End_in_column_select_takes_each_row_to_its_own_end()
+    {
+        using var tab = Tab(Paragraph);
+        tab.WordWrap = true;
+        tab.ColumnSelect = true;
+        tab.MoveCursor(0, 0);
+
+        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
+        tab.TextView.NewKeyDownEvent(Key.End.WithShift);
+
+        Assert.Equal([(new Point(14, 0), new Point(27, 0)), (new Point(0, 0), new Point(13, 0))],
+            tab.TextView.Carets.Select(c => (c.Start, c.End)));
     }
 
     [Fact]
@@ -452,8 +567,6 @@ public class EditorWordWrapTests : StaticConfigurationTest
 // Ctrl+T W through a TG Application — serialised (#77).
 public class EditorWordWrapHostTests : StaticConfigurationTest
 {
-    private const string Refusal = "Not available with word wrap on — Ctrl+T w to turn it off";
-
     [Fact]
     public async Task Ctrl_T_W_wraps_only_the_active_tab_and_the_status_bar_follows_the_active_tab()
     {
@@ -509,7 +622,7 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Column_select_and_adding_a_cursor_are_refused_while_the_tab_wraps()
+    public async Task Column_select_and_adding_a_cursor_work_while_the_tab_wraps_and_the_status_bar_shows_both_modes()
     {
         var (fs, statusBar, workbench, host) = Start();
         using var _ = workbench;
@@ -522,18 +635,19 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
             {
                 tab = workbench.Editor.Open(fs.FileInfo.New("/work/a.txt"));
                 tab.FocusContent();
-                tab.WordWrap = true;
             },
             () => host.App.InjectKey(Key.T.WithCtrl),
+            () => host.App.InjectKey(Key.W),
+            () => host.App.InjectKey(Key.T.WithCtrl),
             () => host.App.InjectKey(Key.C),
-            () => { afterColumnSelect = statusBar.Message; },
+            () => { afterColumnSelect = statusBar.DisplayedText; },
             () => host.App.InjectKey(Key.CursorDown.WithCtrl.WithAlt),
-            () => { afterAddCursor = statusBar.Message; });
+            () => { afterAddCursor = statusBar.DisplayedText; });
 
-        Assert.Equal(Refusal, afterColumnSelect);
-        Assert.False(workbench.Editor.Group.ColumnSelect);
-        Assert.Equal(Refusal, afterAddCursor);
-        Assert.False(tab!.HasSecondaryCursors);
+        Assert.True(workbench.Editor.Group.ColumnSelect);
+        Assert.EndsWith("  •  Column select  •  Wrap", afterColumnSelect);
+        Assert.True(tab!.HasSecondaryCursors);
+        Assert.DoesNotContain("Not available", afterAddCursor);
     }
 
     [Fact]

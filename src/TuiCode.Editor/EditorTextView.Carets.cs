@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Text;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 using Point = System.Drawing.Point;
 
 namespace TuiCode.Editor;
@@ -81,7 +82,6 @@ internal sealed partial class EditorTextView
     /// <summary>Adds a caret on the line above or below every caret, at the same column or the end of a shorter line.</summary>
     public void AddCaret(LineDirection direction)
     {
-        if (SoftWrap) return;
         var step = direction == LineDirection.Up ? -1 : 1;
         var carets = Carets;
         List<Caret> added = [.. carets];
@@ -94,6 +94,13 @@ internal sealed partial class EditorTextView
         }
         SetCarets(added, reveal: false);
 
+        if (SoftWrap)
+        {
+            RefreshWrap();
+            var edgeCaret = step < 0 ? added.MinBy(c => (c.Position.Y, c.Position.X)) : added.MaxBy(c => (c.Position.Y, c.Position.X));
+            ScrollRowIntoView(Locate(edgeCaret.Position).Row);
+            return;
+        }
         var edge = step < 0 ? added.Min(c => c.Position.Y) : added.Max(c => c.Position.Y);
         if (edge < Viewport.Y)
             Viewport = Viewport with { Y = edge };
@@ -404,15 +411,17 @@ internal sealed partial class EditorTextView
         }
 
         if (CanFocus && !HasFocus) SetFocus();
-        if (mouse.Flags.HasFlag(MouseFlags.LeftButtonClicked)) ToggleCaretAt(mouse);
+        if (mouse.Flags.HasFlag(MouseFlags.LeftButtonClicked))
+        {
+            var carets = Carets;
+            ProcessMouseClick(this, mouse, out _);
+            ToggleCaret(carets, InsertionPoint);
+        }
         return true;
     }
 
-    private void ToggleCaretAt(Mouse mouse)
+    private void ToggleCaret(Caret[] carets, Point clicked)
     {
-        var carets = Carets;
-        ProcessMouseClick(this, mouse, out _);
-        var clicked = InsertionPoint;
         var index = Array.FindIndex(carets, c => c.Position == clicked);
         if (index < 0)
             SetCarets([.. carets, new Caret(clicked)], reveal: false);
@@ -433,9 +442,7 @@ internal sealed partial class EditorTextView
     internal IEnumerable<Point> SecondaryCaretsOnScreen() =>
         _secondary.Select(ViewportPosition).OfType<Point>().Select(point => ViewportToScreen(point));
 
-    internal const string Bar = "\u258f";
-
-    // Where the terminal can't draw the extra carets, every caret, the primary included, is painted as the bar it would have drawn.
+    // Where the terminal can't draw the extra carets, every caret, the primary included, is painted as a block over the character it's before.
     private void DrawCarets()
     {
         var paint = HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
@@ -443,11 +450,14 @@ internal sealed partial class EditorTextView
         if (Cursor.Style != style) Cursor = Cursor with { Style = style };
         if (!paint) return;
 
+        var block = new Attribute(_editable.Background, _editable.Foreground);
         foreach (var caret in Carets)
         {
             if (ViewportPosition(caret) is not { } point) continue;
-            SetAttribute(_editable);
-            AddStr(point.X, point.Y, Bar);
+            var line = GetLine(caret.Position.Y);
+            var grapheme = caret.Position.X < line.Count ? line[caret.Position.X].Grapheme : " ";
+            SetAttribute(block);
+            AddStr(point.X, point.Y, grapheme == "\t" ? " " : grapheme);
         }
     }
 

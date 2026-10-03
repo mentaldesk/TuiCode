@@ -16,7 +16,7 @@ internal sealed partial class EditorTextView
         Command.LeftStartExtend, Command.RightEndExtend,
     ];
 
-    // The corners as the user swept them, before each row clamps them to its own length.
+    // The corners as the user swept them, before each row clamps them to its own length; while wrapped, (screen column, screen row).
     private (Point Anchor, Point Active)? _box;
 
     /// <summary>Whether extending the selection sweeps a rectangle rather than a run of text.</summary>
@@ -33,6 +33,7 @@ internal sealed partial class EditorTextView
     private bool ExtendColumnSelection(KeyBinding binding)
     {
         if (!binding.Commands.All(ColumnCommands.Contains)) return false;
+        if (SoftWrap) return ExtendWrappedColumnSelection(binding);
         var (anchor, active) = _box ?? (PrimaryCaret.Anchor ?? InsertionPoint, InsertionPoint);
 
         // Move a lone caret from the active corner so TG decides where the movement lands.
