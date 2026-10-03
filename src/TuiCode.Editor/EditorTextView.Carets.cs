@@ -81,6 +81,7 @@ internal sealed partial class EditorTextView
     /// <summary>Adds a caret on the line above or below every caret, at the same column or the end of a shorter line.</summary>
     public void AddCaret(LineDirection direction)
     {
+        if (SoftWrap) return;
         var step = direction == LineDirection.Up ? -1 : 1;
         var carets = Carets;
         List<Caret> added = [.. carets];
@@ -349,6 +350,7 @@ internal sealed partial class EditorTextView
         IsSelecting = caret.Anchor is not null;
         ShiftSelecting(this) = caret.Extending && caret.Anchor is not null;
         ColumnTrack(this) = caret.ColumnTrack;
+        if (SoftWrap) SetNeedsDraw();
     }
 
     private static List<Caret> Merge(IReadOnlyList<Caret> carets)
@@ -386,6 +388,7 @@ internal sealed partial class EditorTextView
 
     protected override bool OnMouseEvent(Mouse mouse)
     {
+        if (SoftWrap) return OnWrappedMouse(mouse) || base.OnMouseEvent(mouse);
         const MouseFlags leftButton = MouseFlags.LeftButtonPressed | MouseFlags.LeftButtonReleased | MouseFlags.LeftButtonClicked
                                       | MouseFlags.LeftButtonDoubleClicked | MouseFlags.LeftButtonTripleClicked;
         if ((mouse.Flags & leftButton) == 0) return base.OnMouseEvent(mouse);
@@ -446,6 +449,12 @@ internal sealed partial class EditorTextView
 
     private Point? ViewportPosition(Caret caret)
     {
+        if (SoftWrap)
+        {
+            var (screenRow, column) = Locate(caret.Position);
+            var y = screenRow - Viewport.Y;
+            return y < 0 || y >= Viewport.Height || column >= Viewport.Width ? null : new Point(column, y);
+        }
         var row = caret.Position.Y - Viewport.Y;
         if (row < 0 || row >= Viewport.Height || caret.Position.Y >= Lines) return null;
         var line = GetLine(caret.Position.Y);

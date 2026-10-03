@@ -25,6 +25,11 @@ internal sealed class EditorGutter : View
         Width = WidthFor(text.Lines);
         _text.ViewportChanged += (_, _) => SetNeedsDraw();
         _text.UnwrappedCursorPositionChanged += (_, _) => SetNeedsDraw();
+        // Wrapped rows can shift on any edit or caret move, and the text view draws first.
+        _text.DrawComplete += (_, _) =>
+        {
+            if (_text.SoftWrap) SetNeedsDraw();
+        };
     }
 
     /// <summary>How each buffer line differs from the baseline; recomputed lazily after an edit.</summary>
@@ -73,7 +78,7 @@ internal sealed class EditorGutter : View
 
         for (var row = 0; row < Viewport.Height; row++)
         {
-            var line = top + row;
+            var (line, continuation) = LineOn(top + row, changes.Count);
             Move(0, row);
             if (row >= _text.Viewport.Height || line >= changes.Count)
             {
@@ -95,11 +100,19 @@ internal sealed class EditorGutter : View
                 : lineNumber is { } color ? editable with { Foreground = color }
                 : editable with { Style = editable.Style | TextStyle.Faint };
             SetAttribute(number);
-            AddStr((line + 1).ToString().PadLeft(digits) + " ");
+            AddStr((continuation ? "" : (line + 1).ToString()).PadLeft(digits) + " ");
             SetAttribute(editable with { Foreground = marker });
-            AddStr(Glyph(change));
+            AddStr(continuation && change == LineChange.Deleted ? " " : Glyph(change));
         }
         return true;
+    }
+
+    private (int Line, bool Continuation) LineOn(int screenRow, int lines)
+    {
+        if (!_text.SoftWrap) return (screenRow, false);
+        if (screenRow >= _text.WrappedRows) return (lines, false);
+        var (line, row) = _text.WrappedRowAt(screenRow);
+        return (line, row > 0);
     }
 
     private Color? ThemeColor(string key) =>

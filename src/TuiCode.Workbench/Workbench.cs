@@ -93,6 +93,7 @@ public sealed class Workbench : Window
         else if (Editor.Group.ActiveDiffTab is { } diff) StatusBar.SetMessage(diff.Title);
         else if (Editor.Group.ActiveDocumentTab is { } document) StatusBar.SetMessage(document.Title);
         StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
+        StatusBar.SetWrap(tab is { WordWrap: true });
     }
 
     /// <summary>How long a successful copy's message shows before the file path comes back.</summary>

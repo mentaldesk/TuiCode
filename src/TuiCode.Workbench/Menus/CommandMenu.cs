@@ -63,7 +63,7 @@ public sealed class CommandMenu
             Separator,
             CommandIds.RefreshExplorer,
             Separator,
-            CommandIds.ToggleGutter,
+            CommandIds.ToggleGutter, CommandIds.ToggleWordWrap,
         ]),
         ("_Go",
         [

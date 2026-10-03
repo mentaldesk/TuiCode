@@ -157,6 +157,7 @@ public static class CommandIds
     public const string RemoveSecondaryCursors = "editor.action.removeSecondaryCursors";
     public const string ClearSelection = "editor.action.clearSelection";
     public const string ToggleColumnSelect = "editor.action.toggleColumnSelection";
+    public const string ToggleWordWrap = "editor.action.toggleWordWrap";
 
     public const string ChangeGrammar = "workbench.action.changeGrammar";
     public const string GrammarPickerConfirm = "grammarPicker.action.confirm";

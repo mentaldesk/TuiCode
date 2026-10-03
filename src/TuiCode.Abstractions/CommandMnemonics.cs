@@ -70,6 +70,7 @@ public static class CommandMnemonics
             [CommandIds.NarrowSidebar] = "ns",
             [CommandIds.ToggleGutter] = "tg",
             [CommandIds.ToggleColumnSelect] = "tc",
+            [CommandIds.ToggleWordWrap] = "tww",
             [CommandIds.FocusSidebar] = "fs",
             [CommandIds.FocusEditorBody] = "fe",
             [CommandIds.FocusEditorTabStrip] = "ft",
