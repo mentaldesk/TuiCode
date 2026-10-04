@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Terminal.Gui.Configuration;
 using Terminal.Gui.Text;
 using TuiCode.Abstractions;
 using TuiCode.Icons;
@@ -192,6 +193,8 @@ public sealed class ReviewView : View
             var check = _icons?.ForViewed() ?? new FileIcon(ReviewRow.ViewedMark);
             tail.AddRange([.. CellsOf("  ", row), new Cell { Grapheme = check.Glyph, Attribute = IconDrawing.AttributeFor(check, row) }]);
         }
+        else if (file.Changed)
+            tail.AddRange([.. CellsOf("  ", row), .. CellsOf(ReviewRow.ChangedMark, Accented(row))]);
         var chat = ThreadIcon(file);
         if (file.Badge(chat is not null) is { } badge)
         {
@@ -220,6 +223,10 @@ public sealed class ReviewView : View
         cells.AddRange([.. lead, .. CellsOf(label, name), .. tail, .. Enumerable.Repeat(Space(row), pad), .. counts]);
         foreach (var icon in icons.Reverse()) IconDrawing.Prepend(e, icon);
     }
+
+    // Accent's Normal foreground is the plain text colour in most themes; HotNormal's is the one that stands out.
+    private static Attribute Accented(Attribute row) =>
+        SchemeManager.TryGetScheme("Accent", out var accent) ? row with { Foreground = accent.HotNormal.Foreground } : row;
 
     private Attribute CountColor(GitChangeKind kind, string text, Attribute row)
     {
