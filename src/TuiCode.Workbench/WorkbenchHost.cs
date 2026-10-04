@@ -464,6 +464,7 @@ public sealed class WorkbenchHost : IDisposable
 
         _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
         _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor, CommandScope.Global, EditorOpen);
+        _commands.Register(CommandIds.SaveAll, "Save all", SaveAll);
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", CloseActiveEditor, CommandScope.Global,
             () => group.Value is not null);
         _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
@@ -684,6 +685,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         keybindings.Bind("Ctrl+Q", CommandIds.Quit);
         keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
+        keybindings.Bind("Ctrl+Shift+S", CommandIds.SaveAll);
         keybindings.Bind("Ctrl+W", CommandIds.CloseActiveEditor);
         // Not Ctrl+Tab: Terminal.app and iTerm2 both keep it for their own tabs (#254).
         keybindings.Bind("Alt+Tab", CommandIds.NextEditor);
@@ -1408,6 +1410,29 @@ public sealed class WorkbenchHost : IDisposable
             ConfirmOverwrite(tab);
         else
             _workbench.Editor.Save();
+    }
+
+    // Only the first file that changed on disk gets the prompt; the rest stay dirty for the next Save all.
+    private void SaveAll()
+    {
+        EditorTab? conflict = null;
+        var saved = 0;
+        foreach (var tab in _workbench.Editor.Group.Tabs.Where(t => t.IsDirty))
+        {
+            if (tab.DiskNow == DiskState.Changed)
+            {
+                conflict ??= tab;
+                continue;
+            }
+            tab.Save();
+            saved++;
+        }
+
+        if (saved > 0)
+            _workbench.StatusBar.SetMessage(saved == 1 ? "Saved 1 file" : $"Saved {saved} files");
+        else if (conflict is null)
+            _workbench.StatusBar.SetMessage("No unsaved changes");
+        if (conflict is not null) ConfirmOverwrite(conflict);
     }
 
     private void CloseActiveEditor()

@@ -35,6 +35,7 @@ public static class CommandMnemonics
             [CommandIds.Quit] = "q",
             [CommandIds.ShowHelp] = "?",
             [CommandIds.SaveActiveEditor] = "sf",
+            [CommandIds.SaveAll] = "saf",
             [CommandIds.ShowDiagnostics] = "sd",
             [CommandIds.ShowAbout] = "tui",
             [CommandIds.New] = "nf",
