@@ -59,7 +59,11 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 
 Styles and conventions for how we build TUI apps live in the [MentalDesk TUI style guide](https://github.com/mentaldesk/tui-style-guide). Read it before describing UI in an issue or PR, and before building one. 
 
-Each rule is built once in the guide's shared library, `MentalDesk.Tui`, and shown working in its reference app, Swatch. 
+Each rule is built once in the guide's shared library, `MentalDesk.Tui`, and shown working in its reference app, Swatch.
+`TuiCode.Workbench` references it as the [`MentalDesk.Tui`](https://www.nuget.org/packages/MentalDesk.Tui) package
+(`FocusBorder` and `TerminalFlowControl` come from it). Where the library has a type, use it rather than a TuiCode copy;
+a change it needs goes to the style guide first, as its own PR. Dependabot opens a PR here for each new version, and its
+Terminal.Gui version moves with ours.
 
 What follows is how TuiCode implements it today.
 
