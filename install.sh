@@ -38,7 +38,7 @@ latest_tag() {
     if command -v curl >/dev/null 2>&1; then
         url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$REPO_URL/releases/latest") || return 1
     else
-        url=$(wget -S --spider "$REPO_URL/releases/latest" 2>&1 | tr -d '\r' | sed -n 's/^ *[Ll]ocation: *//p' | tail -n 1)
+        url=$(wget -S --spider "$REPO_URL/releases/latest" 2>&1 | tr -d '\r' | sed -n 's/^ *[Ll]ocation: *\([^ ]*\).*/\1/p' | tail -n 1)
     fi
     case "$url" in
         */releases/tag/v*) echo "${url##*/}" ;;
