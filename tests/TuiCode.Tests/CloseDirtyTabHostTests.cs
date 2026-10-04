@@ -87,7 +87,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is null);
 
-        Assert.Empty(workbench.Editor.Group.TabsUnder("/work"));
+        Assert.Empty(workbench.Editor.Group.Tabs);
         Assert.Equal("mine\n", _fs.File.ReadAllText(Path));
         Assert.Equal(1, _scopes.Depth);
     }
@@ -135,7 +135,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () => Confirm(workbench) is null);
 
         Assert.Equal("File changed on disk", conflict);
-        Assert.Empty(workbench.Editor.Group.TabsUnder("/work"));
+        Assert.Empty(workbench.Editor.Group.Tabs);
         Assert.Equal("mine\n", _fs.File.ReadAllText(Path));
         Assert.Equal(1, _scopes.Depth);
     }
@@ -160,7 +160,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is null);
 
-        Assert.Single(workbench.Editor.Group.TabsUnder("/work"));
+        Assert.Single(workbench.Editor.Group.Tabs);
         Assert.Equal("from the other branch\n", _fs.File.ReadAllText(Path));
         Assert.Equal(1, _scopes.Depth);
     }
@@ -212,7 +212,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () => workbench.Editor.Group.ActiveDiffTab is null);
 
         Assert.Null(Confirm(workbench));
-        Assert.True(Assert.Single(workbench.Editor.Group.TabsUnder("/work")).IsDirty);
+        Assert.True(Assert.Single(workbench.Editor.Group.Tabs).IsDirty);
     }
 
     [Fact]
