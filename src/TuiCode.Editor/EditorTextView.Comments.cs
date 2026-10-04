@@ -1,17 +1,19 @@
 namespace TuiCode.Editor;
 
-// Toggle line comment (#387).
+// Toggle line comment (#387), wrapping each line in block markers when the language has no line comment (#389).
 internal sealed partial class EditorTextView
 {
     /// <summary>
-    /// Uncomments the lines under every caret if each non-blank one starts with <paramref name="marker"/>, else comments them
-    /// at their block's smallest indentation, as one undo step.
+    /// Uncomments the lines under every caret if each non-blank one starts with <paramref name="open"/> (and ends with
+    /// <paramref name="close"/>, if given), else comments them at their block's smallest indentation, as one undo step.
     /// </summary>
-    public void ToggleLineComment(string marker)
+    public void ToggleLineComment(string open, string? close = null)
     {
         if (ReadOnly) return;
-        var cells = Cell.ToCellList(marker);
-        var comment = Cell.ToCellList(marker + " ");
+        var opening = Cell.ToCellList(open);
+        var closing = close is null ? null : Cell.ToCellList(close);
+        var prefix = Cell.ToCellList(open + " ");
+        var suffix = close is null ? null : Cell.ToCellList(" " + close);
         EditLines(Carets, blocks =>
         {
             var rows = blocks
@@ -19,7 +21,7 @@ internal sealed partial class EditorTextView
                     .Where(row => LeadingWhitespace(GetLine(row)) < GetLine(row).Count).ToArray())
                 .ToArray();
             var uncomment = rows.Any(block => block.Length > 0)
-                            && rows.All(block => block.All(row => CommentedAt(GetLine(row), cells) >= 0));
+                            && rows.All(block => block.All(row => CommentedAt(GetLine(row), opening, closing) >= 0));
             var changed = new Dictionary<int, (int At, int By)>();
             foreach (var block in rows.Where(block => block.Length > 0))
             {
@@ -29,15 +31,22 @@ internal sealed partial class EditorTextView
                     var line = GetLine(row);
                     if (uncomment)
                     {
-                        var start = CommentedAt(line, cells);
-                        var count = cells.Count + (start + cells.Count < line.Count && line[start + cells.Count].Grapheme == " " ? 1 : 0);
+                        var start = CommentedAt(line, opening, closing);
+                        if (closing is not null)
+                        {
+                            var end = ContentEnd(line) - closing.Count;
+                            var spaced = end > start + opening.Count && line[end - 1].Grapheme == " ";
+                            line.RemoveRange(spaced ? end - 1 : end, closing.Count + (spaced ? 1 : 0));
+                        }
+                        var count = opening.Count + (start + opening.Count < line.Count && line[start + opening.Count].Grapheme == " " ? 1 : 0);
                         line.RemoveRange(start, count);
                         changed[row] = (start, -count);
                     }
                     else
                     {
-                        line.InsertRange(at, comment);
-                        changed[row] = (at, comment.Count);
+                        if (suffix is not null) line.AddRange(suffix);
+                        line.InsertRange(at, prefix);
+                        changed[row] = (at, prefix.Count);
                     }
                 }
             }
@@ -45,15 +54,29 @@ internal sealed partial class EditorTextView
         });
     }
 
-    // Where the marker starts on a line that has it after its indentation, else -1.
-    private static int CommentedAt(List<Cell> line, List<Cell> marker)
+    // Where the opening marker starts on a line that has it after its indentation (and the closing one at its end), else -1.
+    private static int CommentedAt(List<Cell> line, List<Cell> opening, List<Cell>? closing)
     {
         var start = LeadingWhitespace(line);
-        if (start + marker.Count > line.Count) return -1;
+        var end = ContentEnd(line);
+        if (start + opening.Count + (closing?.Count ?? 0) > end) return -1;
+        if (!MarkerAt(line, start, opening)) return -1;
+        return closing is null || MarkerAt(line, end - closing.Count, closing) ? start : -1;
+    }
+
+    private static bool MarkerAt(List<Cell> line, int start, List<Cell> marker)
+    {
         for (var i = 0; i < marker.Count; i++)
         {
-            if (line[start + i].Grapheme != marker[i].Grapheme) return -1;
+            if (line[start + i].Grapheme != marker[i].Grapheme) return false;
         }
-        return start;
+        return true;
+    }
+
+    private static int ContentEnd(List<Cell> line)
+    {
+        var end = line.Count;
+        while (end > 0 && line[end - 1].Grapheme is " " or "\t") end--;
+        return end;
     }
 }

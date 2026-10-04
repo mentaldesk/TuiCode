@@ -159,6 +159,95 @@ public class EditorLineCommentTests
         Assert.Equal(["  // a", "  // b", "  // c"], view.LineStrings);
     }
 
+    [Fact]
+    public void ToggleLineComment_with_block_markers_wraps_a_line_from_its_indentation_and_a_second_toggle_unwraps_it()
+    {
+        var view = View("  <p>Hi</p>");
+        view.InsertionPoint = new Point(5, 0);
+
+        view.ToggleLineComment("<!--", "-->");
+        var wrapped = view.LineStrings.ToArray();
+        view.ToggleLineComment("<!--", "-->");
+
+        Assert.Equal(["  <!-- <p>Hi</p> -->"], wrapped);
+        Assert.Equal(["  <p>Hi</p>"], view.LineStrings);
+        Assert.Equal(new Point(5, 0), view.Carets[0].Position);
+    }
+
+    [Fact]
+    public void ToggleLineComment_with_block_markers_wraps_each_selected_line_at_the_smallest_indentation()
+    {
+        var view = View("a {", "    color: red;", "", "  margin: 0;", "}");
+        view.SetCarets([Selected(new Point(0, 1), new Point(4, 3))]);
+
+        view.ToggleLineComment("/*", "*/");
+
+        Assert.Equal(["a {", "  /*   color: red; */", "", "  /* margin: 0; */", "}"], view.LineStrings);
+    }
+
+    [Fact]
+    public void ToggleLineComment_with_block_markers_wraps_every_line_when_any_is_unwrapped()
+    {
+        var view = View("<!-- a -->", "b", "<!-- c -->");
+        view.SetCarets([Selected(new Point(0, 0), new Point(10, 2))]);
+
+        view.ToggleLineComment("<!--", "-->");
+
+        Assert.Equal(["<!-- <!-- a --> -->", "<!-- b -->", "<!-- <!-- c --> -->"], view.LineStrings);
+    }
+
+    [Fact]
+    public void ToggleLineComment_with_block_markers_unwraps_every_line_when_all_are_wrapped()
+    {
+        var view = View("  <!-- a -->", "    <!--b-->", "<!--  c  -->  ", "", "<!---->");
+        view.SetCarets([Selected(new Point(0, 0), new Point(7, 4))]);
+
+        view.ToggleLineComment("<!--", "-->");
+
+        Assert.Equal(["  a", "    b", " c   ", "", ""], view.LineStrings);
+    }
+
+    [Fact]
+    public void A_line_that_only_starts_or_ends_with_a_marker_is_not_wrapped()
+    {
+        var view = View("<!-- a --> b", "c <!-- d -->", "<!-->");
+        view.SetCarets([Selected(new Point(0, 0), new Point(5, 2))]);
+
+        view.ToggleLineComment("<!--", "-->");
+
+        Assert.Equal(["<!-- <!-- a --> b -->", "<!-- c <!-- d --> -->", "<!-- <!--> -->"], view.LineStrings);
+    }
+
+    [Fact]
+    public void A_block_wrapped_selection_covers_the_same_text_and_one_undo_restores_every_caret()
+    {
+        var view = View("ab", "cd", "ef");
+        view.SetCarets([Selected(new Point(0, 0), new Point(2, 1)), At(2, 2)]);
+
+        view.ToggleLineComment("/*", "*/");
+        var wrapped = view.LineStrings.ToArray();
+        var selection = view.Carets[0];
+        view.Undo();
+
+        Assert.Equal(["/* ab */", "/* cd */", "/* ef */"], wrapped);
+        Assert.Equal(new Point(0, 0), selection.Anchor);
+        Assert.Equal(new Point(5, 1), selection.Position);
+        Assert.Equal(["ab", "cd", "ef"], view.LineStrings);
+        Assert.Equal(2, view.CaretCount);
+    }
+
+    [Fact]
+    public void A_caret_inside_the_closing_marker_stays_on_the_line_when_it_is_unwrapped()
+    {
+        var view = View("/* ab */");
+        view.InsertionPoint = new Point(7, 0);
+
+        view.ToggleLineComment("/*", "*/");
+
+        Assert.Equal(["ab"], view.LineStrings);
+        Assert.Equal(new Point(2, 0), view.Carets[0].Position);
+    }
+
     private static Caret Selected(Point anchor, Point position) => new(position, anchor, Extending: true);
 
     private static Caret At(int row, int column) => new(new Point(column, row));
@@ -192,11 +281,16 @@ public class LineCommentMarkerTests
     }
 
     [Theory]
-    [InlineData(".html")]
-    [InlineData(".md")]
-    public void A_language_with_only_block_comments_has_no_line_comment_marker(string extension)
+    [InlineData(".html", "<!--", "-->")]
+    [InlineData(".xml", "<!--", "-->")]
+    [InlineData(".md", "<!--", "-->")]
+    [InlineData(".css", "/*", "*/")]
+    public void A_language_with_only_block_comments_has_its_block_markers_and_no_line_comment_marker(string extension, string open, string close)
     {
-        Assert.Null(Bundle.LanguageForFile("file" + extension)!.LineComment);
+        var language = Bundle.LanguageForFile("file" + extension)!;
+
+        Assert.Null(language.LineComment);
+        Assert.Equal((open, close), language.BlockComment);
     }
 }
 
@@ -210,6 +304,8 @@ public class EditorLineCommentHostTests : StaticConfigurationTest
         _fs.AddFile("/work/a.cs", new MockFileData("if (ready)\n    Start();\n"));
         _fs.AddFile("/work/a.txt", new MockFileData("hello\n"));
         _fs.AddFile("/work/a.html", new MockFileData("<p>\n"));
+        _fs.AddFile("/work/a.css", new MockFileData("a { color: red; }\n"));
+        _fs.AddFile("/work/a.scss", new MockFileData("a { color: red; }\n"));
     }
 
     [Fact]
@@ -234,10 +330,30 @@ public class EditorLineCommentHostTests : StaticConfigurationTest
         Assert.Equal(["if (ready)", "    Start();", ""], tab!.Lines);
     }
 
+    [Fact]
+    public async Task A_language_without_comment_syntax_is_left_alone_and_says_so()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        EditorTab? tab = null;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt"));
+                tab.FocusContent();
+            },
+            () => host.App.InjectKey(new Key('/').WithCtrl));
+
+        Assert.Equal("hello", tab!.Lines[0]);
+        Assert.Equal("Plain Text has no comment syntax", workbench.StatusBar.Message);
+    }
+
     [Theory]
-    [InlineData("/work/a.txt", "hello", "Plain Text has no comment syntax")]
-    [InlineData("/work/a.html", "<p>", "HTML has no comment syntax")]
-    public async Task A_language_without_a_line_comment_is_left_alone_and_says_so(string path, string line, string message)
+    [InlineData("/work/a.html", "<!-- <p> -->")]
+    [InlineData("/work/a.css", "/* a { color: red; } */")]
+    [InlineData("/work/a.scss", "// a { color: red; }")]
+    public async Task Ctrl_slash_uses_the_line_comment_and_falls_back_to_the_block_markers(string path, string commented)
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
@@ -251,8 +367,8 @@ public class EditorLineCommentHostTests : StaticConfigurationTest
             },
             () => host.App.InjectKey(new Key('/').WithCtrl));
 
-        Assert.Equal(line, tab!.Lines[0]);
-        Assert.Equal(message, workbench.StatusBar.Message);
+        Assert.Equal(commented, tab!.Lines[0]);
+        Assert.DoesNotContain("comment syntax", workbench.StatusBar.Message ?? "");
     }
 
     [Fact]
