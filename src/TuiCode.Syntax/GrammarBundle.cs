@@ -12,7 +12,8 @@ using TextMateSharp.Themes;
 namespace TuiCode.Syntax;
 
 /// <param name="LineComment">The marker that starts a line comment, from the language's VS Code configuration; null when it has none.</param>
-public sealed record SyntaxLanguage(string Id, string Name, string ScopeName, string? LineComment = null);
+/// <param name="BlockComment">The markers that open and close a block comment, from the same configuration; null when it has none.</param>
+public sealed record SyntaxLanguage(string Id, string Name, string ScopeName, string? LineComment = null, (string Open, string Close)? BlockComment = null);
 
 /// <summary>User grammar packages, then TextMateSharp.Grammars' re-packed as a compressed zip (its own loader embeds 6.7 MB uncompressed).</summary>
 public sealed class GrammarBundle : IRegistryOptions
@@ -194,7 +195,10 @@ public sealed class GrammarBundle : IRegistryOptions
                 continue;
             var name = node["aliases"]?.AsArray().FirstOrDefault()?.GetValue<string>() ?? id;
             if (!_languages.TryGetValue(id, out var language))
-                _languages[id] = language = new SyntaxLanguage(id, name, scope, LineComment(node, configurationAt));
+            {
+                var comments = Comments(node, configurationAt);
+                _languages[id] = language = new SyntaxLanguage(id, name, scope, LineComment(comments), BlockComment(comments));
+            }
             foreach (var fileName in node["filenames"]?.AsArray() ?? [])
                 _associations.TryAdd(fileName!.GetValue<string>(), language);
             foreach (var extension in node["extensions"]?.AsArray() ?? [])
@@ -203,14 +207,23 @@ public sealed class GrammarBundle : IRegistryOptions
         return added;
     }
 
-    private static string? LineComment(JsonNode language, Func<string, StreamReader?>? configurationAt)
+    private static JsonNode? Comments(JsonNode language, Func<string, StreamReader?>? configurationAt)
     {
         if (configurationAt is null || language["configuration"]?.GetValue<string>() is not { } path) return null;
         using var reader = configurationAt(path.TrimStart('.', '/'));
         if (reader is null) return null;
-        var marker = JsonNode.Parse(reader.ReadToEnd(), documentOptions: JsoncOptions)?["comments"]?["lineComment"];
-        return marker?.GetValueKind() == JsonValueKind.String && marker.GetValue<string>() is { Length: > 0 } text ? text : null;
+        return JsonNode.Parse(reader.ReadToEnd(), documentOptions: JsoncOptions)?["comments"];
     }
+
+    private static string? LineComment(JsonNode? comments) => Marker(comments?["lineComment"]);
+
+    private static (string Open, string Close)? BlockComment(JsonNode? comments) =>
+        comments?["blockComment"] is JsonArray { Count: 2 } markers && Marker(markers[0]) is { } open && Marker(markers[1]) is { } close
+            ? (open, close)
+            : null;
+
+    private static string? Marker(JsonNode? marker) =>
+        marker?.GetValueKind() == JsonValueKind.String && marker.GetValue<string>() is { Length: > 0 } text ? text : null;
 
     private static JsonNode ReadJson(ZipArchiveEntry entry)
     {

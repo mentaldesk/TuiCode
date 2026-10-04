@@ -358,11 +358,15 @@ public sealed class EditorTab : FrameView
 
     public void OutdentLines() => _textView.OutdentLines();
 
-    /// <summary>Toggles the grammar's line comment on the lines under every caret; false when the grammar has none (#387).</summary>
+    /// <summary>Toggles the grammar's line comment, or its block markers around each line (#389); false when it has neither.</summary>
     public bool ToggleLineComment()
     {
-        if (Grammar?.LineComment is not { } marker) return false;
-        _textView.ToggleLineComment(marker);
+        if (Grammar?.LineComment is { } marker)
+            _textView.ToggleLineComment(marker);
+        else if (Grammar?.BlockComment is var (open, close))
+            _textView.ToggleLineComment(open, close);
+        else
+            return false;
         return true;
     }
 

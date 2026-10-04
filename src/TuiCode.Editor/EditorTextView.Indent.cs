@@ -87,7 +87,7 @@ internal sealed partial class EditorTextView
             // A point at the start of the change stays there, so a selection of whole lines still is one.
             Point Shifted(Point point) =>
                 shifted.TryGetValue(point.Y, out var shift) && point.X > shift.At
-                    ? point with { X = Math.Max(shift.At, point.X + shift.By) }
+                    ? point with { X = Math.Clamp(point.X + shift.By, shift.At, GetLine(point.Y).Count) }
                     : point;
         });
     }
