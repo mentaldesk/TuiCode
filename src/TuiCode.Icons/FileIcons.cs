@@ -22,6 +22,8 @@ public sealed class FileIcons
     private static readonly FileIcon NerdThreadsSettled = new("\U000F1414");
     private static readonly FileIcon EmojiThreadsOpen = new("💬");
     private static readonly FileIcon EmojiThreadsSettled = new("💭");
+    // nf-cod-check.
+    private static readonly FileIcon NerdViewed = new("\ueab2");
 
     // nf-cod-diff_added, _modified, _removed and _renamed.
     private static readonly Dictionary<GitChangeKind, (string Glyph, string Letter, string ThemeKey, int Dark, int Light)> Changes = new()
@@ -82,6 +84,9 @@ public sealed class FileIcons
         FileIconStyle.Emoji => unresolved ? EmojiThreadsOpen : EmojiThreadsSettled,
         _ => null,
     };
+
+    /// <summary>The mark on a file viewed in a PR's review (#396); null where a plain check mark stands in for it.</summary>
+    public FileIcon? ForViewed() => Style == FileIconStyle.NerdFont ? NerdViewed : null;
 
     /// <summary>
     /// What a branch did to a file (#320), coloured from <paramref name="themeColors"/> where the theme sets its

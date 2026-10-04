@@ -4,6 +4,7 @@ public static class CommandIds
 {
     public const string Quit = "workbench.action.quit";
     public const string SaveActiveEditor = "workbench.action.saveActiveEditor";
+    public const string SaveAll = "workbench.action.files.saveAll";
     public const string CloseActiveEditor = "workbench.action.closeActiveEditor";
     public const string NextEditor = "workbench.action.nextEditor";
     public const string PreviousEditor = "workbench.action.previousEditor";
@@ -144,6 +145,8 @@ public static class CommandIds
     public const string CancelCut = "explorer.action.cancelCut";
     public const string RefreshExplorer = "explorer.action.refresh";
     public const string ConfirmCancel = "confirm.action.cancel";
+
+    public const string ToggleViewed = "review.action.toggleViewed";
 
     public const string MoveLinesUp = "editor.action.moveLinesUp";
     public const string MoveLinesDown = "editor.action.moveLinesDown";

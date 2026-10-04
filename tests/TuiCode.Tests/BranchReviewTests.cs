@@ -92,6 +92,38 @@ public class BranchReviewTests
         Assert.Null(result.Value);
     }
 
+    [Fact]
+    public void ViewedLine_counts_only_the_files_viewed_since_their_last_change_and_is_empty_until_loaded()
+    {
+        var review = Review(PullRequest()) with
+        {
+            Changes =
+            [
+                new GitChange(GitChangeKind.Modified, "a.cs"),
+                new GitChange(GitChangeKind.Renamed, "new/b.cs", "old/b.cs"),
+                new GitChange(GitChangeKind.Modified, "c.cs"),
+            ],
+        };
+
+        Assert.Equal("", review.ViewedLine);
+
+        var loaded = review with
+        {
+            Viewed = new Dictionary<string, GitHubViewedState>
+            {
+                ["a.cs"] = GitHubViewedState.Dismissed,
+                ["new/b.cs"] = GitHubViewedState.Viewed,
+                ["c.cs"] = GitHubViewedState.Unviewed,
+            },
+        };
+
+        Assert.Equal("Viewed 1 of 3", loaded.ViewedLine);
+        Assert.True(loaded.IsViewed("new/b.cs"));
+        Assert.Equal("Viewed 2 of 3", loaded.WithViewed("a.cs", true).ViewedLine);
+        Assert.Equal("Viewed 0 of 3", loaded.WithViewed("new/b.cs", false).ViewedLine);
+        Assert.Equal("Viewed 1 of 3", loaded.ViewedLine);
+    }
+
     private static BranchReview Review(GitHubPullRequest? pullRequest = null) =>
         new("/work", "feature", "origin/main", "b45e", [], pullRequest);
 

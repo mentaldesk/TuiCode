@@ -15,6 +15,7 @@ public class GitHubCliTests
           "baseRefName": "main",
           "headRefName": "a-team/scopes",
           "headRefOid": "9a4f2c1",
+          "id": "PR_kwDOSXnwh88",
           "number": 132,
           "title": "Command scopes should be fixed",
           "statusCheckRollup": [
@@ -31,7 +32,7 @@ public class GitHubCliTests
         var result = GitHubCli.Parse(json);
 
         Assert.Equal(
-            new GitHubPullRequest(132, "Command scopes should be fixed", "main", "a-team/scopes", new GitHubChecks(2, 2, 2), "9a4f2c1"),
+            new GitHubPullRequest(132, "Command scopes should be fixed", "main", "a-team/scopes", new GitHubChecks(2, 2, 2), "9a4f2c1", "PR_kwDOSXnwh88"),
             result.Value);
     }
 
@@ -76,7 +77,7 @@ public class GitHubCliTests
     }
 
     [Fact]
-    public void ParseThreads_reads_each_thread_with_its_line_resolution_and_comments()
+    public void ParseReview_reads_each_thread_with_its_line_resolution_and_comments()
     {
         const string json = """
         { "data": { "repository": { "pullRequest": { "reviewThreads": { "nodes": [
@@ -88,7 +89,7 @@ public class GitHubCliTests
         ] } } } } }
         """;
 
-        var threads = GitHubCli.ParseThreads(json).Value;
+        var threads = GitHubCli.ParseReview(json).Value.Threads;
 
         Assert.Equal([12, null, null], threads.Select(t => t.Line));
         Assert.Equal([false, true, true], threads.Select(t => t.Outdated));
@@ -98,7 +99,7 @@ public class GitHubCliTests
     }
 
     [Fact]
-    public void ParseThreads_takes_the_reply_target_from_the_first_comment()
+    public void ParseReview_takes_the_reply_target_from_the_first_comment()
     {
         const string json = """
         { "data": { "repository": { "pullRequest": { "reviewThreads": { "nodes": [
@@ -109,9 +110,50 @@ public class GitHubCliTests
         ] } } } } }
         """;
 
-        var threads = GitHubCli.ParseThreads(json).Value;
+        var threads = GitHubCli.ParseReview(json).Value.Threads;
 
         Assert.Equal([4711L, 0L], threads.Select(t => t.ReplyToId));
+    }
+
+    [Fact]
+    public void ParseReview_reads_each_files_viewed_state_by_its_path_on_the_head()
+    {
+        const string json = """
+        { "data": { "repository": { "pullRequest": { "reviewThreads": { "nodes": [] }, "files": { "nodes": [
+          { "path": "src/a.cs", "viewerViewedState": "VIEWED" },
+          { "path": "src/b.cs", "viewerViewedState": "UNVIEWED" },
+          { "path": "src/c.cs", "viewerViewedState": "DISMISSED" },
+          { "path": "src/renamed/d.cs", "viewerViewedState": "VIEWED" }
+        ] } } } } }
+        """;
+
+        var viewed = GitHubCli.ParseReview(json).Value.Viewed;
+
+        Assert.Equal(GitHubViewedState.Viewed, viewed["src/a.cs"]);
+        Assert.Equal(GitHubViewedState.Unviewed, viewed["src/b.cs"]);
+        Assert.Equal(GitHubViewedState.Dismissed, viewed["src/c.cs"]);
+        Assert.Equal(GitHubViewedState.Viewed, viewed["src/renamed/d.cs"]);
+    }
+
+    [Fact]
+    public void ParseReview_without_files_reads_none_viewed()
+    {
+        const string json = """{ "data": { "repository": { "pullRequest": { "reviewThreads": { "nodes": [] } } } } }""";
+
+        Assert.Empty(GitHubCli.ParseReview(json).Value.Viewed);
+    }
+
+    [Theory]
+    [InlineData(true, "markFileAsViewed")]
+    [InlineData(false, "unmarkFileAsViewed")]
+    public void ViewedArguments_name_the_pull_request_and_path_for_the_mutation(bool viewed, string mutation)
+    {
+        var arguments = GitHubCli.ViewedArguments("PR_kw1", "src/a.cs", viewed);
+
+        Assert.Equal(["api", "graphql", "-f", "id=PR_kw1", "-f", "path=src/a.cs", "-f"], arguments[..^1]);
+        Assert.Equal(
+            $"query=mutation($id:ID!,$path:String!){{{mutation}(input:{{pullRequestId:$id,path:$path}}){{clientMutationId}}}}",
+            arguments[^1]);
     }
 
     [Fact]
@@ -140,10 +182,10 @@ public class GitHubCliTests
     }
 
     [Fact]
-    public void ParseThreads_of_an_answer_without_a_pull_request_fails_rather_than_throws()
+    public void ParseReview_of_an_answer_without_a_pull_request_fails_rather_than_throws()
     {
-        Assert.False(GitHubCli.ParseThreads("not json at all").Succeeded);
-        Assert.False(GitHubCli.ParseThreads("""{"data":{"repository":null}}""").Succeeded);
+        Assert.False(GitHubCli.ParseReview("not json at all").Succeeded);
+        Assert.False(GitHubCli.ParseReview("""{"data":{"repository":null}}""").Succeeded);
     }
 
     [Fact]

@@ -247,7 +247,7 @@ public sealed class WorkbenchHost : IDisposable
         // The find bar sits inside the active tab, so the editor regions have to let it through (#229).
         _focus.Register(FocusRegion.FindBar, () => Take(_find.Bar, _find.FocusInput), OnFindBar);
         _focus.Register(FocusRegion.Diff, () => Take(group.ActiveDiffTab),
-            focused => group.ActiveDiffTab is { } diff && Owns(diff, focused));
+            focused => group.ActiveDiffTab is { } diff && Owns(diff, focused) && !OnFindBar(focused));
         _focus.Register(FocusRegion.Editor, () => Take(group.Value, group.FocusActive),
             focused => group.ActiveDiffTab is null && Owns(_workbench.Editor, focused)
                 && !OnTabStrip(group, focused) && !OnFindBar(focused));
@@ -464,6 +464,7 @@ public sealed class WorkbenchHost : IDisposable
 
         _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
         _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor, CommandScope.Global, EditorOpen);
+        _commands.Register(CommandIds.SaveAll, "Save all", SaveAll);
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", CloseActiveEditor, CommandScope.Global,
             () => group.Value is not null);
         _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
@@ -500,6 +501,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment, CommandScope.Diff, Reviewing);
+        _commands.Register(CommandIds.ToggleViewed, "Toggle viewed", ToggleViewed, CommandScope.Review, () => review.CanToggleViewed);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
@@ -693,6 +695,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         keybindings.Bind("Ctrl+Q", CommandIds.Quit);
         keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
+        keybindings.Bind("Ctrl+Shift+S", CommandIds.SaveAll);
         keybindings.Bind("Ctrl+W", CommandIds.CloseActiveEditor);
         // Not Ctrl+Tab: Terminal.app and iTerm2 both keep it for their own tabs (#254).
         keybindings.Bind("Alt+Tab", CommandIds.NextEditor);
@@ -748,6 +751,8 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+X", CommandIds.CutFile);
         keybindings.Bind("Ctrl+V", CommandIds.PasteFile);
         keybindings.Bind("Esc", CommandIds.CancelCut);
+
+        keybindings.Bind("Space", CommandIds.ToggleViewed);
 
         keybindings.Bind("Alt+CursorDown", CommandIds.NextChange);
         keybindings.Bind("Alt+CursorUp", CommandIds.PreviousChange);
@@ -857,14 +862,14 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     /// <summary>
-    /// Find in the active file (#229). The keys land in the bar's inputs from wherever they were; with no file
-    /// tab to search they go to the find pane instead, and on a tab that can't be searched they stay put and
-    /// the status bar says why rather than the key doing nothing at all.
+    /// Find in the active file or diff (#229, #413). The keys land in the bar's inputs from wherever they were;
+    /// with no tab to search they go to the find pane instead, and where there's nothing to find or replace in
+    /// they stay put and the status bar says why rather than the key doing nothing at all.
     /// </summary>
     private void OpenFind(bool replace)
     {
         var group = _workbench.Editor.Group;
-        if (group.ActiveTab is null)
+        if (group.ActiveTab is null && (replace || group.ActiveDiffTab is null))
         {
             if (group.Value is null)
             {
@@ -1207,7 +1212,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OnActiveTabChanged(object? sender, TuiCode.Editor.EditorTab? tab)
     {
-        _find.OnActiveTabChanged(tab);
+        _find.OnActiveTabChanged();
         if (_suppressHistory || tab is null) return;
         _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
     }
@@ -1415,6 +1420,29 @@ public sealed class WorkbenchHost : IDisposable
             ConfirmOverwrite(tab);
         else
             _workbench.Editor.Save();
+    }
+
+    // Only the first file that changed on disk gets the prompt; the rest stay dirty for the next Save all.
+    private void SaveAll()
+    {
+        EditorTab? conflict = null;
+        var saved = 0;
+        foreach (var tab in _workbench.Editor.Group.Tabs.Where(t => t.IsDirty))
+        {
+            if (tab.DiskNow == DiskState.Changed)
+            {
+                conflict ??= tab;
+                continue;
+            }
+            tab.Save();
+            saved++;
+        }
+
+        if (saved > 0)
+            _workbench.StatusBar.SetMessage(saved == 1 ? "Saved 1 file" : $"Saved {saved} files");
+        else if (conflict is null)
+            _workbench.StatusBar.SetMessage("No unsaved changes");
+        if (conflict is not null) ConfirmOverwrite(conflict);
     }
 
     private void CloseActiveEditor()
@@ -2483,6 +2511,23 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusSummary();
+    }
+
+    /// <summary>
+    /// Toggle viewed (<c>tv</c>, #396): GitHub's Viewed mark on the file selected in the Review tab. The tab shows
+    /// the new mark only once GitHub has it.
+    /// </summary>
+    private void ToggleViewed()
+    {
+        var tab = _workbench.Sidebar.Review;
+        if (tab.Review is not { PullRequest: { } pullRequest } review || tab.SelectedFile is not { } file) return;
+        var viewed = !review.IsViewed(file.Path);
+        var setting = Task.Run(() => _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, file.Path, viewed));
+        WhenDone(setting, () =>
+        {
+            if (setting.Result.Error is { } error) _workbench.StatusBar.SetMessage(error);
+            else tab.SetViewed(file.Path, viewed);
+        });
     }
 
     /// <summary>

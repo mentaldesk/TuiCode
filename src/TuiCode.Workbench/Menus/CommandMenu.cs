@@ -29,7 +29,7 @@ public sealed class CommandMenu
     [
         ("_File",
         [
-            CommandIds.New, CommandIds.Open, CommandIds.OpenRecentFolder, CommandIds.OpenWorktree, CommandIds.OpenFilePath, CommandIds.SaveActiveEditor, CommandIds.ReloadFromDisk, CommandIds.CloseActiveEditor,
+            CommandIds.New, CommandIds.Open, CommandIds.OpenRecentFolder, CommandIds.OpenWorktree, CommandIds.OpenFilePath, CommandIds.SaveActiveEditor, CommandIds.SaveAll, CommandIds.ReloadFromDisk, CommandIds.CloseActiveEditor,
             Separator,
             CommandIds.RenameFile, CommandIds.CutFile, CommandIds.PasteFile, CommandIds.DeleteFile,
             Separator,
@@ -88,7 +88,7 @@ public sealed class CommandMenu
         [
             CommandIds.OpenPullRequest, CommandIds.PullRequestOverview,
             Separator,
-            CommandIds.CreateComment, CommandIds.SubmitReview,
+            CommandIds.CreateComment, CommandIds.ToggleViewed, CommandIds.SubmitReview,
         ]),
         ("_Help",
         [

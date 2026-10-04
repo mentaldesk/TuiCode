@@ -6,8 +6,8 @@ using TuiCode.Workbench.Services;
 namespace TuiCode.Workbench.Find;
 
 /// <summary>
-/// Find/replace in the active editor (#33). Owns the <see cref="FindBarView"/>, docks it on the active
-/// tab (following tab switches), keeps the match set and highlights in step with the buffer, and
+/// Find/replace in the active editor (#33), and find in the active diff (#413). Owns the <see cref="FindBarView"/>,
+/// docks it on the active tab (following tab switches), keeps the match set and highlights in step with the buffer, and
 /// drives selection. While open it layers a non-modal input scope over the workbench: Enter /
 /// Shift+Enter / Tab / Ctrl+Enter act only while the bar has focus, Esc also closes from the editor
 /// body, and every other key — Ctrl+S, Alt+Tab, … — falls through to the workbench as usual.
@@ -18,7 +18,7 @@ internal sealed class FindController : IDisposable
     private readonly IInputScopeStack _scopes;
     private readonly FindBarView _bar = new();
     private readonly LayeredScope _scope;
-    private EditorTab? _tab;
+    private FindTarget? _tab;
     private IReadOnlyList<TextMatch> _matches = [];
     private int _current = -1;
     // Where the search starts from while typing: the cursor when find opened (or the last match
@@ -69,18 +69,18 @@ internal sealed class FindController : IDisposable
     internal IReadOnlyList<TextMatch> Matches => _matches;
     internal int CurrentIndex => _current;
 
-    /// <summary>Show the bar on the active tab, with or without the replace row; the host then focuses it (#229).</summary>
+    /// <summary>Show the bar on the active tab, with the replace row if asked and it isn't a diff; the host then focuses it (#229).</summary>
     public void Open(bool replace)
     {
-        if (_group.ActiveTab is not { } tab) return;
+        if (FindTarget.For(_group.Value) is not { } tab) return;
 
         if (_tab is null)
             _scopes.Push(_scope);
         Attach(tab);
 
-        _anchor = tab.SelectionOrigin;
+        _anchor = tab.Origin;
         var selected = tab.SelectedText;
-        _bar.ShowReplace(replace);
+        _bar.ShowReplace(replace && tab.CanReplace);
         // Seed from a single-line selection, like VS Code. Setting the same text raises no change event,
         // so recompute explicitly either way.
         if (selected.Length > 0 && !selected.Contains('\n') && !selected.Contains('\r'))
@@ -105,17 +105,18 @@ internal sealed class FindController : IDisposable
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Follow the active tab: the bar moves to the newly active editor, or closes when none is left.</summary>
-    public void OnActiveTabChanged(EditorTab? tab)
+    /// <summary>Follow the active tab: the bar moves to the newly active file or diff, or closes when there's none.</summary>
+    public void OnActiveTabChanged()
     {
-        if (_tab is null || ReferenceEquals(_tab, tab)) return;
-        if (tab is null)
+        if (_tab is null || ReferenceEquals(_tab.View, _group.Value)) return;
+        if (FindTarget.For(_group.Value) is not { } tab)
         {
             Close();
             return;
         }
         Attach(tab);
-        _anchor = tab.SelectionOrigin;
+        if (!tab.CanReplace) _bar.ShowReplace(false);
+        _anchor = tab.Origin;
         Recompute(selectFromAnchor: false);
     }
 
@@ -127,14 +128,14 @@ internal sealed class FindController : IDisposable
             Go(TextSearch.IndexAfter(_matches, _matches[_current].Row, _matches[_current].Column));
             return;
         }
-        var (row, col) = tab.SelectionOrigin;
+        var (row, col) = tab.Origin;
         Go(TextSearch.IndexAtOrAfter(_matches, row, col));
     }
 
     public void Previous()
     {
         if (_tab is not { } tab || _matches.Count == 0) return;
-        var (row, col) = _current >= 0 ? (_matches[_current].Row, _matches[_current].Column) : tab.SelectionOrigin;
+        var (row, col) = _current >= 0 ? (_matches[_current].Row, _matches[_current].Column) : tab.Origin;
         Go(TextSearch.IndexBefore(_matches, row, col));
     }
 
@@ -194,7 +195,7 @@ internal sealed class FindController : IDisposable
         if (_tab is not { } tab) return;
 
         var previous = _current >= 0 ? _matches[_current] : (TextMatch?)null;
-        _matches = TextSearch.FindAll(tab.Lines, _bar.Query);
+        _matches = tab.FindAll(_bar.Query);
         tab.SetHighlights(_matches);
 
         if (selectFromAnchor)
@@ -253,9 +254,9 @@ internal sealed class FindController : IDisposable
         if (!_replacing) Recompute(selectFromAnchor: false);
     }
 
-    private void Attach(EditorTab tab)
+    private void Attach(FindTarget tab)
     {
-        if (ReferenceEquals(_tab, tab)) return;
+        if (ReferenceEquals(_tab?.View, tab.View)) return;
         Detach();
         _tab = tab;
         tab.SetHeader(_bar);
