@@ -1,5 +1,6 @@
 using Terminal.Gui.Drawing;
 using TuiCode.Abstractions;
+using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
@@ -395,7 +396,38 @@ public class FocusHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Ctrl_F_on_a_diff_says_why_rather_than_doing_nothing()
+    public async Task Ctrl_F_on_a_diff_finds_in_it_and_Esc_leaves_the_keys_on_the_last_match_s_row()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        FindBarView? bar = null;
+        DiffTab? diff = null;
+        var focusWhileTyping = "";
+        var afterEnter = (Row: -1, Side: DiffSide.Left);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => { workbench.Editor.Group.ActiveTab!.Content = "one\nTWO\n"; },
+            () => commands.TryExecute(CommandIds.CompareToSaved),
+            () => workbench.StatusBar.DisplayedFocus == "Diff",
+            () => { diff = workbench.Editor.Group.ActiveDiffTab; host.App.InjectKey(Key.F.WithCtrl); },
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is not null,
+            () => { foreach (var c in "two") host.App.InjectKey(new Key(c)); },
+            () => bar!.Status == "1 of 2",
+            () => { focusWhileTyping = workbench.StatusBar.DisplayedFocus; host.App.InjectKey(Key.Enter); },
+            () => bar!.Status == "2 of 2",
+            () => { afterEnter = (diff!.CurrentMatch!.Value.Row, diff.CurrentMatch.Value.Side); host.App.InjectKey(Key.Esc); },
+            () => workbench.StatusBar.DisplayedFocus == "Diff");
+
+        Assert.Null(bar!.SuperView);
+        Assert.Equal("Find", focusWhileTyping);
+        Assert.Equal((1, DiffSide.Right), afterEnter);
+        Assert.Equal(1, diff!.CurrentRow);
+        Assert.Null(diff.CurrentMatch);
+    }
+
+    [Fact]
+    public async Task Ctrl_H_on_a_diff_says_why_rather_than_doing_nothing()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -405,11 +437,42 @@ public class FocusHostTests : StaticConfigurationTest
             () => { workbench.Editor.Group.ActiveTab!.Content = "one\nTWO\n"; },
             () => commands.TryExecute(CommandIds.CompareToSaved),
             () => workbench.StatusBar.DisplayedFocus == "Diff",
-            () => host.App.InjectKey(Key.F.WithCtrl),
-            () => workbench.StatusBar.DisplayedText.Contains("Nothing to find in a diff — Ctrl+F needs a file tab"));
+            () => host.App.InjectKey(Key.H.WithCtrl),
+            () => workbench.StatusBar.DisplayedText.Contains("Nothing to replace in a diff — Ctrl+H needs a file tab"));
 
         Assert.Empty(workbench.SubViewsDeep().OfType<FindBarView>());
         Assert.Equal("Diff", workbench.StatusBar.DisplayedFocus);
+    }
+
+    [Fact]
+    public async Task The_find_bar_follows_a_switch_between_a_file_and_a_diff_with_its_query()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+        FindBarView? bar = null;
+        DiffTab? diff = null;
+        object? onDiff = null;
+        var queryOnDiff = "";
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => { group.ActiveTab!.Content = "one\nTWO\n"; },
+            () => commands.TryExecute(CommandIds.CompareToSaved),
+            () => (diff = group.ActiveDiffTab) is not null,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/b.txt")),
+            () => group.ActiveTab?.File.Name == "b.txt",
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(new Key('t')),
+            () => bar!.Query == "t",
+            () => { group.Value = diff; },
+            () => group.ActiveDiffTab is not null,
+            () => { (onDiff, queryOnDiff) = (bar!.SuperView, bar.Query); });
+
+        Assert.Same(diff, onDiff);
+        Assert.Equal("t", queryOnDiff);
+        Assert.Equal("2 results", bar!.Status);
     }
 
     // Nothing to search in the buffer there isn't, so the promise is kept by the find pane instead.
