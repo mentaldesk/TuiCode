@@ -22,6 +22,7 @@ public sealed class ReviewView : View
     private readonly SyntaxHighlighter? _syntax;
     private readonly Label _title;
     private readonly Label _header;
+    private readonly TotalsLabel _totals;
     private readonly Label _checks;
     private readonly Label _threadCounts;
     private readonly Label _hint;
@@ -31,6 +32,7 @@ public sealed class ReviewView : View
     private readonly TreeView<ReviewNode> _files;
     private CancellationTokenSource? _loading;
     private string _headerText = string.Empty;
+    private string _totalsText = string.Empty;
     private string _checksText = string.Empty;
     private string _threadsText = string.Empty;
     private string _hintText = string.Empty;
@@ -56,6 +58,9 @@ public sealed class ReviewView : View
     public string HeaderText => _header.Text;
 
     public string TitleText => _title.Text;
+
+    /// <summary>How many files and lines the branch changes (#394).</summary>
+    public string TotalsText => _totals.Text;
 
     public string ChecksText => _checks.Text;
 
@@ -93,6 +98,7 @@ public sealed class ReviewView : View
 
         _title = Line();
         _header = Line();
+        _totals = new TotalsLabel(CountColor) { X = 0, Y = 0, Width = Dim.Fill(), Text = string.Empty, Visible = false };
         _checks = Line();
         _threadCounts = Line();
         _hint = Line();
@@ -127,7 +133,7 @@ public sealed class ReviewView : View
             else if (e.Model is ReviewFolderNode && _icons?.ForDirectory(_files.IsExpanded(e.Model)) is { } folder) IconDrawing.Prepend(e, folder);
         };
         if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
-        Add(_title, _header, _checks, _threadCounts, _hint, _overview, _rule, _files, _draftReview);
+        Add(_title, _header, _totals, _checks, _threadCounts, _hint, _overview, _rule, _files, _draftReview);
 
         ViewportChanged += (_, _) => LayoutHeader();
         _files.Activated += (_, _) => ActivateSelected();
@@ -203,6 +209,32 @@ public sealed class ReviewView : View
     {
         var (dark, light) = FileIcons.ChangeColors(kind, _syntax?.EditorColors);
         return IconDrawing.AttributeFor(new FileIcon(text, dark, light), row);
+    }
+
+    /// <summary>The totals line, its <c>+</c> count in the added colour and its <c>−</c> count in the deleted one.</summary>
+    private sealed class TotalsLabel(Func<GitChangeKind, string, Attribute, Attribute> countColor) : Label
+    {
+        protected override bool OnDrawingText(DrawContext? context)
+        {
+            var normal = GetAttributeForRole(VisualRole.Normal);
+            GitChangeKind? kind = null;
+            Move(0, 0);
+            var enumerator = StringInfo.GetTextElementEnumerator(Text);
+            while (enumerator.MoveNext())
+            {
+                var grapheme = enumerator.GetTextElement();
+                kind = grapheme switch
+                {
+                    "+" => GitChangeKind.Added,
+                    "−" => GitChangeKind.Deleted,
+                    " " => null,
+                    _ => kind,
+                };
+                SetAttribute(kind is { } k ? countColor(k, grapheme, normal) : normal);
+                AddStr(grapheme);
+            }
+            return true;
+        }
     }
 
     private static string Cut(string text, int columns)
@@ -353,6 +385,7 @@ public sealed class ReviewView : View
         if (result.Value is { Changes.Count: > 0 } review)
         {
             _headerText = review.Header;
+            _totalsText = review.TotalsLine;
             _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads, review.LineCounts));
             _files.ExpandAll();
             _files.SelectedObject = FindThread(selectedThread) ?? (ReviewNode?)FindFile(selected) ?? FirstFile();
@@ -361,6 +394,7 @@ public sealed class ReviewView : View
         else
         {
             _headerText = result.Error ?? (result.Value is { } empty ? $"No changes against {empty.Base}" : notARepo);
+            _totalsText = string.Empty;
             _files.Visible = false;
         }
         _checksText = result.Value?.ChecksLine ?? string.Empty;
@@ -403,6 +437,7 @@ public sealed class ReviewView : View
                  [
                      (_title, Review?.TitleLine ?? string.Empty),
                      (_header, _headerText),
+                     (_totals, _totalsText),
                      (_checks, _checksText),
                      (_threadCounts, _threadsText),
                      (_hint, _hintText),
