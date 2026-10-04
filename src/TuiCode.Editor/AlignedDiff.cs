@@ -41,6 +41,11 @@ public sealed class AlignedDiff
 
     public static AlignedDiff Compute(IReadOnlyList<string> left, IReadOnlyList<string> right, int maxEdits = LineDiff.MaxEdits)
     {
+        var rightCount = right.Count;
+        // Against a missing side, the empty line after a file's final newline isn't one of its lines.
+        if (left.Count == 0) right = WithoutFinalNewline(right);
+        if (right.Count == 0) left = WithoutFinalNewline(left);
+
         var rows = new List<DiffRow>();
         var changeBlocks = new List<int>();
         int l = 0, r = 0, added = 0, removed = 0;
@@ -63,8 +68,11 @@ public sealed class AlignedDiff
         while (l < left.Count)
             rows.Add(new DiffRow(DiffRowKind.Both, l++, r++));
 
-        return new AlignedDiff(rows, changeBlocks, right.Count, added, removed);
+        return new AlignedDiff(rows, changeBlocks, rightCount, added, removed);
     }
+
+    private static IReadOnlyList<string> WithoutFinalNewline(IReadOnlyList<string> lines) =>
+        lines is [.., ""] ? lines.Take(lines.Count - 1).ToArray() : lines;
 
     /// <summary>The block of changed rows starting at <paramref name="start"/>, one of <see cref="ChangeBlocks"/>.</summary>
     public ChangeBlock Block(int start)
