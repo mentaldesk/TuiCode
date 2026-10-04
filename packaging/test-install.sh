@@ -38,6 +38,7 @@ while [ $# -gt 0 ]; do
   fi
   [ "$installed" = "$version" ] || fail "installed version is $installed, expected $version"
   # Resolved, because Fedora's /usr/sbin is a symlink to bin and comes first on PATH.
+  # shellcheck disable=SC2016  # expands in the container
   found=$(run 'readlink -f "$(command -v tuicode)"')
   [ "$found" = /usr/bin/tuicode ] || fail "tuicode on PATH is '$found', expected /usr/bin/tuicode"
 done
