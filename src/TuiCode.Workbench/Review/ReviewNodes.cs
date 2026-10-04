@@ -14,9 +14,26 @@ public sealed class ReviewFolderNode(string path) : ReviewNode
     public override string ToString() => Path;
 }
 
-public sealed class ReviewFileNode(GitChange change, IReadOnlyList<GitHubReviewThread>? threads = null) : ReviewNode
+public sealed class ReviewFileNode(GitChange change, IReadOnlyList<GitHubReviewThread>? threads = null, GitLineCount? lines = null) : ReviewNode
 {
     public GitChange Change { get; } = change;
+
+    /// <summary>The lines the file adds and removes (#393); null until git has counted them.</summary>
+    public GitLineCount? Lines { get; } = lines;
+
+    /// <summary>
+    /// What the row shows at its right edge (#393), each part with the change whose colour it takes, or null for a faint <c>bin</c>.
+    /// An added file shows only what it adds, a deleted one only what it removes, and a pure rename nothing.
+    /// </summary>
+    public IReadOnlyList<(string Text, GitChangeKind? Color)> Counts => Lines switch
+    {
+        null => [],
+        { Binary: true } => [("bin", null)],
+        { } lines when Change.Kind == GitChangeKind.Added => [($"+{lines.Added}", GitChangeKind.Added)],
+        { } lines when Change.Kind == GitChangeKind.Deleted => [($"−{lines.Deleted}", GitChangeKind.Deleted)],
+        { Added: 0, Deleted: 0 } => [],
+        { } lines => [($"+{lines.Added}", GitChangeKind.Added), ($"−{lines.Deleted}", GitChangeKind.Deleted)],
+    };
 
     /// <summary>The review threads on this file, outdated ones included (#186).</summary>
     public IReadOnlyList<GitHubReviewThread> Threads { get; } = threads ?? [];
@@ -97,7 +114,10 @@ public sealed class ReviewThreadNode(ReviewOutdatedNode outdated, GitHubReviewTh
 internal static class ReviewTree
 {
     /// <summary>One node per folder, by its full path, then the files at the repo root; each sorted ordinally.</summary>
-    public static IReadOnlyList<ReviewNode> Build(IReadOnlyList<GitChange> changes, IReadOnlyList<GitHubReviewThread>? threads = null)
+    public static IReadOnlyList<ReviewNode> Build(
+        IReadOnlyList<GitChange> changes,
+        IReadOnlyList<GitHubReviewThread>? threads = null,
+        IReadOnlyDictionary<string, GitLineCount>? lineCounts = null)
     {
         var byPath = (threads ?? [])
             .GroupBy(t => t.Path, StringComparer.Ordinal)
@@ -105,7 +125,7 @@ internal static class ReviewTree
         var files = changes.Select(c =>
         {
             var on = byPath.GetValueOrDefault(c.Path) ?? [];
-            var file = new ReviewFileNode(c, on);
+            var file = new ReviewFileNode(c, on, lineCounts?.TryGetValue(c.Path, out var lines) == true ? lines : null);
             if (on.Where(t => t.Outdated).ToList() is { Count: > 0 } outdated)
                 file.Children.Add(new ReviewOutdatedNode(c, outdated));
             return file;

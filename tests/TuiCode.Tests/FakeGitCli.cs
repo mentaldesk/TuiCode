@@ -81,6 +81,17 @@ internal sealed class FakeGitCli : IGitCli
     public Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default) =>
         Task.FromResult(GitResult<IReadOnlyList<GitChange>>.Success(ChangesByRevision.GetValueOrDefault(revision) ?? Changes));
 
+    public IReadOnlyDictionary<string, GitLineCount> LineCounts { get; set; } = new Dictionary<string, GitLineCount>();
+
+    public Dictionary<string, IReadOnlyDictionary<string, GitLineCount>> LineCountsByRevision { get; } = new(StringComparer.Ordinal);
+
+    public string? LineCountsError { get; set; }
+
+    public Task<GitResult<IReadOnlyDictionary<string, GitLineCount>>> GetLineCountsAsync(string path, string revision, CancellationToken cancellationToken = default) =>
+        Task.FromResult(LineCountsError is { } error
+            ? GitResult<IReadOnlyDictionary<string, GitLineCount>>.Failure(error)
+            : GitResult<IReadOnlyDictionary<string, GitLineCount>>.Success(LineCountsByRevision.GetValueOrDefault(revision) ?? LineCounts));
+
     /// <summary>Worktree paths the fake has been asked to add, in order; a path already there isn't re-created.</summary>
     public List<string> Worktrees { get; } = [];
 

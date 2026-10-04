@@ -40,6 +40,9 @@ public interface IGitCli
     /// <summary>Files that differ between <paramref name="revision"/> and the working copy, staged or not, with repo-relative paths.</summary>
     Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default);
 
+    /// <summary>The lines each file in <see cref="GetChangedFilesAsync"/> adds and removes, keyed by its (new) repo-relative path.</summary>
+    Task<GitResult<IReadOnlyDictionary<string, GitLineCount>>> GetLineCountsAsync(string path, string revision, CancellationToken cancellationToken = default);
+
     /// <summary>The content of <paramref name="repoPath"/> (relative to <paramref name="repoRoot"/>) at <paramref name="revision"/>, or null when it isn't there.</summary>
     Task<GitResult<string?>> ShowRepoFileAsync(string repoRoot, string repoPath, string revision, CancellationToken cancellationToken = default);
 
@@ -113,3 +116,6 @@ public enum GitChangeKind
 
 /// <summary>A changed file. Paths are relative to the repo root, with <c>/</c> separators; <see cref="OldPath"/> is set for renames.</summary>
 public sealed record GitChange(GitChangeKind Kind, string Path, string? OldPath = null);
+
+/// <summary>The lines a change adds and removes, as <c>git diff --numstat</c> counts them; git counts none for a binary file.</summary>
+public readonly record struct GitLineCount(int Added, int Deleted, bool Binary = false);

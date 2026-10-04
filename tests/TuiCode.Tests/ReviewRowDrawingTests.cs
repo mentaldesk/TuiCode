@@ -220,6 +220,124 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         Assert.Equal("beta.cs", (view.Files.SelectedObject as ReviewFileNode)?.Name);
     }
 
+    [Fact]
+    public async Task A_files_counts_are_right_aligned_at_the_tabs_edge_and_line_up_down_the_list()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "src/a.cs"), new GitChange(GitChangeKind.Modified, "src/long.cs")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["src/a.cs"] = new(3, 1), ["src/long.cs"] = new(120, 45) };
+        using var view = await Review();
+
+        var rows = Render(view);
+
+        Assert.EndsWith("a.cs       +3 −1", RowWith(rows, "a.cs"));
+        Assert.EndsWith("long.cs +120 −45", RowWith(rows, "long.cs"));
+    }
+
+    [Fact]
+    public async Task The_added_count_takes_the_added_colour_and_the_removed_count_the_deleted_colour()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "src/a.cs")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["src/a.cs"] = new(3, 1) };
+        using var view = await Review();
+
+        var row = RowIndex(view, "a.cs");
+        var name = CellOf(row, "a");
+        var (addedDark, addedLight) = FileIcons.ChangeColors(GitChangeKind.Added);
+        var (deletedDark, deletedLight) = FileIcons.ChangeColors(GitChangeKind.Deleted);
+
+        Assert.Equal(IconDrawing.AttributeFor(new FileIcon("+", addedDark, addedLight), name).Foreground, CellOf(row, "+").Foreground);
+        Assert.Equal(IconDrawing.AttributeFor(new FileIcon("3", addedDark, addedLight), name).Foreground, CellOf(row, "3").Foreground);
+        Assert.Equal(IconDrawing.AttributeFor(new FileIcon("−", deletedDark, deletedLight), name).Foreground, CellOf(row, "−").Foreground);
+    }
+
+    [Theory]
+    [InlineData(GitChangeKind.Added, 12, 0, "+12")]
+    [InlineData(GitChangeKind.Deleted, 0, 7, "−7")]
+    public async Task An_added_or_deleted_file_shows_only_its_one_count(GitChangeKind kind, int added, int deleted, string expected)
+    {
+        _icons.Setting = FileIconStyle.Off;
+        _git.Changes = [new GitChange(kind, "a.cs")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.cs"] = new(added, deleted) };
+        using var view = await Review();
+
+        var row = RowWith(Render(view), "a.cs");
+
+        Assert.EndsWith($" {expected}", row);
+        Assert.DoesNotContain(expected.StartsWith('+') ? "−" : "+", row);
+    }
+
+    [Fact]
+    public async Task A_pure_rename_shows_no_counts()
+    {
+        _icons.Setting = FileIconStyle.Off;
+        _git.Changes = [new GitChange(GitChangeKind.Renamed, "b.cs", "a.cs")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["b.cs"] = new(0, 0) };
+        using var view = await Review();
+
+        Assert.Equal("└─R b.cs", RowWith(Render(view), "b.cs").TrimEnd());
+    }
+
+    [Fact]
+    public async Task A_binary_file_shows_a_faint_bin()
+    {
+        _icons.Setting = FileIconStyle.Off;
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.png")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.png"] = new(0, 0, Binary: true) };
+        using var view = await Review();
+
+        var row = RowIndex(view, "a.png");
+
+        Assert.EndsWith(" bin", Render(view)[row]);
+        Assert.True(CellOf(row, "b").Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public async Task A_name_too_long_for_the_pane_is_cut_with_an_ellipsis_before_the_counts_are()
+    {
+        _icons.Setting = FileIconStyle.Off;
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a_rather_long_file_name.cs")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a_rather_long_file_name.cs"] = new(10, 2) };
+        using var view = await Review();
+
+        var row = RowWith(Render(view), "a_rather");
+
+        Assert.Equal("└─M a_rather_lon… +10 −2", row);
+    }
+
+    [Fact]
+    public async Task A_thread_badge_stays_after_the_name_with_the_counts_at_the_edge()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "src/a.cs")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["src/a.cs"] = new(3, 1) };
+        using var view = await Review(Thread("src/a.cs"));
+
+        var row = RowWith(Render(view), "a.cs");
+
+        Assert.Contains($"a.cs  {Chat} 1", row);
+        Assert.EndsWith(" +3 −1", row);
+    }
+
+    [Fact]
+    public async Task A_long_name_with_a_thread_badge_is_cut_and_keeps_both_the_badge_and_the_counts()
+    {
+        _icons.Setting = FileIconStyle.Off;
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a_rather_long_file_name.cs")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a_rather_long_file_name.cs"] = new(10, 2) };
+        using var view = await Review(Thread("a_rather_long_file_name.cs"));
+
+        Assert.Equal("└─M a_rathe…  ● 1 +10 −2", RowWith(Render(view), "a_rathe"));
+    }
+
+    [Fact]
+    public async Task Folder_rows_show_no_counts()
+    {
+        _icons.Setting = FileIconStyle.Off;
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["src/a.cs"] = new(3, 1), ["src/b.cs"] = new(1, 1) };
+        using var view = await Review();
+
+        Assert.EndsWith("-src", RowWith(Render(view), "src").TrimEnd());
+    }
+
     private static GitHubReviewThread Thread(string path, bool resolved = false) =>
         new(path, 2, resolved, Outdated: false, [new GitHubComment("octocat", default, "Look here.")]);
 
