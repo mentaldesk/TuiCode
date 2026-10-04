@@ -464,8 +464,8 @@ public sealed class WorkbenchHost : IDisposable
 
         _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
         _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor, CommandScope.Global, EditorOpen);
-        _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", () => _workbench.Editor.CloseActive(),
-            CommandScope.Global, EditorOpen);
+        _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", CloseActiveEditor, CommandScope.Global,
+            () => group.Value is not null);
         _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
         _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => _workbench.Editor.PreviousTab());
 
@@ -1407,7 +1407,36 @@ public sealed class WorkbenchHost : IDisposable
             _workbench.Editor.Save();
     }
 
-    private void ConfirmOverwrite(EditorTab tab)
+    private void CloseActiveEditor()
+    {
+        if (_activeConfirm is not null) return;
+        var group = _workbench.Editor.Group;
+        if (group.ActiveTab is not { IsDirty: true } tab)
+        {
+            group.CloseActive();
+            return;
+        }
+
+        var view = new ConfirmView("Unsaved changes",
+            $"Save changes to '{tab.File.Name}' before closing?\nYour changes will be lost if you don't save them.",
+            new ConfirmChoice("Save", () => SaveAndClose(tab)),
+            new ConfirmChoice("Don't save", () => group.CloseEditor(tab)));
+        view.Cancelled += (_, _) => CloseConfirm(view);
+        ShowConfirm(view);
+    }
+
+    private void SaveAndClose(EditorTab tab)
+    {
+        if (tab.DiskNow == DiskState.Changed)
+        {
+            ConfirmOverwrite(tab, thenClose: true);
+            return;
+        }
+        tab.Save();
+        _workbench.Editor.Group.CloseEditor(tab);
+    }
+
+    private void ConfirmOverwrite(EditorTab tab, bool thenClose = false)
     {
         if (_activeConfirm is not null) return;
 
@@ -1420,7 +1449,11 @@ public sealed class WorkbenchHost : IDisposable
         // Compare is the diff `cts` opens — the buffer against what's on disk now.
         var view = new ConfirmView("File changed on disk", message,
             new ConfirmChoice("Compare", CompareToSaved),
-            new ConfirmChoice("Overwrite", tab.Save),
+            new ConfirmChoice("Overwrite", () =>
+            {
+                tab.Save();
+                if (thenClose) _workbench.Editor.Group.CloseEditor(tab);
+            }),
             new ConfirmChoice("Reload", () => _diskChanges.Reload(tab)));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
