@@ -47,6 +47,9 @@ public sealed class DiffTab : FrameView
     private (int Start, int End)? _reverted;
     private int _column;
     private int? _widest;
+    private View? _header;
+    private Dictionary<(int Row, DiffSide Side), TextRange[]> _found = new();
+    private DiffMatch? _currentMatch;
 
     public DiffTab(EditorTab source, string leftLabel, Func<IReadOnlyList<string>> readLeft, SyntaxHighlighter? syntax = null, string? leftKey = null)
         : this(source.File, source, leftLabel, readLeft, syntax, leftKey)
@@ -85,6 +88,7 @@ public sealed class DiffTab : FrameView
         {
             Orientation = Orientation.Vertical,
             X = Pos.AnchorEnd(),
+            Y = Pos.Func(_ => HeaderHeight),
             Height = Dim.Fill(Dim.Func(_ => Padding!.Thickness.Bottom)),
             VisibilityMode = ScrollBarVisibilityMode.Auto,
         };
@@ -170,6 +174,12 @@ public sealed class DiffTab : FrameView
 
     /// <summary>The version on the left; for a deleted file (#182) it's what restoring it brings back (#247).</summary>
     public IReadOnlyList<string> LeftLines => _left;
+
+    /// <summary>The version on the right: the buffer as last refreshed, the later revision, or nothing for a deleted file.</summary>
+    public IReadOnlyList<string> RightLines => _right;
+
+    /// <summary>Raised after <see cref="Refresh"/> recomputes the diff.</summary>
+    public event EventHandler? Refreshed;
 
     public AlignedDiff Diff { get; private set; }
 
@@ -297,7 +307,7 @@ public sealed class DiffTab : FrameView
     }
 
     /// <summary>The row of the diff the current row is, or the one a thread row sits under.</summary>
-    private int CurrentDiffRow => _current < _rows.Count ? _rows[_current].Diff : _current;
+    public int CurrentDiffRow => _current < _rows.Count ? _rows[_current].Diff : _current;
 
     public string ChangeStatus => (Diff.ChangeBlocks.Count, CurrentChange) switch
     {
@@ -375,7 +385,62 @@ public sealed class DiffTab : FrameView
         return true;
     }
 
-    private int PageHeight => Math.Max(1, Viewport.Height - 1);
+    private int PageHeight => Math.Max(1, Viewport.Height - HeaderHeight - 1);
+
+    private int HeaderHeight => _header?.Height is DimAbsolute { Size: var height } ? height : 0;
+
+    /// <summary>Docks <paramref name="header"/> (the find bar, #413) above both sides; null removes it without disposing it.</summary>
+    public void SetHeader(View? header)
+    {
+        if (ReferenceEquals(_header, header)) return;
+        if (_header is not null) Remove(_header);
+        _header = header;
+        if (header is not null)
+        {
+            header.X = 0;
+            header.Y = 0;
+            header.Width = Dim.Fill();
+            Add(header);
+        }
+        SetNeedsLayout();
+        MoveTo(_current);
+    }
+
+    /// <summary>Paints every match in the find highlight colour (#413). An empty set clears it.</summary>
+    public void SetHighlights(IEnumerable<DiffMatch> matches)
+    {
+        _found = matches
+            .GroupBy(m => (m.Row, m.Side))
+            .ToDictionary(g => g.Key, g => g.Select(m => new TextRange(m.Column, m.Length)).ToArray());
+        if (_currentMatch is { } current && !_found.ContainsKey((current.Row, current.Side))) _currentMatch = null;
+        SetNeedsDraw();
+    }
+
+    /// <summary>Draws <paramref name="match"/> as selected, moves the current row to it, and scrolls it into view (#413).</summary>
+    public void ShowMatch(DiffMatch match)
+    {
+        _currentMatch = match;
+        _reverted = null;
+        MoveTo(Math.Max(0, _rows.FindIndex(r => r.Diff == match.Row && !r.IsComment)));
+
+        var line = (match.Side == DiffSide.Left ? Diff.Rows[match.Row].Left : Diff.Rows[match.Row].Right) is { } l
+            ? (match.Side == DiffSide.Left ? _left : _right)[l]
+            : string.Empty;
+        var start = Columns(line[..Math.Min(match.Column, line.Length)]);
+        var end = Columns(line[..Math.Min(match.Column + match.Length, line.Length)]);
+        var (leftWidth, rightWidth) = SideWidths();
+        var width = Math.Max(1, (match.Side == DiffSide.Left ? leftWidth : rightWidth) - Digits - 2);
+        if (start < _column) ScrollSidewaysTo(start);
+        else if (end > _column + width) ScrollSidewaysTo(Math.Min(start, end - width));
+    }
+
+    public void ClearCurrentMatch()
+    {
+        _currentMatch = null;
+        SetNeedsDraw();
+    }
+
+    internal DiffMatch? CurrentMatch => _currentMatch;
 
     /// <summary>Re-read both sides and recompute the diff.</summary>
     public void Refresh()
@@ -398,6 +463,7 @@ public sealed class DiffTab : FrameView
         UpdateTitle();
         ScrollTo(_top);
         MoveTo(_current);
+        Refreshed?.Invoke(this, EventArgs.Empty);
     }
 
     private Dictionary<int, (TextRange[] Left, TextRange[] Right)> ComputeWordChanges()
@@ -560,16 +626,18 @@ public sealed class DiffTab : FrameView
         var digits = Digits;
 
         var current = GetAttributeForRole(VisualRole.Focus);
+        var finds = new Found(GetAttributeForRole(VisualRole.Highlight), GetAttributeForRole(VisualRole.Active));
         var reverted = normal with { Background = current.Background };
         var header = normal with { Style = normal.Style | TextStyle.Bold };
         PrepareSyntax();
-        DrawText(0, 0, leftWidth, " " + LeftLabel, header);
-        DrawSeparator(leftWidth, 0, normal);
-        DrawText(rightX, 0, rightWidth, " " + (RightLabel ?? (IsDeleted ? "deleted" : "working copy")), header);
+        var top = HeaderHeight;
+        DrawText(0, top, leftWidth, " " + LeftLabel, header);
+        DrawSeparator(leftWidth, top, normal);
+        DrawText(rightX, top, rightWidth, " " + (RightLabel ?? (IsDeleted ? "deleted" : "working copy")), header);
 
-        for (var y = 1; y < Viewport.Height; y++)
+        for (var y = top + 1; y < Viewport.Height; y++)
         {
-            var index = _top + y - 1;
+            var index = _top + y - top - 1;
             if (index < _rows.Count && _rows[index] is { IsComment: true } commentRow)
             {
                 var resolved = comment with { Style = comment.Style | TextStyle.Faint };
@@ -583,9 +651,10 @@ public sealed class DiffTab : FrameView
             Attribute? marked = row is not null && index == _current ? current : null;
             var tinted = IsReverted(row) ? reverted : normal;
             var words = index < _rows.Count && WordChanges.TryGetValue(_rows[index].Diff, out var found) ? found : ([], []);
-            DrawSide(0, y, leftWidth, row?.Left, _left, LeftTokens, digits, changed ? '-' : ' ', changed ? removed : tinted, normal, marked, words.Left, removedText);
+            var diffRow = index < _rows.Count ? _rows[index].Diff : -1;
+            DrawSide(0, y, leftWidth, row?.Left, _left, LeftTokens, digits, changed ? '-' : ' ', changed ? removed : tinted, normal, marked, words.Left, removedText, finds.On(this, diffRow, DiffSide.Left));
             DrawSeparator(leftWidth, y, normal);
-            DrawSide(rightX, y, rightWidth, row?.Right, _right, RightTokens, digits, changed ? '+' : ' ', changed ? inserted : tinted, normal, marked, words.Right, insertedText);
+            DrawSide(rightX, y, rightWidth, row?.Right, _right, RightTokens, digits, changed ? '+' : ' ', changed ? inserted : tinted, normal, marked, words.Right, insertedText, finds.On(this, diffRow, DiffSide.Right));
         }
         return true;
     }
@@ -610,13 +679,32 @@ public sealed class DiffTab : FrameView
         if (!done) App?.Invoke(SetNeedsDraw);
     }
 
-    private void DrawSide(int x, int y, int width, int? line, IReadOnlyList<string> lines, LineTokenCache? tokens, int digits, char marker, Attribute tint, Attribute normal, Attribute? current, TextRange[] words, Color wordBackground)
+    /// <summary>How find matches are drawn (#413): every match like the editor's highlight, the current one like a selection.</summary>
+    private readonly record struct Found(Attribute Highlight, Attribute Selected, TextRange[]? Ranges = null, TextRange? Current = null)
+    {
+        public Found On(DiffTab diff, int row, DiffSide side) => this with
+        {
+            Ranges = diff._found.GetValueOrDefault((row, side)),
+            Current = diff._currentMatch is { } m && m.Row == row && m.Side == side ? new TextRange(m.Column, m.Length) : null,
+        };
+
+        public Attribute? At(int chars)
+        {
+            if (Current is { } c && chars >= c.Start && chars < c.End) return Selected;
+            if (Ranges is null) return null;
+            foreach (var range in Ranges)
+                if (chars >= range.Start && chars < range.End) return Highlight;
+            return null;
+        }
+    }
+
+    private void DrawSide(int x, int y, int width, int? line, IReadOnlyList<string> lines, LineTokenCache? tokens, int digits, char marker, Attribute tint, Attribute normal, Attribute? current, TextRange[] words, Color wordBackground, Found found)
     {
         var prefix = line is { } i ? $"{(i + 1).ToString().PadLeft(digits)}{marker} " : new string(' ', digits + 2);
         var number = marker == ' ' ? tint with { Style = tint.Style | TextStyle.Faint } : tint;
         var used = Math.Min(width, prefix.Length);
         DrawText(x, y, used, prefix, current ?? (line is null ? normal : number));
-        if (line is { } l) DrawText(x + used, y, width - used, lines[l], tint, tokens?.TokensFor(l), _column, words, wordBackground);
+        if (line is { } l) DrawText(x + used, y, width - used, lines[l], tint, tokens?.TokensFor(l), _column, words, wordBackground, found);
         else DrawText(x + used, y, width - used, "", normal);
     }
 
@@ -637,7 +725,7 @@ public sealed class DiffTab : FrameView
     }
 
     // Pads to width; the first `skip` columns and whatever passes width are cut. Token and word offsets are UTF-16 chars, not cells.
-    private void DrawText(int x, int y, int width, string text, Attribute attribute, int[]? tokens = null, int skip = 0, TextRange[]? words = null, Color wordBackground = default)
+    private void DrawText(int x, int y, int width, string text, Attribute attribute, int[]? tokens = null, int skip = 0, TextRange[]? words = null, Color wordBackground = default, Found found = default)
     {
         SetAttribute(attribute);
         var col = 0;
@@ -645,6 +733,7 @@ public sealed class DiffTab : FrameView
         var token = -1;
         var word = 0;
         var inWord = false;
+        Attribute? marking = null;
         var elements = StringInfo.GetTextElementEnumerator(text);
         while (elements.MoveNext() && col - skip < width)
         {
@@ -659,12 +748,14 @@ public sealed class DiffTab : FrameView
             while (words is not null && word < words.Length && words[word].End <= chars)
                 word++;
             var nowInWord = words is not null && word < words.Length && words[word].Start <= chars;
-            if (next != token || nowInWord != inWord)
+            var nowMarking = found.At(chars);
+            if (next != token || nowInWord != inWord || nowMarking != marking)
             {
                 var background = nowInWord ? attribute with { Background = wordBackground } : attribute;
-                SetAttribute(next < 0 ? background : _palette.Apply(background, tokens![next + 1]));
+                SetAttribute(nowMarking ?? (next < 0 ? background : _palette.Apply(background, tokens![next + 1])));
                 token = next;
                 inWord = nowInWord;
+                marking = nowMarking;
             }
             chars += grapheme.Length;
             var cols = Columns(grapheme, col);
@@ -695,6 +786,13 @@ public sealed class DiffTab : FrameView
     private int Columns(string grapheme, int col) => grapheme == "\t"
         ? Settings.IndentSize - col % Settings.IndentSize
         : Math.Max(1, grapheme.GetColumns(false));
+
+    // The header (find bar) belongs to its controller, which outlives this tab — don't take it down with us.
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) SetHeader(null);
+        base.Dispose(disposing);
+    }
 
     private Color? ThemeColor(string key) =>
         _syntax?.EditorColors.TryGetValue(key, out var hex) == true && Color.TryParse(hex, out Color? color) ? color : null;

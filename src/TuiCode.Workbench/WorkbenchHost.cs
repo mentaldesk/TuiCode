@@ -247,7 +247,7 @@ public sealed class WorkbenchHost : IDisposable
         // The find bar sits inside the active tab, so the editor regions have to let it through (#229).
         _focus.Register(FocusRegion.FindBar, () => Take(_find.Bar, _find.FocusInput), OnFindBar);
         _focus.Register(FocusRegion.Diff, () => Take(group.ActiveDiffTab),
-            focused => group.ActiveDiffTab is { } diff && Owns(diff, focused));
+            focused => group.ActiveDiffTab is { } diff && Owns(diff, focused) && !OnFindBar(focused));
         _focus.Register(FocusRegion.Editor, () => Take(group.Value, group.FocusActive),
             focused => group.ActiveDiffTab is null && Owns(_workbench.Editor, focused)
                 && !OnTabStrip(group, focused) && !OnFindBar(focused));
@@ -852,14 +852,14 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     /// <summary>
-    /// Find in the active file (#229). The keys land in the bar's inputs from wherever they were; with no file
-    /// tab to search they go to the find pane instead, and on a tab that can't be searched they stay put and
-    /// the status bar says why rather than the key doing nothing at all.
+    /// Find in the active file or diff (#229, #413). The keys land in the bar's inputs from wherever they were;
+    /// with no tab to search they go to the find pane instead, and where there's nothing to find or replace in
+    /// they stay put and the status bar says why rather than the key doing nothing at all.
     /// </summary>
     private void OpenFind(bool replace)
     {
         var group = _workbench.Editor.Group;
-        if (group.ActiveTab is null)
+        if (group.ActiveTab is null && (replace || group.ActiveDiffTab is null))
         {
             if (group.Value is null)
             {
@@ -1202,7 +1202,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OnActiveTabChanged(object? sender, TuiCode.Editor.EditorTab? tab)
     {
-        _find.OnActiveTabChanged(tab);
+        _find.OnActiveTabChanged();
         if (_suppressHistory || tab is null) return;
         _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
     }
