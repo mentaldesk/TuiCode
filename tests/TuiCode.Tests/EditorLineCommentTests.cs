@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Reflection;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using TuiCode.Abstractions;
@@ -275,6 +277,78 @@ public class EditorLineCommentHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Ctrl_slash_from_a_terminal_without_the_kitty_protocol_comments_the_line()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        EditorTab? tab = null;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.cs"));
+                tab.FocusContent();
+            },
+            () => host.App.InjectKey(LegacyCtrlSlash));
+
+        Assert.Equal("// if (ready)", tab!.Lines[0]);
+    }
+
+    [Fact]
+    public async Task A_user_binding_on_the_key_legacy_Ctrl_slash_arrives_as_wins()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        host.ApplyKeybindings([new KeybindingOverride(TestKeys.Chord("Ctrl+7"), CommandIds.ToggleSidebar)]);
+        EditorTab? tab = null;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.cs"));
+                tab.FocusContent();
+            },
+            () => host.App.InjectKey(LegacyCtrlSlash));
+
+        Assert.Equal("if (ready)", tab!.Lines[0]);
+        Assert.False(workbench.IsSidebarVisible);
+        Assert.Equal("Ctrl+/", host.Menu.Items.Single(i => i.Id == CommandIds.ToggleLineComment).Item.KeyView.Text);
+    }
+
+    [Fact]
+    public async Task Under_the_kitty_protocol_Ctrl_7_is_not_Ctrl_slash()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        EditorTab? tab = null;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                KittyFlags(host.App.Driver!, KittyKeyboardFlags.DisambiguateEscapeCodes);
+                tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.cs"));
+                tab.FocusContent();
+            },
+            () => host.App.InjectKey(new Key('/').WithCtrl),
+            () => host.App.InjectKey(LegacyCtrlSlash));
+
+        Assert.Equal("// if (ready)", tab!.Lines[0]);
+    }
+
+    private static readonly Key LegacyCtrlSlash = Key.D7.WithCtrl;
+
+    private static void KittyFlags(IDriver driver, KittyKeyboardFlags flags)
+    {
+        if (driver.KittyKeyboardCapabilities is { } capabilities)
+        {
+            capabilities.Flags = flags;
+            return;
+        }
+        driver.GetType().GetMethod("SetKittyKeyboardCapabilities", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(driver, [new KittyKeyboardCapabilities { IsSupported = true, Flags = flags }]);
+    }
+
+    [Fact]
     public void Toggle_line_comment_is_an_editor_command_in_the_Edit_menu()
     {
         using var workbench = BuildWorkbench();
@@ -301,5 +375,62 @@ public class EditorLineCommentHostTests : StaticConfigurationTest
         commands = new CommandService();
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+    }
+}
+
+// What a terminal without the kitty protocol sends for Ctrl+/ turns into under each driver (#388).
+public class LegacyCtrlSlashDecodingTests
+{
+    [Fact]
+    public void The_ansi_driver_decodes_0x1F_as_Ctrl_7()
+    {
+        var queue = new ConcurrentQueue<char>();
+        queue.Enqueue('\u001f');
+
+        Assert.Equal(Key.D7.WithCtrl, Decode(new AnsiInputProcessor(queue)));
+    }
+
+    [Theory]
+    [InlineData('\0', ConsoleKey.D7)]
+    [InlineData('\u001f', ConsoleKey.Oem2)]
+    public void The_dotnet_driver_decodes_Ctrl_slash_as_Ctrl_7(char keyChar, ConsoleKey consoleKey)
+    {
+        var queue = new ConcurrentQueue<ConsoleKeyInfo>();
+        queue.Enqueue(new ConsoleKeyInfo(keyChar, consoleKey, shift: false, alt: false, control: true));
+
+        Assert.Equal(Key.D7.WithCtrl, Decode(new NetInputProcessor(queue)));
+    }
+
+    // The windows driver reads the key itself (VK_OEM_2), not the 0x1F, so it needs no help.
+    [Theory]
+    [InlineData('\0')]
+    [InlineData('\u001f')]
+    public void The_windows_driver_decodes_Ctrl_slash_as_itself(char unicodeChar)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The windows driver maps the key through the Win32 keyboard layout");
+        var record = new WindowsConsole.InputRecord
+        {
+            EventType = WindowsConsole.EventType.Key,
+            KeyEvent = new WindowsConsole.KeyEventRecord
+            {
+                bKeyDown = true,
+                wRepeatCount = 1,
+                wVirtualKeyCode = (VK)ConsoleKey.Oem2,
+                UnicodeChar = unicodeChar,
+                dwControlKeyState = WindowsConsole.ControlKeyState.LeftControlPressed,
+            },
+        };
+        var converter = Activator.CreateInstance(
+            typeof(WindowsConsole).Assembly.GetType("Terminal.Gui.Drivers.WindowsKeyConverter", throwOnError: true)!, nonPublic: true)!;
+
+        Assert.Equal(new Key('/').WithCtrl, (Key)converter.GetType().GetMethod("ToKey")!.Invoke(converter, [record])!);
+    }
+
+    private static Key? Decode<T>(InputProcessorImpl<T> processor) where T : struct
+    {
+        Key? decoded = null;
+        processor.KeyDown += (_, key) => decoded = key;
+        processor.ProcessQueue();
+        return decoded;
     }
 }

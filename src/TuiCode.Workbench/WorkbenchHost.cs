@@ -45,6 +45,10 @@ public sealed class WorkbenchHost : IDisposable
     private const KeyCode WindowsCtrlLineFeed = KeyCode.CtrlMask | (KeyCode)0x0A;
     private const KeyCode CtrlEnter = KeyCode.CtrlMask | KeyCode.Enter;
 
+    // Without the kitty protocol Ctrl+/ arrives as 0x1F, which the ansi and dotnet drivers decode as Ctrl+7 (#388).
+    private const KeyCode LegacyCtrlSlash = KeyCode.CtrlMask | KeyCode.D7;
+    private const KeyCode CtrlSlash = KeyCode.CtrlMask | (KeyCode)'/';
+
     private readonly TerminalFlowControl _flowControl;
     private readonly IApplication _app;
     private readonly Workbench _workbench;
@@ -98,6 +102,7 @@ public sealed class WorkbenchHost : IDisposable
     private DraftComments? _draftComments;
     private bool _launchedFromExplorer;
     private bool _sidebarDragging;
+    private bool _userBoundLegacyCtrlSlash;
     private bool _disposed;
 
     public WorkbenchHost(
@@ -356,7 +361,7 @@ public sealed class WorkbenchHost : IDisposable
 
         // Look the binding up under the normalized chord, but consume the original event object so
         // the Win32 LF (0x0A) never falls through to the editor when a binding claimed it.
-        var result = _scopes.Handle(NormalizeWindowsCtrlEnter(key));
+        var result = _scopes.Handle(NormalizeLegacyCtrlSlash(NormalizeWindowsCtrlEnter(key)));
         if (result != KeyHandlingResult.Pass)
         {
             key.Handled = true;
@@ -415,6 +420,14 @@ public sealed class WorkbenchHost : IDisposable
 
     private Key NormalizeWindowsCtrlEnter(Key key) =>
         _environment.IsWindows && key.KeyCode == WindowsCtrlLineFeed ? new Key(CtrlEnter) : key;
+
+    // Under the kitty protocol Ctrl+7 is really Ctrl+7, and a user who bound it gets it.
+    private Key NormalizeLegacyCtrlSlash(Key key) =>
+        key.KeyCode == LegacyCtrlSlash
+        && !_userBoundLegacyCtrlSlash
+        && _app.Driver?.KittyKeyboardCapabilities is not { Flags: not KittyKeyboardFlags.None }
+            ? new Key(CtrlSlash)
+            : key;
 
     private bool TryHandleTabStripKey(Key key)
     {
@@ -569,6 +582,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         _keybindings.Reset();
         BindDefaults(_keybindings);
+        _userBoundLegacyCtrlSlash = false;
 
         foreach (var o in overrides)
         {
@@ -581,7 +595,11 @@ public sealed class WorkbenchHost : IDisposable
             {
                 // Only while the key still runs that command, so a default that has since moved stays (#362).
                 if (o.IsRemoval) _keybindings.Unbind(o.Keys, _commands.ScopeOf(o.EffectiveCommand), o.EffectiveCommand);
-                else _keybindings.Bind(o.Keys, o.EffectiveCommand);
+                else
+                {
+                    _keybindings.Bind(o.Keys, o.EffectiveCommand);
+                    _userBoundLegacyCtrlSlash |= o.Keys[0].KeyCode == LegacyCtrlSlash;
+                }
             }
             catch (ArgumentException ex)
             {
