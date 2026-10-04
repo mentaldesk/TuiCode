@@ -437,9 +437,15 @@ What follows is how TuiCode implements it today.
 - Archives also carry `THIRD-PARTY-NOTICES.md` and `DOTNET-THIRD-PARTY-NOTICES.TXT`. Components compiled into the binary need their notices shipped with it (Oniguruma's BSD-2-Clause says so explicitly), and the release has no other documentation. `TuiCode.csproj`'s `PublishThirdPartyNotices` target copies both into the publish folder: ours from the repo root, the runtime's from the ILCompiler runtime pack (`$(RuntimePackagePath)`), so it matches the .NET version compiled in. CI's `aot` job checks they're there.
 - The **Libraries** section of `THIRD-PARTY-NOTICES.md` is maintained by hand: when a package that ends up in the binary is added (check `src/TuiCode/obj/project.assets.json` for runtime assets), add its LICENSE text. The **Grammars** section between the markers is generated (see Syntax highlighting); don't edit it.
 - A bare Mach-O can't carry a stapled notarization ticket, so we notarize the tarball; users pick up the ticket via the Gatekeeper cache on first launch.
-- Linux/Windows arm64 use the public `ubuntu-24.04-arm` / `windows-11-arm` runners — native, no cross-compile.
+- Linux/Windows arm64 use the public `ubuntu-22.04-arm` / `windows-11-arm` runners — native, no cross-compile.
 - `packaging/tuicode.rb` is [the tap's formula](https://github.com/mentaldesk/homebrew-tap/blob/main/Formula/tuicode.rb) and `packaging/tuicode.json` [the bucket's manifest](https://github.com/mentaldesk/scoop-bucket/blob/main/bucket/tuicode.json), with the version and SHA256s replaced by `{{version}}` and `{{sha_<rid>}}`, which shared `publish` fills from the archives it downloaded. It fails the job on a placeholder no archive matched, and `PackagingTemplateTests` checks every placeholder against the build matrix so a typo surfaces in CI instead of mid-release. The formula has no `version` line — `brew audit --strict` rejects one that duplicates the URL.
 - The Scoop manifest is committed straight to the bucket's default branch — it has no CI to gate a PR — so `PackagingTemplateTests` also checks it parses as JSON once rendered. `PACKAGES_TOKEN` needs Contents write on `mentaldesk/scoop-bucket` as well as the tap; the shared workflow only checks the token is present, so one that can't reach the bucket fails `actions/checkout` and reddens the release.
+
+## Linux compatibility (#414)
+
+- The Linux legs build on `ubuntu-22.04` / `ubuntu-22.04-arm`, not `ubuntu-latest`: a NativeAOT binary needs the build host's glibc or newer, and 2.35 is the README's floor (Debian 12, Ubuntu 22.04). CI's `aot` job fails if the binary references a `GLIBC_` symbol newer than 2.35, so a runner bump can't silently raise it.
+- Linux RIDs publish with `InvariantGlobalization` (`TuiCode.csproj`), so the binary never loads `libicu`, which minimal images lack. Counts and sizes formatted with `CurrentCulture` therefore use invariant (en-US) separators on Linux whatever the locale; macOS and Windows still follow it. CI checks only Linux RIDs pick it up, and runs `--smoke-syntax` and `--smoke` in `debian:12`, `ubuntu:22.04` and `fedora:latest` containers with no `libicu`, on x64 and arm64.
+- Invariant mode also makes culture-aware comparisons ordinal and `new CultureInfo("xx")` throw, so don't depend on either.
 
 ## Conventions
 
