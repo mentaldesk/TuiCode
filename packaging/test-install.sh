@@ -37,7 +37,9 @@ while [ $# -gt 0 ]; do
     installed=$(run "rpm -q --qf '%{VERSION}' tuicode")
   fi
   [ "$installed" = "$version" ] || fail "installed version is $installed, expected $version"
-  [ "$(run 'command -v tuicode')" = /usr/bin/tuicode ] || fail "tuicode isn't on PATH"
+  # Resolved, because Fedora's /usr/sbin is a symlink to bin and comes first on PATH.
+  found=$(run 'readlink -f "$(command -v tuicode)"')
+  [ "$found" = /usr/bin/tuicode ] || fail "tuicode on PATH is '$found', expected /usr/bin/tuicode"
 done
 
 for notice in THIRD-PARTY-NOTICES.md DOTNET-THIRD-PARTY-NOTICES.TXT; do
