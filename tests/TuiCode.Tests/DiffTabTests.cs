@@ -6,6 +6,7 @@ using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Themes;
@@ -954,7 +955,14 @@ public class CompareToSavedHostTests : StaticConfigurationTest
                 commands.TryExecute(CommandIds.CompareToSaved);
             },
             () => commands.TryExecute(CommandIds.PreviousEditor),
-            () => commands.TryExecute(CommandIds.CloseActiveEditor));
+            () => commands.TryExecute(CommandIds.CloseActiveEditor),
+            () =>
+            {
+                if (workbench.SubViews.OfType<ConfirmView>().Single().FocusedChoice == "Don't save") return true;
+                host.App.InjectKey(Key.Tab);
+                return false;
+            },
+            () => host.App.InjectKey(Key.Enter));
 
         Assert.Empty(group.DiffTabs);
         Assert.Empty(group.TabCollection);
