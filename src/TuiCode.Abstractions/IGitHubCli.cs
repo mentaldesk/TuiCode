@@ -15,8 +15,12 @@ public interface IGitHubCli
     /// <summary>PR <paramref name="number"/>'s description and the comments on it, oldest first (#185).</summary>
     Task<GitHubResult<GitHubConversation>> GetConversationAsync(string repoRoot, int number, CancellationToken cancellationToken = default);
 
-    /// <summary>The review threads on PR <paramref name="number"/> (#186), in the order GitHub lists them.</summary>
-    Task<GitHubResult<IReadOnlyList<GitHubReviewThread>>> GetReviewThreadsAsync(string repoRoot, int number, CancellationToken cancellationToken = default);
+    /// <summary>The review threads on PR <paramref name="number"/> (#186), and whether the user has viewed each of its files (#396).</summary>
+    Task<GitHubResult<GitHubReviewState>> GetReviewStateAsync(string repoRoot, int number, CancellationToken cancellationToken = default);
+
+    /// <summary>Marks <paramref name="path"/> viewed, or unviewed, on the PR whose node id is <paramref name="pullRequestId"/> (#396).</summary>
+    Task<GitHubResult<bool>> SetViewedAsync(
+        string repoRoot, string pullRequestId, string path, bool viewed, CancellationToken cancellationToken = default);
 
     /// <summary>The repo's open PRs, newest first, each flagged when the logged-in user's review is requested.</summary>
     Task<GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>> ListPullRequestsAsync(string repoRoot, CancellationToken cancellationToken = default);
@@ -66,8 +70,25 @@ public readonly record struct GitHubResult<T>(T Value, string? Error, bool CliUn
 /// </summary>
 public sealed record GitHubPullRequestSummary(int Number, string Title, string Author, string? HeadBranch = null, bool ReviewRequested = false);
 
-/// <summary><c>HeadSha</c> is the commit the PR's branch is at on GitHub: what a line comment's lines have to match (#188).</summary>
-public sealed record GitHubPullRequest(int Number, string Title, string BaseBranch, string HeadBranch, GitHubChecks Checks, string HeadSha = "");
+/// <summary>
+/// <c>HeadSha</c> is the commit the PR's branch is at on GitHub: what a line comment's lines have to match (#188).
+/// <c>Id</c> is its GraphQL node id, which marking a file viewed names it by (#396).
+/// </summary>
+public sealed record GitHubPullRequest(
+    int Number, string Title, string BaseBranch, string HeadBranch, GitHubChecks Checks, string HeadSha = "", string Id = "");
+
+/// <summary>A PR's review threads, and the user's viewed state for each file it changes, by path.</summary>
+public sealed record GitHubReviewState(
+    IReadOnlyList<GitHubReviewThread> Threads,
+    IReadOnlyDictionary<string, GitHubViewedState> Viewed);
+
+/// <summary>GitHub's Viewed mark on a PR's file. <c>Dismissed</c> is a file viewed once and changed since.</summary>
+public enum GitHubViewedState
+{
+    Unviewed,
+    Viewed,
+    Dismissed,
+}
 
 /// <summary>
 /// A line comment drafted on a PR (#188) and not yet posted: <c>Line</c> is the line on the head side,

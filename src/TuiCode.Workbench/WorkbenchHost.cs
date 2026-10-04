@@ -500,6 +500,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment, CommandScope.Diff, Reviewing);
+        _commands.Register(CommandIds.ToggleViewed, "Toggle viewed", ToggleViewed, CommandScope.Review, () => review.CanToggleViewed);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
@@ -738,6 +739,8 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+X", CommandIds.CutFile);
         keybindings.Bind("Ctrl+V", CommandIds.PasteFile);
         keybindings.Bind("Esc", CommandIds.CancelCut);
+
+        keybindings.Bind("Space", CommandIds.ToggleViewed);
 
         keybindings.Bind("Alt+CursorDown", CommandIds.NextChange);
         keybindings.Bind("Alt+CursorUp", CommandIds.PreviousChange);
@@ -2473,6 +2476,23 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusSummary();
+    }
+
+    /// <summary>
+    /// Toggle viewed (<c>tv</c>, #396): GitHub's Viewed mark on the file selected in the Review tab. The tab shows
+    /// the new mark only once GitHub has it.
+    /// </summary>
+    private void ToggleViewed()
+    {
+        var tab = _workbench.Sidebar.Review;
+        if (tab.Review is not { PullRequest: { } pullRequest } review || tab.SelectedFile is not { } file) return;
+        var viewed = !review.IsViewed(file.Path);
+        var setting = Task.Run(() => _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, file.Path, viewed));
+        WhenDone(setting, () =>
+        {
+            if (setting.Result.Error is { } error) _workbench.StatusBar.SetMessage(error);
+            else tab.SetViewed(file.Path, viewed);
+        });
     }
 
     /// <summary>

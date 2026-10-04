@@ -27,6 +27,7 @@ public sealed class ReviewView : View
     private readonly Label _threadCounts;
     private readonly Label _hint;
     private readonly Label _draftReview;
+    private readonly Label _viewed;
     private readonly Button _overview;
     private readonly Line _rule;
     private readonly TreeView<ReviewNode> _files;
@@ -72,6 +73,14 @@ public sealed class ReviewView : View
     /// <summary>What the foot says about the drafted line comments (#188); empty while there are none.</summary>
     public string DraftReviewText => _draftReview.Text;
 
+    /// <summary>What the foot says about viewed files (#396), e.g. <c>Viewed 2 of 5</c>; empty without a PR.</summary>
+    public string ViewedText => _viewed.Text;
+
+    /// <summary>Whether <c>tv</c> has a file to mark: one is selected, on a PR whose viewed files have loaded (#396).</summary>
+    public bool CanToggleViewed => Review is { PullRequest: not null, Viewed: not null } && _files.SelectedObject is ReviewFileNode;
+
+    public GitChange? SelectedFile => (_files.SelectedObject as ReviewFileNode)?.Change;
+
     public bool ListHasFocus => _files.HasFocus;
 
     /// <summary>The outdated thread the list is on, for <c>cc</c> to reply to (#189); null on any other row.</summary>
@@ -103,6 +112,7 @@ public sealed class ReviewView : View
         _threadCounts = Line();
         _hint = Line();
         _draftReview = new Label { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Text = string.Empty, Visible = false };
+        _viewed = new Label { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Text = string.Empty, Visible = false };
         // GetAttributeForRole isn't virtual in TG 2.1.0, so the hint is styled through its event; Handled makes the result stick.
         _hint.GettingAttributeForRole += (_, e) =>
         {
@@ -133,7 +143,7 @@ public sealed class ReviewView : View
             else if (e.Model is ReviewFolderNode && _icons?.ForDirectory(_files.IsExpanded(e.Model)) is { } folder) IconDrawing.Prepend(e, folder);
         };
         if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
-        Add(_title, _header, _totals, _checks, _threadCounts, _hint, _overview, _rule, _files, _draftReview);
+        Add(_title, _header, _totals, _checks, _threadCounts, _hint, _overview, _rule, _files, _viewed, _draftReview);
 
         ViewportChanged += (_, _) => LayoutHeader();
         _files.Activated += (_, _) => ActivateSelected();
@@ -173,9 +183,15 @@ public sealed class ReviewView : View
         var change = _icons?.ForChange(file.Change.Kind, _syntax?.EditorColors);
         var mark = change ?? new FileIcon(file.Mark.ToString());
         var icons = _icons?.ForFile(file.Name) is { } type ? [mark, type] : new[] { mark };
-        var name = change is not null && file.Change.Kind == GitChangeKind.Deleted ? Styled(row, TextStyle.Faint) : row;
+        var faint = file.Viewed || (change is not null && file.Change.Kind == GitChangeKind.Deleted);
+        var name = faint ? Styled(row, TextStyle.Faint) : row;
 
         var tail = new List<Cell>();
+        if (file.Viewed)
+        {
+            var check = _icons?.ForViewed() ?? new FileIcon(ReviewRow.ViewedMark);
+            tail.AddRange([.. CellsOf("  ", row), new Cell { Grapheme = check.Glyph, Attribute = IconDrawing.AttributeFor(check, row) }]);
+        }
         var chat = ThreadIcon(file);
         if (file.Badge(chat is not null) is { } badge)
         {
@@ -266,8 +282,26 @@ public sealed class ReviewView : View
     {
         _draftReview.Text = line;
         _draftReview.Visible = line.Length > 0;
-        _files.Height = _draftReview.Visible ? Dim.Fill(1) : Dim.Fill();
+        LayoutFoot();
+    }
+
+    /// <summary>Stacks the foot's lines under the file list, <c>Viewed n of m</c> above the draft review.</summary>
+    private void LayoutFoot()
+    {
+        var text = Review?.ViewedLine ?? string.Empty;
+        _viewed.Text = text;
+        _viewed.Visible = text.Length > 0;
+        _viewed.Y = Pos.AnchorEnd(_draftReview.Visible ? 2 : 1);
+        var rows = (_viewed.Visible ? 1 : 0) + (_draftReview.Visible ? 1 : 0);
+        _files.Height = rows > 0 ? Dim.Fill(rows) : Dim.Fill();
         SetNeedsDraw();
+    }
+
+    /// <summary>Shows <paramref name="path"/> marked viewed, or not, once GitHub has the mark (#396).</summary>
+    public void SetViewed(string path, bool viewed)
+    {
+        if (Review is not { Viewed: not null } review) return;
+        Show(GitResult<BranchReview?>.Success(review.WithViewed(path, viewed)));
     }
 
     /// <summary>Focuses the file list, or the tab itself while there's no list to show.</summary>
@@ -328,8 +362,8 @@ public sealed class ReviewView : View
             if (pullRequest.Value?.PullRequest is not { } pr) return;
 
             // Last, in its own step: the file list and the header are worth having before the threads are in (#186).
-            var threads = await Task.Run(() => _gitHub.GetReviewThreadsAsync(review.RepoRoot, pr.Number, cts.Token), cts.Token).ConfigureAwait(false);
-            Apply(app, cts, () => ShowThreads(threads));
+            var state = await Task.Run(() => _gitHub.GetReviewStateAsync(review.RepoRoot, pr.Number, cts.Token), cts.Token).ConfigureAwait(false);
+            Apply(app, cts, () => ShowReviewState(state));
         }
         catch (OperationCanceledException)
         {
@@ -386,7 +420,7 @@ public sealed class ReviewView : View
         {
             _headerText = review.Header;
             _totalsText = review.TotalsLine;
-            _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads, review.LineCounts));
+            _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads, review.LineCounts, review.Viewed));
             _files.ExpandAll();
             _files.SelectedObject = FindThread(selectedThread) ?? (ReviewNode?)FindFile(selected) ?? FirstFile();
             _files.Visible = true;
@@ -400,6 +434,7 @@ public sealed class ReviewView : View
         _checksText = result.Value?.ChecksLine ?? string.Empty;
         _threadsText = result.Value?.ThreadsLine ?? string.Empty;
         LayoutHeader();
+        LayoutFoot();
         // Rebuilding the tree can drop Terminal.Gui's focus, so the workbench settles it: a refresh that
         // arrives while the keys are elsewhere must not pull them back here (#228).
         Refreshed?.Invoke(this, EventArgs.Empty);
@@ -412,7 +447,7 @@ public sealed class ReviewView : View
         else LayoutHeader();
     }
 
-    private void ShowThreads(GitHubResult<IReadOnlyList<GitHubReviewThread>> result)
+    private void ShowReviewState(GitHubResult<GitHubReviewState> result)
     {
         if (Review is not { PullRequest: not null } review) return;
         if (result.Error is { } error)
@@ -422,7 +457,7 @@ public sealed class ReviewView : View
             return;
         }
 
-        Show(GitResult<BranchReview?>.Success(review with { Threads = result.Value }));
+        Show(GitResult<BranchReview?>.Success(review with { Threads = result.Value.Threads, Viewed = result.Value.Viewed }));
         if (Review is { } loaded) ThreadsLoaded?.Invoke(this, loaded);
     }
 

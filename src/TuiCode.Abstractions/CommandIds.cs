@@ -145,6 +145,8 @@ public static class CommandIds
     public const string RefreshExplorer = "explorer.action.refresh";
     public const string ConfirmCancel = "confirm.action.cancel";
 
+    public const string ToggleViewed = "review.action.toggleViewed";
+
     public const string MoveLinesUp = "editor.action.moveLinesUp";
     public const string MoveLinesDown = "editor.action.moveLinesDown";
     public const string DuplicateLinesUp = "editor.action.duplicateLinesUp";

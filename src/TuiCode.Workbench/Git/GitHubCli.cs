@@ -21,7 +21,7 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
     private static readonly TimeSpan CheckoutTimeout = TimeSpan.FromMinutes(2);
 
     public async Task<GitHubResult<GitHubPullRequest?>> GetPullRequestAsync(string repoRoot, CancellationToken cancellationToken = default) =>
-        Interpret(await RunAsync(repoRoot, ["pr", "view", "--json", "number,title,baseRefName,headRefName,headRefOid,statusCheckRollup"], _timeout, cancellationToken));
+        Interpret(await RunAsync(repoRoot, ["pr", "view", "--json", "id,number,title,baseRefName,headRefName,headRefOid,statusCheckRollup"], _timeout, cancellationToken));
 
     public async Task<GitHubResult<GitHubConversation>> GetConversationAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
     {
@@ -31,32 +31,31 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
     }
 
     /// <summary>
-    /// Review threads come from GraphQL: the REST API knows nothing about whether a thread is resolved.
-    /// <c>{owner}</c> and <c>{repo}</c> are gh's own placeholders for the repo the command runs in.
+    /// Review threads and viewed files come from GraphQL: the REST API knows nothing about whether a thread is resolved,
+    /// or a file viewed. <c>{owner}</c> and <c>{repo}</c> are gh's own placeholders for the repo the command runs in.
     /// </summary>
-    public async Task<GitHubResult<IReadOnlyList<GitHubReviewThread>>> GetReviewThreadsAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
+    public async Task<GitHubResult<GitHubReviewState>> GetReviewStateAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
     {
         var run = await RunAsync(repoRoot,
-            ["api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-F", $"number={number}", "-f", $"query={ThreadsQuery}"],
+            ["api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-F", $"number={number}", "-f", $"query={ReviewQuery}"],
             _timeout, cancellationToken);
-        if (Unavailable<IReadOnlyList<GitHubReviewThread>>(run) is { } failed) return failed;
-        return run.ExitCode == 0 ? ParseThreads(run.Output) : GitHubResult<IReadOnlyList<GitHubReviewThread>>.Failure(ErrorMessage(run));
+        if (Unavailable<GitHubReviewState>(run) is { } failed) return failed;
+        return run.ExitCode == 0 ? ParseReview(run.Output) : GitHubResult<GitHubReviewState>.Failure(ErrorMessage(run));
     }
 
-    private const string ThreadsQuery =
+    private const string ReviewQuery =
         "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name)" +
         "{pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved isOutdated path line diffSide " +
-        "comments(first:100){nodes{databaseId author{login} body createdAt}}}}}}}";
+        "comments(first:100){nodes{databaseId author{login} body createdAt}}}} " +
+        "files(first:100){nodes{path viewerViewedState}}}}}";
 
-    internal static GitHubResult<IReadOnlyList<GitHubReviewThread>> ParseThreads(string json)
+    internal static GitHubResult<GitHubReviewState> ParseReview(string json)
     {
         try
         {
             using var document = JsonDocument.Parse(json);
-            var nodes = document.RootElement
-                .GetProperty("data").GetProperty("repository").GetProperty("pullRequest")
-                .GetProperty("reviewThreads").GetProperty("nodes");
-            IReadOnlyList<GitHubReviewThread> threads = [.. nodes.EnumerateArray().Select(thread =>
+            var pullRequest = document.RootElement.GetProperty("data").GetProperty("repository").GetProperty("pullRequest");
+            IReadOnlyList<GitHubReviewThread> threads = [.. pullRequest.GetProperty("reviewThreads").GetProperty("nodes").EnumerateArray().Select(thread =>
             {
                 // A thread on the base side names a line of the base file, which is no line of the head: outdated here too.
                 var onHead = Text(thread, "diffSide") is null or "RIGHT";
@@ -69,12 +68,43 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
                     Comments(thread),
                     ReplyToId(thread));
             })];
-            return GitHubResult<IReadOnlyList<GitHubReviewThread>>.Success(threads);
+            return GitHubResult<GitHubReviewState>.Success(new GitHubReviewState(threads, ViewedFiles(pullRequest)));
         }
         catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException)
         {
-            return GitHubResult<IReadOnlyList<GitHubReviewThread>>.Failure("gh answered with something we couldn't read");
+            return GitHubResult<GitHubReviewState>.Failure("gh answered with something we couldn't read");
         }
+    }
+
+    private static Dictionary<string, GitHubViewedState> ViewedFiles(JsonElement pullRequest)
+    {
+        var viewed = new Dictionary<string, GitHubViewedState>(StringComparer.Ordinal);
+        if (!pullRequest.TryGetProperty("files", out var files) || !files.TryGetProperty("nodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array)
+            return viewed;
+        foreach (var file in nodes.EnumerateArray())
+            if (Text(file, "path") is { } path)
+                viewed[path] = Text(file, "viewerViewedState") switch
+                {
+                    "VIEWED" => GitHubViewedState.Viewed,
+                    "DISMISSED" => GitHubViewedState.Dismissed,
+                    _ => GitHubViewedState.Unviewed,
+                };
+        return viewed;
+    }
+
+    public async Task<GitHubResult<bool>> SetViewedAsync(
+        string repoRoot, string pullRequestId, string path, bool viewed, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(repoRoot, ViewedArguments(pullRequestId, path, viewed), _timeout, cancellationToken);
+        if (Unavailable<bool>(run) is { } failed) return failed;
+        return run.ExitCode == 0 ? GitHubResult<bool>.Success(true) : GitHubResult<bool>.Failure(ErrorMessage(run));
+    }
+
+    internal static string[] ViewedArguments(string pullRequestId, string path, bool viewed)
+    {
+        var mutation = viewed ? "markFileAsViewed" : "unmarkFileAsViewed";
+        return ["api", "graphql", "-f", $"id={pullRequestId}", "-f", $"path={path}", "-f",
+            $"query=mutation($id:ID!,$path:String!){{{mutation}(input:{{pullRequestId:$id,path:$path}}){{clientMutationId}}}}"];
     }
 
     /// <summary>The thread's first comment as REST numbers it: replies are posted under that one (#189).</summary>
@@ -295,7 +325,8 @@ public sealed class GitHubCli(string executable = "gh", TimeSpan? timeout = null
                 root.GetProperty("baseRefName").GetString() ?? string.Empty,
                 root.GetProperty("headRefName").GetString() ?? string.Empty,
                 CountChecks(root),
-                Text(root, "headRefOid") ?? string.Empty));
+                Text(root, "headRefOid") ?? string.Empty,
+                Text(root, "id") ?? string.Empty));
         }
         catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException)
         {
