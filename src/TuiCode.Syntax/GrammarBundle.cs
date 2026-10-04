@@ -11,7 +11,8 @@ using TextMateSharp.Themes;
 
 namespace TuiCode.Syntax;
 
-public sealed record SyntaxLanguage(string Id, string Name, string ScopeName);
+/// <param name="LineComment">The marker that starts a line comment, from the language's VS Code configuration; null when it has none.</param>
+public sealed record SyntaxLanguage(string Id, string Name, string ScopeName, string? LineComment = null);
 
 /// <summary>User grammar packages, then TextMateSharp.Grammars' re-packed as a compressed zip (its own loader embeds 6.7 MB uncompressed).</summary>
 public sealed class GrammarBundle : IRegistryOptions
@@ -48,7 +49,8 @@ public sealed class GrammarBundle : IRegistryOptions
         foreach (var manifest in _archive.Entries.Where(e => e.Name == "package.json").ToArray())
         {
             var directory = manifest.FullName[..^manifest.Name.Length];
-            AddPackage(ReadJson(manifest), path => _archive.GetEntry(directory + path) is null ? null : () => OpenText(directory + path));
+            AddPackage(ReadJson(manifest), path => _archive.GetEntry(directory + path) is null ? null : () => OpenText(directory + path),
+                path => OpenText(directory + path));
         }
     }
 
@@ -108,7 +110,7 @@ public sealed class GrammarBundle : IRegistryOptions
         using (var reader = typeof(GrammarBundle).Assembly.GetManifestResourceStream(entryName) is { } own ? new StreamReader(own) : OpenText(entryName))
         {
             if (reader is null) return null;
-            theme = JsonNode.Parse(reader.ReadToEnd(), documentOptions: ThemeJsonOptions)!.AsObject();
+            theme = JsonNode.Parse(reader.ReadToEnd(), documentOptions: JsoncOptions)!.AsObject();
         }
 
         if (!theme.Remove("include", out var include) || ReadTheme(include!.GetValue<string>()) is not { } baseTheme)
@@ -126,7 +128,7 @@ public sealed class GrammarBundle : IRegistryOptions
         return theme;
     }
 
-    private static readonly JsonDocumentOptions ThemeJsonOptions = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+    private static readonly JsonDocumentOptions JsoncOptions = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
     private static JsonNode? Take(JsonObject theme, string property) =>
         theme.Remove(property, out var node) ? node : null;
@@ -169,7 +171,7 @@ public sealed class GrammarBundle : IRegistryOptions
     }
 
     /// <summary>Registers a package's grammars and languages; <paramref name="grammarAt"/> opens a grammar by its manifest path, or returns null.</summary>
-    private int AddPackage(JsonNode manifest, Func<string, Func<StreamReader?>?> grammarAt)
+    private int AddPackage(JsonNode manifest, Func<string, Func<StreamReader?>?> grammarAt, Func<string, StreamReader?>? configurationAt = null)
     {
         var contributes = manifest["contributes"];
         var scopeByLanguage = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -192,13 +194,22 @@ public sealed class GrammarBundle : IRegistryOptions
                 continue;
             var name = node["aliases"]?.AsArray().FirstOrDefault()?.GetValue<string>() ?? id;
             if (!_languages.TryGetValue(id, out var language))
-                _languages[id] = language = new SyntaxLanguage(id, name, scope);
+                _languages[id] = language = new SyntaxLanguage(id, name, scope, LineComment(node, configurationAt));
             foreach (var fileName in node["filenames"]?.AsArray() ?? [])
                 _associations.TryAdd(fileName!.GetValue<string>(), language);
             foreach (var extension in node["extensions"]?.AsArray() ?? [])
                 _associations.TryAdd(extension!.GetValue<string>(), language);
         }
         return added;
+    }
+
+    private static string? LineComment(JsonNode language, Func<string, StreamReader?>? configurationAt)
+    {
+        if (configurationAt is null || language["configuration"]?.GetValue<string>() is not { } path) return null;
+        using var reader = configurationAt(path.TrimStart('.', '/'));
+        if (reader is null) return null;
+        var marker = JsonNode.Parse(reader.ReadToEnd(), documentOptions: JsoncOptions)?["comments"]?["lineComment"];
+        return marker?.GetValueKind() == JsonValueKind.String && marker.GetValue<string>() is { Length: > 0 } text ? text : null;
     }
 
     private static JsonNode ReadJson(ZipArchiveEntry entry)

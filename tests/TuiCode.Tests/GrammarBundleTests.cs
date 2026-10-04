@@ -134,6 +134,7 @@ public class GrammarBundleTests
 
         var packagedGrammarFiles = package.GetManifestResourceNames().Count(name =>
             name.EndsWith(".package.json", StringComparison.Ordinal)
+            || name.EndsWith("language-configuration.json", StringComparison.Ordinal)
             || (name.Contains(".syntaxes.", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal)));
         var bundledGrammarFiles = archive.Entries.Count(e => e.FullName.StartsWith("grammars/", StringComparison.Ordinal));
         Assert.True(packagedGrammarFiles == bundledGrammarFiles, "The package has grammars the bundle lacks; rerun scripts/update-grammar-bundle.cs");

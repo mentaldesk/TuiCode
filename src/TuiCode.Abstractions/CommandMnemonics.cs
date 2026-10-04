@@ -87,6 +87,7 @@ public static class CommandMnemonics
             [CommandIds.DuplicateLinesDown] = "dd",
             [CommandIds.IndentLines] = "il",
             [CommandIds.OutdentLines] = "ol",
+            [CommandIds.ToggleLineComment] = "tlc",
             [CommandIds.AddCursorAbove] = "aa",
             [CommandIds.AddCursorBelow] = "ab",
             [CommandIds.SelectNextOccurrence] = "sno",
