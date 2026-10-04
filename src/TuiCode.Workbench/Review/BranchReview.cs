@@ -50,6 +50,18 @@ public sealed record BranchReview(
         }
     }
 
+    /// <summary>The size of the change, e.g. <c>5 files  +214 −38</c> (#394); just the file count until the lines are counted.</summary>
+    public string TotalsLine
+    {
+        get
+        {
+            if (Changes.Count == 0) return string.Empty;
+            var files = Changes.Count == 1 ? "1 file" : $"{Changes.Count} files";
+            if (LineCounts.Count == 0) return files;
+            return $"{files}  +{LineCounts.Values.Sum(c => c.Added)} −{LineCounts.Values.Sum(c => c.Deleted)}";
+        }
+    }
+
     public string Header => PullRequest is { } pr
         ? $"{pr.BaseBranch} ← {pr.HeadBranch}"
         : $"{Branch} ← {Base}  (no PR)";

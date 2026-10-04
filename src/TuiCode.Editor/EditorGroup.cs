@@ -231,6 +231,9 @@ public sealed class EditorGroup : PaneTabs
         if (Value is { } tab) Close(tab);
     }
 
+    /// <summary>Closes a file's tab and its diffs, discarding unsaved changes.</summary>
+    public void CloseEditor(EditorTab tab) => Close(tab);
+
     /// <summary>Closes a diff tab, leaving the file's own tab open.</summary>
     public void CloseDiff(DiffTab diff) => Close(diff);
 
