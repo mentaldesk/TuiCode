@@ -7,6 +7,7 @@ using TuiCode.Explorer;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Files;
+using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Themes;
@@ -823,7 +824,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         commands.TryExecute(CommandIds.CompareToSaved);
     }
 
-    private const string ThreeChangesStatus = "a.txt ↔ saved  •  +2 −3  •  Change {0} of 3  •  Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page";
+    private const string ThreeChangesStatus = "a.txt ↔ saved  •  +2 −3  •  Change {0} of 3";
 
     [Fact]
     public async Task Alt_down_and_alt_up_step_through_changes_and_stop_at_the_last()
@@ -878,11 +879,55 @@ public class CompareToSavedHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task The_status_hint_follows_a_rebind_and_clears_when_the_diff_tab_loses_focus()
+    public async Task The_status_shows_no_keys_and_clears_when_the_diff_tab_loses_focus()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        string? rebound = null;
+        string? focused = null;
+
+        await HostSteps.Run(host,
+            () => OpenThreeChanges(workbench, commands),
+            () => host.App.InjectKey(Key.CursorDown.WithAlt),
+            () => { focused = workbench.StatusBar.DisplayedText; },
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.StatusBar.DisplayedText == "a.txt ↔ saved");
+
+        Assert.Equal("a.txt ↔ saved  •  +2 −3  •  Change 1 of 3", focused);
+    }
+
+    [Fact]
+    public async Task F1_in_a_diff_lists_the_diffs_keys_beside_everywhere()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        HelpView? help = null;
+
+        await HostSteps.Run(host,
+            () => OpenThreeChanges(workbench, commands),
+            () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.F1),
+            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.Equal("Help", help!.Title);
+        Assert.Equal("Diff", help.Place!.Title);
+        Assert.Equal(
+        [
+            new("Alt+↓", "Next change"),
+            new("Alt+↑", "Previous change"),
+            new("Ctrl+R", "Revert change"),
+            new("Enter", "Go to this line"),
+            new("← →", "Scroll sideways"),
+            new("Shift+← →", "Page sideways"),
+        ], help.Place.Rows);
+    }
+
+    [Fact]
+    public async Task The_help_column_follows_a_rebind_and_drops_an_unbound_key()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        HelpView? help = null;
 
         await HostSteps.Run(host,
             () =>
@@ -891,25 +936,27 @@ public class CompareToSavedHostTests : StaticConfigurationTest
                 [
                     new KeybindingOverride(TestKeys.Chord("Alt+CursorDown"), "-" + CommandIds.NextChange),
                     new KeybindingOverride(TestKeys.Chord("F8"), CommandIds.NextChange),
+                    new KeybindingOverride(TestKeys.Chord("Ctrl+R"), "-" + CommandIds.RevertChange),
                 ]);
                 OpenThreeChanges(workbench, commands);
             },
-            () => host.App.InjectKey(Key.F8),
-            () => { rebound = workbench.StatusBar.DisplayedText; },
-            () => commands.TryExecute(CommandIds.FocusSidebar),
-            () => workbench.StatusBar.DisplayedText == "a.txt ↔ saved");
+            () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.F1),
+            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal("a.txt ↔ saved  •  +2 −3  •  Change 1 of 3  •  F8 next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page", rebound);
+        Assert.Equal(new HelpRow("F8", "Next change"), help!.Place!.Rows[0]);
+        Assert.DoesNotContain(help.Place.Rows, row => row.Description == "Revert change");
     }
 
     [Theory]
-    [InlineData("Ctrl+CursorRight", "Shift+←/Ctrl+→ page")]
-    [InlineData(null, "Shift+← page")]
-    public async Task The_page_keys_in_the_hint_follow_a_rebind(string? pageRight, string expected)
+    [InlineData("Ctrl+CursorRight", "Shift+← Ctrl+→")]
+    [InlineData(null, "Shift+←")]
+    public async Task The_page_keys_in_the_help_column_follow_a_rebind(string? pageRight, string expected)
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        string? hint = null;
+        HelpView? help = null;
         List<KeybindingOverride> overrides = [new(TestKeys.Chord("Shift+CursorRight"), "-" + CommandIds.ScrollDiffPageRight)];
         if (pageRight is not null) overrides.Add(new(TestKeys.Chord(pageRight), CommandIds.ScrollDiffPageRight));
 
@@ -919,10 +966,31 @@ public class CompareToSavedHostTests : StaticConfigurationTest
                 host.ApplyKeybindings(overrides);
                 OpenThreeChanges(workbench, commands);
             },
-            () => host.App.InjectKey(Key.CursorDown.WithAlt),
-            () => { hint = workbench.StatusBar.DisplayedText; });
+            () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.F1),
+            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc));
 
-        Assert.EndsWith($"Enter go to line  {expected}", hint);
+        Assert.Equal(new HelpRow(expected, "Page sideways"), help!.Place!.Rows[^1]);
+    }
+
+    [Fact]
+    public async Task F1_with_a_diff_showing_but_the_sidebar_focused_shows_everywhere_alone()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        HelpView? help = null;
+
+        await HostSteps.Run(host,
+            () => OpenThreeChanges(workbench, commands),
+            () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: true },
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: false },
+            () => host.App.InjectKey(Key.F1),
+            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.Null(help!.Place);
     }
 
     // Changes at rows 4 (modified), 14 (line 15 removed) and 30 (modified).

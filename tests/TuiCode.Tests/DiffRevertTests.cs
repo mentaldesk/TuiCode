@@ -7,6 +7,7 @@ using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
@@ -204,8 +205,6 @@ public class DiffRevertDrawTests : StaticConfigurationTest
 // Drives `rc` through the host. Boots a TG Application — serialised (#77).
 public class RevertChangeHostTests : StaticConfigurationTest
 {
-    private const string Keys = "Alt+↓ next  Alt+↑ prev  Ctrl+R revert  Enter go to line  Shift+←/→ page";
-
     private readonly MockFileSystem _fs = new();
 
     [Fact]
@@ -231,7 +230,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.R.WithCtrl));
 
-        Assert.Equal($"Reverted 1 line from saved  •  +2 −2  •  Change 1 of 2  •  {Keys}", workbench.StatusBar.DisplayedText);
+        Assert.Equal($"Reverted 1 line from saved  •  +2 −2  •  Change 1 of 2", workbench.StatusBar.DisplayedText);
         Assert.Equal(40, workbench.Editor.Group.Tabs[0].Lines.Count);
         Assert.Equal("line 15", workbench.Editor.Group.Tabs[0].Lines[14]);
     }
@@ -291,7 +290,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => OpenThreeChanges(workbench, commands),
             () => host.App.InjectKey(Key.R.WithCtrl));
 
-        Assert.Equal($"Reverted 1 line from saved  •  +1 −2  •  2 changes  •  {Keys}", workbench.StatusBar.DisplayedText);
+        Assert.Equal($"Reverted 1 line from saved  •  +1 −2  •  2 changes", workbench.StatusBar.DisplayedText);
         Assert.Equal("line 5", workbench.Editor.Group.Tabs[0].Lines[4]);
     }
 
@@ -334,7 +333,7 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.F9));
 
-        Assert.Equal("Reverted 1 line from saved  •  +1 −2  •  2 changes  •  Alt+↓ next  Alt+↑ prev  F9 revert  Enter go to line  Shift+←/→ page",
+        Assert.Equal("Reverted 1 line from saved  •  +1 −2  •  2 changes",
             workbench.StatusBar.DisplayedText);
     }
 
@@ -497,11 +496,13 @@ public class RestoreDeletedHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task The_hint_bar_for_a_deleted_file_says_restore_rather_than_revert()
+    public async Task F1_in_a_deleted_files_diff_says_restore_rather_than_revert_and_the_status_has_no_keys()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var group = workbench.Editor.Group;
+        string? status = null;
+        HelpView? help = null;
 
         await HostSteps.Run(host,
             () => host.ApplyKeybindings(
@@ -513,9 +514,15 @@ public class RestoreDeletedHostTests : StaticConfigurationTest
             () => workbench.Sidebar.Review.ListHasFocus,
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is { IsFocused: true },
-            () => workbench.StatusBar.DisplayedText.Contains("restore", StringComparison.Ordinal));
+            () => { status = workbench.StatusBar.DisplayedText; },
+            () => host.App.InjectKey(Key.F1),
+            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc));
 
-        Assert.EndsWith("Alt+↓ next  Alt+↑ prev  F9 restore  Enter go to line  Shift+←/→ page", workbench.StatusBar.DisplayedText);
+        Assert.Contains(new HelpRow("F9", "Restore file"), help!.Place!.Rows);
+        Assert.DoesNotContain(help.Place.Rows, row => row.Description == "Revert change");
+        Assert.DoesNotContain("F9", status);
+        Assert.DoesNotContain("Alt+↓", status);
     }
 
     [Fact]

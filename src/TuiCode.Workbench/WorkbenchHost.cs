@@ -608,38 +608,48 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         _menu.Refresh();
-        var help = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ShowHelp);
-        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
-        _workbench.DiffKeysHint = DiffKeys("revert");
-        _workbench.DeletedDiffKeysHint = DiffKeys("restore");
-        _workbench.PastChangeKeysHint = DiffKeys(null);
-
-        string DiffKeys(string? revert) => string.Join("  ", new[]
-        {
-            KeyHint(CommandIds.NextChange, "next"),
-            KeyHint(CommandIds.PreviousChange, "prev"),
-            revert is null ? null : KeyHint(CommandIds.RevertChange, revert),
-            revert is null ? null : KeyHint(CommandIds.GoToChangeLine, "go to line"),
-            KeyPairHint(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "page"),
-        }.OfType<string>());
+        var help = KeyOf(CommandIds.ShowHelp);
+        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help} for help");
+        _workbench.StatusBar.SetHelpKey(help);
     }
 
-    /// <summary><c>Shift+←/→ page</c>: both keys, sharing their modifiers when they have the same ones.</summary>
-    private string? KeyPairHint(string backId, string forwardId, string label)
+    /// <summary>The focused diff's keys for F1, from the live bindings, leaving out what's unbound or can't run there.</summary>
+    private HelpColumn? DiffHelp()
     {
-        var back = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == backId)?.Display;
-        var forward = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == forwardId)?.Display;
-        if (back is null || forward is null) return (back ?? forward) is { } one ? $"{one} {label}" : null;
+        if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return null;
+        HelpRow[] rows =
+        [
+            .. Row(CommandIds.NextChange, "Next change"),
+            .. Row(CommandIds.PreviousChange, "Previous change"),
+            .. Row(CommandIds.RevertChange, diff.IsDeleted ? "Restore file" : "Revert change"),
+            .. Row(CommandIds.GoToChangeLine, "Go to this line"),
+            .. PairRow(CommandIds.ScrollDiffLeft, CommandIds.ScrollDiffRight, "Scroll sideways"),
+            .. PairRow(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "Page sideways"),
+        ];
+        return rows.Length == 0 ? null : new HelpColumn("Diff", rows);
+
+        IEnumerable<HelpRow> Row(string commandId, string description) =>
+            _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
+
+        IEnumerable<HelpRow> PairRow(string backId, string forwardId, string description) =>
+            KeyPair(backId, forwardId) is { } keys ? [new HelpRow(keys, description)] : [];
+    }
+
+    /// <summary><c>Shift+← →</c>: both keys, sharing their modifiers when they have the same ones.</summary>
+    private string? KeyPair(string backId, string forwardId)
+    {
+        var back = KeyOf(backId);
+        var forward = KeyOf(forwardId);
+        if (back is null || forward is null) return back ?? forward;
         var modifiers = Modifiers(back);
-        var keys = modifiers == Modifiers(forward) ? $"{back}/{forward[modifiers.Length..]}" : $"{back}/{forward}";
-        return $"{keys} {label}";
+        return modifiers == Modifiers(forward) ? $"{back} {forward[modifiers.Length..]}" : $"{back} {forward}";
 
         static string Modifiers(string display) =>
             display.Length < 2 ? "" : display[..(display.LastIndexOf('+', display.Length - 2) + 1)];
     }
 
-    private string? KeyHint(string commandId, string label) =>
-        _keybindings.Bindings.FirstOrDefault(b => b.CommandId == commandId) is { } binding ? $"{binding.Display} {label}" : null;
+    private string? KeyOf(string commandId) =>
+        _keybindings.Bindings.FirstOrDefault(b => b.CommandId == commandId)?.Display;
 
     /// <summary>
     /// Take the picker's edited binding set, compute the diff against defaults, persist as the
@@ -1592,7 +1602,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeHelp is not null) return;
 
-        var view = new HelpView();
+        var view = new HelpView(FocusedScope() == CommandScope.Diff ? DiffHelp() : null, _workbench.Frame.Width);
         view.Closed += (_, _) => CloseHelp(view);
         _activeHelp = view;
         _workbench.Add(view);

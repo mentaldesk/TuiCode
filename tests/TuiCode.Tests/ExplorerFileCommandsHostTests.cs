@@ -315,7 +315,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 
         Assert.True(_fs.File.Exists("/work/src/a.txt"));
         Assert.Null(workbench.Sidebar.Explorer.PendingCut);
-        Assert.Equal(StatusBarPart.DefaultMessage, workbench.StatusBar.DisplayedText);
+        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
     }
 
     [Fact]
@@ -334,7 +334,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 
         Assert.Null(workbench.Sidebar.Explorer.PendingCut);
         Assert.True(workbench.Sidebar.Explorer.HasFocus);
-        Assert.Equal(StatusBarPart.DefaultMessage, workbench.StatusBar.DisplayedText);
+        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
     }
 
     [Fact]

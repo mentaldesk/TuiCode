@@ -4,6 +4,7 @@ using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Git;
+using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 
@@ -150,6 +151,7 @@ public class BlameHostTests : StaticConfigurationTest
         var group = workbench.Editor.Group;
         string? status = null;
         bool? revert = null, revertAll = null, goToLine = null;
+        HelpView? help = null;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench, row: 1),
@@ -165,7 +167,10 @@ public class BlameHostTests : StaticConfigurationTest
                 revert = commands.IsEnabled(CommandIds.RevertChange);
                 revertAll = commands.IsEnabled(CommandIds.RevertAllChanges);
                 goToLine = commands.IsEnabled(CommandIds.GoToChangeLine);
-            });
+            },
+            () => host.App.InjectKey(Key.F1),
+            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc));
 
         Assert.Null(Dialog(workbench));
         var diff = Assert.Single(group.DiffTabs);
@@ -173,10 +178,11 @@ public class BlameHostTests : StaticConfigurationTest
         Assert.Equal(["alpha", "b", "charlie", ""], diff.LeftLines);
         Assert.Equal(DiffRowKind.Modified, diff.Diff.Rows[1].Kind);
         Assert.Equal("Change 1 of 1", diff.ChangeStatus);
-        Assert.EndsWith("  •  Change 1 of 1  •  Alt+↓ next  Alt+↑ prev  Shift+←/→ page", status);
+        Assert.EndsWith("  •  Change 1 of 1", status);
         Assert.False(revert);
         Assert.False(revertAll);
         Assert.False(goToLine);
+        Assert.Equal(["Next change", "Previous change", "Scroll sideways", "Page sideways"], help!.Place!.Rows.Select(row => row.Description));
         Assert.False(group.Tabs.Single().IsDirty);
         Assert.Equal((null, null), (diff.Source, diff.Review));
     }

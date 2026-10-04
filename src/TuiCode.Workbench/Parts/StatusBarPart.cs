@@ -2,12 +2,11 @@ namespace TuiCode.Workbench.Parts;
 
 public sealed class StatusBarPart : View
 {
-    internal const string DefaultMessage = "TuiCode  •  F1 help  •  Ctrl+Q quit";
     private readonly Label _label;
     private readonly Label _position;
     private readonly Label _focus;
     private string _region = string.Empty;
-    private string _message = DefaultMessage;
+    private string _message;
     private string? _chord;
     private string? _hint;
     private string? _grammar;
@@ -20,6 +19,7 @@ public sealed class StatusBarPart : View
 
     public StatusBarPart()
     {
+        _message = DefaultMessage;
         Height = 1;
         CanFocus = false;
         SchemeName = "StatusBar";
@@ -31,7 +31,7 @@ public sealed class StatusBarPart : View
             X = Pos.Right(_focus),
             Y = 0,
             Width = Dim.Fill(2, _position),
-            Text = DefaultMessage
+            Text = _message
         };
         Add(_focus, _label, _position);
     }
@@ -62,6 +62,19 @@ public sealed class StatusBarPart : View
 
     internal string Message => _message;
 
+    /// <summary>What the bar says when nothing else has: the name and the help key, if it has one.</summary>
+    public string DefaultMessage { get; private set; } = DefaultMessageFor("F1");
+
+    /// <summary>Name <paramref name="key"/> as the help key in the default message; null leaves the name alone.</summary>
+    public void SetHelpKey(string? key)
+    {
+        var previous = DefaultMessage;
+        DefaultMessage = DefaultMessageFor(key);
+        if (_message == previous) SetMessage(DefaultMessage);
+    }
+
+    private static string DefaultMessageFor(string? helpKey) => helpKey is null ? "TuiCode" : $"TuiCode  •  {helpKey} help";
+
     internal bool ShowsError => _label.SchemeName == "Error";
 
     /// <summary>Revert to the default message, unless something else has replaced <paramref name="message"/> since.</summary>
@@ -80,7 +93,7 @@ public sealed class StatusBarPart : View
         UpdateLabel();
     }
 
-    /// <summary>Where the focused diff tab is and its keys, shown after the message; null hides it.</summary>
+    /// <summary>Where the focused diff tab is, shown after the message; null hides it.</summary>
     public void SetDiffStatus(string? status)
     {
         if (status == _diff) return;
