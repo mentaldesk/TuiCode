@@ -88,7 +88,7 @@ public sealed class CommandMenu
         [
             CommandIds.OpenPullRequest, CommandIds.PullRequestOverview,
             Separator,
-            CommandIds.CreateComment, CommandIds.SubmitReview,
+            CommandIds.CreateComment, CommandIds.ToggleViewed, CommandIds.SubmitReview,
         ]),
         ("_Help",
         [

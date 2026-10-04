@@ -17,6 +17,23 @@ public sealed record BranchReview(
     /// <summary>The lines each file adds and removes, by path (#393): empty until they've loaded, or when git couldn't count them.</summary>
     public IReadOnlyDictionary<string, GitLineCount> LineCounts { get; init; } = new Dictionary<string, GitLineCount>();
 
+    /// <summary>The user's viewed state for each of the PR's files, by path (#396): null until it's loaded, and without a PR.</summary>
+    public IReadOnlyDictionary<string, GitHubViewedState>? Viewed { get; init; }
+
+    public bool IsViewed(string path) => Viewed?.GetValueOrDefault(path) == GitHubViewedState.Viewed;
+
+    /// <summary>What the foot of the tab says about viewed files, e.g. <c>Viewed 4 of 12</c>; empty until they're known.</summary>
+    public string ViewedLine => Viewed is null ? string.Empty : $"Viewed {Changes.Count(c => IsViewed(c.Path))} of {Changes.Count}";
+
+    /// <summary>The same review with <paramref name="path"/> marked viewed or not.</summary>
+    public BranchReview WithViewed(string path, bool viewed) => this with
+    {
+        Viewed = new Dictionary<string, GitHubViewedState>(Viewed ?? new Dictionary<string, GitHubViewedState>(), StringComparer.Ordinal)
+        {
+            [path] = viewed ? GitHubViewedState.Viewed : GitHubViewedState.Unviewed,
+        },
+    };
+
     /// <summary>The threads on one file, in the order GitHub listed them.</summary>
     public IReadOnlyList<GitHubReviewThread> ThreadsOn(string path) =>
         [.. Threads.Where(t => string.Equals(t.Path, path, StringComparison.Ordinal))];

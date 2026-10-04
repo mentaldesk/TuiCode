@@ -107,9 +107,9 @@ public class FocusServiceTests
     [InlineData(FocusRegion.Editor, CommandScope.Editor)]
     [InlineData(FocusRegion.Tabs, CommandScope.Editor)]
     [InlineData(FocusRegion.Diff, CommandScope.Diff)]
+    [InlineData(FocusRegion.Review, CommandScope.Review)]
     [InlineData(FocusRegion.Explorer, CommandScope.Explorer)]
     [InlineData(FocusRegion.Find, CommandScope.Find)]
-    [InlineData(FocusRegion.Review, CommandScope.Global)]
     public void ScopeOf_maps_each_region_to_the_scope_its_keys_fire_in(FocusRegion region, CommandScope scope) =>
         Assert.Equal(scope, FocusService.ScopeOf(region));
 

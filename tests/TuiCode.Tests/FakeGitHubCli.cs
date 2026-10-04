@@ -96,13 +96,30 @@ internal sealed class FakeGitHubCli : IGitHubCli
     /// <summary>Held open to keep threads pending while a test looks at the diff without them (#186).</summary>
     public Task ThreadsGate { get; set; } = Task.CompletedTask;
 
-    public async Task<GitHubResult<IReadOnlyList<GitHubReviewThread>>> GetReviewThreadsAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
+    /// <summary>The user's viewed state for each of the PR's files, by path, as GitHub would report it (#396).</summary>
+    public Dictionary<string, GitHubViewedState> ViewedFiles { get; set; } = [];
+
+    public async Task<GitHubResult<GitHubReviewState>> GetReviewStateAsync(string repoRoot, int number, CancellationToken cancellationToken = default)
     {
         await ThreadsGate;
-        if (Missing) return GitHubResult<IReadOnlyList<GitHubReviewThread>>.NoCli();
+        if (Missing) return GitHubResult<GitHubReviewState>.NoCli();
         return ThreadsError is { } error
-            ? GitHubResult<IReadOnlyList<GitHubReviewThread>>.Failure(error)
-            : GitHubResult<IReadOnlyList<GitHubReviewThread>>.Success(ReviewThreads);
+            ? GitHubResult<GitHubReviewState>.Failure(error)
+            : GitHubResult<GitHubReviewState>.Success(new GitHubReviewState(ReviewThreads, new Dictionary<string, GitHubViewedState>(ViewedFiles)));
+    }
+
+    public string? ViewedError { get; set; }
+
+    /// <summary>The marks <see cref="SetViewedAsync"/> was asked to make, in order.</summary>
+    public List<(string PullRequestId, string Path, bool Viewed)> ViewedChanges { get; } = [];
+
+    public Task<GitHubResult<bool>> SetViewedAsync(
+        string repoRoot, string pullRequestId, string path, bool viewed, CancellationToken cancellationToken = default)
+    {
+        ViewedChanges.Add((pullRequestId, path, viewed));
+        if (ViewedError is { } error) return Task.FromResult(GitHubResult<bool>.Failure(error));
+        ViewedFiles[path] = viewed ? GitHubViewedState.Viewed : GitHubViewedState.Unviewed;
+        return Task.FromResult(GitHubResult<bool>.Success(true));
     }
 
     public Task<GitHubResult<bool>> CheckoutPullRequestAsync(string worktreePath, int number, CancellationToken cancellationToken = default)

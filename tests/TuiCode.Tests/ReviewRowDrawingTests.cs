@@ -17,6 +17,7 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
     private const string ChatSettled = "\U000F1414";
     private const string Modified = "\ueade";
     private const string Deleted = "\ueadf";
+    private const string Check = "\ueab2";
 
     private readonly IApplication _app = Application.Create().Init(DriverRegistry.Names.ANSI);
     private readonly MockFileSystem _fs = new();
@@ -336,6 +337,84 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         using var view = await Review();
 
         Assert.EndsWith("-src", RowWith(Render(view), "src").TrimEnd());
+    }
+
+    [Fact]
+    public async Task A_viewed_file_gets_a_check_after_its_name_and_its_name_and_mark_go_faint()
+    {
+        _gitHub.ViewedFiles = new() { ["src/a.cs"] = GitHubViewedState.Viewed };
+        using var view = await Review();
+
+        var rows = Render(view);
+        var row = RowIndex(view, "a.cs");
+
+        Assert.Contains($"{Modified} {CSharp} a.cs  {Check}", rows[row]);
+        Assert.True(CellOf(row, "a").Style.HasFlag(TextStyle.Faint), "name");
+        Assert.True(CellOf(row, Modified).Style.HasFlag(TextStyle.Faint), "mark");
+        Assert.False(CellOf(RowIndex(view, "b.cs"), "b").Style.HasFlag(TextStyle.Faint));
+        Assert.DoesNotContain(Check, RowWith(rows, "b.cs"));
+    }
+
+    [Theory]
+    [InlineData(GitHubViewedState.Unviewed)]
+    [InlineData(GitHubViewedState.Dismissed)]
+    public async Task A_file_not_viewed_since_its_last_change_has_no_check(GitHubViewedState state)
+    {
+        _gitHub.ViewedFiles = new() { ["src/a.cs"] = state };
+        using var view = await Review();
+
+        var row = RowIndex(view, "a.cs");
+
+        Assert.DoesNotContain(Check, Render(view)[row]);
+        Assert.False(CellOf(row, "a").Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public async Task With_icons_off_a_viewed_file_gets_a_plain_check_before_its_thread_badge()
+    {
+        _icons.Setting = FileIconStyle.Off;
+        _gitHub.ViewedFiles = new() { ["src/a.cs"] = GitHubViewedState.Viewed };
+        using var view = await Review(Thread("src/a.cs"));
+
+        var row = RowIndex(view, "a.cs");
+
+        Assert.Contains("M a.cs  ✓  ● 1", Render(view)[row]);
+        Assert.True(CellOf(row, "M").Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public async Task With_icons_a_viewed_files_check_comes_before_its_chat_icon()
+    {
+        _gitHub.ViewedFiles = new() { ["src/a.cs"] = GitHubViewedState.Viewed };
+        using var view = await Review(Thread("src/a.cs"));
+
+        Assert.Contains($"a.cs  {Check}  {Chat} 1", RowWith(Render(view), "a.cs"));
+    }
+
+    [Fact]
+    public async Task The_foot_says_how_many_files_are_viewed_above_the_draft_review()
+    {
+        _icons.Setting = FileIconStyle.Off;
+        _gitHub.ViewedFiles = new() { ["src/a.cs"] = GitHubViewedState.Viewed };
+        using var view = await Review();
+
+        Assert.Equal("Viewed 1 of 2", Render(view)[^1].TrimEnd());
+
+        view.ShowDraftReview("Draft review: 2 comments");
+        view.Layout();
+        var rows = Render(view);
+
+        Assert.Equal(["Viewed 1 of 2", "Draft review: 2 comments"], rows[^2..].Select(r => r.TrimEnd()));
+    }
+
+    [Fact]
+    public async Task A_branch_without_a_PR_has_no_viewed_line()
+    {
+        _gitHub.PullRequest = null;
+        using var view = await Review();
+
+        Assert.Equal("", view.ViewedText);
+        Assert.DoesNotContain(Render(view), row => row.Contains("Viewed", StringComparison.Ordinal));
     }
 
     private static GitHubReviewThread Thread(string path, bool resolved = false) =>
