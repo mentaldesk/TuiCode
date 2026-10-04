@@ -338,6 +338,40 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
         Assert.EndsWith("-src", RowWith(Render(view), "src").TrimEnd());
     }
 
+    [Fact]
+    public async Task The_totals_line_sits_under_the_branch_line_with_its_counts_in_the_change_colours()
+    {
+        _gitHub.PullRequest = null;
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["src/a.cs"] = new(3, 1), ["src/b.cs"] = new(1, 1) };
+        using var view = await Review();
+
+        var rows = Render(view);
+        var row = Array.IndexOf(rows, rows.First(r => r.StartsWith("2 files", StringComparison.Ordinal)));
+        var text = CellOf(row, "f");
+        var (addedDark, addedLight) = FileIcons.ChangeColors(GitChangeKind.Added);
+        var (deletedDark, deletedLight) = FileIcons.ChangeColors(GitChangeKind.Deleted);
+
+        Assert.StartsWith("feature ← main", rows[row - 1]);
+        Assert.Equal("2 files  +4 −2", rows[row].TrimEnd());
+        Assert.Equal(IconDrawing.AttributeFor(new FileIcon("+", addedDark, addedLight), text).Foreground, CellOf(row, "4").Foreground);
+        Assert.Equal(IconDrawing.AttributeFor(new FileIcon("−", deletedDark, deletedLight), text).Foreground, CellOf(row, "−").Foreground);
+        Assert.NotEqual(text.Foreground, CellOf(row, "4").Foreground);
+    }
+
+    [Fact]
+    public async Task Without_counts_the_totals_line_is_just_the_file_count()
+    {
+        _gitHub.PullRequest = null;
+        _git.LineCountsError = "git diff timed out";
+        using var view = await Review();
+
+        var rows = Render(view);
+
+        Assert.StartsWith("feature ← main", rows[0]);
+        Assert.Equal("2 files", rows[1].TrimEnd());
+        Assert.StartsWith("─", rows[2]);
+    }
+
     private static GitHubReviewThread Thread(string path, bool resolved = false) =>
         new(path, 2, resolved, Outdated: false, [new GitHubComment("octocat", default, "Look here.")]);
 

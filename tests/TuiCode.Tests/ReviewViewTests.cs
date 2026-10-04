@@ -277,6 +277,100 @@ public class ReviewViewTests
         Assert.Equal(new GitLineCount(4, 0), File(view, "a.txt").Lines);
     }
 
+    [Fact]
+    public async Task The_totals_line_counts_every_listed_file_and_adds_up_their_lines()
+    {
+        _git.Changes =
+        [
+            new GitChange(GitChangeKind.Added, "src/New.cs"),
+            new GitChange(GitChangeKind.Modified, "src/a.cs"),
+            new GitChange(GitChangeKind.Deleted, "old.txt"),
+            new GitChange(GitChangeKind.Renamed, "b.cs", "c.cs"),
+            new GitChange(GitChangeKind.Modified, "logo.png"),
+        ];
+        _git.LineCounts = new Dictionary<string, GitLineCount>
+        {
+            ["src/New.cs"] = new(200, 0),
+            ["src/a.cs"] = new(12, 8),
+            ["old.txt"] = new(0, 30),
+            ["b.cs"] = new(2, 0),
+            ["logo.png"] = new(0, 0, Binary: true),
+        };
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal(5, view.ChangedFiles.Count);
+        Assert.Equal("5 files  +214 −38", view.TotalsText);
+    }
+
+    [Fact]
+    public async Task One_file_is_one_file()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(1, 1) };
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal("1 file  +1 −1", view.TotalsText);
+    }
+
+    [Fact]
+    public async Task An_empty_diff_has_no_totals_line()
+    {
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal("No changes against main", view.HeaderText);
+        Assert.Equal(string.Empty, view.TotalsText);
+    }
+
+    [Fact]
+    public async Task When_git_cant_count_the_lines_the_totals_line_shows_just_the_file_count()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt"), new GitChange(GitChangeKind.Modified, "b.txt")];
+        _git.LineCountsError = "git diff timed out";
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal("2 files", view.TotalsText);
+    }
+
+    [Fact]
+    public async Task Refreshing_updates_the_totals()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(1, 0) };
+        using var view = Build();
+        await view.Refresh();
+
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt"), new GitChange(GitChangeKind.Added, "b.txt")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(4, 2), ["b.txt"] = new(3, 0) };
+        await view.Refresh();
+
+        Assert.Equal("2 files  +7 −2", view.TotalsText);
+    }
+
+    [Fact]
+    public async Task A_pull_request_against_another_base_totals_against_that_base()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(1, 1) };
+        _gitHub.PullRequest = new GitHubPullRequest(9, "Fix", "release/1.0", "feature", default);
+        _git.Resolvable.Add("origin/release/1.0");
+        _git.MergeBases["origin/release/1.0"] = "cafe";
+        _git.ChangesByRevision["cafe"] = [new GitChange(GitChangeKind.Modified, "a.txt"), new GitChange(GitChangeKind.Added, "b.txt")];
+        _git.LineCountsByRevision["cafe"] = new Dictionary<string, GitLineCount> { ["a.txt"] = new(7, 4), ["b.txt"] = new(5, 0) };
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal("2 files  +12 −4", view.TotalsText);
+    }
+
     [Theory]
     [InlineData(GitChangeKind.Modified, 3, 1, false, "+3 −1")]
     [InlineData(GitChangeKind.Modified, 3, 0, false, "+3 −0")]
@@ -343,6 +437,18 @@ public class ReviewViewTests
     }
 
     [Fact]
+    public async Task A_totals_line_wider_than_the_pane_is_cut()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(12345, 6789) };
+        using var view = Build(12);
+
+        await view.Refresh();
+
+        Assert.Equal("1 file  +12…", view.TotalsText);
+    }
+
+    [Fact]
     public async Task Thread_counts_wider_than_the_pane_are_cut()
     {
         _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
@@ -396,12 +502,13 @@ public class ReviewViewTests
         _git.Changes = [new GitChange(GitChangeKind.Modified, "a.txt")];
         _gitHub.PullRequest = new GitHubPullRequest(244, "The Review tab won't tell me what I'm reviewing against", "main", branch, new GitHubChecks(11, 1, 2));
         _gitHub.ReviewThreads = [Thread(resolved: false)];
+        _git.LineCounts = new Dictionary<string, GitLineCount> { ["a.txt"] = new(1200, 345) };
         using var view = Build(width);
 
         await view.Refresh();
 
         Assert.All(
-            (string[])[view.TitleText, view.HeaderText, view.ChecksText, view.ThreadsText, view.HintText],
+            (string[])[view.TitleText, view.HeaderText, view.TotalsText, view.ChecksText, view.ThreadsText, view.HintText],
             line => Assert.True(line.Length <= width, $"'{line}' is wider than {width}"));
     }
 
