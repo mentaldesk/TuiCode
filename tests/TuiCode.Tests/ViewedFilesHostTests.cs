@@ -112,7 +112,7 @@ public class ViewedFilesHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Space_on_a_folder_still_collapses_it()
+    public async Task Space_on_a_folder_marks_nothing_and_leaves_it_open()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -125,8 +125,9 @@ public class ViewedFilesHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Space),
             () => { });
 
-        Assert.False(files.IsExpanded(files.SelectedObject!), $"{files.SelectedObject}");
+        Assert.True(files.IsExpanded(files.SelectedObject!), $"{files.SelectedObject}");
         Assert.Empty(_gitHub.ViewedChanges);
+        Assert.Equal("Viewed 1 of 2", workbench.Sidebar.Review.ViewedText);
     }
 
     private static Task InReviewList(WorkbenchHost host, Workbench.Workbench workbench, CommandService commands) =>
