@@ -84,8 +84,10 @@ flowchart LR
     Release -->|"rendered packaging/tuicode.json"| Bucket["mentaldesk/scoop-bucket<br/>bucket/tuicode.json"]
     Bucket -->|scoop install| Win["Windows machine<br/>~/scoop/shims/tuicode.exe"]
 
+    Release -->|install.sh| Script["Linux machine<br/>~/.local/bin/tuicode"]
+
     Release -.->|future: #75| Winget["winget"]
-    Release -.->|future: #44| Linux["apt / AUR / Flatpak"]
+    Release -.->|future: #44| Linux["apt / dnf"]
 ```
 
 The Homebrew formula points at the release tarball URL with a pinned SHA256. Both the PR and its merge are automatic; `brew upgrade tuicode` picks up the new version once it lands, and `tuicode`'s About dialog reports the same number.

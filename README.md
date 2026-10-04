@@ -4,7 +4,17 @@ A minimalist terminal code editor inspired by VS Code.
 
 ## Installing
 
-macOS / Linux via [Homebrew](https://brew.sh):
+Linux, on any distro (x64 or arm64, no `sudo`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mentaldesk/TuiCode/main/install.sh | sh
+```
+
+It installs the latest release to `~/.local/bin/tuicode`, after checking its SHA-256. Run it again to update.
+
+TuiCode runs on glibc 2.35 or newer: Debian 12, Ubuntu 22.04, current Fedora and Arch, and anything newer. It doesn't need `libicu`.
+
+macOS via [Homebrew](https://brew.sh) (it works on Linux too):
 
 ```bash
 brew install mentaldesk/tap/tuicode
@@ -17,9 +27,7 @@ scoop bucket add mentaldesk https://github.com/mentaldesk/scoop-bucket
 scoop install tuicode
 ```
 
-Other channels (winget, Linux packagers) are tracked in [#43](https://github.com/mentaldesk/TuiCode/issues/43) and [#44](https://github.com/mentaldesk/TuiCode/issues/44). In the meantime, pre-built single-file binaries for every supported RID are attached to each [GitHub Release](https://github.com/mentaldesk/TuiCode/releases).
-
-On Linux, TuiCode runs on x64 and arm64 with glibc 2.35 or newer: Debian 12, Ubuntu 22.04, current Fedora and anything newer. It doesn't need `libicu`.
+Other channels (winget, Linux packages) are tracked in [#43](https://github.com/mentaldesk/TuiCode/issues/43) and [#44](https://github.com/mentaldesk/TuiCode/issues/44). In the meantime, pre-built single-file binaries for every supported RID are attached to each [GitHub Release](https://github.com/mentaldesk/TuiCode/releases).
 
 ## Running
 

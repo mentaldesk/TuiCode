@@ -15,6 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: docker://rhysd/actionlint:1.7.7
+      - name: shellcheck
+        run: shellcheck install.sh tests/install/test.sh
 
   build-test:
     strategy:
@@ -134,3 +136,38 @@ jobs:
         # harness is Unix-only, so this stays on linux-x64.
         if: matrix.rid == 'linux-x64'
         run: timeout 20s script -qfec './publish/TuiCode --smoke' /dev/null
+
+  install-script:
+    name: install.sh ${{ matrix.image }} ${{ matrix.arch }}
+    # Against the latest published release, not this commit's build.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: 'debian:12', arch: x64, runner: ubuntu-24.04, setup: 'apt-get update -qq && apt-get install -qq -y --no-install-recommends curl ca-certificates >/dev/null' }
+          - { image: 'debian:12', arch: arm64, runner: ubuntu-24.04-arm, setup: 'apt-get update -qq && apt-get install -qq -y --no-install-recommends curl ca-certificates >/dev/null' }
+          - { image: 'ubuntu:22.04', arch: x64, runner: ubuntu-24.04, setup: 'apt-get update -qq && apt-get install -qq -y --no-install-recommends wget ca-certificates >/dev/null' }
+          - { image: 'ubuntu:22.04', arch: arm64, runner: ubuntu-24.04-arm, setup: 'apt-get update -qq && apt-get install -qq -y --no-install-recommends wget ca-certificates >/dev/null' }
+          - { image: 'fedora:latest', arch: x64, runner: ubuntu-24.04, setup: 'command -v tar >/dev/null || dnf install -q -y tar', offline: true }
+          - { image: 'fedora:latest', arch: arm64, runner: ubuntu-24.04-arm, setup: 'command -v tar >/dev/null || dnf install -q -y tar', offline: true }
+          # The official Arch image is x86_64 only.
+          - { image: 'archlinux:latest', arch: x64, runner: ubuntu-24.04, setup: 'true', offline: true }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install, update and failure paths
+        # `script` gives `docker run -t` the pty `tuicode --smoke` needs.
+        env:
+          SETUP: ${{ matrix.setup }}
+        run: timeout 300s script -qfec "docker run --rm -t -e SETUP -e TERM=xterm-256color -v $PWD:/src:ro ${{ matrix.image }} sh /src/tests/install/test.sh /src/install.sh" /dev/null
+
+      - name: No network
+        # Only images that ship curl, since the container can't install one.
+        if: matrix.offline
+        run: |
+          docker run --rm --network none -v "$PWD:/src:ro" ${{ matrix.image }} sh -c '
+            out=$(sh /src/install.sh 2>&1) && exit 1
+            echo "$out"
+            [ ! -e ~/.local/bin/tuicode ] && echo "$out" | grep -q "Check your network"'
