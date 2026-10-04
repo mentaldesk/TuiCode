@@ -1,0 +1,59 @@
+# The .deb and .rpm attached to each release. packaging/build.sh runs it from a folder holding the files it names.
+name: tuicode
+arch: ${PACKAGE_ARCH}
+platform: linux
+version: ${PACKAGE_VERSION}
+maintainer: mentaldesk <https://github.com/mentaldesk/TuiCode/issues>
+description: Minimalist terminal code editor for working over SSH
+homepage: https://github.com/mentaldesk/TuiCode
+license: MIT
+section: editors
+
+contents:
+  - src: TuiCode
+    dst: /usr/bin/tuicode
+    file_info:
+      mode: 0755
+
+  - dst: /usr/share/doc/tuicode
+    type: dir
+    packager: deb
+  - src: LICENSE
+    dst: /usr/share/doc/tuicode/copyright
+    packager: deb
+  - src: THIRD-PARTY-NOTICES.md
+    dst: /usr/share/doc/tuicode/THIRD-PARTY-NOTICES.md
+    packager: deb
+  - src: DOTNET-THIRD-PARTY-NOTICES.TXT
+    dst: /usr/share/doc/tuicode/DOTNET-THIRD-PARTY-NOTICES.TXT
+    packager: deb
+
+  # %license, so Fedora's nodocs installs still get them.
+  - dst: /usr/share/licenses/tuicode
+    type: dir
+    packager: rpm
+  - src: LICENSE
+    dst: /usr/share/licenses/tuicode/LICENSE
+    type: license
+    packager: rpm
+  - src: THIRD-PARTY-NOTICES.md
+    dst: /usr/share/licenses/tuicode/THIRD-PARTY-NOTICES.md
+    type: license
+    packager: rpm
+  - src: DOTNET-THIRD-PARTY-NOTICES.TXT
+    dst: /usr/share/licenses/tuicode/DOTNET-THIRD-PARTY-NOTICES.TXT
+    type: license
+    packager: rpm
+
+# The binary links only libc, libm and the loader; 2.35 is the glibc floor CI checks.
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.35)
+    recommends:
+      - wl-clipboard | xclip
+  rpm:
+    depends:
+      - glibc >= 2.35
+    recommends:
+      - (wl-clipboard or xclip)

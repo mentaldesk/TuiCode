@@ -19,6 +19,20 @@ scoop install tuicode
 
 Other channels (winget, Linux packagers) are tracked in [#43](https://github.com/mentaldesk/TuiCode/issues/43) and [#44](https://github.com/mentaldesk/TuiCode/issues/44). In the meantime, pre-built single-file binaries for every supported RID are attached to each [GitHub Release](https://github.com/mentaldesk/TuiCode/releases).
 
+Debian or Ubuntu: download `tuicode_<version>_amd64.deb` (or `_arm64.deb`) from the [latest release](https://github.com/mentaldesk/TuiCode/releases/latest), then:
+
+```bash
+sudo apt install ./tuicode_<version>_amd64.deb
+```
+
+Fedora (`aarch64` in place of `x86_64` on arm64):
+
+```bash
+sudo dnf install https://github.com/mentaldesk/TuiCode/releases/download/v<version>/tuicode-<version>-1.x86_64.rpm
+```
+
+Installing a newer package upgrades it in place, and `sudo apt remove tuicode` / `sudo dnf remove tuicode` uninstalls it.
+
 On Linux, TuiCode runs on x64 and arm64 with glibc 2.35 or newer: Debian 12, Ubuntu 22.04, current Fedora and anything newer. It doesn't need `libicu`.
 
 ## Running
