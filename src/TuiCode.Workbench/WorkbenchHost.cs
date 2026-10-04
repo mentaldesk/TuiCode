@@ -785,7 +785,6 @@ public sealed class WorkbenchHost : IDisposable
     // Unlike the gutter this mode is invisible until a selection is swept, so flag it in the status bar.
     private void ToggleColumnSelect()
     {
-        if (RefusedWhileWrapped()) return;
         var group = _workbench.Editor.Group;
         group.ColumnSelect = !group.ColumnSelect;
         _workbench.StatusBar.SetMode(group.ColumnSelect ? "Column select" : null);
@@ -800,21 +799,7 @@ public sealed class WorkbenchHost : IDisposable
         FocusEditorBody();
     }
 
-    private void AddCursor(LineDirection direction)
-    {
-        if (RefusedWhileWrapped()) return;
-        EditActiveTab(tab => tab.AddCursor(direction));
-    }
-
-    // Multiple cursors and column select don't know about wrapped rows yet (#382).
-    private bool RefusedWhileWrapped()
-    {
-        if (_workbench.Editor.Group.ActiveTab is not { WordWrap: true }) return false;
-        var toggle = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ToggleWordWrap)?.Display
-                     ?? CommandMnemonics.For(CommandIds.ToggleWordWrap);
-        _workbench.StatusBar.SetMessage($"Not available with word wrap on — {toggle} to turn it off");
-        return true;
-    }
+    private void AddCursor(LineDirection direction) => EditActiveTab(tab => tab.AddCursor(direction));
 
     // A sidebar item's shortcut (#33) shows its tab, revealing the sidebar if needed, and never hides it:
     // only ts does (#259). Like ToggleSidebar it decides on visibility, not focus, so it behaves the same
