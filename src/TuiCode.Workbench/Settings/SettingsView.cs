@@ -106,7 +106,7 @@ public sealed class SettingsView : Window
             Visible = true
         };
 
-        _editorSettings = new EditorSettingsView(settings.Editor)
+        _editorSettings = new EditorSettingsView(settings.Editor, syntax)
         {
             X = Pos.Right(_separator) + 1,
             Y = 1,

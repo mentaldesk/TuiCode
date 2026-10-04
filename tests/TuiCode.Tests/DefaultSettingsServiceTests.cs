@@ -251,6 +251,33 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void Wrap_by_language_round_trips_including_turning_markdown_off()
+    {
+        var fs = new MockFileSystem();
+        var editor = EditorSettings.Default with
+        {
+            WrapByLanguage = new Dictionary<string, bool> { ["markdown"] = false, ["python"] = true },
+        };
+        new DefaultSettingsService(fs) { Editor = editor }.Save();
+
+        var loaded = new DefaultSettingsService(fs).Editor;
+
+        Assert.Equal(editor, loaded);
+        Assert.False(loaded.WrapsLanguage("markdown"));
+    }
+
+    [Fact]
+    public void A_bad_wrap_by_language_entry_is_skipped_without_losing_the_others()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{ \"WrapByLanguage\": { \"python\": true, \"go\": \"yes\" } }"));
+
+        var wrap = new DefaultSettingsService(fs).Editor.WrapByLanguage;
+
+        Assert.Equal(new Dictionary<string, bool> { ["python"] = true }, wrap);
+    }
+
+    [Fact]
     public void Default_editor_settings_are_not_written()
     {
         var fs = new MockFileSystem();
