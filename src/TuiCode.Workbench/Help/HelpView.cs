@@ -11,7 +11,7 @@ public sealed class HelpView : Window
 {
     internal static readonly HelpColumn Everywhere = new("Everywhere",
     [
-        new("Ctrl+E", "Command palette: what applies here"),
+        new("Ctrl+E", "Command palette"),
         new("Ctrl+Space", "Run a command by its mnemonic"),
         new("Ctrl+O", "Open file or folder"),
         new("Ctrl+N", "New file or folder"),
