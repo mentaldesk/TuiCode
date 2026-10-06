@@ -61,9 +61,9 @@ jobs:
           - rid: osx-arm64
             runner: macos-14
           - rid: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-22.04
           - rid: linux-arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-22.04-arm
           - rid: win-x64
             runner: windows-latest
           - rid: win-arm64
@@ -87,6 +87,40 @@ jobs:
         # release.yml archives these beside the binary.
         shell: bash
         run: test -s publish/THIRD-PARTY-NOTICES.md && test -s publish/DOTNET-THIRD-PARTY-NOTICES.TXT
+
+      - name: Invariant globalization on Linux only
+        shell: bash
+        run: |
+          config=src/TuiCode/bin/Release/net10.0/${{ matrix.rid }}/TuiCode.runtimeconfig.json
+          if grep -q '"System.Globalization.Invariant": true' "$config"; then actual=invariant; else actual=icu; fi
+          case "${{ matrix.rid }}" in linux-*) expected=invariant ;; *) expected=icu ;; esac
+          echo "${{ matrix.rid }}: $actual, expected $expected"
+          [ "$actual" = "$expected" ]
+
+      - name: glibc floor
+        # Debian 12 / Ubuntu 22.04 are the oldest supported distros (README).
+        if: startsWith(matrix.rid, 'linux-')
+        run: |
+          readelf -d publish/TuiCode | grep NEEDED
+          highest=$(objdump -T publish/TuiCode | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -n1)
+          echo "Highest glibc symbol: $highest"
+          [ "$(printf '%s\n' "$highest" GLIBC_2.35 | sort -V | tail -n1)" = GLIBC_2.35 ]
+
+      - name: Distro smoke
+        # Minimal images without libicu; `script` gives `docker run -t` the pty TG needs.
+        if: startsWith(matrix.rid, 'linux-')
+        run: |
+          for image in debian:12 ubuntu:22.04 fedora:latest; do
+            echo "::group::$image"
+            docker pull -q "$image"
+            if docker run --rm "$image" sh -c 'ldconfig -p | grep -q libicu'; then
+              echo "$image has libicu installed"
+              exit 1
+            fi
+            docker run --rm -v "$PWD/publish:/app:ro" "$image" /app/TuiCode --smoke-syntax
+            timeout 30s script -qfec "docker run --rm -t -e TERM=xterm-256color -v $PWD/publish:/app:ro $image /app/TuiCode --smoke" /dev/null
+            echo "::endgroup::"
+          done
 
       - name: Syntax smoke
         # Headless (no TG), so it runs on every RID, Windows included.

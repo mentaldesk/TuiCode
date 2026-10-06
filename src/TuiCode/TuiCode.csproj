@@ -21,6 +21,8 @@
     <Nullable>enable</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
     <PublishAot>true</PublishAot>
+    <!-- Minimal Linux images often lack libicu; see "Linux compatibility" in AGENTS.md. -->
+    <InvariantGlobalization Condition="$(RuntimeIdentifier.StartsWith('linux-'))">true</InvariantGlobalization>
   </PropertyGroup>
 
   <!-- Release archives ship these notices beside the binary; see "Release workflow" in AGENTS.md. -->

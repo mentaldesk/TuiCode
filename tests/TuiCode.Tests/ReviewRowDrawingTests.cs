@@ -1,4 +1,5 @@
 using System.Text;
+using Terminal.Gui.Configuration;
 using Terminal.Gui.Drawing;
 using Terminal.Gui.Text;
 using Terminal.Gui.ViewBase;
@@ -367,6 +368,45 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
 
         Assert.DoesNotContain(Check, Render(view)[row]);
         Assert.False(CellOf(row, "a").Style.HasFlag(TextStyle.Faint));
+    }
+
+    [Fact]
+    public async Task A_file_never_viewed_shows_no_changed_mark()
+    {
+        _gitHub.ViewedFiles = new() { ["src/a.cs"] = GitHubViewedState.Unviewed };
+        using var view = await Review();
+
+        Assert.DoesNotContain("changed", RowWith(Render(view), "a.cs"));
+    }
+
+    [Fact]
+    public async Task A_file_changed_since_it_was_viewed_says_changed_in_the_accent_colour_and_its_name_is_not_faint()
+    {
+        _gitHub.ViewedFiles = new() { ["src/a.cs"] = GitHubViewedState.Dismissed };
+        using var view = await Review();
+
+        var rows = Render(view);
+        var row = RowIndex(view, "a.cs");
+        var name = CellOf(row, "a");
+
+        Assert.Contains($"{Modified} {CSharp} a.cs  changed", rows[row]);
+        Assert.False(name.Style.HasFlag(TextStyle.Faint));
+        Assert.True(SchemeManager.TryGetScheme("Accent", out var accent));
+        Assert.Equal(accent.HotNormal.Foreground, CellOf(row, "h").Foreground);
+        Assert.NotEqual(name.Foreground, CellOf(row, "h").Foreground);
+        Assert.DoesNotContain("changed", RowWith(rows, "b.cs"));
+    }
+
+    [Fact]
+    public async Task A_changed_files_mark_comes_before_its_thread_badge()
+    {
+        _gitHub.ViewedFiles = new() { ["src/a.cs"] = GitHubViewedState.Dismissed };
+        using var view = await Review(Thread("src/a.cs"));
+
+        Assert.Contains($"a.cs  changed  {Chat}", RowWith(Render(view), "a.cs"));
+
+        _icons.Setting = FileIconStyle.Off;
+        Assert.Contains("M a.cs  changed  ● 1", RowWith(Render(view), "a.cs"));
     }
 
     [Fact]

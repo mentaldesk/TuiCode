@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using MentalDesk.Tui.Shell;
 using Terminal.Gui.Drivers;
 using System.Reflection;
 using Terminal.Gui.Time;
@@ -26,6 +27,7 @@ using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 using TuiCode.Workbench.Themes;
 using TuiCode.Workbench.Workspace;
+using FocusBorder = MentalDesk.Tui.Focus.FocusBorder;
 
 namespace TuiCode.Workbench;
 

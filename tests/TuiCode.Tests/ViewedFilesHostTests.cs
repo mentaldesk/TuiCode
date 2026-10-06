@@ -62,6 +62,25 @@ public class ViewedFilesHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Space_on_a_file_changed_since_it_was_viewed_marks_it_viewed_again()
+    {
+        _gitHub.ViewedFiles = new() { ["src/a.txt"] = GitHubViewedState.Dismissed, ["src/b.txt"] = GitHubViewedState.Viewed };
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await InReviewList(host, workbench, commands);
+        Assert.Equal("Viewed 1 of 2", workbench.Sidebar.Review.ViewedText);
+        Assert.Equal(["a.txt  changed", "b.txt  ✓"], Rows(workbench));
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Space),
+            () => workbench.Sidebar.Review.ViewedText == "Viewed 2 of 2");
+
+        Assert.Equal(("PR_kw396", "src/a.txt", true), _gitHub.ViewedChanges.Single());
+        Assert.Equal(["a.txt  ✓", "b.txt  ✓"], Rows(workbench));
+    }
+
+    [Fact]
     public async Task Tv_does_the_same_as_space()
     {
         using var workbench = BuildWorkbench();

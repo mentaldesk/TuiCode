@@ -32,8 +32,8 @@ flowchart TD
     Version -->|"next version, e.g. 0.1.0"| Matrix{{"matrix per RID"}}
 
     Matrix --> A["osx-arm64<br/>(macos-14)"]
-    Matrix --> B["linux-x64<br/>(ubuntu-latest)"]
-    Matrix --> C["linux-arm64<br/>(ubuntu-24.04-arm)"]
+    Matrix --> B["linux-x64<br/>(ubuntu-22.04)"]
+    Matrix --> C["linux-arm64<br/>(ubuntu-22.04-arm)"]
     Matrix --> D["win-x64<br/>(windows-latest)"]
     Matrix --> E["win-arm64<br/>(windows-11-arm)"]
 
