@@ -2591,6 +2591,11 @@ public sealed class WorkbenchHost : IDisposable
         var tab = _workbench.Sidebar.Review;
         if (tab.Review is not { PullRequest: { } pullRequest } review) return;
         var diff = _focus.Region == FocusRegion.Diff ? _workbench.Editor.Group.ActiveDiffTab : null;
+        if (diff is null && tab.SelectedFolder is { } folder)
+        {
+            ToggleFolderViewed(review, pullRequest, folder);
+            return;
+        }
         var spot = diff is null ? null : ViewedSpot();
         if ((spot?.Path ?? tab.SelectedFile?.Path) is not { } path) return;
         var viewed = !review.IsViewed(path);
@@ -2602,8 +2607,30 @@ public sealed class WorkbenchHost : IDisposable
                 _workbench.StatusBar.SetMessage(error);
                 return;
             }
-            tab.SetViewed(path, viewed);
+            tab.SetViewed([path], viewed);
             if (viewed && diff is not null && spot is not null) OpenNextUnviewed(diff, spot);
+        });
+    }
+
+    /// <summary>
+    /// Toggle viewed on a folder (#399): marks every file under it viewed, or unmarks them all when they already are.
+    /// If GitHub refuses any, the tab reloads to show what it holds.
+    /// </summary>
+    private void ToggleFolderViewed(BranchReview review, GitHubPullRequest pullRequest, string folder)
+    {
+        var tab = _workbench.Sidebar.Review;
+        var paths = review.FilesUnder(folder);
+        var viewed = !paths.All(review.IsViewed);
+        var targets = viewed ? [.. paths.Where(p => !review.IsViewed(p))] : paths;
+        var results = new GitHubResult<bool>[targets.Count];
+        var setting = Parallel.ForEachAsync(Enumerable.Range(0, targets.Count), new ParallelOptions { MaxDegreeOfParallelism = 4 },
+            async (i, ct) => results[i] = await _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, targets[i], viewed, ct));
+        WhenDone(setting, () =>
+        {
+            tab.SetViewed(targets.Where((_, i) => results[i].Error is null), viewed);
+            if (results.Select(r => r.Error).FirstOrDefault(e => e is not null) is not { } error) return;
+            _workbench.StatusBar.SetMessage(error);
+            _ = tab.Refresh();
         });
     }
 
