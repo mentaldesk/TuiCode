@@ -18,6 +18,8 @@ esac
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 cp "$publish/TuiCode" "$publish/THIRD-PARTY-NOTICES.md" "$publish/DOTNET-THIRD-PARTY-NOTICES.TXT" "$repo/LICENSE" "$stage"
+# nfpm keeps the source mode, and the runtime pack ships the .NET notices as 0744.
+chmod 644 "$stage/THIRD-PARTY-NOTICES.md" "$stage/DOTNET-THIRD-PARTY-NOTICES.TXT" "$stage/LICENSE"
 
 cd "$stage"
 export PACKAGE_ARCH=$deb_arch PACKAGE_VERSION=$version

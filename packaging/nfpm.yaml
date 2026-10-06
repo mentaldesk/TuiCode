@@ -50,10 +50,11 @@ overrides:
   deb:
     depends:
       - libc6 (>= 2.35)
-    recommends:
+    # Not recommends: apt would follow wl-clipboard's own recommends into GTK and Mesa, ~500 MB on a server.
+    suggests:
       - wl-clipboard | xclip
   rpm:
     depends:
       - glibc >= 2.35
-    recommends:
+    suggests:
       - (wl-clipboard or xclip)

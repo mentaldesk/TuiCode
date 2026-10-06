@@ -77,7 +77,7 @@ The tap gets a PR its own CI gates. The bucket has no CI, so the manifest is com
 
 ### The Linux packages
 
-`packaging/nfpm.yaml` describes the `.deb` and `.rpm`: the binary as `/usr/bin/tuicode`, the licence and both notices files, a dependency on glibc 2.35 or newer (the binary links nothing else), and a recommendation of `wl-clipboard` or `xclip`. On the Linux legs, `packaging/build.sh` builds both formats from the binary the tarball holds, with [nfpm](https://nfpm.goreleaser.com/), and `packaging/test-install.sh` installs each in a clean `debian:12`, `ubuntu:22.04` and `fedora` container, runs `tuicode --smoke`, then removes it and checks nothing is left. A failure there fails the build, so nothing is published. CI's `aot` job does the same on every push, at two versions so the second install checks the upgrade.
+`packaging/nfpm.yaml` describes the `.deb` and `.rpm`: the binary as `/usr/bin/tuicode`, the licence and both notices files, a dependency on glibc 2.35 or newer (the binary links nothing else), and a suggestion of `wl-clipboard` or `xclip`, which apt and dnf don't install by default. On the Linux legs, `packaging/build.sh` builds both formats from the binary the tarball holds, with [nfpm](https://nfpm.goreleaser.com/), and `packaging/test-install.sh` installs each in a clean `debian:12`, `ubuntu:22.04` and `fedora` container, runs `tuicode --smoke`, then removes it and checks nothing is left. A failure there fails the build, so nothing is published. CI's `aot` job does the same on every push, at two versions so the second install checks the upgrade.
 
 ### Distribution
 
