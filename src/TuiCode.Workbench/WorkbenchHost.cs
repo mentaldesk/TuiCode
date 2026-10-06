@@ -2574,26 +2574,35 @@ public sealed class WorkbenchHost : IDisposable
         _ => false,
     };
 
-    /// <summary>The active diff's place in a PR's review, when it's one whose file can be marked viewed (#398).</summary>
+    /// <summary>The active diff's place in the review, when it's one whose file can be marked viewed (#398).</summary>
     private ReviewSpot? ViewedSpot() =>
         _workbench.Editor.Group.ActiveDiffTab is { Review: { } spot }
-        && _workbench.Sidebar.Review.Review is { PullRequest: not null, Viewed: not null } review
+        && _workbench.Sidebar.Review.Review is { Viewed: not null } review
         && review.MergeBase == spot.Key
             ? spot
             : null;
 
     /// <summary>
     /// Toggle viewed (<c>tv</c>, #396): GitHub's Viewed mark on the file selected in the Review tab, or on the
-    /// file a review diff shows (#398). The tab shows the new mark only once GitHub has it.
+    /// file a review diff shows (#398). The tab shows the new mark only once GitHub has it. Without a PR the
+    /// mark is kept locally (#400).
     /// </summary>
     private void ToggleViewed()
     {
         var tab = _workbench.Sidebar.Review;
-        if (tab.Review is not { PullRequest: { } pullRequest } review) return;
+        if (tab.Review is not { Viewed: not null } review) return;
         var diff = _focus.Region == FocusRegion.Diff ? _workbench.Editor.Group.ActiveDiffTab : null;
         var spot = diff is null ? null : ViewedSpot();
         if ((spot?.Path ?? tab.SelectedFile?.Path) is not { } path) return;
         var viewed = !review.IsViewed(path);
+
+        if (review.PullRequest is not { } pullRequest)
+        {
+            tab.LocalViewed?.Set(review, path, viewed);
+            Marked();
+            return;
+        }
+
         var setting = Task.Run(() => _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, path, viewed));
         WhenDone(setting, () =>
         {
@@ -2602,9 +2611,14 @@ public sealed class WorkbenchHost : IDisposable
                 _workbench.StatusBar.SetMessage(error);
                 return;
             }
+            Marked();
+        });
+
+        void Marked()
+        {
             tab.SetViewed(path, viewed);
             if (viewed && diff is not null && spot is not null) OpenNextUnviewed(diff, spot);
-        });
+        }
     }
 
     /// <summary>

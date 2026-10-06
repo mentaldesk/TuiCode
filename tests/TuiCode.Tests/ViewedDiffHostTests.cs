@@ -151,6 +151,29 @@ public class ViewedDiffHostTests : StaticConfigurationTest
         ]);
     }
 
+    [Fact]
+    public async Task On_a_branch_with_no_PR_tv_marks_the_file_locally_and_opens_the_next_one()
+    {
+        _gitHub.PullRequest = null;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var group = workbench.Editor.Group;
+        var review = workbench.Sidebar.Review;
+
+        await HostSteps.Run(host,
+        [
+            .. OpenDiff(host, workbench, commands, rowsDown: 1),
+            () => group.ActiveDiffTab?.File.Name == "b.txt" && group.ActiveDiffTab.IsFocused,
+            () => Assert.True(commands.TryExecute(CommandIds.ToggleViewed)),
+            () => group.ActiveDiffTab?.File.Name == "c.txt",
+        ]);
+
+        Assert.Empty(_gitHub.ViewedChanges);
+        Assert.Single(group.DiffTabs);
+        Assert.Equal("Viewed 1 of 4", review.ViewedText);
+        Assert.Equal(["a.txt", "b.txt  ✓", "c.txt", "d.txt"], Rows(workbench));
+    }
+
     private static Delegate[] OpenDiff(WorkbenchHost host, Workbench.Workbench workbench, CommandService commands, int rowsDown) =>
     [
         () => commands.TryExecute(CommandIds.FocusReview),
