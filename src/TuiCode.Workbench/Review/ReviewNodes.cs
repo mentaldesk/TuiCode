@@ -15,12 +15,16 @@ public sealed class ReviewFolderNode(string path) : ReviewNode
 }
 
 public sealed class ReviewFileNode(
-    GitChange change, IReadOnlyList<GitHubReviewThread>? threads = null, GitLineCount? lines = null, bool viewed = false) : ReviewNode
+    GitChange change, IReadOnlyList<GitHubReviewThread>? threads = null, GitLineCount? lines = null,
+    GitHubViewedState viewed = GitHubViewedState.Unviewed) : ReviewNode
 {
     public GitChange Change { get; } = change;
 
     /// <summary>Whether the user has marked the file viewed on the PR (#396).</summary>
-    public bool Viewed { get; } = viewed;
+    public bool Viewed => viewed == GitHubViewedState.Viewed;
+
+    /// <summary>Whether a push has changed the file since the user marked it viewed (#397).</summary>
+    public bool Changed => viewed == GitHubViewedState.Dismissed;
 
     /// <summary>The lines the file adds and removes (#393); null until git has counted them.</summary>
     public GitLineCount? Lines { get; } = lines;
@@ -71,16 +75,17 @@ public sealed class ReviewFileNode(
 internal static class ReviewRow
 {
     public const string ViewedMark = "✓";
+    public const string ChangedMark = "changed";
 
     /// <summary>
-    /// A row's text: a file's name, with its viewed mark (#396) and thread badge after it. The change mark is drawn
+    /// A row's text: a file's name, with its viewed or changed mark (#396, #397) and thread badge after it. The change mark is drawn
     /// in front (#320), so typing a name jumps to it.
     /// </summary>
     public static string Display(ReviewNode node, bool icon = false) => node switch
     {
         ReviewFileNode file => string.Concat(
             file.Name,
-            file.Viewed ? $"  {ViewedMark}" : string.Empty,
+            file.Viewed ? $"  {ViewedMark}" : file.Changed ? $"  {ChangedMark}" : string.Empty,
             file.Badge(icon) is { } badge ? $"  {badge}" : string.Empty),
         _ => node.ToString() ?? string.Empty,
     };
@@ -135,7 +140,7 @@ internal static class ReviewTree
         {
             var on = byPath.GetValueOrDefault(c.Path) ?? [];
             var file = new ReviewFileNode(c, on, lineCounts?.TryGetValue(c.Path, out var lines) == true ? lines : null,
-                viewed?.GetValueOrDefault(c.Path) == GitHubViewedState.Viewed);
+                viewed?.GetValueOrDefault(c.Path) ?? GitHubViewedState.Unviewed);
             if (on.Where(t => t.Outdated).ToList() is { Count: > 0 } outdated)
                 file.Children.Add(new ReviewOutdatedNode(c, outdated));
             return file;

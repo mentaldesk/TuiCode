@@ -430,6 +430,59 @@ public class DiffTabDrawTests : StaticConfigurationTest
         Assert.Equal(expected, diff.LineCounts);
     }
 
+    [Theory]
+    [InlineData("one\ntwo\nthree\n", "+3")]
+    [InlineData("one\ntwo\nthree", "+3")]
+    [InlineData("", "")]
+    public void Line_counts_of_a_new_file_match_its_lines(string text, string expected)
+    {
+        var diff = NewFileDiff(text);
+
+        Assert.Equal(expected, diff.LineCounts);
+    }
+
+    [Theory]
+    [InlineData("one\ntwo\n", "−2")]
+    [InlineData("one\ntwo", "−2")]
+    [InlineData("", "")]
+    public void Line_counts_of_a_deleted_file_match_its_lines(string text, string expected)
+    {
+        var diff = DeletedDiff(text);
+
+        Assert.Equal(expected, diff.LineCounts);
+    }
+
+    [Fact]
+    public void A_new_file_shows_no_empty_added_row_after_its_last_line()
+    {
+        var diff = NewFileDiff("one\ntwo\n");
+
+        var screen = Render(diff);
+
+        Assert.Equal(
+        [
+            " main          \u2502 working copy  ",
+            "               \u2502  1+ one       ",
+            "               \u2502  2+ two       ",
+            "               \u2502               ",
+            "               \u2502               ",
+            "               \u2502               ",
+            "               \u2502               ",
+        ], screen);
+    }
+
+    [Fact]
+    public void Reverting_a_new_file_leaves_it_empty_with_nothing_left_to_revert()
+    {
+        var diff = NewFileDiff("one\ntwo\n");
+
+        Assert.Equal(2, diff.RevertChange());
+
+        Assert.Equal([""], diff.Source!.Lines);
+        Assert.Equal("No changes", diff.ChangeStatus);
+        Assert.Equal("", diff.LineCounts);
+    }
+
     [Fact]
     public void Line_counts_follow_edits_to_the_buffer_when_the_diff_refreshes()
     {
@@ -684,6 +737,24 @@ public class DiffTabDrawTests : StaticConfigurationTest
     private DiffTab DeletedDiff(string baseText, SyntaxHighlighter? syntax = null, string path = "/work/gone.txt")
     {
         var diff = new DiffTab(_fs.FileInfo.New(path), "main", () => DiffTab.SplitLines(baseText), syntax)
+        {
+            App = _app,
+            Width = 31,
+            Height = 7,
+        };
+        diff.BeginInit();
+        diff.EndInit();
+        diff.Layout();
+        diff.Refresh();
+        return diff;
+    }
+
+    // A file added in this branch: nothing on the left.
+    private DiffTab NewFileDiff(string text, string path = "/work/new.txt")
+    {
+        _fs.AddFile(path, new MockFileData(text));
+        var source = new EditorTab(_fs.FileInfo.New(path));
+        var diff = new DiffTab(source, "main", () => [])
         {
             App = _app,
             Width = 31,

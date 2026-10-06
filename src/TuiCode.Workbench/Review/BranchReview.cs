@@ -1,4 +1,5 @@
 using TuiCode.Abstractions;
+using TuiCode.Editor;
 
 namespace TuiCode.Workbench.Review;
 
@@ -24,6 +25,21 @@ public sealed record BranchReview(
 
     /// <summary>What the foot of the tab says about viewed files, e.g. <c>Viewed 4 of 12</c>; empty until they're known.</summary>
     public string ViewedLine => Viewed is null ? string.Empty : $"Viewed {Changes.Count(c => IsViewed(c.Path))} of {Changes.Count}";
+
+    /// <summary>
+    /// The places in <paramref name="files"/> of the files not yet viewed, starting after <paramref name="index"/>
+    /// and wrapping round to the ones before it (#398).
+    /// </summary>
+    public IEnumerable<int> UnviewedAfter(IReadOnlyList<GitChange> files, int index) =>
+        Enumerable.Range(1, Math.Max(files.Count - 1, 0))
+            .Select(step => (index + step) % files.Count)
+            .Where(at => !IsViewed(files[at].Path));
+
+    /// <summary>A review diff's place in the status bar, e.g. <c>File 3 of 7  •  Viewed</c> (#398).</summary>
+    public static string? SpotLabel(ReviewSpot? spot, BranchReview? review) =>
+        spot is null ? null
+        : review is not null && review.MergeBase == spot.Key && review.IsViewed(spot.Path) ? $"{spot.Label}  •  Viewed"
+        : spot.Label;
 
     /// <summary>The same review with <paramref name="path"/> marked viewed or not.</summary>
     public BranchReview WithViewed(string path, bool viewed) => this with

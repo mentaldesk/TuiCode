@@ -3,6 +3,7 @@ using TuiCode.Editor;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Workspace;
 
 namespace TuiCode.Workbench;
@@ -125,7 +126,7 @@ public sealed class Workbench : Window
         StatusBar.SetPosition(tab is null ? null : (tab.CursorRow, tab.CursorColumn));
         StatusBar.SetSelection(tab?.CaretCount ?? 1, tab?.CountSelection()?.Characters);
         StatusBar.SetDiffStatus(Editor.Group.ActiveDiffTab is { IsFocused: true } diff
-            ? string.Join("  •  ", new[] { diff.Review?.Label, diff.LineCounts, diff.ChangeStatus }.Where(part => !string.IsNullOrEmpty(part)))
+            ? string.Join("  •  ", new[] { BranchReview.SpotLabel(diff.Review, Sidebar.Review.Review), diff.LineCounts, diff.ChangeStatus }.Where(part => !string.IsNullOrEmpty(part)))
             : null);
     }
 

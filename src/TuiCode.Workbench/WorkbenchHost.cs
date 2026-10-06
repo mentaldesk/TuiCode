@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using MentalDesk.Tui.Shell;
 using Terminal.Gui.Drivers;
 using System.Reflection;
 using Terminal.Gui.Time;
@@ -26,6 +27,7 @@ using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 using TuiCode.Workbench.Themes;
 using TuiCode.Workbench.Workspace;
+using FocusBorder = MentalDesk.Tui.Focus.FocusBorder;
 
 namespace TuiCode.Workbench;
 
@@ -462,7 +464,7 @@ public sealed class WorkbenchHost : IDisposable
         bool FileOpen() => group.ActiveTab is not null;
         bool Reviewing() => review.Review is { PullRequest: not null };
 
-        _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
+        _commands.Register(CommandIds.Quit, "Quit", Quit);
         _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor, CommandScope.Global, EditorOpen);
         _commands.Register(CommandIds.SaveAll, "Save all", SaveAll);
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", CloseActiveEditor, CommandScope.Global,
@@ -501,7 +503,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment, CommandScope.Diff, Reviewing);
-        _commands.Register(CommandIds.ToggleViewed, "Toggle viewed", ToggleViewed, CommandScope.Review, () => review.CanToggleViewed);
+        // Global so that it reaches both the Review tab and a review diff (#398); disabled everywhere else, so Space still types.
+        _commands.Register(CommandIds.ToggleViewed, "Toggle viewed", ToggleViewed, CommandScope.Global, CanToggleViewed);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
@@ -1467,14 +1470,75 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (tab.DiskNow == DiskState.Changed)
         {
-            ConfirmOverwrite(tab, thenClose: true);
+            ConfirmOverwrite(tab, () => _workbench.Editor.Group.CloseEditor(tab));
             return;
         }
         tab.Save();
         _workbench.Editor.Group.CloseEditor(tab);
     }
 
-    private void ConfirmOverwrite(EditorTab tab, bool thenClose = false)
+    private void Quit()
+    {
+        if (_activeConfirm is not null) return;
+        var dirty = DirtyTabs();
+        if (dirty.Count == 0)
+        {
+            _app.RequestStop();
+            return;
+        }
+
+        var view = new ConfirmView("Unsaved changes", UnsavedOnQuit([.. dirty.Select(t => t.File.Name)]),
+            new ConfirmChoice("Save all", SaveAllAndQuit),
+            new ConfirmChoice("Don't save", () => _app.RequestStop()));
+        view.Cancelled += (_, _) => CloseConfirm(view);
+        ShowConfirm(view);
+    }
+
+    internal static string UnsavedOnQuit(IReadOnlyList<string> names)
+    {
+        const int listed = 4;
+        var shown = string.Join(", ", names.Take(listed));
+        if (names.Count > listed) shown += $" and {names.Count - listed} more";
+        return string.Join('\n',
+            names.Count == 1 ? "1 open file has unsaved changes:" : $"{names.Count} open files have unsaved changes:",
+            shown,
+            "Save them before quitting?");
+    }
+
+    private void SaveAllAndQuit()
+    {
+        EditorTab? conflict = null;
+        foreach (var tab in DirtyTabs())
+        {
+            if (tab.DiskNow == DiskState.Changed)
+            {
+                conflict ??= tab;
+                continue;
+            }
+            try
+            {
+                tab.Save();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _workbench.StatusBar.SetMessage(ex.Message);
+            }
+        }
+
+        if (conflict is not null)
+            ConfirmOverwrite(conflict, QuitIfAllSaved);
+        else
+            QuitIfAllSaved();
+    }
+
+    private void QuitIfAllSaved()
+    {
+        if (DirtyTabs().Count == 0) _app.RequestStop();
+    }
+
+    private List<EditorTab> DirtyTabs() => [.. _workbench.Editor.Group.Tabs.Where(t => t.IsDirty)];
+
+    private void ConfirmOverwrite(EditorTab tab, Action? afterOverwrite = null)
     {
         if (_activeConfirm is not null) return;
 
@@ -1490,7 +1554,7 @@ public sealed class WorkbenchHost : IDisposable
             new ConfirmChoice("Overwrite", () =>
             {
                 tab.Save();
-                if (thenClose) _workbench.Editor.Group.CloseEditor(tab);
+                afterOverwrite?.Invoke();
             }),
             new ConfirmChoice("Reload", () => _diskChanges.Reload(tab)));
         view.Cancelled += (_, _) => CloseConfirm(view);
@@ -2260,7 +2324,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (diff is not null)
             {
-                diff.Review = new ReviewSpot(review.MergeBase, index, count);
+                diff.Review = new ReviewSpot(review.MergeBase, index, count, change.Path);
                 diff.ShowThreads(review.ThreadsOn(change.Path));
                 OpenDrafts(review);
                 diff.ShowDrafts(Drafts.On(change.Path));
@@ -2513,21 +2577,81 @@ public sealed class WorkbenchHost : IDisposable
         view.FocusSummary();
     }
 
+    private bool CanToggleViewed() => _focus.Region switch
+    {
+        FocusRegion.Review => _workbench.Sidebar.Review.CanToggleViewed,
+        FocusRegion.Diff => ViewedSpot() is not null,
+        _ => false,
+    };
+
+    /// <summary>The active diff's place in a PR's review, when it's one whose file can be marked viewed (#398).</summary>
+    private ReviewSpot? ViewedSpot() =>
+        _workbench.Editor.Group.ActiveDiffTab is { Review: { } spot }
+        && _workbench.Sidebar.Review.Review is { PullRequest: not null, Viewed: not null } review
+        && review.MergeBase == spot.Key
+            ? spot
+            : null;
+
     /// <summary>
-    /// Toggle viewed (<c>tv</c>, #396): GitHub's Viewed mark on the file selected in the Review tab. The tab shows
-    /// the new mark only once GitHub has it.
+    /// Toggle viewed (<c>tv</c>, #396): GitHub's Viewed mark on the file selected in the Review tab, or on the
+    /// file a review diff shows (#398). The tab shows the new mark only once GitHub has it.
     /// </summary>
     private void ToggleViewed()
     {
         var tab = _workbench.Sidebar.Review;
-        if (tab.Review is not { PullRequest: { } pullRequest } review || tab.SelectedFile is not { } file) return;
-        var viewed = !review.IsViewed(file.Path);
-        var setting = Task.Run(() => _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, file.Path, viewed));
+        if (tab.Review is not { PullRequest: { } pullRequest } review) return;
+        var diff = _focus.Region == FocusRegion.Diff ? _workbench.Editor.Group.ActiveDiffTab : null;
+        var spot = diff is null ? null : ViewedSpot();
+        if ((spot?.Path ?? tab.SelectedFile?.Path) is not { } path) return;
+        var viewed = !review.IsViewed(path);
+        var setting = Task.Run(() => _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, path, viewed));
         WhenDone(setting, () =>
         {
-            if (setting.Result.Error is { } error) _workbench.StatusBar.SetMessage(error);
-            else tab.SetViewed(file.Path, viewed);
+            if (setting.Result.Error is { } error)
+            {
+                _workbench.StatusBar.SetMessage(error);
+                return;
+            }
+            tab.SetViewed(path, viewed);
+            if (viewed && diff is not null && spot is not null) OpenNextUnviewed(diff, spot);
         });
+    }
+
+    /// <summary>
+    /// After <c>tv</c> marks a review diff's file viewed, opens the next file the Review tab lists that isn't,
+    /// wrapping round, and closes the diff it leaves (#398).
+    /// </summary>
+    private void OpenNextUnviewed(DiffTab from, ReviewSpot spot)
+    {
+        var group = _workbench.Editor.Group;
+        var view = _workbench.Sidebar.Review;
+        if (view.Review is not { } review || review.MergeBase != spot.Key) return;
+
+        var files = view.ChangedFiles;
+        var unviewed = review.UnviewedAfter(files, spot.Index).ToList();
+        Open(0);
+
+        void Open(int next)
+        {
+            if (next >= unviewed.Count)
+            {
+                group.CloseDiff(from);
+                _workbench.StatusBar.SetMessage(unviewed.Count == 0 ? "All files viewed" : "No unviewed file has changes to show");
+                return;
+            }
+
+            var at = unviewed[next];
+            ShowReviewDiff(review, files[at], at, files.Count, diff =>
+            {
+                if (diff is null)
+                {
+                    Open(next + 1);
+                    return;
+                }
+                diff.FirstChange();
+                if (!ReferenceEquals(diff, from)) group.CloseDiff(from);
+            });
+        }
     }
 
     /// <summary>

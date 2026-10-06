@@ -7,8 +7,14 @@ namespace TuiCode.Tests;
 internal static class HostSteps
 {
     // Each step runs on its own main-loop iteration (so injected keys are processed in between);
-    // a Func<bool> step is polled each iteration until it returns true. Ctrl+Q is sent after the last step.
-    public static async Task Run(WorkbenchHost host, params Delegate[] steps)
+    // a Func<bool> step is polled each iteration until it returns true. The app is stopped after the last step,
+    // not with Ctrl+Q, which asks first over a dirty tab (#411).
+    public static Task Run(WorkbenchHost host, params Delegate[] steps) => Run(host, stop: true, steps);
+
+    // The steps themselves must quit the app; it times out otherwise.
+    public static Task RunUntilQuit(WorkbenchHost host, params Delegate[] steps) => Run(host, stop: false, steps);
+
+    private static async Task Run(WorkbenchHost host, bool stop, Delegate[] steps)
     {
         var queue = new Queue<Delegate>(steps);
         const int maxIterations = 500;
@@ -25,7 +31,7 @@ internal static class HostSteps
             if (queue.Count == 0 || ++iterations > maxIterations)
             {
                 host.App.Iteration -= OnIteration;
-                host.App.InjectKey(Key.Q.WithCtrl);
+                if (stop) host.App.RequestStop();
                 return;
             }
             var done = queue.Peek() switch

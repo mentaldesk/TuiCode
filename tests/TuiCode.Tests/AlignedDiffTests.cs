@@ -89,6 +89,62 @@ public class AlignedDiffTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Compute_shows_a_new_file_as_exactly_its_lines(bool finalNewline)
+    {
+        string[] lines = finalNewline ? ["a", "b", ""] : ["a", "b"];
+        var diff = AlignedDiff.Compute([], lines);
+
+        Assert.Equal([RightOnly(0), RightOnly(1)], diff.Rows);
+        Assert.Equal([0], diff.ChangeBlocks);
+        Assert.Equal((2, 0), (diff.AddedLines, diff.RemovedLines));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Compute_shows_a_deleted_file_as_exactly_its_lines(bool finalNewline)
+    {
+        string[] lines = finalNewline ? ["a", "b", ""] : ["a", "b"];
+        var diff = AlignedDiff.Compute(lines, []);
+
+        Assert.Equal([LeftOnly(0), LeftOnly(1)], diff.Rows);
+        Assert.Equal([0], diff.ChangeBlocks);
+        Assert.Equal((0, 2), (diff.AddedLines, diff.RemovedLines));
+    }
+
+    [Fact]
+    public void Compute_keeps_blank_lines_before_a_new_files_final_newline()
+    {
+        var diff = AlignedDiff.Compute([], ["a", "", ""]);
+
+        Assert.Equal([RightOnly(0), RightOnly(1)], diff.Rows);
+    }
+
+    [Fact]
+    public void Compute_shows_nothing_for_an_empty_new_or_deleted_file()
+    {
+        var added = AlignedDiff.Compute([], [""]);
+        var deleted = AlignedDiff.Compute([""], []);
+
+        Assert.Empty(added.Rows);
+        Assert.Empty(added.ChangeBlocks);
+        Assert.Equal((0, 0), (added.AddedLines, added.RemovedLines));
+        Assert.Empty(deleted.Rows);
+        Assert.Equal((0, 0), (deleted.AddedLines, deleted.RemovedLines));
+    }
+
+    [Fact]
+    public void Compute_keeps_the_final_empty_row_of_a_modified_file()
+    {
+        var diff = AlignedDiff.Compute(["a", ""], ["b", ""]);
+
+        Assert.Equal([Mod(0, 0), Both(1, 1)], diff.Rows);
+        Assert.Equal((1, 1), (diff.AddedLines, diff.RemovedLines));
+    }
+
+    [Theory]
     [InlineData(new[] { "a", "c" }, new[] { "a", "x", "y", "c" }, 2, 0)]
     [InlineData(new[] { "a", "b", "c", "d" }, new[] { "a", "d" }, 0, 2)]
     [InlineData(new[] { "a", "old", "z", "q" }, new[] { "a", "new1", "new2", "z" }, 2, 2)]
