@@ -31,6 +31,21 @@ public class StatusBarPartTests
     }
 
     [Fact]
+    public void SetHelpKey_replaces_the_default_message_but_not_another_one()
+    {
+        using var bar = new StatusBarPart();
+        bar.SetHelpKey("F3");
+        Assert.Equal("TuiCode  •  F3 help", bar.DisplayedText);
+
+        bar.SetMessage("/work/a.txt");
+        bar.SetHelpKey(null);
+        Assert.Equal("/work/a.txt", bar.DisplayedText);
+
+        bar.ClearMessage("/work/a.txt");
+        Assert.Equal("TuiCode", bar.DisplayedText);
+    }
+
+    [Fact]
     public void ClearMessage_reverts_to_the_default_only_while_that_message_shows()
     {
         using var bar = new StatusBarPart();
@@ -40,7 +55,7 @@ public class StatusBarPartTests
         Assert.Equal("Cut: /work/a.txt", bar.DisplayedText);
 
         bar.ClearMessage("Cut: /work/a.txt");
-        Assert.Equal(StatusBarPart.DefaultMessage, bar.DisplayedText);
+        Assert.Equal(bar.DefaultMessage, bar.DisplayedText);
     }
 
     [Fact]

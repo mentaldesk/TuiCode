@@ -77,13 +77,15 @@ public sealed class ReviewView : View
     /// <summary>What the foot says about viewed files (#396), e.g. <c>Viewed 2 of 5</c>; empty until they've loaded.</summary>
     public string ViewedText => _viewed.Text;
 
-    /// <summary>Whether <c>tv</c> has a file to mark: one is selected, and the viewed files have loaded (#396).</summary>
-    public bool CanToggleViewed => Review is { Viewed: not null } && _files.SelectedObject is ReviewFileNode;
+    /// <summary>Whether <c>tv</c> has something to mark: a file or folder is selected, and the viewed files have loaded (#396, #399).</summary>
+    public bool CanToggleViewed => Review is { Viewed: not null } && _files.SelectedObject is ReviewFileNode or ReviewFolderNode;
 
     /// <summary>Where the marks are kept on a branch with no PR (#400); null until a folder is open.</summary>
     public LocalViewedFiles? LocalViewed { get; private set; }
 
     public GitChange? SelectedFile => (_files.SelectedObject as ReviewFileNode)?.Change;
+
+    public string? SelectedFolder => (_files.SelectedObject as ReviewFolderNode)?.Path;
 
     public bool ListHasFocus => _files.HasFocus;
 
@@ -144,7 +146,7 @@ public sealed class ReviewView : View
         _files.DrawLine += (_, e) =>
         {
             if (e.Model is ReviewFileNode file) DrawFile(e, file);
-            else if (e.Model is ReviewFolderNode && _icons?.ForDirectory(_files.IsExpanded(e.Model)) is { } folder) IconDrawing.Prepend(e, folder);
+            else if (e.Model is ReviewFolderNode folder) DrawFolder(e, folder);
         };
         if (icons is not null) icons.Changed += (_, _) => _files.SetNeedsDraw();
         Add(_title, _header, _totals, _checks, _threadCounts, _hint, _overview, _rule, _files, _viewed, _draftReview);
@@ -227,6 +229,14 @@ public sealed class ReviewView : View
         foreach (var icon in icons.Reverse()) IconDrawing.Prepend(e, icon);
     }
 
+    private void DrawFolder(DrawTreeViewLineEventArgs<ReviewNode> e, ReviewFolderNode folder)
+    {
+        if (folder.Viewed && e.Cells is { } cells)
+            for (var i = Math.Max(e.IndexOfModelText, 0); i < cells.Count; i++)
+                cells[i] = cells[i] with { Attribute = Styled(cells[i].Attribute ?? default, TextStyle.Faint) };
+        if (_icons?.ForDirectory(_files.IsExpanded(folder)) is { } icon) IconDrawing.Prepend(e, icon);
+    }
+
     // Accent's Normal foreground is the plain text colour in most themes; HotNormal's is the one that stands out.
     private static Attribute Accented(Attribute row) =>
         SchemeManager.TryGetScheme("Accent", out var accent) ? row with { Foreground = accent.HotNormal.Foreground } : row;
@@ -307,11 +317,11 @@ public sealed class ReviewView : View
         SetNeedsDraw();
     }
 
-    /// <summary>Shows <paramref name="path"/> marked viewed, or not, once GitHub (or, without a PR, <see cref="LocalViewed"/>) has the mark (#396).</summary>
-    public void SetViewed(string path, bool viewed)
+    /// <summary>Shows <paramref name="paths"/> marked viewed, or not, once GitHub (or, without a PR, <see cref="LocalViewed"/>) has the marks (#396).</summary>
+    public void SetViewed(IEnumerable<string> paths, bool viewed)
     {
         if (Review is not { Viewed: not null } review) return;
-        Show(GitResult<BranchReview?>.Success(review.WithViewed(path, viewed)));
+        Show(GitResult<BranchReview?>.Success(review.WithViewed(paths, viewed)));
     }
 
     /// <summary>Focuses the file list, or the tab itself while there's no list to show.</summary>
@@ -436,6 +446,7 @@ public sealed class ReviewView : View
     private void Show(GitResult<BranchReview?> result, string notARepo = "Not a git repository", GitHubReviewThread? selectedThread = null)
     {
         var selected = (_files.SelectedObject as ReviewFileNode)?.Change.Path;
+        var selectedFolder = SelectedFolder;
         selectedThread ??= SelectedThread;
         Review = result.Value;
         if (result.Value is null) _hintText = string.Empty;
@@ -447,7 +458,7 @@ public sealed class ReviewView : View
             _totalsText = review.TotalsLine;
             _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads, review.LineCounts, review.Viewed));
             _files.ExpandAll();
-            _files.SelectedObject = FindThread(selectedThread) ?? (ReviewNode?)FindFile(selected) ?? FirstFile();
+            _files.SelectedObject = FindThread(selectedThread) ?? (ReviewNode?)FindFile(selected) ?? FindFolder(selectedFolder) ?? (ReviewNode?)FirstFile();
             _files.Visible = true;
         }
         else
@@ -528,6 +539,9 @@ public sealed class ReviewView : View
             .SelectMany(f => f.Children.OfType<ReviewOutdatedNode>())
             .SelectMany(o => o.Children.OfType<ReviewThreadNode>())
             .FirstOrDefault(t => t.Thread.Equals(thread));
+
+    private ReviewFolderNode? FindFolder(string? path) =>
+        path is null ? null : (_files.Objects ?? []).OfType<ReviewFolderNode>().FirstOrDefault(f => f.Path == path);
 
     private ReviewFileNode? FindFile(string? path) =>
         path is null ? null : AllFiles().FirstOrDefault(f => f.Change.Path == path);

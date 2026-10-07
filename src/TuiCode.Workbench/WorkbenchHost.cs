@@ -613,38 +613,48 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         _menu.Refresh();
-        var help = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ShowHelp);
-        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
-        _workbench.DiffKeysHint = DiffKeys("revert");
-        _workbench.DeletedDiffKeysHint = DiffKeys("restore");
-        _workbench.PastChangeKeysHint = DiffKeys(null);
-
-        string DiffKeys(string? revert) => string.Join("  ", new[]
-        {
-            KeyHint(CommandIds.NextChange, "next"),
-            KeyHint(CommandIds.PreviousChange, "prev"),
-            revert is null ? null : KeyHint(CommandIds.RevertChange, revert),
-            revert is null ? null : KeyHint(CommandIds.GoToChangeLine, "go to line"),
-            KeyPairHint(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "page"),
-        }.OfType<string>());
+        var help = KeyOf(CommandIds.ShowHelp);
+        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help} for help");
+        _workbench.StatusBar.SetHelpKey(help);
     }
 
-    /// <summary><c>Shift+←/→ page</c>: both keys, sharing their modifiers when they have the same ones.</summary>
-    private string? KeyPairHint(string backId, string forwardId, string label)
+    /// <summary>The focused diff's keys for F1, from the live bindings, leaving out what's unbound or can't run there.</summary>
+    private HelpColumn? DiffHelp()
     {
-        var back = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == backId)?.Display;
-        var forward = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == forwardId)?.Display;
-        if (back is null || forward is null) return (back ?? forward) is { } one ? $"{one} {label}" : null;
+        if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return null;
+        HelpRow[] rows =
+        [
+            .. Row(CommandIds.NextChange, "Next change"),
+            .. Row(CommandIds.PreviousChange, "Previous change"),
+            .. Row(CommandIds.RevertChange, diff.IsDeleted ? "Restore file" : "Revert change"),
+            .. Row(CommandIds.GoToChangeLine, "Go to this line"),
+            .. PairRow(CommandIds.ScrollDiffLeft, CommandIds.ScrollDiffRight, "Scroll sideways"),
+            .. PairRow(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "Page sideways"),
+        ];
+        return rows.Length == 0 ? null : new HelpColumn("Diff", rows);
+
+        IEnumerable<HelpRow> Row(string commandId, string description) =>
+            _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
+
+        IEnumerable<HelpRow> PairRow(string backId, string forwardId, string description) =>
+            KeyPair(backId, forwardId) is { } keys ? [new HelpRow(keys, description)] : [];
+    }
+
+    /// <summary><c>Shift+← →</c>: both keys, sharing their modifiers when they have the same ones.</summary>
+    private string? KeyPair(string backId, string forwardId)
+    {
+        var back = KeyOf(backId);
+        var forward = KeyOf(forwardId);
+        if (back is null || forward is null) return back ?? forward;
         var modifiers = Modifiers(back);
-        var keys = modifiers == Modifiers(forward) ? $"{back}/{forward[modifiers.Length..]}" : $"{back}/{forward}";
-        return $"{keys} {label}";
+        return modifiers == Modifiers(forward) ? $"{back} {forward[modifiers.Length..]}" : $"{back} {forward}";
 
         static string Modifiers(string display) =>
             display.Length < 2 ? "" : display[..(display.LastIndexOf('+', display.Length - 2) + 1)];
     }
 
-    private string? KeyHint(string commandId, string label) =>
-        _keybindings.Bindings.FirstOrDefault(b => b.CommandId == commandId) is { } binding ? $"{binding.Display} {label}" : null;
+    private string? KeyOf(string commandId) =>
+        _keybindings.Bindings.FirstOrDefault(b => b.CommandId == commandId)?.Display;
 
     /// <summary>
     /// Take the picker's edited binding set, compute the diff against defaults, persist as the
@@ -1684,7 +1694,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeHelp is not null) return;
 
-        var view = new HelpView();
+        var view = new HelpView(FocusedScope() == CommandScope.Diff ? DiffHelp() : null, _workbench.Frame.Width);
         view.Closed += (_, _) => CloseHelp(view);
         _activeHelp = view;
         _workbench.Add(view);
@@ -2592,13 +2602,18 @@ public sealed class WorkbenchHost : IDisposable
         var tab = _workbench.Sidebar.Review;
         if (tab.Review is not { Viewed: not null } review) return;
         var diff = _focus.Region == FocusRegion.Diff ? _workbench.Editor.Group.ActiveDiffTab : null;
+        if (diff is null && tab.SelectedFolder is { } folder)
+        {
+            ToggleFolderViewed(review, folder);
+            return;
+        }
         var spot = diff is null ? null : ViewedSpot();
         if ((spot?.Path ?? tab.SelectedFile?.Path) is not { } path) return;
         var viewed = !review.IsViewed(path);
 
         if (review.PullRequest is not { } pullRequest)
         {
-            tab.LocalViewed?.Set(review, path, viewed);
+            tab.LocalViewed?.Set(review, [path], viewed);
             Marked();
             return;
         }
@@ -2616,9 +2631,37 @@ public sealed class WorkbenchHost : IDisposable
 
         void Marked()
         {
-            tab.SetViewed(path, viewed);
+            tab.SetViewed([path], viewed);
             if (viewed && diff is not null && spot is not null) OpenNextUnviewed(diff, spot);
         }
+    }
+
+    /// <summary>
+    /// Toggle viewed on a folder (#399): marks every file under it viewed, or unmarks them all when they already are.
+    /// If GitHub refuses any, the tab reloads to show what it holds.
+    /// </summary>
+    private void ToggleFolderViewed(BranchReview review, string folder)
+    {
+        var tab = _workbench.Sidebar.Review;
+        var paths = review.FilesUnder(folder);
+        var viewed = !paths.All(review.IsViewed);
+        var targets = viewed ? [.. paths.Where(p => !review.IsViewed(p))] : paths;
+        if (review.PullRequest is not { } pullRequest)
+        {
+            tab.LocalViewed?.Set(review, targets, viewed);
+            tab.SetViewed(targets, viewed);
+            return;
+        }
+        var results = new GitHubResult<bool>[targets.Count];
+        var setting = Parallel.ForEachAsync(Enumerable.Range(0, targets.Count), new ParallelOptions { MaxDegreeOfParallelism = 4 },
+            async (i, ct) => results[i] = await _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, targets[i], viewed, ct));
+        WhenDone(setting, () =>
+        {
+            tab.SetViewed(targets.Where((_, i) => results[i].Error is null), viewed);
+            if (results.Select(r => r.Error).FirstOrDefault(e => e is not null) is not { } error) return;
+            _workbench.StatusBar.SetMessage(error);
+            _ = tab.Refresh();
+        });
     }
 
     /// <summary>

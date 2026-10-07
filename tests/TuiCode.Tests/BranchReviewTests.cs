@@ -125,6 +125,43 @@ public class BranchReviewTests
         Assert.Equal("Viewed 1 of 3", loaded.ViewedLine);
     }
 
+    [Fact]
+    public void FilesUnder_takes_a_folders_subfolders_but_not_a_sibling_sharing_its_name()
+    {
+        var review = Review() with
+        {
+            Changes =
+            [
+                new GitChange(GitChangeKind.Modified, "src/a.cs"),
+                new GitChange(GitChangeKind.Modified, "src/deep/b.cs"),
+                new GitChange(GitChangeKind.Modified, "srcgen/c.cs"),
+                new GitChange(GitChangeKind.Modified, "d.cs"),
+            ],
+        };
+
+        Assert.Equal(["src/a.cs", "src/deep/b.cs"], review.FilesUnder("src"));
+        Assert.Equal(["src/deep/b.cs"], review.FilesUnder("src/deep"));
+    }
+
+    [Fact]
+    public void A_folder_is_viewed_only_while_every_file_under_it_is()
+    {
+        GitChange[] changes =
+        [
+            new(GitChangeKind.Modified, "src/a.cs"),
+            new(GitChangeKind.Modified, "src/deep/b.cs"),
+            new(GitChangeKind.Modified, "src/deep/c.cs"),
+        ];
+        bool[] Folders(params (string Path, GitHubViewedState State)[] marks) =>
+            [.. ReviewTree.Build(changes, viewed: marks.ToDictionary(m => m.Path, m => m.State)).OfType<ReviewFolderNode>().Select(f => f.Viewed)];
+
+        var viewed = GitHubViewedState.Viewed;
+        Assert.Equal([true, true], Folders(("src/a.cs", viewed), ("src/deep/b.cs", viewed), ("src/deep/c.cs", viewed)));
+        Assert.Equal([false, true], Folders(("src/deep/b.cs", viewed), ("src/deep/c.cs", viewed)));
+        Assert.Equal([false, false], Folders(("src/a.cs", viewed), ("src/deep/b.cs", viewed), ("src/deep/c.cs", GitHubViewedState.Dismissed)));
+        Assert.Equal([false, false], Folders());
+    }
+
     [Theory]
     [InlineData(1, new[] { "c" }, new[] { 3, 4, 0 })]
     [InlineData(3, new[] { "c" }, new[] { 4, 0, 1 })]

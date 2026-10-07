@@ -184,8 +184,8 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Esc),
             () => Dialog(workbench) is null);
 
-        Assert.Equal(StatusBarPart.DefaultMessage, message);
-        Assert.Equal(StatusBarPart.DefaultMessage, workbench.StatusBar.DisplayedText);
+        Assert.Equal(workbench.StatusBar.DefaultMessage, message);
+        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
     }
 
     [Fact]

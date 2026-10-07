@@ -41,14 +41,20 @@ public sealed record BranchReview(
         : review is not null && review.MergeBase == spot.Key && review.IsViewed(spot.Path) ? $"{spot.Label}  •  Viewed"
         : spot.Label;
 
+    /// <summary>The changed files under <paramref name="folder"/>, its subfolders' included (#399).</summary>
+    public IReadOnlyList<string> FilesUnder(string folder) =>
+        [.. Changes.Select(c => c.Path).Where(path => path.StartsWith($"{folder}/", StringComparison.Ordinal))];
+
     /// <summary>The same review with <paramref name="path"/> marked viewed or not.</summary>
-    public BranchReview WithViewed(string path, bool viewed) => this with
+    public BranchReview WithViewed(string path, bool viewed) => WithViewed([path], viewed);
+
+    /// <summary>The same review with each of <paramref name="paths"/> marked viewed or not.</summary>
+    public BranchReview WithViewed(IEnumerable<string> paths, bool viewed)
     {
-        Viewed = new Dictionary<string, GitHubViewedState>(Viewed ?? new Dictionary<string, GitHubViewedState>(), StringComparer.Ordinal)
-        {
-            [path] = viewed ? GitHubViewedState.Viewed : GitHubViewedState.Unviewed,
-        },
-    };
+        var marks = new Dictionary<string, GitHubViewedState>(Viewed ?? new Dictionary<string, GitHubViewedState>(), StringComparer.Ordinal);
+        foreach (var path in paths) marks[path] = viewed ? GitHubViewedState.Viewed : GitHubViewedState.Unviewed;
+        return this with { Viewed = marks };
+    }
 
     /// <summary>The threads on one file, in the order GitHub listed them.</summary>
     public IReadOnlyList<GitHubReviewThread> ThreadsOn(string path) =>

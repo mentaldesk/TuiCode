@@ -29,12 +29,16 @@ public sealed class LocalViewedFiles(IFileSystem fs, string folder)
         return states;
     }
 
-    public void Set(BranchReview review, string path, bool viewed)
+    public void Set(BranchReview review, IEnumerable<string> paths, bool viewed)
     {
         var marks = Marks(review);
-        if (viewed) marks[path] = Hash(review.RepoRoot, path);
-        else if (!marks.Remove(path)) return;
-        Write(review, marks);
+        var changed = false;
+        foreach (var path in paths)
+        {
+            if (viewed) marks[path] = Hash(review.RepoRoot, path);
+            changed |= viewed || marks.Remove(path);
+        }
+        if (changed) Write(review, marks);
     }
 
     private Dictionary<string, string> Marks(BranchReview review)
