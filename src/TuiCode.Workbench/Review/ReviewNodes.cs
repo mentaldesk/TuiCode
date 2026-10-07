@@ -8,9 +8,12 @@ public abstract class ReviewNode
     public List<ReviewNode> Children { get; } = [];
 }
 
-public sealed class ReviewFolderNode(string path) : ReviewNode
+public sealed class ReviewFolderNode(string path, bool viewed = false) : ReviewNode
 {
     public string Path { get; } = path;
+
+    /// <summary>Whether every file under the folder, in its subfolders too, is viewed (#399).</summary>
+    public bool Viewed { get; } = viewed;
     public override string ToString() => Path;
 }
 
@@ -151,7 +154,7 @@ internal static class ReviewTree
             .OrderBy(g => g.Key, StringComparer.Ordinal)
             .Select(g =>
             {
-                var folder = new ReviewFolderNode(g.Key);
+                var folder = new ReviewFolderNode(g.Key, files.Where(f => f.Change.Path.StartsWith($"{g.Key}/", StringComparison.Ordinal)).All(f => f.Viewed));
                 folder.Children.AddRange(g.OrderBy(f => f.Name, StringComparer.Ordinal));
                 return (ReviewNode)folder;
             });

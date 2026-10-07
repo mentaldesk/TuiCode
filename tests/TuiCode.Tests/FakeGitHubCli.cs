@@ -113,13 +113,20 @@ internal sealed class FakeGitHubCli : IGitHubCli
     /// <summary>The marks <see cref="SetViewedAsync"/> was asked to make, in order.</summary>
     public List<(string PullRequestId, string Path, bool Viewed)> ViewedChanges { get; } = [];
 
+    /// <summary>Paths <see cref="SetViewedAsync"/> refuses with <see cref="ViewedError"/>; every path while this is empty.</summary>
+    public HashSet<string> ViewedRefused { get; } = [];
+
     public Task<GitHubResult<bool>> SetViewedAsync(
         string repoRoot, string pullRequestId, string path, bool viewed, CancellationToken cancellationToken = default)
     {
-        ViewedChanges.Add((pullRequestId, path, viewed));
-        if (ViewedError is { } error) return Task.FromResult(GitHubResult<bool>.Failure(error));
-        ViewedFiles[path] = viewed ? GitHubViewedState.Viewed : GitHubViewedState.Unviewed;
-        return Task.FromResult(GitHubResult<bool>.Success(true));
+        lock (ViewedChanges)
+        {
+            ViewedChanges.Add((pullRequestId, path, viewed));
+            if (ViewedError is { } error && (ViewedRefused.Count == 0 || ViewedRefused.Contains(path)))
+                return Task.FromResult(GitHubResult<bool>.Failure(error));
+            ViewedFiles[path] = viewed ? GitHubViewedState.Viewed : GitHubViewedState.Unviewed;
+            return Task.FromResult(GitHubResult<bool>.Success(true));
+        }
     }
 
     public Task<GitHubResult<bool>> CheckoutPullRequestAsync(string worktreePath, int number, CancellationToken cancellationToken = default)

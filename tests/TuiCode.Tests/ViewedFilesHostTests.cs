@@ -131,28 +131,102 @@ public class ViewedFilesHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Space_on_a_folder_marks_nothing_and_leaves_it_open()
+    public async Task Space_on_a_folder_marks_the_files_under_it_not_yet_viewed()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        var files = workbench.Sidebar.Review.Files;
+        var review = workbench.Sidebar.Review;
 
         await InReviewList(host, workbench, commands);
+        await OnFolder(host, review, "src");
         await HostSteps.Run(host,
-            () => host.App.InjectKey(Key.CursorUp),
-            () => files.SelectedObject is ReviewFolderNode,
             () => host.App.InjectKey(Key.Space),
-            () => { });
+            () => review.ViewedText == "Viewed 2 of 2");
 
-        Assert.True(files.IsExpanded(files.SelectedObject!), $"{files.SelectedObject}");
-        Assert.Empty(_gitHub.ViewedChanges);
-        Assert.Equal("Viewed 1 of 2", workbench.Sidebar.Review.ViewedText);
+        Assert.Equal(("PR_kw396", "src/a.txt", true), _gitHub.ViewedChanges.Single());
+        Assert.Equal(["a.txt  ✓", "b.txt  ✓"], Rows(workbench));
+        Assert.True(Assert.IsType<ReviewFolderNode>(review.Files.SelectedObject).Viewed);
+        Assert.True(review.Files.IsExpanded(review.Files.SelectedObject!));
+    }
+
+    [Fact]
+    public async Task Space_on_a_folder_with_none_viewed_marks_them_all_and_again_unmarks_them_all()
+    {
+        _gitHub.ViewedFiles = [];
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var review = workbench.Sidebar.Review;
+
+        await InReviewList(host, workbench, commands);
+        await OnFolder(host, review, "src");
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Space),
+            () => review.ViewedText == "Viewed 2 of 2");
+
+        Assert.Equal(["src/a.txt", "src/b.txt"], _gitHub.ViewedChanges.Where(c => c.Viewed).Select(c => c.Path).Order());
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Space),
+            () => review.ViewedText == "Viewed 0 of 2");
+
+        Assert.Equal(["src/a.txt", "src/b.txt"], _gitHub.ViewedChanges.Where(c => !c.Viewed).Select(c => c.Path).Order());
+        Assert.Equal(["a.txt", "b.txt"], Rows(workbench));
+        Assert.False(Assert.IsType<ReviewFolderNode>(review.Files.SelectedObject).Viewed);
+    }
+
+    [Fact]
+    public async Task Space_on_a_folder_marks_the_files_in_its_subfolders_too()
+    {
+        _fs.AddFile("/work/src/deep/c.txt", new MockFileData("charlie\n"));
+        _git.Changes = [.. _git.Changes, new GitChange(GitChangeKind.Modified, "src/deep/c.txt")];
+        _gitHub.ViewedFiles = new() { ["src/a.txt"] = GitHubViewedState.Viewed, ["src/b.txt"] = GitHubViewedState.Viewed };
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var review = workbench.Sidebar.Review;
+
+        await InReviewList(host, workbench, commands);
+        await OnFolder(host, review, "src");
+        Assert.False(Assert.IsType<ReviewFolderNode>(review.Files.SelectedObject).Viewed);
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Space),
+            () => review.ViewedText == "Viewed 3 of 3");
+
+        Assert.Equal(("PR_kw396", "src/deep/c.txt", true), _gitHub.ViewedChanges.Single());
+        Assert.All(review.Files.Objects.OfType<ReviewFolderNode>(), f => Assert.True(f.Viewed, f.Path));
+    }
+
+    [Fact]
+    public async Task A_folder_GitHub_partly_refuses_says_why_and_shows_what_GitHub_holds()
+    {
+        _gitHub.ViewedFiles = [];
+        _gitHub.ViewedError = "error connecting to api.github.com";
+        _gitHub.ViewedRefused.Add("src/b.txt");
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var review = workbench.Sidebar.Review;
+
+        await InReviewList(host, workbench, commands);
+        await OnFolder(host, review, "src");
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Space),
+            () => workbench.StatusBar.DisplayedText.StartsWith(_gitHub.ViewedError, StringComparison.Ordinal)
+                && review.ViewedText == "Viewed 1 of 2");
+
+        Assert.Equal(2, _gitHub.ViewedChanges.Count);
+        Assert.Equal(["a.txt  ✓", "b.txt"], Rows(workbench));
+        Assert.False(review.Files.Objects.OfType<ReviewFolderNode>().Single().Viewed);
     }
 
     private static Task InReviewList(WorkbenchHost host, Workbench.Workbench workbench, CommandService commands) =>
         HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.FocusReview),
             () => workbench.Sidebar.Review.ListHasFocus && workbench.Sidebar.Review.ViewedText.Length > 0);
+
+    private static Task OnFolder(WorkbenchHost host, ReviewView review, string path) =>
+        HostSteps.Run(host,
+            () => { review.Files.SelectedObject = review.Files.Objects.OfType<ReviewFolderNode>().Single(f => f.Path == path); },
+            () => review.SelectedFolder == path);
 
     private static string[] Rows(Workbench.Workbench workbench) =>
         [.. workbench.Sidebar.Review.Files.Objects.SelectMany(n => n.Children).OfType<ReviewFileNode>().Select(f => ReviewRow.Display(f))];
