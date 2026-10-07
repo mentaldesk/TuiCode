@@ -1046,6 +1046,29 @@ public class CompareToSavedHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task F1_in_a_diffs_find_bar_lists_the_find_bars_keys_and_the_status_shows_no_keys()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        HelpView? help = null;
+        var status = "";
+
+        await HostSteps.Run(host,
+            () => OpenThreeChanges(workbench, commands),
+            () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: true },
+            () => host.App.InjectKey(Key.F.WithCtrl),
+            () => { foreach (var c in "line") host.App.InjectKey(new Key(c)); },
+            () => workbench.Editor.Group.ActiveDiffTab!.CurrentMatch is not null,
+            () => { status = workbench.StatusBar.DisplayedText; host.App.InjectKey(Key.F1); },
+            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.Equal("Find bar", help!.Place!.Title);
+        Assert.Equal(["Enter", "Shift+Enter", "Esc"], help.Place.Rows.Select(row => row.Key));
+        Assert.DoesNotContain("Enter", status);
+    }
+
+    [Fact]
     public async Task F1_with_a_diff_showing_but_the_sidebar_focused_shows_everywhere_alone()
     {
         using var workbench = BuildWorkbench();

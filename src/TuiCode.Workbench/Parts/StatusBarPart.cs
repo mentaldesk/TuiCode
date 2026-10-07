@@ -8,7 +8,6 @@ public sealed class StatusBarPart : View
     private string _region = string.Empty;
     private string _message;
     private string? _chord;
-    private string? _hint;
     private string? _grammar;
     private string? _diff;
     private string? _wrap;
@@ -81,16 +80,6 @@ public sealed class StatusBarPart : View
     public void ClearMessage(string message)
     {
         if (_message == message) SetMessage(DefaultMessage);
-    }
-
-    /// <summary>
-    /// Show a transient key hint (e.g. find's "Enter next match") in place of the message until cleared
-    /// with null, at which point the message shows again. An in-flight chord still takes precedence.
-    /// </summary>
-    public void SetHint(string? hint)
-    {
-        _hint = hint;
-        UpdateLabel();
     }
 
     /// <summary>Where the focused diff tab is, shown after the message; null hides it.</summary>
@@ -170,5 +159,5 @@ public sealed class StatusBarPart : View
     private void UpdateLabel() =>
         _label.Text = _chord is not null
             ? $"{_chord}…"
-            : string.Join("  •  ", new[] { _hint ?? _message, _diff, _grammar, _mode, _wrap }.Where(part => part is not null));
+            : string.Join("  •  ", new[] { _message, _diff, _grammar, _mode, _wrap }.Where(part => part is not null));
 }
