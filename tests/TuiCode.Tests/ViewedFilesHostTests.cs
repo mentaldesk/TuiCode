@@ -112,22 +112,53 @@ public class ViewedFilesHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Space_does_nothing_on_a_branch_with_no_PR()
+    public async Task On_a_branch_with_no_PR_space_marks_the_file_locally_and_it_stays_marked_after_restarting()
+    {
+        _gitHub.PullRequest = null;
+        using (var workbench = BuildWorkbench())
+        using (var host = BuildHost(workbench, out var commands))
+        {
+            await InReviewList(host, workbench, commands);
+            Assert.Equal("Viewed 0 of 2", workbench.Sidebar.Review.ViewedText);
+
+            await HostSteps.Run(host,
+                () => host.App.InjectKey(Key.Space),
+                () => workbench.Sidebar.Review.ViewedText == "Viewed 1 of 2");
+            Assert.Equal(["a.txt  ✓", "b.txt"], Rows(workbench));
+        }
+
+        Assert.Empty(_gitHub.ViewedChanges);
+        using var reopened = BuildWorkbench();
+        using var again = BuildHost(reopened, out var reopenedCommands);
+        await InReviewList(again, reopened, reopenedCommands);
+
+        Assert.Equal("Viewed 1 of 2", reopened.Sidebar.Review.ViewedText);
+        Assert.Equal(["a.txt  ✓", "b.txt"], Rows(reopened));
+    }
+
+    [Fact]
+    public async Task On_a_branch_with_no_PR_editing_a_viewed_file_shows_it_changed_until_its_marked_again()
     {
         _gitHub.PullRequest = null;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var review = workbench.Sidebar.Review;
 
+        await InReviewList(host, workbench, commands);
         await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Space),
+            () => review.ViewedText == "Viewed 1 of 2",
+            () => _fs.File.WriteAllText("/work/src/a.txt", "alpha\nedited\n"),
             () => commands.TryExecute(CommandIds.FocusReview),
-            () => review.ListHasFocus && review.HeaderText.EndsWith("(no PR)", StringComparison.Ordinal),
-            () => host.App.InjectKey(Key.Space));
+            () => review.ViewedText == "Viewed 0 of 2");
 
-        Assert.Empty(_gitHub.ViewedChanges);
-        Assert.Equal("", review.ViewedText);
-        Assert.False(commands.IsEnabled(CommandIds.ToggleViewed));
-        Assert.Equal(["a.txt", "b.txt"], Rows(workbench));
+        Assert.Equal(["a.txt  changed", "b.txt"], Rows(workbench));
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Space),
+            () => review.ViewedText == "Viewed 1 of 2");
+
+        Assert.Equal(["a.txt  ✓", "b.txt"], Rows(workbench));
     }
 
     [Fact]
@@ -194,6 +225,29 @@ public class ViewedFilesHostTests : StaticConfigurationTest
 
         Assert.Equal(("PR_kw396", "src/deep/c.txt", true), _gitHub.ViewedChanges.Single());
         Assert.All(review.Files.Objects.OfType<ReviewFolderNode>(), f => Assert.True(f.Viewed, f.Path));
+    }
+
+    [Fact]
+    public async Task On_a_branch_with_no_PR_space_on_a_folder_marks_its_files_locally()
+    {
+        _gitHub.PullRequest = null;
+        using (var workbench = BuildWorkbench())
+        using (var host = BuildHost(workbench, out var commands))
+        {
+            var review = workbench.Sidebar.Review;
+            await InReviewList(host, workbench, commands);
+            await OnFolder(host, review, "src");
+            await HostSteps.Run(host,
+                () => host.App.InjectKey(Key.Space),
+                () => review.ViewedText == "Viewed 2 of 2");
+        }
+
+        Assert.Empty(_gitHub.ViewedChanges);
+        using var reopened = BuildWorkbench();
+        using var again = BuildHost(reopened, out var reopenedCommands);
+        await InReviewList(again, reopened, reopenedCommands);
+
+        Assert.Equal("Viewed 2 of 2", reopened.Sidebar.Review.ViewedText);
     }
 
     [Fact]

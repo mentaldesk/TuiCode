@@ -448,13 +448,12 @@ public class ReviewRowDrawingTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task A_branch_without_a_PR_has_no_viewed_line()
+    public async Task A_branch_without_a_PR_counts_its_own_viewed_files()
     {
         _gitHub.PullRequest = null;
         using var view = await Review();
 
-        Assert.Equal("", view.ViewedText);
-        Assert.DoesNotContain(Render(view), row => row.Contains("Viewed", StringComparison.Ordinal));
+        Assert.Equal("Viewed 0 of 2", Render(view)[^1].TrimEnd());
     }
 
     [Fact]

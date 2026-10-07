@@ -74,11 +74,14 @@ public sealed class ReviewView : View
     /// <summary>What the foot says about the drafted line comments (#188); empty while there are none.</summary>
     public string DraftReviewText => _draftReview.Text;
 
-    /// <summary>What the foot says about viewed files (#396), e.g. <c>Viewed 2 of 5</c>; empty without a PR.</summary>
+    /// <summary>What the foot says about viewed files (#396), e.g. <c>Viewed 2 of 5</c>; empty until they've loaded.</summary>
     public string ViewedText => _viewed.Text;
 
-    /// <summary>Whether <c>tv</c> has something to mark: a file or folder is selected, on a PR whose viewed files have loaded (#396, #399).</summary>
-    public bool CanToggleViewed => Review is { PullRequest: not null, Viewed: not null } && _files.SelectedObject is ReviewFileNode or ReviewFolderNode;
+    /// <summary>Whether <c>tv</c> has something to mark: a file or folder is selected, and the viewed files have loaded (#396, #399).</summary>
+    public bool CanToggleViewed => Review is { Viewed: not null } && _files.SelectedObject is ReviewFileNode or ReviewFolderNode;
+
+    /// <summary>Where the marks are kept on a branch with no PR (#400); null until a folder is open.</summary>
+    public LocalViewedFiles? LocalViewed { get; private set; }
 
     public GitChange? SelectedFile => (_files.SelectedObject as ReviewFileNode)?.Change;
 
@@ -314,7 +317,7 @@ public sealed class ReviewView : View
         SetNeedsDraw();
     }
 
-    /// <summary>Shows <paramref name="paths"/> marked viewed, or not, once GitHub has the marks (#396).</summary>
+    /// <summary>Shows <paramref name="paths"/> marked viewed, or not, once GitHub (or, without a PR, <see cref="LocalViewed"/>) has the marks (#396).</summary>
     public void SetViewed(IEnumerable<string> paths, bool viewed)
     {
         if (Review is not { Viewed: not null } review) return;
@@ -351,6 +354,7 @@ public sealed class ReviewView : View
             return Task.CompletedTask;
         }
 
+        LocalViewed ??= LocalViewedFiles.ForUser(root.FileSystem);
         var cts = _loading = new CancellationTokenSource();
         if (Review is null && _headerText.Length == 0)
         {
@@ -376,7 +380,11 @@ public sealed class ReviewView : View
             Apply(app, cts, () => ShowPullRequest(pullRequest));
             if (pullRequest.Value is { } relisted && relisted.MergeBase != review.MergeBase)
                 await CountLinesAsync(app, cts, relisted).ConfigureAwait(false);
-            if (pullRequest.Value?.PullRequest is not { } pr) return;
+            if (pullRequest.Value?.PullRequest is not { } pr)
+            {
+                if (LocalViewed is { } local) await ShowLocalViewedAsync(app, cts, local, review).ConfigureAwait(false);
+                return;
+            }
 
             // Last, in its own step: the file list and the header are worth having before the threads are in (#186).
             var state = await Task.Run(() => _gitHub.GetReviewStateAsync(review.RepoRoot, pr.Number, cts.Token), cts.Token).ConfigureAwait(false);
@@ -385,6 +393,16 @@ public sealed class ReviewView : View
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private async Task ShowLocalViewedAsync(IApplication? app, CancellationTokenSource cts, LocalViewedFiles local, BranchReview review)
+    {
+        var viewed = await Task.Run(() => local.Read(review), cts.Token).ConfigureAwait(false);
+        Apply(app, cts, () =>
+        {
+            if (Review is { PullRequest: null } shown && shown.MergeBase == review.MergeBase)
+                Show(GitResult<BranchReview?>.Success(shown with { Viewed = viewed }));
+        });
     }
 
     /// <summary>The review with its line counts, shown once they're in; as it was when git can't count them.</summary>
