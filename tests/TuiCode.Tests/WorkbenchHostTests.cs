@@ -1051,6 +1051,28 @@ public class WorkbenchHostTests : StaticConfigurationTest
         Assert.Equal("", workbench.StatusBar.DisplayedPosition);
     }
 
+    [Fact]
+    public void The_default_message_names_the_help_key_and_follows_a_rebind()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+        var byDefault = workbench.StatusBar.DisplayedText;
+
+        host.ApplyKeybindings(
+        [
+            new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp),
+            new KeybindingOverride([Key.F3], CommandIds.ShowHelp),
+        ]);
+        var rebound = workbench.StatusBar.DisplayedText;
+        host.ApplyKeybindings([new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp)]);
+
+        Assert.Equal("TuiCode  •  F1 help", byDefault);
+        Assert.Equal("TuiCode  •  F3 help", rebound);
+        Assert.Equal("TuiCode", workbench.StatusBar.DisplayedText);
+    }
+
     private static Workbench.Workbench BuildWorkbench() =>
         new(
             new SidebarPart(new FileExplorerView()),
