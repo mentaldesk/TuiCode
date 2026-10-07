@@ -490,16 +490,16 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect, CommandScope.Editor);
         _commands.Register(CommandIds.ToggleWordWrap, "Toggle word wrap", ToggleWordWrap, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
-        _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
+        _commands.Register(CommandIds.Open, "Open file or folder", () => AskBeforeSwitchingFolder(OpenFileOrFolder));
         // No default key (#357).
-        _commands.Register(CommandIds.OpenRecentFolder, "Open recent folder", OpenRecentFolder);
+        _commands.Register(CommandIds.OpenRecentFolder, "Open recent folder", () => AskBeforeSwitchingFolder(OpenRecentFolder));
         // No default key (#358).
-        _commands.Register(CommandIds.OpenFilePath, "Open file path", OpenFilePath);
+        _commands.Register(CommandIds.OpenFilePath, "Open file path", () => AskBeforeSwitchingFolder(OpenFilePath));
         // No default key (#184, #185, #187, #188).
-        _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest,
+        _commands.Register(CommandIds.OpenPullRequest, "Open pull request", () => AskBeforeSwitchingFolder(OpenPullRequest),
             CommandScope.Global, () => GitRepository.Contains(explorer.Root));
         // Ungated, so outside a repo it can say so (#359).
-        _commands.Register(CommandIds.OpenWorktree, "Open worktree", OpenWorktree);
+        _commands.Register(CommandIds.OpenWorktree, "Open worktree", () => AskBeforeSwitchingFolder(OpenWorktree));
         _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment, CommandScope.Diff, Reviewing);
@@ -1477,24 +1477,29 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Group.CloseEditor(tab);
     }
 
-    private void Quit()
+    private void Quit() => AskToSaveDirtyTabs("Save them before quitting?", () => _app.RequestStop());
+
+    private void AskBeforeSwitchingFolder(Action open) =>
+        AskToSaveDirtyTabs("Save them before opening another folder?", open);
+
+    private void AskToSaveDirtyTabs(string question, Action proceed)
     {
         if (_activeConfirm is not null) return;
         var dirty = DirtyTabs();
         if (dirty.Count == 0)
         {
-            _app.RequestStop();
+            proceed();
             return;
         }
 
-        var view = new ConfirmView("Unsaved changes", UnsavedOnQuit([.. dirty.Select(t => t.File.Name)]),
-            new ConfirmChoice("Save all", SaveAllAndQuit),
-            new ConfirmChoice("Don't save", () => _app.RequestStop()));
+        var view = new ConfirmView("Unsaved changes", UnsavedChanges([.. dirty.Select(t => t.File.Name)], question),
+            new ConfirmChoice("Save all", () => SaveAllThen(proceed)),
+            new ConfirmChoice("Don't save", proceed));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }
 
-    internal static string UnsavedOnQuit(IReadOnlyList<string> names)
+    internal static string UnsavedChanges(IReadOnlyList<string> names, string question)
     {
         const int listed = 4;
         var shown = string.Join(", ", names.Take(listed));
@@ -1502,10 +1507,10 @@ public sealed class WorkbenchHost : IDisposable
         return string.Join('\n',
             names.Count == 1 ? "1 open file has unsaved changes:" : $"{names.Count} open files have unsaved changes:",
             shown,
-            "Save them before quitting?");
+            question);
     }
 
-    private void SaveAllAndQuit()
+    private void SaveAllThen(Action proceed)
     {
         EditorTab? conflict = null;
         foreach (var tab in DirtyTabs())
@@ -1526,14 +1531,14 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         if (conflict is not null)
-            ConfirmOverwrite(conflict, QuitIfAllSaved);
+            ConfirmOverwrite(conflict, () => ProceedIfAllSaved(proceed));
         else
-            QuitIfAllSaved();
+            ProceedIfAllSaved(proceed);
     }
 
-    private void QuitIfAllSaved()
+    private void ProceedIfAllSaved(Action proceed)
     {
-        if (DirtyTabs().Count == 0) _app.RequestStop();
+        if (DirtyTabs().Count == 0) proceed();
     }
 
     private List<EditorTab> DirtyTabs() => [.. _workbench.Editor.Group.Tabs.Where(t => t.IsDirty)];

@@ -25,7 +25,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             a.txt
             Save them before quitting?
             """.ReplaceLineEndings("\n"),
-            WorkbenchHost.UnsavedOnQuit(["a.txt"]));
+            WorkbenchHost.UnsavedChanges(["a.txt"], "Save them before quitting?"));
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             a.txt, b.txt, c.txt, d.txt
             Save them before quitting?
             """.ReplaceLineEndings("\n"),
-            WorkbenchHost.UnsavedOnQuit(["a.txt", "b.txt", "c.txt", "d.txt"]));
+            WorkbenchHost.UnsavedChanges(["a.txt", "b.txt", "c.txt", "d.txt"], "Save them before quitting?"));
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             a.txt, b.txt, c.txt, d.txt and 2 more
             Save them before quitting?
             """.ReplaceLineEndings("\n"),
-            WorkbenchHost.UnsavedOnQuit(["a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt"]));
+            WorkbenchHost.UnsavedChanges(["a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt"], "Save them before quitting?"));
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             });
 
         Assert.Equal("Unsaved changes", title);
-        Assert.Equal(WorkbenchHost.UnsavedOnQuit(["a.txt", "c.txt"]), asked.ReplaceLineEndings("\n"));
+        Assert.Equal(WorkbenchHost.UnsavedChanges(["a.txt", "c.txt"], "Save them before quitting?"), asked.ReplaceLineEndings("\n"));
         Assert.Equal(["Save all", "Don't save", "Cancel"], buttons);
         Assert.Equal("Cancel", focused);
     }
