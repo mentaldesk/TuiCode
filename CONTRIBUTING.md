@@ -90,6 +90,8 @@ flowchart LR
     Release -->|"rendered packaging/tuicode.json"| Bucket["mentaldesk/scoop-bucket<br/>bucket/tuicode.json"]
     Bucket -->|scoop install| Win["Windows machine<br/>~/scoop/shims/tuicode.exe"]
 
+    Release -->|install.sh| Script["Linux machine<br/>~/.local/bin/tuicode"]
+
     Release -.->|future: #75| Winget["winget"]
     Release -->|"download .deb / .rpm"| Linux["Debian, Ubuntu, Fedora<br/>/usr/bin/tuicode"]
     Release -.->|future: #44| LinuxRepos["apt repo / AUR / Flatpak"]
