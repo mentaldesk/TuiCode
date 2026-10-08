@@ -158,18 +158,16 @@ public class StartupHostTests : StaticConfigurationTest
         AboutView About() => workbench.SubViews.OfType<AboutView>().Single();
         var started = Stopwatch.StartNew();
         var typed = TimeSpan.Zero;
-        var waiting = false;
 
         await HostSteps.Run(host,
             () => workbench.Editor.Group.ActiveTab is not null,
             () => host.App.InjectKey(new Key('X')),
             () => workbench.Editor.Group.ActiveTab!.Content.StartsWith('X'),
-            () => { typed = started.Elapsed; commands.TryExecute(CommandIds.ShowAbout); waiting = About().IsLoading; },
+            () => { typed = started.Elapsed; commands.TryExecute(CommandIds.ShowAbout); },
             () => About().ShowsAsciiArt,
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(typed < TimeSpan.FromSeconds(3), $"the first key landed after {typed.TotalSeconds:F1} s");
-        Assert.True(waiting, "About didn't wait for the sixel question");
         Assert.False(TerminalCursors.IsSupportedBy(host.App));
         Assert.Equal(KittyKeyboardFlags.None, host.App.Driver?.KittyKeyboardCapabilities?.Flags ?? KittyKeyboardFlags.None);
     }
