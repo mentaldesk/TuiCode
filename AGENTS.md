@@ -54,6 +54,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `View.SetFocus()` returns false when any ancestor has `CanFocus = false`. Set `CanFocus = true` on container `View`s that should host focusable children.
 - TG 2.5 replaced `ConfigurationManager` with `TuiConfigurationBuilder` (Microsoft.Extensions.Configuration). Its JSON is nested: `Themes` and `Schemes` are objects keyed by name, and there are no dotted keys like `Dialog.DefaultShadow`. A file in the old shape is skipped with only a log warning.
 - `TextView` is `[Obsolete]` in TG 2.5 in favour of Terminal.Gui.Editor; the CS0618 warnings it brings are expected. Its `Text` is no longer virtual, so `EditorTextView.Text` hides it with `new`: set the editor's text through an `EditorTextView` reference.
+- TG 2.5's ANSI driver takes its size from the terminal it's attached to (80×25 only when detached, as under `dotnet test` on macOS/Linux). A host test that reads the screen or depends on the viewport's height pins it with `HostSteps.PinScreenSize`, or it fails on Windows CI.
 - `Terminal.Gui.Drawing.Attribute` collides with `System.Attribute`; fully qualify when constructing.
 
 ### UI controls
