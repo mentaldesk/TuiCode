@@ -26,7 +26,9 @@ internal sealed record TerminalIntegrationPanelState(
         var all = integrations.ToArray();
         var detected = all.FirstOrDefault(i => i.IsAvailable());
 
-        var state = detected is null ? BuildUnsupported(all, environment) : BuildSupported(detected);
+        var state = detected is not null ? BuildSupported(detected)
+            : UnsupportedTerminal.Detect(environment) is { } unsupported ? BuildUnsupported(unsupported)
+            : BuildUnknown(all, environment);
         return string.IsNullOrEmpty(environment.GetEnvironmentVariable("TMUX"))
             ? state
             : state with { Lines = [.. state.Lines, "", .. TmuxClipboardLines] };
@@ -45,7 +47,27 @@ internal sealed record TerminalIntegrationPanelState(
             detected, status, BuildSupportedLines(detected, status), BuildActions(status));
     }
 
-    private static TerminalIntegrationPanelState BuildUnsupported(
+    private static TerminalIntegrationPanelState BuildUnsupported(UnsupportedTerminal terminal)
+    {
+        var lines = new List<string>
+        {
+            $"Detected terminal: {terminal.Name}",
+            "",
+            "Cmd+C and Cmd+X can't reach TuiCode here:",
+        };
+        lines.AddRange(terminal.Reason);
+        lines.AddRange(
+        [
+            "",
+            "Inside TuiCode, use Ctrl+C and Ctrl+X instead.",
+            "Cmd+V pastes as usual.",
+            "",
+            "For Cmd shortcuts, use iTerm2, WezTerm or kitty.",
+        ]);
+        return new TerminalIntegrationPanelState(null, null, lines, Array.Empty<TerminalIntegrationAction>());
+    }
+
+    private static TerminalIntegrationPanelState BuildUnknown(
         IReadOnlyList<ITerminalIntegration> all, IEnvironment env)
     {
         var termProgram = env.GetEnvironmentVariable("TERM_PROGRAM");
