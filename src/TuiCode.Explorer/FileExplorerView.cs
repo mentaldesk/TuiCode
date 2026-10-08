@@ -28,7 +28,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 
     public FileExplorerView(FileIcons? icons = null)
     {
-        TreeBuilder = new FileSystemTreeBuilder { IncludeFiles = true };
+        TreeBuilder = new ExplorerTreeBuilder();
         AspectGetter = info => info.Name;
         // Before the icon handler, so the icon picks up the dimmed style too.
         DrawLine += (_, e) =>
@@ -397,8 +397,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
     // TG matches refreshed children by reference and the builder returns fresh entries, so RefreshObject alone collapses subfolders.
     private void RefreshKeepingExpansion(IFileSystemInfo node)
     {
-        var expanded = new List<string>();
-        CollectExpanded(node, expanded);
+        var expanded = ExpandedAtOrUnder(node);
         RefreshObject(node);
         foreach (var path in expanded)
             if (Find(path) is { } again)
@@ -416,12 +415,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
 
     private void NoteExpansion()
     {
-        var now = new List<string>();
-        if (Root is { } root && IsExpanded(root))
-        {
-            now.Add(root.FullName);
-            CollectExpanded(root, now);
-        }
+        var now = Root is { } root ? ExpandedAtOrUnder(root) : [];
         var kept = _expandedFolders.Intersect(now, StringComparer.Ordinal).ToList();
         if (kept.Count == now.Count && kept.Count == _expandedFolders.Count) return;
         kept.AddRange(now.Except(kept, StringComparer.Ordinal));
@@ -430,15 +424,23 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         ExpandedFoldersChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void CollectExpanded(IFileSystemInfo node, List<string> expanded)
+    // TG's IsExpanded searches every row, so read it off the rows: a folder is expanded when the next row is its child (#450).
+    private List<string> ExpandedAtOrUnder(IFileSystemInfo node)
     {
-        if (!IsExpanded(node)) return;
-        foreach (var child in GetChildren(node))
+        var expanded = new List<string>();
+        if (GetObjectRow(node) is not { } row) return expanded;
+        var rows = KeystrokeNavigator.Collection;
+        var path = node.FileSystem.Path;
+        for (var i = row + ScrollOffsetVertical; i < rows.Count; i++)
         {
-            if (!IsExpanded(child)) continue;
-            expanded.Add(child.FullName);
-            CollectExpanded(child, expanded);
+            if (rows[i] is not IFileSystemInfo entry || !FilePaths.IsSameOrUnder(entry.FullName, node.FullName)) break;
+            if (entry is not IDirectoryInfo) continue;
+            var parentOfNext = i + 1 < rows.Count && rows[i + 1] is IFileSystemInfo next ? path.GetDirectoryName(next.FullName) : null;
+            if (string.Equals(parentOfNext, entry.FullName, StringComparison.Ordinal)
+                || (_expandedFolders.Contains(entry.FullName) && IsExpanded(entry)))
+                expanded.Add(entry.FullName);
         }
+        return expanded;
     }
 }
 
