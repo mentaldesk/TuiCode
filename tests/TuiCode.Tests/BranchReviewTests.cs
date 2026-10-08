@@ -1,4 +1,5 @@
 using TuiCode.Abstractions;
+using TuiCode.Editor;
 using TuiCode.Workbench.Review;
 
 namespace TuiCode.Tests;
@@ -122,6 +123,77 @@ public class BranchReviewTests
         Assert.Equal("Viewed 2 of 3", loaded.WithViewed("a.cs", true).ViewedLine);
         Assert.Equal("Viewed 0 of 3", loaded.WithViewed("new/b.cs", false).ViewedLine);
         Assert.Equal("Viewed 1 of 3", loaded.ViewedLine);
+    }
+
+    [Fact]
+    public void FilesUnder_takes_a_folders_subfolders_but_not_a_sibling_sharing_its_name()
+    {
+        var review = Review() with
+        {
+            Changes =
+            [
+                new GitChange(GitChangeKind.Modified, "src/a.cs"),
+                new GitChange(GitChangeKind.Modified, "src/deep/b.cs"),
+                new GitChange(GitChangeKind.Modified, "srcgen/c.cs"),
+                new GitChange(GitChangeKind.Modified, "d.cs"),
+            ],
+        };
+
+        Assert.Equal(["src/a.cs", "src/deep/b.cs"], review.FilesUnder("src"));
+        Assert.Equal(["src/deep/b.cs"], review.FilesUnder("src/deep"));
+    }
+
+    [Fact]
+    public void A_folder_is_viewed_only_while_every_file_under_it_is()
+    {
+        GitChange[] changes =
+        [
+            new(GitChangeKind.Modified, "src/a.cs"),
+            new(GitChangeKind.Modified, "src/deep/b.cs"),
+            new(GitChangeKind.Modified, "src/deep/c.cs"),
+        ];
+        bool[] Folders(params (string Path, GitHubViewedState State)[] marks) =>
+            [.. ReviewTree.Build(changes, viewed: marks.ToDictionary(m => m.Path, m => m.State)).OfType<ReviewFolderNode>().Select(f => f.Viewed)];
+
+        var viewed = GitHubViewedState.Viewed;
+        Assert.Equal([true, true], Folders(("src/a.cs", viewed), ("src/deep/b.cs", viewed), ("src/deep/c.cs", viewed)));
+        Assert.Equal([false, true], Folders(("src/deep/b.cs", viewed), ("src/deep/c.cs", viewed)));
+        Assert.Equal([false, false], Folders(("src/a.cs", viewed), ("src/deep/b.cs", viewed), ("src/deep/c.cs", GitHubViewedState.Dismissed)));
+        Assert.Equal([false, false], Folders());
+    }
+
+    [Theory]
+    [InlineData(1, new[] { "c" }, new[] { 3, 4, 0 })]
+    [InlineData(3, new[] { "c" }, new[] { 4, 0, 1 })]
+    [InlineData(4, new[] { "c" }, new[] { 0, 1, 3 })]
+    [InlineData(0, new[] { "a", "b", "c", "d", "e" }, new int[0])]
+    [InlineData(2, new[] { "a", "b", "d", "e" }, new int[0])]
+    public void UnviewedAfter_lists_the_files_not_viewed_after_the_one_showing_then_wraps_round(int index, string[] viewed, int[] expected)
+    {
+        GitChange[] files = [.. "abcde".Select(c => new GitChange(GitChangeKind.Modified, $"{c}"))];
+        var review = Review(PullRequest()) with
+        {
+            Changes = files,
+            Viewed = viewed.ToDictionary(path => path, _ => GitHubViewedState.Viewed),
+        };
+
+        Assert.Equal(expected, review.UnviewedAfter(files, index));
+    }
+
+    [Fact]
+    public void SpotLabel_adds_Viewed_only_while_the_file_showing_is_viewed_in_the_same_review()
+    {
+        var review = Review(PullRequest()) with
+        {
+            Changes = [new GitChange(GitChangeKind.Modified, "a.cs"), new GitChange(GitChangeKind.Modified, "b.cs")],
+            Viewed = new Dictionary<string, GitHubViewedState> { ["b.cs"] = GitHubViewedState.Viewed },
+        };
+
+        Assert.Equal("File 1 of 2", BranchReview.SpotLabel(new ReviewSpot("b45e", 0, 2, "a.cs"), review));
+        Assert.Equal("File 2 of 2  •  Viewed", BranchReview.SpotLabel(new ReviewSpot("b45e", 1, 2, "b.cs"), review));
+        Assert.Equal("File 2 of 2", BranchReview.SpotLabel(new ReviewSpot("0ld", 1, 2, "b.cs"), review));
+        Assert.Equal("File 2 of 2", BranchReview.SpotLabel(new ReviewSpot("b45e", 1, 2, "b.cs"), null));
+        Assert.Null(BranchReview.SpotLabel(null, review));
     }
 
     private static BranchReview Review(GitHubPullRequest? pullRequest = null) =>

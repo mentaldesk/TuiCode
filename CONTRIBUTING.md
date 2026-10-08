@@ -13,7 +13,7 @@ For code-level conventions (branch names, key handling, AOT gotchas, test framew
 
 ## Releases
 
-A release is a `v*` git tag, a GitHub Release attaching native single-file binaries for every supported runtime, and a Homebrew formula and Scoop manifest pointing at them. It all happens from the Actions tab — nothing is done locally, and no tag is pushed by hand.
+A release is a `v*` git tag, a GitHub Release attaching native single-file binaries for every supported runtime plus `.deb` and `.rpm` packages for Linux x64 and arm64, and a Homebrew formula and Scoop manifest pointing at them. It all happens from the Actions tab — nothing is done locally, and no tag is pushed by hand.
 
 Version-picking and publishing are [a-team's reusable workflows](https://github.com/mentaldesk/a-team), pinned to a released tag. `release.yml` keeps TuiCode's own build matrix — five RIDs, AOT, macOS signing and notarisation — and calls the shared ones on either side of it, so there's one release flow to maintain rather than two that drift.
 
@@ -45,11 +45,13 @@ flowchart TD
 
     Publish --> Sign["macOS: codesign + notarize<br/>(if APPLE_* secrets present)"]
     Sign --> Archive["tar.gz / zip<br/>+ sha256 sidecar"]
-    Archive --> Upload["actions/upload-artifact"]
+    Archive --> Packages["Linux: .deb + .rpm from the same binary<br/>(packaging/nfpm.yaml)"]
+    Packages --> Smoke["Linux: install, run --smoke, remove<br/>in debian:12, ubuntu:22.04, fedora"]
+    Smoke --> Upload["actions/upload-artifact"]
 
     Upload --> Pub["publish job<br/>a-team/release-publish.yml"]
     Pub --> Tag["gh release create v0.1.0<br/>--target $GITHUB_SHA --generate-notes"]
-    Tag --> Public[("Published release<br/>10 assets, tag created")]
+    Tag --> Public[("Published release<br/>18 assets, tag created")]
     Public --> Render["render packaging/tuicode.rb + tuicode.json<br/>version + 5 SHA256s"]
     Render --> TapPR["PR to homebrew-tap<br/>auto-merge on"]
     TapPR -->|tap CI goes green| Brew[("brew install<br/>mentaldesk/tap/tuicode")]
@@ -73,11 +75,15 @@ Both are pushed with `PACKAGES_TOKEN`, a fine-grained PAT with Contents + Pull r
 
 The tap gets a PR its own CI gates. The bucket has no CI, so the manifest is committed straight to its default branch — a mistake in the template is live for Windows users immediately, which is what the placeholder and JSON checks are there to prevent.
 
+### The Linux packages
+
+`packaging/nfpm.yaml` describes the `.deb` and `.rpm`: the binary as `/usr/bin/tuicode`, the licence and both notices files, a dependency on glibc 2.35 or newer (the binary links nothing else), and a suggestion of `wl-clipboard` or `xclip`, which apt and dnf don't install by default. On the Linux legs, `packaging/build.sh` builds both formats from the binary the tarball holds, with [nfpm](https://nfpm.goreleaser.com/), and `packaging/test-install.sh` installs each in a clean `debian:12`, `ubuntu:22.04` and `fedora` container, runs `tuicode --smoke`, then removes it and checks nothing is left. A failure there fails the build, so nothing is published. CI's `aot` job does the same on every push, at two versions so the second install checks the upgrade.
+
 ### Distribution
 
 ```mermaid
 flowchart LR
-    Release[("v0.1.0 release<br/>5× tarballs/zips<br/>+ .sha256")]
+    Release[("v0.1.0 release<br/>5× tarballs/zips, 2× .deb, 2× .rpm<br/>+ .sha256")]
     Release -->|"rendered packaging/tuicode.rb"| Tap["mentaldesk/homebrew-tap<br/>Formula/tuicode.rb"]
     Tap -->|brew install| User["User's machine<br/>/opt/homebrew/bin/tuicode"]
 
@@ -87,7 +93,8 @@ flowchart LR
     Release -->|install.sh| Script["Linux machine<br/>~/.local/bin/tuicode"]
 
     Release -.->|future: #75| Winget["winget"]
-    Release -.->|future: #44| Linux["apt / dnf"]
+    Release -->|"download .deb / .rpm"| Linux["Debian, Ubuntu, Fedora<br/>/usr/bin/tuicode"]
+    Release -.->|future: #44| LinuxRepos["apt repo / AUR / Flatpak"]
 ```
 
 The Homebrew formula points at the release tarball URL with a pinned SHA256. Both the PR and its merge are automatic; `brew upgrade tuicode` picks up the new version once it lands, and `tuicode`'s About dialog reports the same number.

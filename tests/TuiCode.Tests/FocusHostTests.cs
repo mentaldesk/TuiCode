@@ -4,6 +4,7 @@ using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
@@ -108,6 +109,14 @@ public class FocusHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.CompareToSaved),
             () => workbench.StatusBar.DisplayedFocus == "Diff",
             () => host.App.InjectKey(Key.O.WithCtrl),
+            () =>
+            {
+                var unsaved = workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+                if (unsaved?.FocusedChoice == "Don't save") return true;
+                if (unsaved is not null) host.App.InjectKey(Key.Tab);
+                return false;
+            },
+            () => host.App.InjectKey(Key.Enter),
             () => (dialog = workbench.SubViews.OfType<OpenView>().SingleOrDefault()) is not null,
             () => { foreach (var c in "b.t") host.App.InjectKey(new Key(c)); },
             () => dialog!.VisibleItems.SequenceEqual(["b.txt"]),

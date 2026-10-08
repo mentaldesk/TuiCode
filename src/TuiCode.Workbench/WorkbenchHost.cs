@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using MentalDesk.Tui.Shell;
 using Terminal.Gui.Drivers;
 using System.Reflection;
 using Terminal.Gui.Time;
@@ -26,6 +27,7 @@ using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
 using TuiCode.Workbench.Themes;
 using TuiCode.Workbench.Workspace;
+using FocusBorder = MentalDesk.Tui.Focus.FocusBorder;
 
 namespace TuiCode.Workbench;
 
@@ -462,7 +464,7 @@ public sealed class WorkbenchHost : IDisposable
         bool FileOpen() => group.ActiveTab is not null;
         bool Reviewing() => review.Review is { PullRequest: not null };
 
-        _commands.Register(CommandIds.Quit, "Quit", () => _app.RequestStop());
+        _commands.Register(CommandIds.Quit, "Quit", Quit);
         _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor, CommandScope.Global, EditorOpen);
         _commands.Register(CommandIds.SaveAll, "Save all", SaveAll);
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", CloseActiveEditor, CommandScope.Global,
@@ -488,20 +490,21 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect, CommandScope.Editor);
         _commands.Register(CommandIds.ToggleWordWrap, "Toggle word wrap", ToggleWordWrap, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
-        _commands.Register(CommandIds.Open, "Open file or folder", OpenFileOrFolder);
+        _commands.Register(CommandIds.Open, "Open file or folder", () => AskBeforeSwitchingFolder(OpenFileOrFolder));
         // No default key (#357).
-        _commands.Register(CommandIds.OpenRecentFolder, "Open recent folder", OpenRecentFolder);
+        _commands.Register(CommandIds.OpenRecentFolder, "Open recent folder", () => AskBeforeSwitchingFolder(OpenRecentFolder));
         // No default key (#358).
-        _commands.Register(CommandIds.OpenFilePath, "Open file path", OpenFilePath);
+        _commands.Register(CommandIds.OpenFilePath, "Open file path", () => AskBeforeSwitchingFolder(OpenFilePath));
         // No default key (#184, #185, #187, #188).
-        _commands.Register(CommandIds.OpenPullRequest, "Open pull request", OpenPullRequest,
+        _commands.Register(CommandIds.OpenPullRequest, "Open pull request", () => AskBeforeSwitchingFolder(OpenPullRequest),
             CommandScope.Global, () => GitRepository.Contains(explorer.Root));
         // Ungated, so outside a repo it can say so (#359).
-        _commands.Register(CommandIds.OpenWorktree, "Open worktree", OpenWorktree);
+        _commands.Register(CommandIds.OpenWorktree, "Open worktree", () => AskBeforeSwitchingFolder(OpenWorktree));
         _commands.Register(CommandIds.PullRequestOverview, "PR overview", ShowPullRequestOverview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment, CommandScope.Diff, Reviewing);
-        _commands.Register(CommandIds.ToggleViewed, "Toggle viewed", ToggleViewed, CommandScope.Review, () => review.CanToggleViewed);
+        // Global so that it reaches both the Review tab and a review diff (#398); disabled everywhere else, so Space still types.
+        _commands.Register(CommandIds.ToggleViewed, "Toggle viewed", ToggleViewed, CommandScope.Global, CanToggleViewed);
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
@@ -610,38 +613,48 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         _menu.Refresh();
-        var help = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == CommandIds.ShowHelp);
-        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help.Display} for help");
-        _workbench.DiffKeysHint = DiffKeys("revert");
-        _workbench.DeletedDiffKeysHint = DiffKeys("restore");
-        _workbench.PastChangeKeysHint = DiffKeys(null);
-
-        string DiffKeys(string? revert) => string.Join("  ", new[]
-        {
-            KeyHint(CommandIds.NextChange, "next"),
-            KeyHint(CommandIds.PreviousChange, "prev"),
-            revert is null ? null : KeyHint(CommandIds.RevertChange, revert),
-            revert is null ? null : KeyHint(CommandIds.GoToChangeLine, "go to line"),
-            KeyPairHint(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "page"),
-        }.OfType<string>());
+        var help = KeyOf(CommandIds.ShowHelp);
+        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help} for help");
+        _workbench.StatusBar.SetHelpKey(help);
     }
 
-    /// <summary><c>Shift+←/→ page</c>: both keys, sharing their modifiers when they have the same ones.</summary>
-    private string? KeyPairHint(string backId, string forwardId, string label)
+    /// <summary>The focused diff's keys for F1, from the live bindings, leaving out what's unbound or can't run there.</summary>
+    private HelpColumn? DiffHelp()
     {
-        var back = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == backId)?.Display;
-        var forward = _keybindings.Bindings.FirstOrDefault(b => b.CommandId == forwardId)?.Display;
-        if (back is null || forward is null) return (back ?? forward) is { } one ? $"{one} {label}" : null;
+        if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return null;
+        HelpRow[] rows =
+        [
+            .. Row(CommandIds.NextChange, "Next change"),
+            .. Row(CommandIds.PreviousChange, "Previous change"),
+            .. Row(CommandIds.RevertChange, diff.IsDeleted ? "Restore file" : "Revert change"),
+            .. Row(CommandIds.GoToChangeLine, "Go to this line"),
+            .. PairRow(CommandIds.ScrollDiffLeft, CommandIds.ScrollDiffRight, "Scroll sideways"),
+            .. PairRow(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "Page sideways"),
+        ];
+        return rows.Length == 0 ? null : new HelpColumn("Diff", rows);
+
+        IEnumerable<HelpRow> Row(string commandId, string description) =>
+            _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
+
+        IEnumerable<HelpRow> PairRow(string backId, string forwardId, string description) =>
+            KeyPair(backId, forwardId) is { } keys ? [new HelpRow(keys, description)] : [];
+    }
+
+    /// <summary><c>Shift+← →</c>: both keys, sharing their modifiers when they have the same ones.</summary>
+    private string? KeyPair(string backId, string forwardId)
+    {
+        var back = KeyOf(backId);
+        var forward = KeyOf(forwardId);
+        if (back is null || forward is null) return back ?? forward;
         var modifiers = Modifiers(back);
-        var keys = modifiers == Modifiers(forward) ? $"{back}/{forward[modifiers.Length..]}" : $"{back}/{forward}";
-        return $"{keys} {label}";
+        return modifiers == Modifiers(forward) ? $"{back} {forward[modifiers.Length..]}" : $"{back} {forward}";
 
         static string Modifiers(string display) =>
             display.Length < 2 ? "" : display[..(display.LastIndexOf('+', display.Length - 2) + 1)];
     }
 
-    private string? KeyHint(string commandId, string label) =>
-        _keybindings.Bindings.FirstOrDefault(b => b.CommandId == commandId) is { } binding ? $"{binding.Display} {label}" : null;
+    private string? KeyOf(string commandId) =>
+        _keybindings.Bindings.FirstOrDefault(b => b.CommandId == commandId)?.Display;
 
     /// <summary>
     /// Take the picker's edited binding set, compute the diff against defaults, persist as the
@@ -1457,14 +1470,80 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (tab.DiskNow == DiskState.Changed)
         {
-            ConfirmOverwrite(tab, thenClose: true);
+            ConfirmOverwrite(tab, () => _workbench.Editor.Group.CloseEditor(tab));
             return;
         }
         tab.Save();
         _workbench.Editor.Group.CloseEditor(tab);
     }
 
-    private void ConfirmOverwrite(EditorTab tab, bool thenClose = false)
+    private void Quit() => AskToSaveDirtyTabs("Save them before quitting?", () => _app.RequestStop());
+
+    private void AskBeforeSwitchingFolder(Action open) =>
+        AskToSaveDirtyTabs("Save them before opening another folder?", open);
+
+    private void AskToSaveDirtyTabs(string question, Action proceed)
+    {
+        if (_activeConfirm is not null) return;
+        var dirty = DirtyTabs();
+        if (dirty.Count == 0)
+        {
+            proceed();
+            return;
+        }
+
+        var view = new ConfirmView("Unsaved changes", UnsavedChanges([.. dirty.Select(t => t.File.Name)], question),
+            new ConfirmChoice("Save all", () => SaveAllThen(proceed)),
+            new ConfirmChoice("Don't save", proceed));
+        view.Cancelled += (_, _) => CloseConfirm(view);
+        ShowConfirm(view);
+    }
+
+    internal static string UnsavedChanges(IReadOnlyList<string> names, string question)
+    {
+        const int listed = 4;
+        var shown = string.Join(", ", names.Take(listed));
+        if (names.Count > listed) shown += $" and {names.Count - listed} more";
+        return string.Join('\n',
+            names.Count == 1 ? "1 open file has unsaved changes:" : $"{names.Count} open files have unsaved changes:",
+            shown,
+            question);
+    }
+
+    private void SaveAllThen(Action proceed)
+    {
+        EditorTab? conflict = null;
+        foreach (var tab in DirtyTabs())
+        {
+            if (tab.DiskNow == DiskState.Changed)
+            {
+                conflict ??= tab;
+                continue;
+            }
+            try
+            {
+                tab.Save();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _workbench.StatusBar.SetMessage(ex.Message);
+            }
+        }
+
+        if (conflict is not null)
+            ConfirmOverwrite(conflict, () => ProceedIfAllSaved(proceed));
+        else
+            ProceedIfAllSaved(proceed);
+    }
+
+    private void ProceedIfAllSaved(Action proceed)
+    {
+        if (DirtyTabs().Count == 0) proceed();
+    }
+
+    private List<EditorTab> DirtyTabs() => [.. _workbench.Editor.Group.Tabs.Where(t => t.IsDirty)];
+
+    private void ConfirmOverwrite(EditorTab tab, Action? afterOverwrite = null)
     {
         if (_activeConfirm is not null) return;
 
@@ -1480,7 +1559,7 @@ public sealed class WorkbenchHost : IDisposable
             new ConfirmChoice("Overwrite", () =>
             {
                 tab.Save();
-                if (thenClose) _workbench.Editor.Group.CloseEditor(tab);
+                afterOverwrite?.Invoke();
             }),
             new ConfirmChoice("Reload", () => _diskChanges.Reload(tab)));
         view.Cancelled += (_, _) => CloseConfirm(view);
@@ -1620,7 +1699,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeHelp is not null) return;
 
-        var view = new HelpView();
+        var view = new HelpView(FocusedScope() == CommandScope.Diff ? DiffHelp() : null, _workbench.Frame.Width);
         view.Closed += (_, _) => CloseHelp(view);
         _activeHelp = view;
         _workbench.Add(view);
@@ -2250,7 +2329,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (diff is not null)
             {
-                diff.Review = new ReviewSpot(review.MergeBase, index, count);
+                diff.Review = new ReviewSpot(review.MergeBase, index, count, change.Path);
                 diff.ShowThreads(review.ThreadsOn(change.Path));
                 OpenDrafts(review);
                 diff.ShowDrafts(Drafts.On(change.Path));
@@ -2503,21 +2582,128 @@ public sealed class WorkbenchHost : IDisposable
         view.FocusSummary();
     }
 
+    private bool CanToggleViewed() => _focus.Region switch
+    {
+        FocusRegion.Review => _workbench.Sidebar.Review.CanToggleViewed,
+        FocusRegion.Diff => ViewedSpot() is not null,
+        _ => false,
+    };
+
+    /// <summary>The active diff's place in the review, when it's one whose file can be marked viewed (#398).</summary>
+    private ReviewSpot? ViewedSpot() =>
+        _workbench.Editor.Group.ActiveDiffTab is { Review: { } spot }
+        && _workbench.Sidebar.Review.Review is { Viewed: not null } review
+        && review.MergeBase == spot.Key
+            ? spot
+            : null;
+
     /// <summary>
-    /// Toggle viewed (<c>tv</c>, #396): GitHub's Viewed mark on the file selected in the Review tab. The tab shows
-    /// the new mark only once GitHub has it.
+    /// Toggle viewed (<c>tv</c>, #396): GitHub's Viewed mark on the file selected in the Review tab, or on the
+    /// file a review diff shows (#398). The tab shows the new mark only once GitHub has it. Without a PR the
+    /// mark is kept locally (#400).
     /// </summary>
     private void ToggleViewed()
     {
         var tab = _workbench.Sidebar.Review;
-        if (tab.Review is not { PullRequest: { } pullRequest } review || tab.SelectedFile is not { } file) return;
-        var viewed = !review.IsViewed(file.Path);
-        var setting = Task.Run(() => _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, file.Path, viewed));
+        if (tab.Review is not { Viewed: not null } review) return;
+        var diff = _focus.Region == FocusRegion.Diff ? _workbench.Editor.Group.ActiveDiffTab : null;
+        if (diff is null && tab.SelectedFolder is { } folder)
+        {
+            ToggleFolderViewed(review, folder);
+            return;
+        }
+        var spot = diff is null ? null : ViewedSpot();
+        if ((spot?.Path ?? tab.SelectedFile?.Path) is not { } path) return;
+        var viewed = !review.IsViewed(path);
+
+        if (review.PullRequest is not { } pullRequest)
+        {
+            tab.LocalViewed?.Set(review, [path], viewed);
+            Marked();
+            return;
+        }
+
+        var setting = Task.Run(() => _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, path, viewed));
         WhenDone(setting, () =>
         {
-            if (setting.Result.Error is { } error) _workbench.StatusBar.SetMessage(error);
-            else tab.SetViewed(file.Path, viewed);
+            if (setting.Result.Error is { } error)
+            {
+                _workbench.StatusBar.SetMessage(error);
+                return;
+            }
+            Marked();
         });
+
+        void Marked()
+        {
+            tab.SetViewed([path], viewed);
+            if (viewed && diff is not null && spot is not null) OpenNextUnviewed(diff, spot);
+        }
+    }
+
+    /// <summary>
+    /// Toggle viewed on a folder (#399): marks every file under it viewed, or unmarks them all when they already are.
+    /// If GitHub refuses any, the tab reloads to show what it holds.
+    /// </summary>
+    private void ToggleFolderViewed(BranchReview review, string folder)
+    {
+        var tab = _workbench.Sidebar.Review;
+        var paths = review.FilesUnder(folder);
+        var viewed = !paths.All(review.IsViewed);
+        var targets = viewed ? [.. paths.Where(p => !review.IsViewed(p))] : paths;
+        if (review.PullRequest is not { } pullRequest)
+        {
+            tab.LocalViewed?.Set(review, targets, viewed);
+            tab.SetViewed(targets, viewed);
+            return;
+        }
+        var results = new GitHubResult<bool>[targets.Count];
+        var setting = Parallel.ForEachAsync(Enumerable.Range(0, targets.Count), new ParallelOptions { MaxDegreeOfParallelism = 4 },
+            async (i, ct) => results[i] = await _gitHub.SetViewedAsync(review.RepoRoot, pullRequest.Id, targets[i], viewed, ct));
+        WhenDone(setting, () =>
+        {
+            tab.SetViewed(targets.Where((_, i) => results[i].Error is null), viewed);
+            if (results.Select(r => r.Error).FirstOrDefault(e => e is not null) is not { } error) return;
+            _workbench.StatusBar.SetMessage(error);
+            _ = tab.Refresh();
+        });
+    }
+
+    /// <summary>
+    /// After <c>tv</c> marks a review diff's file viewed, opens the next file the Review tab lists that isn't,
+    /// wrapping round, and closes the diff it leaves (#398).
+    /// </summary>
+    private void OpenNextUnviewed(DiffTab from, ReviewSpot spot)
+    {
+        var group = _workbench.Editor.Group;
+        var view = _workbench.Sidebar.Review;
+        if (view.Review is not { } review || review.MergeBase != spot.Key) return;
+
+        var files = view.ChangedFiles;
+        var unviewed = review.UnviewedAfter(files, spot.Index).ToList();
+        Open(0);
+
+        void Open(int next)
+        {
+            if (next >= unviewed.Count)
+            {
+                group.CloseDiff(from);
+                _workbench.StatusBar.SetMessage(unviewed.Count == 0 ? "All files viewed" : "No unviewed file has changes to show");
+                return;
+            }
+
+            var at = unviewed[next];
+            ShowReviewDiff(review, files[at], at, files.Count, diff =>
+            {
+                if (diff is null)
+                {
+                    Open(next + 1);
+                    return;
+                }
+                diff.FirstChange();
+                if (!ReferenceEquals(diff, from)) group.CloseDiff(from);
+            });
+        }
     }
 
     /// <summary>
