@@ -122,6 +122,25 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Install nfpm
+        if: startsWith(matrix.rid, 'linux-')
+        run: packaging/install-nfpm.sh
+
+      - name: Linux packages
+        # As release.yml builds them, at two versions so installing the second checks the upgrade.
+        if: startsWith(matrix.rid, 'linux-')
+        run: |
+          packaging/build.sh 0.0.1 ${{ matrix.rid }} publish packages
+          packaging/build.sh 0.0.2 ${{ matrix.rid }} publish packages
+          for image in debian:12 ubuntu:22.04 fedora:latest; do
+            echo "::group::$image"
+            case $image in
+              fedora*) packaging/test-install.sh "$image" 0.0.1 packages/tuicode-0.0.1-1.*.rpm 0.0.2 packages/tuicode-0.0.2-1.*.rpm ;;
+              *) packaging/test-install.sh "$image" 0.0.1 packages/tuicode_0.0.1_*.deb 0.0.2 packages/tuicode_0.0.2_*.deb ;;
+            esac
+            echo "::endgroup::"
+          done
+
       - name: Syntax smoke
         # Headless (no TG), so it runs on every RID, Windows included.
         shell: bash

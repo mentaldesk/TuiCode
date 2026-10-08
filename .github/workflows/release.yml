@@ -122,7 +122,31 @@ jobs:
             tar -czf "$archive" -C publish TuiCode THIRD-PARTY-NOTICES.md DOTNET-THIRD-PARTY-NOTICES.TXT
           fi
           echo "path=$archive" >> "$GITHUB_OUTPUT"
-          echo "name=$(basename "$archive")" >> "$GITHUB_OUTPUT"
+
+      - name: Install nfpm
+        if: startsWith(matrix.rid, 'linux-')
+        run: packaging/install-nfpm.sh
+
+      - name: Linux packages
+        if: startsWith(matrix.rid, 'linux-')
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: packaging/build.sh "$VERSION" ${{ matrix.rid }} publish dist
+
+      - name: Linux package install smoke
+        # Fails the build, so a package that won't install or start stops the release before publish.
+        if: startsWith(matrix.rid, 'linux-')
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          for image in debian:12 ubuntu:22.04 fedora:latest; do
+            echo "::group::$image"
+            case $image in
+              fedora*) packaging/test-install.sh "$image" "$VERSION" dist/tuicode-"$VERSION"-1.*.rpm ;;
+              *) packaging/test-install.sh "$image" "$VERSION" dist/tuicode_"$VERSION"_*.deb ;;
+            esac
+            echo "::endgroup::"
+          done
 
       - name: Notarize macOS archive
         if: startsWith(matrix.rid, 'osx-') && env.HAVE_SIGNING_CERT == 'yes' && env.HAVE_NOTARY == 'yes'
@@ -148,11 +172,13 @@ jobs:
         shell: bash
         run: |
           cd dist
-          if command -v sha256sum >/dev/null; then
-            sha256sum "${{ steps.archive.outputs.name }}" > "${{ steps.archive.outputs.name }}.sha256"
-          else
-            shasum -a 256 "${{ steps.archive.outputs.name }}" > "${{ steps.archive.outputs.name }}.sha256"
-          fi
+          for file in *; do
+            if command -v sha256sum >/dev/null; then
+              sha256sum "$file" > "$file.sha256"
+            else
+              shasum -a 256 "$file" > "$file.sha256"
+            fi
+          done
 
       - uses: actions/upload-artifact@v7
         with:
