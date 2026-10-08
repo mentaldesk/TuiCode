@@ -38,12 +38,14 @@ public class StartupArgumentsTests
     }
 
     [Fact]
-    public void A_file_outside_the_current_directory_re_roots_at_its_folder()
+    public void A_file_outside_the_current_directory_opens_with_no_workspace()
     {
         var target = Resolve("/elsewhere/README.md");
 
-        Assert.Equal(Full("/elsewhere"), target.Workspace!.FullName);
+        Assert.Null(target.Workspace);
         Assert.Equal(Full("/elsewhere/README.md"), Single(target).FullName);
+        Assert.False(target.Declined);
+        Assert.Null(target.Error);
     }
 
     [Theory]
@@ -247,10 +249,19 @@ public class StartupArgumentsTests
     [Fact]
     public void A_folder_after_the_first_path_opens_nothing_and_does_not_re_root()
     {
-        var target = Resolve("/elsewhere/README.md", "src");
+        var target = Resolve("src/a.cs", "/elsewhere");
 
-        Assert.Equal(Full("/elsewhere"), target.Workspace!.FullName);
-        Assert.Equal([Full("/elsewhere/README.md")], Paths(target));
+        Assert.Equal(Full("/work"), target.Workspace!.FullName);
+        Assert.Equal([Full("/work/src/a.cs")], Paths(target));
+    }
+
+    [Fact]
+    public void A_first_file_outside_the_current_directory_leaves_no_workspace_and_the_rest_still_open()
+    {
+        var target = Resolve("/elsewhere/README.md", "src/a.cs", "src");
+
+        Assert.Null(target.Workspace);
+        Assert.Equal([Full("/elsewhere/README.md"), Full("/work/src/a.cs")], Paths(target));
     }
 
     [Fact]

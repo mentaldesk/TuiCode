@@ -152,16 +152,18 @@ public sealed class Workbench : Window
     }
 
     /// <summary>
-    /// Open what the command line asked for (#263): the workspace, then every file it named, each at the
-    /// position it carried (#265), with the first one active (#266). Positions are 1-based on the command
-    /// line; the cursor is 0-based.
+    /// Open what the command line asked for (#263): the workspace, or "No folder open" when there's none (#451),
+    /// then every file it named, each at the position it carried (#265), with the first one active (#266).
+    /// Positions are 1-based on the command line; the cursor is 0-based.
     /// Call it from the running loop, not before <c>Application.Init</c>: a tab opened before the first
     /// layout loses the keyboard to a session-restored one, and there's no viewport to reveal in yet.
     /// </summary>
     public void OpenStartupTarget(StartupTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
-        OpenFolder(target.Workspace ?? throw new ArgumentException("Nothing to open.", nameof(target)));
+        if (target.Workspace is { } workspace) OpenFolder(workspace);
+        else if (target.Files.Count == 0) throw new ArgumentException("Nothing to open.", nameof(target));
+        else Sidebar.ShowNoFolder(true);
         foreach (var startup in target.Files)
             Place(startup);
         // Opening left the last tab active, and only the visible tab has a viewport to reveal in.
@@ -187,6 +189,7 @@ public sealed class Workbench : Window
     {
         _workspaceFolder = null;
         Editor.Group.CloseAll();
+        Sidebar.ShowNoFolder(false);
         Sidebar.Explorer.Open(directory);
         Sidebar.Search.RunSearch();
         RefreshReviewIfShowing();

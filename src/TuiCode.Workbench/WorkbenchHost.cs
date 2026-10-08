@@ -222,6 +222,7 @@ public sealed class WorkbenchHost : IDisposable
         // Opening a file is a move into the Editor region, so the service makes it: the tab it opens may
         // still be carrying a stale HasFocus, which its own SetFocus would no-op on (#228).
         _workbench.FileOpened += (_, _) => MoveFocus(FocusRegion.Editor);
+        _workbench.Sidebar.OpenFolderRequested += (_, _) => _commands.TryExecute(CommandIds.Open);
     }
 
     private void ApplyIconStyle() =>
@@ -245,7 +246,9 @@ public sealed class WorkbenchHost : IDisposable
 
         _focus.Register(FocusRegion.Find, () => Take(sidebar.Search, sidebar.Search.FocusQuery), focused => Owns(sidebar.Search, focused));
         _focus.Register(FocusRegion.Review, () => Take(sidebar.Review, sidebar.Review.FocusList), focused => Owns(sidebar.Review, focused));
-        _focus.Register(FocusRegion.Explorer, () => Take(sidebar.Explorer), focused => Owns(sidebar.Explorer, focused));
+        _focus.Register(FocusRegion.Explorer,
+            () => sidebar.IsShowingNoFolder ? Take(sidebar.OpenFolderButton) : Take(sidebar.Explorer),
+            focused => Owns(sidebar.Explorer, focused) || Owns(sidebar.OpenFolderButton, focused));
         // The find bar sits inside the active tab, so the editor regions have to let it through (#229).
         _focus.Register(FocusRegion.FindBar, () => Take(_find.Bar, _find.FocusInput), OnFindBar);
         _focus.Register(FocusRegion.Diff, () => Take(group.ActiveDiffTab),
@@ -1311,10 +1314,7 @@ public sealed class WorkbenchHost : IDisposable
     private void OpenFileOrFolder()
     {
         if (_activeOpen is not null) return;
-        // Start browsing from the current workspace root; no root means nothing's open yet.
-        if (_workbench.Sidebar.Explorer.Root is not { } root) return;
-
-        var view = new OpenView(root, _icons);
+        var view = new OpenView(_workbench.Sidebar.Explorer.Root ?? CurrentDirectory(), _icons);
         view.Cancelled += (_, _) => CloseOpen(view);
         view.FileSelected += (_, file) =>
         {
@@ -1331,6 +1331,13 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusList();
+    }
+
+    // With no folder open (#451), the folder tuicode was started from.
+    private IDirectoryInfo CurrentDirectory()
+    {
+        var fileSystem = _workbench.Editor.Group.ActiveTab?.File.FileSystem ?? new FileSystem();
+        return fileSystem.DirectoryInfo.New(fileSystem.Directory.GetCurrentDirectory());
     }
 
     private void CloseOpen(OpenView view)
