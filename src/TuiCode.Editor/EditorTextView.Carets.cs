@@ -209,7 +209,7 @@ internal sealed partial class EditorTextView
         switch (commands)
         {
             case [Command.Paste]:
-                PasteAtCarets();
+                PasteAtCarets(App?.Clipboard?.GetClipboardData());
                 return true;
             case [Command.NextTabStop]:
                 return IndentLines();
@@ -288,9 +288,18 @@ internal sealed partial class EditorTextView
         return true;
     }
 
-    private void PasteAtCarets()
+    // The terminal's own paste arrives here as a bracketed paste, through Command.Paste rather than a key.
+    protected override bool OnPaste(string text)
     {
-        if (ReadOnly || App?.Clipboard?.GetClipboardData() is not { Length: > 0 } text) return;
+        if (_holdContentsChanged) return base.OnPaste(text);
+        if (HasSecondaryCarets) PasteAtCarets(text);
+        else EditAtPrimary(() => base.OnPaste(text));
+        return true;
+    }
+
+    private void PasteAtCarets(string? text)
+    {
+        if (ReadOnly || text is not { Length: > 0 }) return;
         var carets = Carets;
         var pieces = text == _copiedText && _copiedPieces.Length == carets.Length ? _copiedPieces : Split(text);
         if (pieces.Length != carets.Length) pieces = [.. carets.Select(_ => text)];
