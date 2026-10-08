@@ -107,8 +107,8 @@ public sealed class Workbench : Window
             StatusBar.SetError($"Copy failed: {reason}");
             return;
         }
-        var (lines, characters) = (CopyOutcome.Copied)outcome;
-        var message = $"Copied {Count(lines, "line")}  •  {Count(characters, "character")}";
+        var (lines, characters, throughTerminal) = (CopyOutcome.Copied)outcome;
+        var message = $"Copied {Count(lines, "line")}  •  {Count(characters, "character")}{(throughTerminal ? " through the terminal" : "")}";
         StatusBar.SetMessage(message);
         App?.AddTimeout(CopyMessageDuration, () =>
         {

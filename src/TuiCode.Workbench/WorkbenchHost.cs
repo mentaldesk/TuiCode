@@ -140,6 +140,7 @@ public sealed class WorkbenchHost : IDisposable
         // this user-var to activate its key table only while TuiCode runs; other terminals
         // strip the unknown OSC silently. Unconditional — no detection needed.
         WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MQ==\x07");
+        if (_app.Driver is { } output) output.Clipboard = new TerminalClipboard(output.Clipboard, output.WriteRaw);
         _terminalCursors = new TerminalCursors(_app);
         _terminalCursors.Detect();
         // Detected up front so About can show a spinner rather than ASCII art that the image then replaces.

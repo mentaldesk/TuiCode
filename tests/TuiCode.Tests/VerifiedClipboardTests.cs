@@ -93,6 +93,88 @@ public class VerifiedClipboardTests
 
         Assert.Equal(new CopyOutcome.Failed("no pasteboard (pbcopy)"), outcome);
     }
+
+    [Fact]
+    public void Write_sends_the_text_through_the_terminal_as_well_and_says_nothing_of_it_when_the_clipboard_took_it()
+    {
+        var sent = new List<string>();
+
+        var outcome = VerifiedClipboard.Write(new TerminalClipboard(new TestClipboard(), sent.Add), "one\ntwo");
+
+        Assert.Equal(new CopyOutcome.Copied(2, 6), outcome);
+        Assert.Equal([TerminalClipboard.Sequence("one\ntwo")], sent);
+    }
+
+    [Fact]
+    public void Write_says_the_text_went_through_the_terminal_when_the_clipboard_did_not_take_it()
+    {
+        var program = new ClipboardProgram { Answer = _ => new ToolRun.NotFound() };
+        var terminal = new TerminalClipboard(new TestClipboard { Transform = _ => null }, _ => { });
+
+        var outcome = VerifiedClipboard.Write(terminal, "a", ClipboardTools.For(false, false, false, program));
+
+        Assert.Equal(new CopyOutcome.Copied(1, 1, ThroughTerminal: true), outcome);
+    }
+
+    [Fact]
+    public void Write_fails_when_neither_the_clipboard_nor_a_terminal_took_the_text()
+    {
+        var program = new ClipboardProgram { Answer = _ => new ToolRun.NotFound() };
+
+        var outcome = VerifiedClipboard.Write(new TestClipboard { Transform = _ => null }, "a",
+            ClipboardTools.For(false, false, false, program));
+
+        Assert.Equal(new CopyOutcome.Failed("no clipboard tool found (install wl-copy or xclip)"), outcome);
+    }
+
+    [Fact]
+    public void Write_treats_Terminal_Guis_in_process_clipboard_as_no_clipboard_when_a_terminal_is_there()
+    {
+        var program = new ClipboardProgram { Answer = _ => new ToolRun.NotFound() };
+        var inProcess = new FakeClipboard();
+
+        var outcome = VerifiedClipboard.Write(new TerminalClipboard(inProcess, _ => { }), "a",
+            ClipboardTools.For(false, false, false, program));
+
+        Assert.Equal(new CopyOutcome.Copied(1, 1, ThroughTerminal: true), outcome);
+        Assert.Equal("a", inProcess.GetClipboardData());
+    }
+
+    [Fact]
+    public void Write_copies_through_the_platform_program_when_Terminal_Guis_clipboard_is_in_process()
+    {
+        var program = new ClipboardProgram();
+
+        var outcome = VerifiedClipboard.Write(new TerminalClipboard(new FakeClipboard(), _ => { }), "a",
+            ClipboardTools.For(false, false, false, program));
+
+        Assert.Equal(new CopyOutcome.Copied(1, 1), outcome);
+        Assert.Equal("a", program.Stored);
+    }
+
+    [Fact]
+    public void Write_says_a_copy_was_too_large_for_the_terminal_when_nothing_else_took_it()
+    {
+        var program = new ClipboardProgram { Answer = _ => new ToolRun.NotFound() };
+        var sent = new List<string>();
+        var terminal = new TerminalClipboard(new TestClipboard { Transform = _ => null }, sent.Add);
+
+        var outcome = VerifiedClipboard.Write(terminal, new string('x', TerminalClipboard.MaxBytes + 1),
+            ClipboardTools.For(false, false, false, program));
+
+        Assert.Equal(new CopyOutcome.Failed(TerminalClipboard.TooLarge), outcome);
+        Assert.Empty(sent);
+    }
+
+    [Fact]
+    public void Write_says_nothing_of_the_terminal_limit_when_the_clipboard_took_a_large_copy()
+    {
+        var text = new string('x', TerminalClipboard.MaxBytes + 1);
+
+        var outcome = VerifiedClipboard.Write(new TerminalClipboard(new TestClipboard(), _ => { }), text);
+
+        Assert.Equal(new CopyOutcome.Copied(1, text.Length), outcome);
+    }
 }
 
 /// <summary>Stores what it's given, after <see cref="Transform"/>; null from it drops the write.</summary>
