@@ -618,6 +618,34 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.StatusBar.SetHelpKey(help);
     }
 
+    private HelpColumn? PlaceHelp()
+    {
+        _focus.Reconcile();
+        return _focus.Region switch
+        {
+            FocusRegion.Diff => DiffHelp(),
+            FocusRegion.Explorer => ScopeHelp("Explorer", CommandScope.Explorer, ExplorerKeys),
+            FocusRegion.Find => ScopeHelp("Find", CommandScope.Find, _workbench.Sidebar.Search.InputsHaveFocus ? [] : FindResultKeys),
+            FocusRegion.Editor => ScopeHelp("Editor", CommandScope.Editor, []),
+            _ => null,
+        };
+    }
+
+    private static readonly HelpRow[] ExplorerKeys = [new("Enter", "Open"), new("→ ←", "Expand or collapse")];
+
+    private static readonly HelpRow[] FindResultKeys = [new("Enter", "Open result")];
+
+    /// <summary>A region's keys for F1: its fixed keys, then each command in its scope that's bound and can run now.</summary>
+    private HelpColumn ScopeHelp(string title, CommandScope scope, IEnumerable<HelpRow> fixedKeys)
+    {
+        var commands = _commands.Registered
+            .Where(command => command.Scope == scope && _commands.IsEnabled(command.Id))
+            .Select(command => (command.Label, Keys: _keybindings.Bindings.Where(b => b.CommandId == command.Id).Select(b => b.Display).ToList()))
+            .Where(command => command.Keys.Count > 0)
+            .Select(command => new HelpRow(string.Join(", ", command.Keys), command.Label));
+        return new HelpColumn(title, [.. fixedKeys, .. commands]);
+    }
+
     /// <summary>The focused diff's keys for F1, from the live bindings, leaving out what's unbound or can't run there.</summary>
     private HelpColumn? DiffHelp()
     {
@@ -1699,7 +1727,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeHelp is not null) return;
 
-        var view = new HelpView(FocusedScope() == CommandScope.Diff ? DiffHelp() : null, _workbench.Frame.Width);
+        var view = new HelpView(PlaceHelp(), _workbench.Frame.Width, _workbench.Viewport.Height);
         view.Closed += (_, _) => CloseHelp(view);
         _activeHelp = view;
         _workbench.Add(view);

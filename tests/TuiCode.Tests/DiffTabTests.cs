@@ -1046,7 +1046,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task F1_with_a_diff_showing_but_the_sidebar_focused_shows_everywhere_alone()
+    public async Task F1_with_a_diff_showing_but_the_sidebar_focused_lists_the_sidebars_keys()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -1061,7 +1061,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Null(help!.Place);
+        Assert.Equal("Explorer", help!.Place!.Title);
     }
 
     // Changes at rows 4 (modified), 14 (line 15 removed) and 30 (modified).
