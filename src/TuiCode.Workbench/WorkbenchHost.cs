@@ -626,10 +626,38 @@ public sealed class WorkbenchHost : IDisposable
             FocusRegion.Diff => DiffHelp(),
             FocusRegion.Explorer => ScopeHelp("Explorer", CommandScope.Explorer, ExplorerKeys),
             FocusRegion.Find => ScopeHelp("Find", CommandScope.Find, _workbench.Sidebar.Search.InputsHaveFocus ? [] : FindResultKeys),
-            FocusRegion.Editor => ScopeHelp("Editor", CommandScope.Editor, []),
+            FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, []),
+            FocusRegion.Review => ReviewHelp(),
+            FocusRegion.Tabs => TabsHelp(),
             _ => null,
         };
     }
+
+    private HelpColumn ReviewHelp()
+    {
+        var review = _workbench.Sidebar.Review;
+        HelpRow[] keys = review.OverviewHasFocus
+            ? [new("Enter", "Open the Overview"), new("↓", "To the files")]
+            :
+            [
+                new("Enter", "Open the file's diff"),
+                .. review.HasOverview ? new HelpRow[] { new("↑", "To Overview") } : [],
+                .. HelpRowOf(CommandIds.ToggleViewed, "Mark viewed or not"),
+            ];
+        return ScopeHelp("Review", CommandScope.Review, keys);
+    }
+
+    private HelpColumn TabsHelp() => new("Tabs",
+    [
+        new("← →", "Switch tab"),
+        new("Enter", "Go to the file"),
+        .. HelpRowOf(CommandIds.NextEditor, "Next tab"),
+        .. HelpRowOf(CommandIds.PreviousEditor, "Previous tab"),
+        .. HelpRowOf(CommandIds.CloseActiveEditor, "Close tab"),
+    ]);
+
+    private IEnumerable<HelpRow> HelpRowOf(string commandId, string description) =>
+        _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
 
     private static readonly HelpRow[] ExplorerKeys = [new("Enter", "Open"), new("→ ←", "Expand or collapse")];
 
@@ -652,17 +680,14 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return null;
         HelpRow[] rows =
         [
-            .. Row(CommandIds.NextChange, "Next change"),
-            .. Row(CommandIds.PreviousChange, "Previous change"),
-            .. Row(CommandIds.RevertChange, diff.IsDeleted ? "Restore file" : "Revert change"),
-            .. Row(CommandIds.GoToChangeLine, "Go to this line"),
+            .. HelpRowOf(CommandIds.NextChange, "Next change"),
+            .. HelpRowOf(CommandIds.PreviousChange, "Previous change"),
+            .. HelpRowOf(CommandIds.RevertChange, diff.IsDeleted ? "Restore file" : "Revert change"),
+            .. HelpRowOf(CommandIds.GoToChangeLine, "Go to this line"),
             .. PairRow(CommandIds.ScrollDiffLeft, CommandIds.ScrollDiffRight, "Scroll sideways"),
             .. PairRow(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "Page sideways"),
         ];
         return rows.Length == 0 ? null : new HelpColumn("Diff", rows);
-
-        IEnumerable<HelpRow> Row(string commandId, string description) =>
-            _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
 
         IEnumerable<HelpRow> PairRow(string backId, string forwardId, string description) =>
             KeyPair(backId, forwardId) is { } keys ? [new HelpRow(keys, description)] : [];
