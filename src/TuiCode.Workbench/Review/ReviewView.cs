@@ -95,6 +95,8 @@ public sealed class ReviewView : View
     /// <summary>Whether the Overview button is selected; it opens the Overview tab (#185).</summary>
     public bool OverviewHasFocus => _overview.HasFocus;
 
+    public bool HasOverview => _overview.Visible;
+
     internal Label Hint => _hint;
 
     /// <summary>The changed files in the order the tab lists them (#181).</summary>

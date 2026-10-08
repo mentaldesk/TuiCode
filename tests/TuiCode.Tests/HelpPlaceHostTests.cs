@@ -125,7 +125,32 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task F1_on_the_tab_strip_shows_everywhere_alone()
+    public async Task F1_on_the_tab_strip_lists_the_tab_keys()
+    {
+        var help = await TabStripHelp();
+
+        Assert.Equal("Tabs", help.Title);
+        Assert.Equal(
+        [
+            new("← →", "Switch tab"),
+            new("Enter", "Go to the file"),
+            new("Alt+Tab", "Next tab"),
+            new("Alt+Shift+Tab", "Previous tab"),
+            new("Ctrl+W", "Close tab"),
+        ], help.Rows);
+    }
+
+    [Fact]
+    public async Task The_tabs_column_follows_a_rebind_of_next_tab()
+    {
+        var help = await TabStripHelp(Override("Alt+Tab", "-" + CommandIds.NextEditor), Override("F6", CommandIds.NextEditor));
+
+        Assert.Contains(new HelpRow("F6", "Next tab"), help.Rows);
+        Assert.DoesNotContain(new HelpRow("Alt+Tab", "Next tab"), help.Rows);
+    }
+
+    [Fact]
+    public async Task F1_with_no_file_open_shows_everywhere_alone()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one"));
         HelpView? view = null;
@@ -135,13 +160,23 @@ public class HelpPlaceHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
             () => workbench.StatusBar.DisplayedFocus == "Editor",
-            () => _commands.TryExecute(CommandIds.FocusEditorTabStrip),
-            () => workbench.StatusBar.DisplayedFocus == "Tabs",
+            () => _commands.TryExecute(CommandIds.CloseActiveEditor),
+            () => workbench.Editor.Group.Value is null && workbench.StatusBar.DisplayedFocus == "Editor",
             () => host.App.InjectKey(Key.F1),
             () => (view = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Null(view!.Place);
+    }
+
+    private async Task<HelpColumn> TabStripHelp(params KeybindingOverride[] overrides)
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("one"));
+        return await HelpFrom(() =>
+        {
+            Built.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+            _commands.TryExecute(CommandIds.FocusEditorTabStrip);
+        }, "Tabs", overrides);
     }
 
     [Fact]
