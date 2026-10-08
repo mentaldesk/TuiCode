@@ -148,6 +148,11 @@ jobs:
         shell: bash
         run: ./publish/TuiCode --smoke-syntax
 
+      - name: Language server smoke
+        # The LSP client against an in-process fake server: JSON handling is where trimming would bite.
+        shell: bash
+        run: ./publish/TuiCode --smoke-language-server
+
       - name: AOT smoke
         # `dotnet test` runs JIT, so AOT-only failures (missing metadata,
         # trim-stripped paths) only surface against the published native

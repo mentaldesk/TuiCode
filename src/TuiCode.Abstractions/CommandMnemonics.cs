@@ -79,6 +79,7 @@ public static class CommandMnemonics
             [CommandIds.FocusReview] = "fr",
             [CommandIds.GoToLine] = "gl",
             [CommandIds.GoToSymbol] = "gs",
+            [CommandIds.GoToDefinition] = "gd",
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
             [CommandIds.GitBlame] = "gb",

@@ -18,6 +18,7 @@ using TuiCode.Workbench.Focus;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Help;
+using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
@@ -84,6 +85,9 @@ public sealed class WorkbenchHost : IDisposable
     private HelpView? _activeHelp;
     private GoToLineView? _activeGoToLine;
     private SymbolPickerView? _activeSymbolPicker;
+    private DefinitionPickerView? _activeDefinitionPicker;
+    // Only the latest Go to definition jumps, however the answers come back.
+    private int _definitionRequest;
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
     private string? _cursorColour;
@@ -121,7 +125,8 @@ public sealed class WorkbenchHost : IDisposable
         FileIcons? icons = null,
         IGitCli? git = null,
         IGitHubCli? gitHub = null,
-        IFileSystem? fileSystem = null)
+        IFileSystem? fileSystem = null,
+        ILanguageServerLauncher? languageServers = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -194,6 +199,9 @@ public sealed class WorkbenchHost : IDisposable
             new DiskWatcher(fileSystem, ScheduleFlush, _logger));
         _baselines = new CommittedBaselines(
             _workbench.Editor.Group, _git, action => _app.Invoke(action), new HeadWatcher(fileSystem, ScheduleFlush, _logger));
+
+        if (languageServers is not null)
+            _workbench.Languages = new LanguageServers(_workbench.Editor.Group, languageServers, action => _app.Invoke(action), ScheduleFlush);
 
         var explorer = _workbench.Sidebar.Explorer;
         _folderWatcher = new FolderWatcher(fileSystem, ScheduleFlush, _logger);
@@ -532,6 +540,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Editor, FileOpen);
         // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
         _commands.Register(CommandIds.GoToSymbol, "Go to symbol in file", OpenSymbolPicker, CommandScope.Editor);
+        // Enabled without a ready server, so the key can say what's missing; the menu dims it (IsAvailableFrom).
+        _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
         // No default key (#21): rarely needed, and users can bind one in Settings.
         _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack, CommandScope.Editor, FileOpen);
@@ -779,6 +789,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("Ctrl+G B", CommandIds.GitBlame);
+        keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
         keybindings.Bind("Alt+CursorUp", CommandIds.MoveLinesUp);
         keybindings.Bind("Alt+CursorDown", CommandIds.MoveLinesDown);
@@ -1112,8 +1123,12 @@ public sealed class WorkbenchHost : IDisposable
     private bool IsAvailableFrom(string id, FocusRegion region)
     {
         var scope = _commands.ScopeOf(id);
-        return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id);
+        return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id)
+            && (id != CommandIds.GoToDefinition || ActiveLanguageServer() is { State: LanguageServerState.Ready });
     }
+
+    private LanguageServer? ActiveLanguageServer() =>
+        _workbench.Editor.Group.ActiveTab is { } tab ? _workbench.Languages?.ServerFor(tab) : null;
 
     private void ShowAvailableMenus()
     {
@@ -1252,6 +1267,122 @@ public sealed class WorkbenchHost : IDisposable
         view.Dispose();
         _activeSymbolPicker = null;
         FocusCallingRegion();
+    }
+
+    /// <summary>Go to definition (<c>gd</c>): where the language server says the symbol under the cursor is defined.</summary>
+    private void GoToDefinition()
+    {
+        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
+        var status = _workbench.StatusBar;
+        if (ActiveLanguageServer() is not { } server)
+        {
+            status.SetMessage(LanguageServers.SpecFor(tab) is { } spec
+                ? spec.NotInstalled
+                : $"No language server for {(tab.HasSyntax ? tab.Grammar?.Name : null) ?? Workbench.PlainTextName}");
+            return;
+        }
+        switch (server.State)
+        {
+            case LanguageServerState.Missing:
+                status.SetMessage(server.Spec.NotInstalled);
+                return;
+            case LanguageServerState.Loading:
+                status.SetMessage($"The {server.Spec.Name} language server is still loading");
+                return;
+            case LanguageServerState.Stopped:
+                status.SetMessage($"The {server.Spec.Name} language server stopped");
+                return;
+        }
+
+        _workbench.Languages!.Flush();
+        var symbol = IdentifierAt(tab.Lines[tab.CursorRow], tab.CursorCharacter);
+        var request = ++_definitionRequest;
+        server.DefinitionAsync(tab.File.FullName, tab.CursorRow, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
+        {
+            if (_disposed || request != _definitionRequest) return;
+            if (answer.Exception?.InnerException is { } error) status.SetMessage($"Go to definition failed: {error.Message}");
+            else ShowDefinitions(tab, symbol, answer.Result);
+        }), TaskScheduler.Default);
+    }
+
+    private void ShowDefinitions(EditorTab origin, string? symbol, IReadOnlyList<SourceLocation> locations)
+    {
+        var fileSystem = origin.File.FileSystem;
+        locations = [.. locations.Where(l => fileSystem.File.Exists(l.Path))];
+        switch (locations)
+        {
+            case []:
+                _workbench.StatusBar.SetMessage(symbol is null ? "Nothing to go to here" : $"No definition found for {symbol}");
+                return;
+            case [var only]:
+                JumpToDefinition(origin, only);
+                return;
+        }
+        if (_activeDefinitionPicker is not null) return;
+
+        var root = _workbench.Sidebar.Explorer.Root?.FullName;
+        var rows = locations.Select(l => new DefinitionRow(l, $"{DisplayPath(l.Path, root)}:{l.Line + 1}", LineAt(fileSystem, l).Trim())).ToList();
+        var view = new DefinitionPickerView(symbol ?? "symbol", rows);
+        view.Cancelled += (_, _) => CloseDefinitionPicker(view);
+        view.Submitted += (_, location) =>
+        {
+            CloseDefinitionPicker(view);
+            JumpToDefinition(origin, location);
+        };
+        _activeDefinitionPicker = view;
+        _workbench.Add(view);
+        _scopes.Push(view.Scope);
+        view.FocusFilter();
+    }
+
+    private static string DisplayPath(string path, string? root) =>
+        root is not null && FilePaths.IsSameOrUnder(path, root) ? Path.GetRelativePath(root, path) : path;
+
+    private string LineAt(IFileSystem fileSystem, SourceLocation location)
+    {
+        if (_workbench.Editor.Group.Tabs.FirstOrDefault(t => t.File.FullName == location.Path) is { } open)
+            return open.Lines.ElementAtOrDefault(location.Line) ?? "";
+        return fileSystem.File.ReadLines(location.Path).Skip(location.Line).FirstOrDefault() ?? "";
+    }
+
+    private void CloseDefinitionPicker(DefinitionPickerView view)
+    {
+        if (!ReferenceEquals(_activeDefinitionPicker, view)) return;
+        _scopes.Pop(view.Scope);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeDefinitionPicker = null;
+        FocusCallingRegion();
+    }
+
+    private void JumpToDefinition(EditorTab origin, SourceLocation location)
+    {
+        _history.Visit(new CursorLocation(origin.File.FullName, origin.CursorRow, origin.CursorColumn));
+        EditorTab tab;
+        _suppressHistory = true;
+        try
+        {
+            tab = _workbench.Editor.Group.OpenOrFocus(origin.File.FileSystem.FileInfo.New(location.Path));
+            tab.MoveCursorToCharacter(location.Line, location.Character);
+            tab.RevealLines(location.Line, location.Line);
+            MoveFocus(FocusRegion.Editor);
+        }
+        finally { _suppressHistory = false; }
+        _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn), explicitJump: true);
+    }
+
+    /// <summary>The identifier <paramref name="index"/> is in or just after, or null on whitespace and punctuation.</summary>
+    internal static string? IdentifierAt(string line, int index)
+    {
+        static bool Part(char c) => char.IsLetterOrDigit(c) || c == '_';
+        index = Math.Min(index, line.Length);
+        if (index == line.Length || !Part(line[index])) index--;
+        if (index < 0 || !Part(line[index])) return null;
+        var start = index;
+        while (start > 0 && Part(line[start - 1])) start--;
+        var end = index;
+        while (end + 1 < line.Length && Part(line[end + 1])) end++;
+        return line[start..(end + 1)];
     }
 
     private void OnIteration(object? sender, EventArgs<IApplication?> e)
@@ -3127,6 +3258,7 @@ public sealed class WorkbenchHost : IDisposable
         _keybindings.ChordChanged -= OnChordChanged;
         _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
+        _workbench.Languages?.Dispose();
         _diskChanges.Dispose();
         _baselines.Dispose();
         _folderWatcher.Dispose();

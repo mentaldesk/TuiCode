@@ -11,6 +11,7 @@ using TuiCode.Workbench;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Icons;
+using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
@@ -20,6 +21,9 @@ using TuiCode.Workbench.Workspace;
 
 if (args.Contains("--smoke-syntax"))
     return SyntaxSmoke.Run(Console.Out);
+
+if (args.Contains("--smoke-language-server"))
+    return LanguageServerSmoke.Run(Console.Out);
 
 // --help / -h: usage to stdout, before anything touches the terminal (#264).
 if (UsageCli.TryHandle(args, Console.Out) is int usageExit)
@@ -82,7 +86,8 @@ services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
     icons: sp.GetRequiredService<FileIcons>(),
     git: sp.GetRequiredService<IGitCli>(),
     gitHub: sp.GetRequiredService<IGitHubCli>(),
-    fileSystem: sp.GetRequiredService<IFileSystem>()));
+    fileSystem: sp.GetRequiredService<IFileSystem>(),
+    languageServers: new ProcessLauncher()));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();

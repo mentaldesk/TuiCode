@@ -2,6 +2,7 @@ using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Find;
+using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Workspace;
@@ -88,14 +89,59 @@ public sealed class Workbench : Window
         };
     }
 
+    /// <summary>The language servers for the open folder; null runs none.</summary>
+    public LanguageServers? Languages
+    {
+        get;
+        set
+        {
+            if (field is not null) field.StateChanged -= OnLanguageServerChanged;
+            field = value;
+            if (value is not null) value.StateChanged += OnLanguageServerChanged;
+        }
+    }
+
+    private void OnLanguageServerChanged(object? sender, EventArgs e)
+    {
+        var tab = Editor.Group.ActiveTab;
+        ShowLanguage(tab);
+        if (tab is not null && Languages?.ServerFor(tab) is { State: LanguageServerState.Missing or LanguageServerState.Stopped })
+            StatusBar.SetMessage(FileMessage(tab));
+    }
+
     private void ShowActiveFile(EditorTab? tab)
     {
-        if (tab is not null) StatusBar.SetMessage(tab.File.FullName);
+        if (tab is not null) StatusBar.SetMessage(FileMessage(tab));
         else if (Editor.Group.ActiveDiffTab is { } diff) StatusBar.SetMessage(diff.Title);
         else if (Editor.Group.ActiveDocumentTab is { } document) StatusBar.SetMessage(document.Title);
-        StatusBar.SetGrammar(tab is { HasSyntax: true } ? tab.Grammar?.Name ?? PlainTextName : null);
+        ShowLanguage(tab);
         StatusBar.SetWrap(tab is { WordWrap: true });
     }
+
+    private void ShowLanguage(EditorTab? tab)
+    {
+        if (tab is not { HasSyntax: true })
+        {
+            StatusBar.SetGrammar(null);
+            return;
+        }
+        var name = tab.Grammar?.Name ?? PlainTextName;
+        StatusBar.SetGrammar(Languages?.ServerFor(tab)?.State switch
+        {
+            LanguageServerState.Loading => $"{name} ◌ loading",
+            LanguageServerState.Ready => $"{name} ● ready",
+            LanguageServerState.Stopped => $"{name} stopped",
+            _ => name,
+        });
+    }
+
+    /// <summary>The file's path, or what its language server needs from the user.</summary>
+    private string FileMessage(EditorTab tab) => Languages?.ServerFor(tab) switch
+    {
+        { State: LanguageServerState.Missing } server => server.Spec.NotInstalled,
+        { State: LanguageServerState.Stopped, Failure: { } failure } server => $"{server.Spec.Name} language server stopped: {failure}",
+        _ => tab.File.FullName,
+    };
 
     /// <summary>How long a successful copy's message shows before the file path comes back.</summary>
     internal TimeSpan CopyMessageDuration { get; set; } = TimeSpan.FromSeconds(4);
@@ -136,8 +182,8 @@ public sealed class Workbench : Window
     /// <summary>Open a file in the editor. Shared by the explorer and the Open dialog.</summary>
     public void OpenFile(IFileInfo file)
     {
-        Editor.Open(file);
-        StatusBar.SetMessage(file.FullName);
+        var tab = Editor.Open(file);
+        StatusBar.SetMessage(FileMessage(tab));
         FileOpened?.Invoke(this, EventArgs.Empty);
     }
 
@@ -188,6 +234,7 @@ public sealed class Workbench : Window
     public void OpenFolder(IDirectoryInfo directory)
     {
         _workspaceFolder = null;
+        Languages?.OpenFolder(directory.FullName);
         Editor.Group.CloseAll();
         Sidebar.ShowNoFolder(false);
         Sidebar.Explorer.Open(directory);
