@@ -343,6 +343,7 @@ What follows is how TuiCode implements it today.
 - `KittyIntegration` writes `~/.config/kitty/tuicode.conf`, the same mappings as WezTerm's key table, each `map --when-focus-on var:TUICODE_ACTIVE=1 … send_text all …`, so they only apply in a window where TuiCode set the user-var. `all` because TuiCode runs kitty in its keyboard protocol mode, which `normal,application` would miss. The user adds `include tuicode.conf` to `kitty.conf`; kitty skips an include whose file is gone, so **Remove** leaves that line harmless. Detected on macOS by `TERM=xterm-kitty` or `KITTY_WINDOW_ID`. `KittyIntegrationTests` holds its key set to WezTerm's.
 - CLI surface in `TerminalIntegrationCli` — `--install-/--uninstall-/--list-/--check-terminal-integration[=id]`. `Program.cs` runs it before TG init and exits on hit; the `--check` flag returns 0/1/2 for installed/stale/not-installed.
 - Settings UI: `TerminalIntegrationPickerView` shows only the *detected* terminal (per #59). Buttons act on `ITerminalIntegration` directly — no staging via `ISettingsService.Save`, because the write is to an external app's config, not a TuiCode setting. Rendering decisions are split into the pure `TerminalIntegrationPanelState.Build` so unit tests don't need TG.
+- Alacritty, Ghostty and Terminal.app on macOS have no integration and never will (#445): `UnsupportedTerminal` recognises them and the panel says why `Cmd+C`/`Cmd+X` can't reach TuiCode there and what to use instead, with no buttons. Any other terminal gets the "No integration available" text.
 
 ## Sidebar width (#209)
 

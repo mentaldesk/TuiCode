@@ -70,6 +70,63 @@ public class TerminalIntegrationPanelStateTests
         Assert.Contains(state.Lines, l => l.Contains("Supported so far: iTerm2"));
     }
 
+    [Theory]
+    [InlineData("TERM", "alacritty", "Alacritty", "Alacritty's key bindings apply to every program,")]
+    [InlineData("ALACRITTY_WINDOW_ID", "1", "Alacritty", "Alacritty's key bindings apply to every program,")]
+    [InlineData("TERM_PROGRAM", "ghostty", "Ghostty", "Ghostty has no key bindings for one program only,")]
+    [InlineData("GHOSTTY_RESOURCES_DIR", "/Applications/Ghostty.app", "Ghostty", "Ghostty has no key bindings for one program only,")]
+    [InlineData("TERM_PROGRAM", "Apple_Terminal", "Terminal.app", "Terminal.app doesn't pass on the modifiers")]
+    public void Build_says_what_wont_work_in_a_terminal_TuiCode_cant_integrate_with(
+        string variable, string value, string name, string reason)
+    {
+        var env = new FakeEnvironment().Set(variable, value);
+
+        var state = TerminalIntegrationPanelState.Build(RealIntegrations(env), env);
+
+        Assert.Null(state.Detected);
+        Assert.Empty(state.Actions);
+        Assert.Equal($"Detected terminal: {name}", state.Lines[0]);
+        Assert.Contains("Cmd+C and Cmd+X can't reach TuiCode here:", state.Lines);
+        Assert.Contains(reason, state.Lines);
+        Assert.Contains("Inside TuiCode, use Ctrl+C and Ctrl+X instead.", state.Lines);
+        Assert.Contains("Cmd+V pastes as usual.", state.Lines);
+        Assert.Contains("For Cmd shortcuts, use iTerm2, WezTerm or kitty.", state.Lines);
+        Assert.DoesNotContain(state.Lines, l => l.Contains("No integration available"));
+    }
+
+    [Fact]
+    public void Build_still_says_no_integration_is_available_in_an_unknown_terminal()
+    {
+        var env = new FakeEnvironment().Set("TERM_PROGRAM", "Hyper");
+
+        var state = TerminalIntegrationPanelState.Build(RealIntegrations(env), env);
+
+        Assert.Empty(state.Actions);
+        Assert.Equal("No integration available for this terminal yet.", state.Lines[0]);
+        Assert.Contains("Supported so far: iTerm2, WezTerm, kitty.", state.Lines);
+    }
+
+    [Fact]
+    public void Build_leaves_Linux_terminals_to_the_unknown_terminal_text()
+    {
+        var env = new FakeEnvironment().SetIsMacOS(false).Set("TERM", "alacritty");
+
+        var state = TerminalIntegrationPanelState.Build(RealIntegrations(env), env);
+
+        Assert.Equal("No integration available for this terminal yet.", state.Lines[0]);
+    }
+
+    private static ITerminalIntegration[] RealIntegrations(IEnvironment env)
+    {
+        var fs = new System.IO.Abstractions.TestingHelpers.MockFileSystem();
+        return
+        [
+            new TuiCode.Workbench.TerminalIntegration.Iterm2Integration(fs, env),
+            new TuiCode.Workbench.TerminalIntegration.WezTermIntegration(fs, env),
+            new TuiCode.Workbench.TerminalIntegration.KittyIntegration(fs, env),
+        ];
+    }
+
     [Fact]
     public void Build_shows_env_vars_as_unset_when_missing()
     {
