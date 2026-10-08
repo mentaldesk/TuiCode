@@ -56,6 +56,10 @@ public static class CommandIds
     public const string ScrollDiffPageRight = "diff.action.scrollPageRight";
 
     public const string HelpClose = "help.action.close";
+    public const string HelpScrollUp = "help.action.scrollUp";
+    public const string HelpScrollDown = "help.action.scrollDown";
+    public const string HelpPageUp = "help.action.pageUp";
+    public const string HelpPageDown = "help.action.pageDown";
     public const string DiagnosticsClose = "diagnostics.action.close";
     public const string AboutClose = "about.action.close";
     public const string DocumentInfoClose = "documentInfo.action.close";
