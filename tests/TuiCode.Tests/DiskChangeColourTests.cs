@@ -19,14 +19,12 @@ public class DiskChangeColourTests : StaticConfigurationTest
     private readonly IApplication _app = Application.Create().Init(DriverRegistry.Names.ANSI);
     private readonly MockFileSystem _fs = new();
     private readonly IFileInfo _file;
+    private readonly IDisposable _themes;
 
     public DiskChangeColourTests()
     {
-        ConfigurationManager.Enable(ConfigLocations.None);
-        ConfigurationManager.RuntimeConfig = BundledThemes.Config;
-        ConfigurationManager.Load(ConfigLocations.LibraryResources | ConfigLocations.Runtime);
+        _themes = LoadBundledThemes();
         ThemeManager.Theme = BundledThemes.Midnight;
-        ConfigurationManager.Apply();
         _fs.AddFile("/work/a.txt", new MockFileData("one\n"));
         _file = _fs.FileInfo.New("/work/a.txt");
         _app.Driver!.SetScreenSize(Width, 6);
@@ -35,7 +33,7 @@ public class DiskChangeColourTests : StaticConfigurationTest
     public override void Dispose()
     {
         _app.Dispose();
-        ConfigurationManager.Disable(resetToHardCodedDefaults: true);
+        _themes.Dispose();
         base.Dispose();
     }
 
@@ -47,7 +45,6 @@ public class DiskChangeColourTests : StaticConfigurationTest
     public void The_explorer_names_a_changed_file_in_the_warning_colour(string theme)
     {
         ThemeManager.Theme = theme;
-        ConfigurationManager.Apply();
         using var explorer = new FileExplorerView { App = _app, Width = Width, Height = 4 };
         explorer.Open(_fs.DirectoryInfo.New("/work"));
 

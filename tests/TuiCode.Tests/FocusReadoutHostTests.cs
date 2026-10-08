@@ -152,30 +152,18 @@ public class FocusReadoutHostTests : StaticConfigurationTest
     [Fact]
     public void Every_bundled_theme_draws_a_focused_pane_differently_from_an_unfocused_one()
     {
-        ConfigurationManager.Enable(ConfigLocations.None);
-        try
+        using var themes = LoadBundledThemes();
+        foreach (var theme in BundledThemes.Names)
         {
-            ConfigurationManager.RuntimeConfig = BundledThemes.Config;
-            ConfigurationManager.Load(ConfigLocations.LibraryResources | ConfigLocations.Runtime);
-
-            foreach (var theme in BundledThemes.Names)
+            ThemeManager.Theme = theme;
+            foreach (var name in new[] { "Base", "Sidebar" })
             {
-                ThemeManager.Theme = theme;
-                ConfigurationManager.Apply();
-                foreach (var name in new[] { "Base", "Sidebar" })
-                {
-                    Assert.True(SchemeManager.TryGetScheme(name, out var scheme));
-                    var normal = scheme!.GetAttributeForRole(VisualRole.Normal, null);
-                    var focus = scheme.GetAttributeForRole(VisualRole.Focus, null);
-                    Assert.True(normal != focus, $"{theme}'s {name} draws a focused border like an unfocused one");
-                    Assert.True(focus.Foreground != focus.Background, $"{theme}'s {name} focus colour is unreadable");
-                }
+                Assert.True(SchemeManager.TryGetScheme(name, out var scheme));
+                var normal = scheme!.GetAttributeForRole(VisualRole.Normal, null);
+                var focus = scheme.GetAttributeForRole(VisualRole.Focus, null);
+                Assert.True(normal != focus, $"{theme}'s {name} draws a focused border like an unfocused one");
+                Assert.True(focus.Foreground != focus.Background, $"{theme}'s {name} focus colour is unreadable");
             }
-        }
-        finally
-        {
-            ThemeManager.Theme = "Default";
-            ConfigurationManager.Disable(resetToHardCodedDefaults: true);
         }
     }
 

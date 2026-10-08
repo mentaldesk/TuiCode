@@ -11,7 +11,7 @@ public sealed class StaticConfigurationCollection { }
 /// <summary>
 /// Base for any test that boots a Terminal.Gui <c>Application</c> (e.g. news up a
 /// <see cref="TuiCode.Workbench.WorkbenchHost"/>) or mutates <c>ThemeManager</c> /
-/// <c>ConfigurationManager</c>. Those are process-global TG statics and TG's render
+/// <c>TuiConfigurationBuilder</c>. Those are process-global TG statics and TG's render
 /// path throws <c>KeyNotFoundException</c> if the theme dictionary is mutated by a
 /// parallel test (issue #77).
 ///
@@ -20,7 +20,7 @@ public sealed class StaticConfigurationCollection { }
 /// <c>ThemeManager.Theme</c> so a test that changes the theme can't leak into the next.
 ///
 /// Rule of thumb: if your test news up a <c>WorkbenchHost</c>, renders a View, or
-/// touches <c>ThemeManager</c>/<c>ConfigurationManager</c>, derive from this.
+/// touches <c>ThemeManager</c>/<c>TuiConfigurationBuilder</c>, derive from this.
 /// </summary>
 [Collection("StaticConfiguration")]
 public abstract class StaticConfigurationTest : IDisposable
@@ -42,6 +42,24 @@ public abstract class StaticConfigurationTest : IDisposable
                 "still matches. See issue #77.");
 
         _theme = ThemeManager.Theme;
+    }
+
+    /// <summary>Registers the bundled themes, and only those, until disposed.</summary>
+    protected static IDisposable LoadBundledThemes()
+    {
+        TuiConfigurationBuilder.Shared.RuntimeConfig = TuiCode.Workbench.Themes.BundledThemes.Config;
+        TuiConfigurationBuilder.Shared.ApplyToStaticFacades();
+        return new BundledThemesLoaded();
+    }
+
+    private sealed class BundledThemesLoaded : IDisposable
+    {
+        public void Dispose()
+        {
+            ThemeManager.Theme = ThemeManager.DEFAULT_THEME_NAME;
+            TuiConfigurationBuilder.Shared.RuntimeConfig = null;
+            TuiConfigurationBuilder.Shared.ApplyToStaticFacades();
+        }
     }
 
     public virtual void Dispose()

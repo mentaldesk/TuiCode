@@ -3,7 +3,7 @@ namespace TuiCode.Abstractions;
 /// <summary>
 /// User-facing settings: read current values, mutate them (with live preview side-effects),
 /// enumerate available themes, persist to disk. Wraps Terminal.Gui's static
-/// <c>ConfigurationManager</c> / <c>ThemeManager</c> surface so the rest of the app stays DI-uniform.
+/// <c>TuiConfigurationBuilder</c> / <c>ThemeManager</c> surface so the rest of the app stays DI-uniform.
 /// </summary>
 public interface ISettingsService
 {

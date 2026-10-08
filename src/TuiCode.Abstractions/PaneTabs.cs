@@ -1,3 +1,4 @@
+using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
 namespace TuiCode.Abstractions;
@@ -18,4 +19,14 @@ public class PaneTabs : Tabs
     }
 
     private static bool? StayPut() => true;
+
+    /// <summary>Redraws <paramref name="tab"/>'s header after its title changes; TG would place it at the old width.</summary>
+    public static void ShowTitle(View tab)
+    {
+        if (tab.Border.View is not BorderView { TitleView: { } header }) return;
+        header.Text = tab.Title;
+        header.TextFormatter.ConstrainToSize = null;
+        if (header is ITitleView title) title.MeasuredTabLength = 0;
+        tab.SetNeedsLayout();
+    }
 }

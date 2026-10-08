@@ -10,6 +10,14 @@ namespace TuiCode.Tests;
 // "StaticConfiguration" collection and snapshot/restores the theme (issue #77).
 public class DefaultSettingsServiceTests : StaticConfigurationTest
 {
+    private readonly IDisposable _themes = LoadBundledThemes();
+
+    public override void Dispose()
+    {
+        _themes.Dispose();
+        base.Dispose();
+    }
+
     [Fact]
     public void Save_writes_empty_object_when_theme_is_default()
     {
@@ -56,28 +64,16 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     [Fact]
     public void Only_our_themes_are_offered_and_each_defines_every_scheme()
     {
-        ConfigurationManager.Enable(ConfigLocations.None);
-        try
-        {
-            ConfigurationManager.RuntimeConfig = BundledThemes.Config;
-            ConfigurationManager.Load(ConfigLocations.LibraryResources | ConfigLocations.Runtime);
+        using var themes = LoadBundledThemes();
+        Assert.Equal(
+            [BundledThemes.Midnight, BundledThemes.Daylight, BundledThemes.TurboPascal, BundledThemes.ModernBorland],
+            new DefaultSettingsService(new MockFileSystem()).AvailableThemes);
 
-            Assert.Equal(
-                [BundledThemes.Midnight, BundledThemes.Daylight, BundledThemes.TurboPascal, BundledThemes.ModernBorland],
-                new DefaultSettingsService(new MockFileSystem()).AvailableThemes);
-
-            foreach (var theme in BundledThemes.Names)
-            {
-                ThemeManager.Theme = theme;
-                ConfigurationManager.Apply();
-                foreach (var scheme in new[] { "Base", "Accent", "Dialog", "Menu", "Error", "Warning", "Sidebar", "StatusBar" })
-                    Assert.True(SchemeManager.TryGetScheme(scheme, out _), $"{theme} has no {scheme} scheme");
-            }
-        }
-        finally
+        foreach (var theme in BundledThemes.Names)
         {
-            ThemeManager.Theme = "Default";
-            ConfigurationManager.Disable(resetToHardCodedDefaults: true);
+            ThemeManager.Theme = theme;
+            foreach (var scheme in new[] { "Base", "Accent", "Dialog", "Menu", "Error", "Warning", "Sidebar", "StatusBar" })
+                Assert.True(SchemeManager.TryGetScheme(scheme, out _), $"{theme} has no {scheme} scheme");
         }
     }
 

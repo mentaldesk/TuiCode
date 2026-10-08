@@ -6,6 +6,8 @@ using TuiCode.Workbench.About;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
+using TuiCode.Workbench.Themes;
+using TuiCode.Workbench.Configuration;
 
 namespace TuiCode.Tests;
 
@@ -36,6 +38,24 @@ public class WorkbenchHostTests : StaticConfigurationTest
             if (Key.TryParse("Ctrl+Q", out var ctrlQ))
                 host.App.InjectKey(ctrlQ);
         }
+    }
+
+    [Fact]
+    public async Task Esc_does_not_quit_even_after_a_theme_switch()
+    {
+        using var themes = LoadBundledThemes();
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var settings = new DefaultSettingsService(new MockFileSystem());
+        using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(), settings, driverName: DriverRegistry.Names.ANSI);
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.Esc),
+            () => { settings.Theme = BundledThemes.TurboPascal; },
+            () => host.App.InjectKey(Key.Esc),
+            () => { });
+
+        Assert.Equal(BundledThemes.TurboPascal, settings.Theme);
     }
 
     // #90: a hand-edited keybindings file can carry a malformed entry. Since #89 the chord is stored
