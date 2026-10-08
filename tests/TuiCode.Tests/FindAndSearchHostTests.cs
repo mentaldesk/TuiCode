@@ -4,6 +4,7 @@ using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Find;
+using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 
@@ -58,7 +59,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         Assert.True(findBarFocusedAfterCtrlF, "Ctrl+F should show and focus the find bar");
         Assert.Equal((0, "foo"), afterTyping);
         Assert.Equal(1, rowAfterEnter);
-        Assert.Equal("Enter next match · Shift+Enter previous match · Esc close", statusWhileFinding);
+        Assert.Equal(tab!.File.FullName, statusWhileFinding);
         Assert.True(closedCleanly, "Esc should remove the bar, clear the selection, refocus the editor and restore the status bar");
     }
 
@@ -87,22 +88,77 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         EditorTab? tab = null;
-        var statusInReplaceField = "";
 
         await HostSteps.Run(host,
             () => { tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")); },
             () => { tab!.FocusContent(); host.App.InjectKey(Key.H.WithCtrl); },
             () => { foreach (var c in "cat") host.App.InjectKey(new Key(c)); },
             () => host.App.InjectKey(Key.Tab),
-            () =>
-            {
-                statusInReplaceField = workbench.StatusBar.DisplayedText;
-                foreach (var c in "dog") host.App.InjectKey(new Key(c));
-            },
+            () => { foreach (var c in "dog") host.App.InjectKey(new Key(c)); },
             () => host.App.InjectKey(Key.Enter));
 
         Assert.Equal("dog cat", tab!.Lines[0]);
-        Assert.Equal("Enter replace · Ctrl+Enter replace all · Tab find field · Esc close", statusInReplaceField);
+    }
+
+    [Fact]
+    public async Task F1_in_the_find_field_lists_the_find_bars_keys_and_Esc_hands_the_field_back()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("foo\nfoo\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        FindBarView? bar = null;
+        HelpView? help = null;
+        var status = "";
+        var queryAfterHelp = "";
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => { workbench.Editor.Group.ActiveTab!.FocusContent(); host.App.InjectKey(Key.F.WithCtrl); },
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is { HasFocus: true },
+            () => { foreach (var c in "foo") host.App.InjectKey(new Key(c)); },
+            () => bar!.Query == "foo",
+            () => { status = workbench.StatusBar.DisplayedText; host.App.InjectKey(Key.F1); },
+            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc),
+            () => !workbench.SubViews.OfType<HelpView>().Any(),
+            () => { queryAfterHelp = bar!.Query; host.App.InjectKey(new Key('x')); },
+            () => bar!.Query == "x");
+
+        Assert.Equal(_fs.Path.GetFullPath("/work/a.txt"), status);
+        Assert.Equal("foo", queryAfterHelp);
+        Assert.Equal("Find bar", help!.Place!.Title);
+        Assert.Equal(["Next match", "Previous match", "Close"], help.Place.Rows.Select(row => row.Description));
+        Assert.Contains(bar!, workbench.SubViewsDeep());
+    }
+
+    [Fact]
+    public async Task F1_in_the_replace_field_lists_its_keys_and_Enter_hands_the_field_back()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("cat cat\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        FindBarView? bar = null;
+        HelpView? help = null;
+        var status = "";
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => { workbench.Editor.Group.ActiveTab!.FocusContent(); host.App.InjectKey(Key.H.WithCtrl); },
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is { HasFocus: true },
+            () => { foreach (var c in "cat") host.App.InjectKey(new Key(c)); },
+            () => host.App.InjectKey(Key.Tab),
+            () => bar!.ReplacementHasFocus,
+            () => { status = workbench.StatusBar.DisplayedText; host.App.InjectKey(Key.F1); },
+            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Enter),
+            () => !workbench.SubViews.OfType<HelpView>().Any(),
+            () => { foreach (var c in "dog") host.App.InjectKey(new Key(c)); },
+            () => bar!.Replacement == "dog");
+
+        Assert.Equal(_fs.Path.GetFullPath("/work/a.txt"), status);
+        Assert.Equal(["Replace and go to next", "Previous match", "Replace all", "Find field", "Close"],
+            help!.Place!.Rows.Select(row => row.Description));
+        Assert.Equal("cat", bar!.Query);
     }
 
     [Fact]

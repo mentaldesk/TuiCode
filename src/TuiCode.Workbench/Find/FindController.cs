@@ -1,6 +1,7 @@
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Search;
+using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Find;
@@ -29,12 +30,6 @@ internal sealed class FindController : IDisposable
     /// <summary>Raised after the bar closes, so the host can hand focus back to the editor.</summary>
     public event EventHandler? Closed;
 
-    /// <summary>
-    /// The keys that act right now (e.g. "Enter next match · Shift+Enter previous match"), or null when
-    /// there's nothing to act on. The host shows it in the status bar so the bar's keys aren't a secret.
-    /// </summary>
-    public event EventHandler<string?>? HintChanged;
-
     public FindController(EditorGroup group, IInputScopeStack scopes, IKeybindingService below)
     {
         _group = group;
@@ -59,11 +54,9 @@ internal sealed class FindController : IDisposable
             key => _bar.HasFocus || (key == Key.Esc && _tab?.ContentHasFocus == true));
 
         _bar.QueryChanged += (_, _) => Recompute(selectFromAnchor: true);
-        _bar.FieldFocusChanged += (_, _) => UpdateHint();
     }
 
     public bool IsOpen => _tab is not null;
-    internal string? Hint { get; private set; }
 
     internal FindBarView Bar => _bar;
     internal IReadOnlyList<TextMatch> Matches => _matches;
@@ -86,14 +79,28 @@ internal sealed class FindController : IDisposable
         if (selected.Length > 0 && !selected.Contains('\n') && !selected.Contains('\r'))
             _bar.Query = selected;
         Recompute(selectFromAnchor: true);
+        // Replace opens on the replacement once there's something to replace, otherwise on the query.
+        _bar.KeysInReplacement = _bar.ReplaceVisible && _bar.Query.Length > 0;
     }
 
-    /// <summary>
-    /// Takes the keyboard into the bar, selecting what's there so typing replaces it. Replace opens on the
-    /// replacement once there's something to replace, otherwise on the query.
-    /// </summary>
+    /// <summary>Takes the keyboard into whichever field should have it, selecting what's there so typing replaces it.</summary>
     internal bool FocusInput() =>
-        _bar.ReplaceVisible && _bar.Query.Length > 0 ? _bar.FocusReplacement() : _bar.FocusQuery();
+        _bar.ReplaceVisible && _bar.KeysInReplacement ? _bar.FocusReplacement() : _bar.FocusQuery();
+
+    /// <summary>The bar's keys for F1, for whichever field has them.</summary>
+    internal HelpColumn Help()
+    {
+        var inReplacement = _bar.ReplaceVisible && _bar.KeysInReplacement;
+        HelpRow[] replaceRows = [new("Ctrl+Enter", "Replace all"), new("Tab", inReplacement ? "Find field" : "Replace field")];
+        HelpRow[] rows =
+        [
+            new("Enter", inReplacement ? "Replace and go to next" : "Next match"),
+            new("Shift+Enter", "Previous match"),
+            .. _bar.ReplaceVisible ? replaceRows : [],
+            new("Esc", "Close"),
+        ];
+        return new HelpColumn("Find bar", rows);
+    }
 
     public void Close()
     {
@@ -101,7 +108,6 @@ internal sealed class FindController : IDisposable
         _scopes.Pop(_scope);
         tab.ClearSelection();
         Detach();
-        UpdateHint();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -219,26 +225,6 @@ internal sealed class FindController : IDisposable
             : _matches.Count == 0 ? "No results"
             : _current >= 0 ? $"{_current + 1} of {_matches.Count}"
             : $"{_matches.Count} results";
-        UpdateHint();
-    }
-
-    private void UpdateHint()
-    {
-        string? hint = null;
-        if (_tab is not null && _matches.Count > 0)
-        {
-            // Ctrl+Enter (replace all) works from either field, so it's advertised whenever replace shows.
-            // Kept within 80 columns, hence the terser find-field wording once replace is visible.
-            hint = _bar.ReplacementHasFocus
-                ? "Enter replace · Ctrl+Enter replace all · Tab find field · Esc close"
-                : _bar.ReplaceVisible
-                    ? "Enter next · Shift+Enter previous · Ctrl+Enter replace all · Tab replace field"
-                    : "Enter next match · Shift+Enter previous match · Esc close";
-        }
-
-        if (hint == Hint) return;
-        Hint = hint;
-        HintChanged?.Invoke(this, hint);
     }
 
     // Our own replacements fire ContentChanged per edit; recompute once afterwards instead.

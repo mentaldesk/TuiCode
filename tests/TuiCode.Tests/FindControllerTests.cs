@@ -77,38 +77,53 @@ public class FindControllerTests : IDisposable
     }
 
     [Fact]
-    public void Hint_explains_the_navigation_keys_only_while_there_are_matches()
+    public void Help_in_the_find_field_lists_next_previous_and_close()
     {
-        Open("/work/a.txt", "foo\nfoo\n");
-        var raised = new List<string?>();
-        _find.HintChanged += (_, hint) => raised.Add(hint);
+        Open("/work/a.txt", "foo");
         _find.Open(replace: false);
-        Assert.Null(_find.Hint);
 
-        _find.Bar.Query = "foo";
-        Assert.Equal("Enter next match · Shift+Enter previous match · Esc close", _find.Hint);
+        var help = _find.Help();
 
-        _find.Bar.Query = "zzz";
-        Assert.Null(_find.Hint);
-
-        _find.Bar.Query = "foo";
-        _find.Close();
-        Assert.Null(_find.Hint);
-        Assert.Equal([
-            "Enter next match · Shift+Enter previous match · Esc close", null,
-            "Enter next match · Shift+Enter previous match · Esc close", null,
-        ], raised);
+        Assert.Equal("Find bar", help.Title);
+        Assert.Equal(
+        [
+            new("Enter", "Next match"),
+            new("Shift+Enter", "Previous match"),
+            new("Esc", "Close"),
+        ], help.Rows);
     }
 
     [Fact]
-    public void Hint_mentions_replace_all_and_the_replace_field_when_the_replace_row_is_showing()
+    public void Help_in_the_find_field_adds_replace_all_and_the_replace_field_when_the_replace_row_is_showing()
     {
         Open("/work/a.txt", "foo");
         _find.Open(replace: true);
 
-        _find.Bar.Query = "foo";
+        Assert.Equal(
+        [
+            new("Enter", "Next match"),
+            new("Shift+Enter", "Previous match"),
+            new("Ctrl+Enter", "Replace all"),
+            new("Tab", "Replace field"),
+            new("Esc", "Close"),
+        ], _find.Help().Rows);
+    }
 
-        Assert.Equal("Enter next · Shift+Enter previous · Ctrl+Enter replace all · Tab replace field", _find.Hint);
+    [Fact]
+    public void Help_in_the_replace_field_lists_the_replace_fields_keys()
+    {
+        Open("/work/a.txt", "foo");
+        _find.Open(replace: true);
+        _find.Bar.KeysInReplacement = true;
+
+        Assert.Equal(
+        [
+            new("Enter", "Replace and go to next"),
+            new("Shift+Enter", "Previous match"),
+            new("Ctrl+Enter", "Replace all"),
+            new("Tab", "Find field"),
+            new("Esc", "Close"),
+        ], _find.Help().Rows);
     }
 
     [Fact]

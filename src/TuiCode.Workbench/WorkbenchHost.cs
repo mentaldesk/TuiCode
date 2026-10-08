@@ -180,7 +180,6 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(_keybindings);
         _find = new FindController(_workbench.Editor.Group, _scopes, _keybindings);
         _find.Closed += (_, _) => FocusEditorBody();
-        _find.HintChanged += (_, hint) => _workbench.StatusBar.SetHint(hint);
 
         ApplyIconStyle();
         if (_icons is not null) _icons.Changed += (_, _) => ApplyIconStyle();
@@ -1699,7 +1698,14 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeHelp is not null) return;
 
-        var view = new HelpView(FocusedScope() == CommandScope.Diff ? DiffHelp() : null, _workbench.Frame.Width);
+        _focus.Reconcile();
+        var place = _focus.Region switch
+        {
+            FocusRegion.FindBar => _find.Help(),
+            FocusRegion.Diff => DiffHelp(),
+            _ => null,
+        };
+        var view = new HelpView(place, _workbench.Frame.Width);
         view.Closed += (_, _) => CloseHelp(view);
         _activeHelp = view;
         _workbench.Add(view);
