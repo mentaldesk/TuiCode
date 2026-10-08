@@ -19,6 +19,13 @@ public class ClipboardToolsTests
     }
 
     [Fact]
+    public void ThisMachine_has_its_clipboard_programs()
+    {
+        Assert.NotEmpty(ClipboardTools.ThisMachine.Candidates);
+        Assert.All(ClipboardTools.ThisMachine.Candidates, Assert.NotNull);
+    }
+
+    [Fact]
     public void Write_copies_through_the_program_and_reads_the_text_back()
     {
         var program = new ClipboardProgram();

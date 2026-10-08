@@ -30,10 +30,6 @@ internal sealed class ClipboardTools(IReadOnlyList<ClipboardTool> candidates, st
 {
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
-    public static ClipboardTools ThisMachine { get; } = For(
-        OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(),
-        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")), new ProcessRunner());
-
     // Without a UTF-8 locale pbcopy stores the bytes as Mac Roman and pbpaste undoes it, so the read-back can't tell (#347).
     private static readonly ClipboardTool PbCopy = new("pbcopy", ["pbcopy"], ["pbpaste"], new UTF8Encoding(false))
     {
@@ -46,6 +42,11 @@ internal sealed class ClipboardTools(IReadOnlyList<ClipboardTool> candidates, st
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
             "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); [Console]::Out.Write((Get-Clipboard -Raw))"],
         new UnicodeEncoding(bigEndian: false, byteOrderMark: true));
+
+    // Declared after the tools: static initializers run in textual order.
+    public static ClipboardTools ThisMachine { get; } = For(
+        OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(),
+        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")), new ProcessRunner());
 
     public static ClipboardTools For(bool macOS, bool windows, bool wayland, IProcessRunner runner) =>
         macOS ? new([PbCopy], "pbcopy", runner)

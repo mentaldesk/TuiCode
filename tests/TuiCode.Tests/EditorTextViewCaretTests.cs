@@ -700,7 +700,11 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
 
     private EditorTextView View(params string[] lines)
     {
-        var view = new EditorTextView { App = _app, Width = 40, Height = 10, Text = string.Join("\n", lines) };
+        var view = new EditorTextView
+        {
+            App = _app, Width = 40, Height = 10, Text = string.Join("\n", lines),
+            ClipboardFallback = ClipboardTools.For(false, false, false, new ClipboardProgram { Answer = _ => new ToolRun.NotFound() }),
+        };
         view.BeginInit();
         view.EndInit();
         view.Layout();

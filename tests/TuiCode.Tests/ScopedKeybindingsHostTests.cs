@@ -78,7 +78,12 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench, Override("Ctrl+X", CommandIds.CutFile));
 
         await HostSteps.Run(host,
-            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () =>
+            {
+                workbench.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+                workbench.Editor.Group.ActiveTab!.TextView.ClipboardFallback =
+                    ClipboardTools.For(false, false, false, new ClipboardProgram { Answer = _ => new ToolRun.NotFound() });
+            },
             () => workbench.Editor.Group.ActiveTab!.ContentHasFocus,
             () => host.App.InjectKey(Key.X.WithCtrl),
             () => { });
