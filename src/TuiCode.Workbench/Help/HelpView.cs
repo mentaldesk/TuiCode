@@ -21,10 +21,6 @@ public sealed class HelpView : Window
         new("Ctrl+Q", "Quit"),
     ]);
 
-    internal const string SetupTitle = "Use TuiCode from git and other tools";
-
-    internal static readonly string[] SetupLines = ["Add this line to your shell profile:", "  export VISUAL=tuicode"];
-
     private const int Chrome = 4;
 
     private readonly ICommandService _scopeCommands;
@@ -84,13 +80,6 @@ public sealed class HelpView : Window
             }
         }
 
-        var (setup, setupWidth, setupHeight) = SectionView(SetupTitle, SetupLines);
-        setup.X = 1;
-        setup.Y = columnsHeight + 1;
-        _body.Add(setup);
-        innerWidth = Math.Max(innerWidth, setupWidth + 2);
-        columnsHeight += 1 + setupHeight;
-
         var bodyHeight = Math.Clamp(availableHeight - Chrome, 1, columnsHeight);
         IsScrollable = bodyHeight < columnsHeight;
         var bodyWidth = IsScrollable ? innerWidth + 1 : innerWidth;
@@ -140,18 +129,14 @@ public sealed class HelpView : Window
     private static (View View, int Width, int Height) ColumnView(HelpColumn column)
     {
         var keyWidth = column.Rows.Max(row => row.Key.Length) + 1;
-        return SectionView(column.Title, column.Rows.Select(row => row.Key.PadRight(keyWidth) + row.Description).ToList());
-    }
-
-    private static (View View, int Width, int Height) SectionView(string title, IReadOnlyList<string> lines)
-    {
-        var width = lines.Append(title).Max(text => text.Length);
-        var height = lines.Count + 2;
+        var rows = column.Rows.Select(row => row.Key.PadRight(keyWidth) + row.Description).ToList();
+        var width = rows.Append(column.Title).Max(text => text.Length);
+        var height = rows.Count + 2;
         var view = new View { Width = width, Height = height };
         view.Add(
-            new Label { X = 0, Y = 0, Text = title },
+            new Label { X = 0, Y = 0, Text = column.Title },
             new Line { X = 0, Y = 1, Width = width },
-            new Label { X = 0, Y = 2, Width = width, Height = lines.Count, Text = string.Join("\n", lines) });
+            new Label { X = 0, Y = 2, Width = width, Height = rows.Count, Text = string.Join("\n", rows) });
         return (view, width, height);
     }
 }

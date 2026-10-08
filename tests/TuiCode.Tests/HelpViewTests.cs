@@ -13,7 +13,7 @@ public class HelpViewTests : StaticConfigurationTest
         using var help = new HelpView(Diff, availableWidth: 120);
 
         Assert.False(help.IsStacked);
-        Assert.Equal(["Everywhere", "Diff", HelpView.SetupTitle], ColumnTitles(help));
+        Assert.Equal(["Everywhere", "Diff"], ColumnTitles(help));
     }
 
     [Fact]
@@ -22,7 +22,7 @@ public class HelpViewTests : StaticConfigurationTest
         using var help = new HelpView(Diff, availableWidth: 60);
 
         Assert.True(help.IsStacked);
-        Assert.Equal(["Diff", "Everywhere", HelpView.SetupTitle], ColumnTitles(help));
+        Assert.Equal(["Diff", "Everywhere"], ColumnTitles(help));
         help.Layout(new System.Drawing.Size(60, 40));
         Assert.True(help.Frame.Width <= 60);
     }
@@ -33,7 +33,7 @@ public class HelpViewTests : StaticConfigurationTest
         using var help = new HelpView();
 
         Assert.Equal("Help", help.Title);
-        Assert.Equal(["Everywhere", HelpView.SetupTitle], ColumnTitles(help));
+        Assert.Equal(["Everywhere"], ColumnTitles(help));
     }
 
     [Fact]
@@ -61,16 +61,6 @@ public class HelpViewTests : StaticConfigurationTest
         using var help = new HelpView(Diff, availableWidth: 120, availableHeight: 40);
 
         Assert.False(help.IsScrollable);
-    }
-
-    [Fact]
-    public void It_says_how_to_make_TuiCode_the_editor_other_tools_open()
-    {
-        using var help = new HelpView(Diff, availableWidth: 120);
-        help.Layout(new System.Drawing.Size(120, 40));
-
-        var setup = help.Body.SubViews.Single(view => view.SubViews.OfType<Label>().FirstOrDefault()?.Text == HelpView.SetupTitle);
-        Assert.Contains("export VISUAL=tuicode", setup.SubViews.OfType<Label>().Last().Text);
     }
 
     private static IEnumerable<string> ColumnTitles(HelpView help)
