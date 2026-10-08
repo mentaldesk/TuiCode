@@ -26,9 +26,20 @@ internal sealed record TerminalIntegrationPanelState(
         var all = integrations.ToArray();
         var detected = all.FirstOrDefault(i => i.IsAvailable());
 
-        if (detected is null)
-            return BuildUnsupported(all, environment);
+        var state = detected is null ? BuildUnsupported(all, environment) : BuildSupported(detected);
+        return string.IsNullOrEmpty(environment.GetEnvironmentVariable("TMUX"))
+            ? state
+            : state with { Lines = [.. state.Lines, "", .. TmuxClipboardLines] };
+    }
 
+    private static readonly string[] TmuxClipboardLines =
+    [
+        "Inside tmux, copying over SSH needs this in ~/.tmux.conf:",
+        "  set -g set-clipboard on",
+    ];
+
+    private static TerminalIntegrationPanelState BuildSupported(ITerminalIntegration detected)
+    {
         var status = detected.GetStatus();
         return new TerminalIntegrationPanelState(
             detected, status, BuildSupportedLines(detected, status), BuildActions(status));
@@ -81,13 +92,18 @@ internal sealed record TerminalIntegrationPanelState(
 
         if (status != TerminalIntegrationStatus.NotInstalled &&
             detected.PostInstallInstructions is { } notes)
-        {
-            lines.Add("");
-            foreach (var line in notes.Split('\n'))
-                lines.Add(line.TrimEnd('\r'));
-        }
+            AddNotes(lines, notes);
+        if (detected.ClipboardInstructions is { } clipboard)
+            AddNotes(lines, clipboard);
 
         return lines;
+    }
+
+    private static void AddNotes(List<string> lines, string notes)
+    {
+        lines.Add("");
+        foreach (var line in notes.Split('\n'))
+            lines.Add(line.TrimEnd('\r'));
     }
 
     private static IReadOnlyList<TerminalIntegrationAction> BuildActions(TerminalIntegrationStatus status) =>

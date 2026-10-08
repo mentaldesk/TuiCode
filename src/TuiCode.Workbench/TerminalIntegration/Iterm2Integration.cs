@@ -44,6 +44,10 @@ public sealed class Iterm2Integration : ITerminalIntegration, ITerminalCursorCol
 
     public string DisplayName => "iTerm2";
 
+    public string ClipboardInstructions =>
+        "To copy over SSH, tick Settings → General → Selection →\n" +
+        "\"Applications in terminal may access clipboard\".";
+
     public bool IsAvailable() =>
         string.Equals(
             _environment.GetEnvironmentVariable("TERM_PROGRAM"),

@@ -92,6 +92,52 @@ public class TerminalIntegrationPanelStateTests
         Assert.Same(b, state.Detected);
     }
 
+    [Fact]
+    public void Build_says_what_the_terminal_needs_for_copy_over_SSH_whatever_the_status()
+    {
+        var iterm = new FakeIntegration("iterm2", "iTerm2", available: true)
+        {
+            ClipboardInstructions = "Tick the clipboard box.\nThen copy.",
+        };
+        var state = TerminalIntegrationPanelState.Build(new[] { iterm }, new FakeEnvironment());
+
+        Assert.Equal(["", "Tick the clipboard box.", "Then copy."], state.Lines.TakeLast(3));
+    }
+
+    [Fact]
+    public void Build_names_the_iTerm2_setting_that_lets_copy_reach_the_clipboard()
+    {
+        var iterm = new TuiCode.Workbench.TerminalIntegration.Iterm2Integration(
+            new System.IO.Abstractions.TestingHelpers.MockFileSystem(), new FakeEnvironment().Set("TERM_PROGRAM", "iTerm.app"));
+
+        var state = TerminalIntegrationPanelState.Build(new[] { iterm }, new FakeEnvironment());
+
+        Assert.Contains(state.Lines, l => l.Contains("\"Applications in terminal may access clipboard\""));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Build_notes_the_tmux_setting_copy_over_SSH_needs_inside_tmux(bool detected)
+    {
+        var iterm = new FakeIntegration("iterm2", "iTerm2", available: detected);
+        var env = new FakeEnvironment().Set("TMUX", "/tmp/tmux-501/default,123,0");
+
+        var state = TerminalIntegrationPanelState.Build(new[] { iterm }, env);
+
+        Assert.Equal("  set -g set-clipboard on", state.Lines[^1]);
+    }
+
+    [Fact]
+    public void Build_leaves_out_the_tmux_note_outside_tmux()
+    {
+        var iterm = new FakeIntegration("iterm2", "iTerm2", available: true);
+
+        var state = TerminalIntegrationPanelState.Build(new[] { iterm }, new FakeEnvironment());
+
+        Assert.DoesNotContain(state.Lines, l => l.Contains("tmux"));
+    }
+
     private sealed class FakeIntegration : ITerminalIntegration
     {
         private readonly bool _available;
@@ -104,6 +150,7 @@ public class TerminalIntegrationPanelStateTests
         public string Id { get; }
         public string DisplayName { get; }
         public TerminalIntegrationStatus Status { get; set; } = TerminalIntegrationStatus.NotInstalled;
+        public string? ClipboardInstructions { get; init; }
         public bool IsAvailable() => _available;
         public TerminalIntegrationStatus GetStatus() => Status;
         public void Install() { }

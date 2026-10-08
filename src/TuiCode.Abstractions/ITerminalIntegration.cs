@@ -55,6 +55,9 @@ public interface ITerminalIntegration
     /// Settings panel and printed by the CLI installer. Null when no manual step is required.
     /// </summary>
     string? PostInstallInstructions => null;
+
+    /// <summary>What the user has to change in this terminal for a copy over SSH to reach their clipboard, or null.</summary>
+    string? ClipboardInstructions => null;
 }
 
 /// <summary>

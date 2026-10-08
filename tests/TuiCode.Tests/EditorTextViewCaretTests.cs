@@ -541,6 +541,54 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void A_copy_at_several_carets_sends_the_terminal_what_paste_puts_back()
+    {
+        var view = View("one 1", "two 2");
+        var clipboard = new TestClipboard();
+        var sent = new List<string>();
+        _app.Driver!.Clipboard = new TerminalClipboard(clipboard, sent.Add);
+        view.SetCarets([Selecting(0, 0, 3), Selecting(1, 0, 3)]);
+
+        view.NewKeyDownEvent(Key.C.WithCtrl);
+
+        Assert.Equal([TerminalClipboard.Sequence(clipboard.Text)], sent);
+        Assert.Equal($"one{Environment.NewLine}two", clipboard.Text);
+    }
+
+    [Fact]
+    public void A_cut_only_the_terminal_took_removes_the_text_and_says_so()
+    {
+        var view = View("one 1");
+        var sent = new List<string>();
+        _app.Driver!.Clipboard = new TerminalClipboard(new TestClipboard { Transform = _ => null }, sent.Add);
+        view.ClipboardFallback = ClipboardTools.For(false, false, false, new ClipboardProgram { Answer = _ => new ToolRun.NotFound() });
+        CopyOutcome? outcome = null;
+        view.Copied += (_, o) => outcome = o;
+        view.SetCarets([Selecting(0, 0, 4)]);
+
+        view.NewKeyDownEvent(Key.X.WithCtrl);
+
+        Assert.Equal(new CopyOutcome.Copied(1, 4, ThroughTerminal: true), outcome);
+        Assert.Single(sent);
+        Assert.Equal(["1"], view.LineStrings);
+    }
+
+    [Fact]
+    public void A_text_field_copy_goes_through_the_terminal_too()
+    {
+        var sent = new List<string>();
+        _app.Driver!.Clipboard = new TerminalClipboard(new TestClipboard(), sent.Add);
+        var field = new TextField { App = _app, Width = 20, Text = "needle" };
+        field.BeginInit();
+        field.EndInit();
+        field.SelectAll();
+
+        field.InvokeCommand(Command.Copy);
+
+        Assert.Equal([TerminalClipboard.Sequence("needle")], sent);
+    }
+
+    [Fact]
     public void A_cut_the_platform_program_takes_removes_the_text()
     {
         var view = View("one 1");

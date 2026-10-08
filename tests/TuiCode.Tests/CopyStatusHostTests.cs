@@ -85,6 +85,38 @@ public class CopyStatusHostTests : StaticConfigurationTest
         Assert.Equal($"x{Environment.NewLine}{new string('y', 1000)}{Environment.NewLine}", program.Stored);
     }
 
+    [Fact]
+    public async Task A_copy_only_the_terminal_took_says_it_went_through_the_terminal()
+    {
+        using var workbench = Workbench();
+        using var host = Host(workbench);
+        var said = "";
+        var error = true;
+
+        await HostSteps.Run(host,
+            () => Open(workbench, host, new TestClipboard { Transform = _ => null },
+                new ClipboardProgram { Answer = _ => new ToolRun.NotFound() }),
+            () =>
+            {
+                host.App.Driver!.Clipboard = new TerminalClipboard(host.App.Driver.Clipboard, _ => { });
+                Copy(workbench)();
+                said = workbench.StatusBar.DisplayedText;
+                error = workbench.StatusBar.ShowsError;
+            });
+
+        Assert.Equal("Copied 2 lines  •  1,001 characters through the terminal", said);
+        Assert.False(error);
+    }
+
+    [Fact]
+    public void The_host_sends_every_copy_through_the_terminal()
+    {
+        using var workbench = Workbench();
+        using var host = Host(workbench);
+
+        Assert.IsType<TerminalClipboard>(host.App.Clipboard);
+    }
+
     private const string Path = "/work/a.txt";
 
     private static void Open(Workbench.Workbench workbench, WorkbenchHost host, TestClipboard clipboard, ClipboardProgram? program = null)
