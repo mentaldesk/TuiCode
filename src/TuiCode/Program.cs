@@ -55,6 +55,7 @@ services.AddSingleton(sp => new FileIcons(() => TerminalFontDetection.Detect(
 });
 services.AddSingleton<ITerminalIntegration, Iterm2Integration>();
 services.AddSingleton<ITerminalIntegration, WezTermIntegration>();
+services.AddSingleton<ITerminalIntegration, KittyIntegration>();
 
 services.AddTransient<FileExplorerView>();
 services.AddTransient<SearchView>();

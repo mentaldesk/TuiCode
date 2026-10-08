@@ -136,8 +136,8 @@ public sealed class WorkbenchHost : IDisposable
         // (and RunAsync never observes the cancellation token while blocked there).
         _app.Init(driverName: driverName!);
 
-        // OSC 1337 SetUserVar TUICODE_ACTIVE=1 (base64 "MQ=="). WezTerm's tuicode.lua keys off
-        // this user-var to activate its key table only while TuiCode runs; other terminals
+        // OSC 1337 SetUserVar TUICODE_ACTIVE=1 (base64 "MQ=="). WezTerm's tuicode.lua and kitty's
+        // tuicode.conf key off this user-var to remap keys only while TuiCode runs; other terminals
         // strip the unknown OSC silently. Unconditional — no detection needed.
         WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MQ==\x07");
         _terminalCursors = new TerminalCursors(_app);
@@ -3079,7 +3079,7 @@ public sealed class WorkbenchHost : IDisposable
         _terminalCursors.Dispose();
         _workbench.Dispose();
         _app.Dispose();
-        // Tell WezTerm the tuicode key table should be popped; matches the startup activation.
+        // Tell WezTerm and kitty to stop remapping keys; matches the startup activation.
         // Emitted post-Dispose so it reaches the live terminal after TG restores it.
         WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MA==\x07");
         // OSC 112 restores the terminal's own cursor colour.
