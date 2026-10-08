@@ -154,7 +154,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
         var fits = false;
 
         await HostSteps.Run(host,
-            () => host.App.Driver!.SetScreenSize(80, 24),
+            () => HostSteps.PinScreenSize(host, 80, 24),
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
             () => workbench.StatusBar.DisplayedFocus == "Editor",
             () => host.App.InjectKey(Key.F1),
