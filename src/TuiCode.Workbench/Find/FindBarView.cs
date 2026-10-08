@@ -18,9 +18,6 @@ public sealed class FindBarView : View
 
     public event EventHandler? QueryChanged;
 
-    /// <summary>Raised when focus moves into or out of either input, so key hints can follow the field.</summary>
-    public event EventHandler? FieldFocusChanged;
-
     public FindBarView()
     {
         CanFocus = true;
@@ -40,8 +37,8 @@ public sealed class FindBarView : View
         NameFocusedField(_replaceLabel, _replacement);
 
         _query.TextChanged += (_, _) => QueryChanged?.Invoke(this, EventArgs.Empty);
-        _query.HasFocusChanged += (_, _) => OnFieldFocusChanged();
-        _replacement.HasFocusChanged += (_, _) => OnFieldFocusChanged();
+        _query.HasFocusChanged += (_, _) => OnFieldFocusChanged(_query);
+        _replacement.HasFocusChanged += (_, _) => OnFieldFocusChanged(_replacement);
         HasFocusChanged += (_, _) => SetNeedsDraw();
     }
 
@@ -69,6 +66,9 @@ public sealed class FindBarView : View
 
     public bool ReplaceVisible => _replacement.Visible;
     public bool ReplacementHasFocus => _replacement.HasFocus;
+
+    /// <summary>Whether the keys belong in the replacement rather than the query: the last of the two to have them.</summary>
+    public bool KeysInReplacement { get; internal set; }
 
     public void ShowReplace(bool visible)
     {
@@ -107,9 +107,9 @@ public sealed class FindBarView : View
     private bool Holds(View field) =>
         App?.Navigation?.GetFocused() is { } focused && ReferenceEquals(focused.MostFocused ?? focused, field);
 
-    private void OnFieldFocusChanged()
+    private void OnFieldFocusChanged(View field)
     {
+        if (field.HasFocus) KeysInReplacement = ReferenceEquals(field, _replacement);
         SetNeedsDraw();
-        FieldFocusChanged?.Invoke(this, EventArgs.Empty);
     }
 }

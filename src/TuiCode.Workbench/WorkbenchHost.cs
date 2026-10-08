@@ -180,7 +180,6 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(_keybindings);
         _find = new FindController(_workbench.Editor.Group, _scopes, _keybindings);
         _find.Closed += (_, _) => FocusEditorBody();
-        _find.HintChanged += (_, hint) => _workbench.StatusBar.SetHint(hint);
 
         ApplyIconStyle();
         if (_icons is not null) _icons.Changed += (_, _) => ApplyIconStyle();
@@ -623,6 +622,7 @@ public sealed class WorkbenchHost : IDisposable
         _focus.Reconcile();
         return _focus.Region switch
         {
+            FocusRegion.FindBar => _find.Help(),
             FocusRegion.Diff => DiffHelp(),
             FocusRegion.Explorer => ScopeHelp("Explorer", CommandScope.Explorer, ExplorerKeys),
             FocusRegion.Find => ScopeHelp("Find", CommandScope.Find, _workbench.Sidebar.Search.InputsHaveFocus ? [] : FindResultKeys),

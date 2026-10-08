@@ -85,18 +85,31 @@ public class DiffFindTests : IDisposable
     }
 
     [Fact]
-    public void The_count_and_hint_read_as_they_do_in_a_file()
+    public void The_count_reads_as_it_does_in_a_file()
     {
         Diff("one\ntwo", "one\nTWO");
         _find.Open(replace: false);
 
         _find.Bar.Query = "o";
         Assert.Equal("1 of 4", _find.Bar.Status);
-        Assert.Equal("Enter next match · Shift+Enter previous match · Esc close", _find.Hint);
 
         _find.Bar.Query = "zzz";
         Assert.Equal("No results", _find.Bar.Status);
-        Assert.Null(_find.Hint);
+    }
+
+    [Fact]
+    public void Help_in_a_diff_lists_no_replace_keys_whichever_field_last_had_them()
+    {
+        Diff("one", "two");
+        _find.Open(replace: true);
+        _find.Bar.KeysInReplacement = true;
+
+        Assert.Equal(
+        [
+            new("Enter", "Next match"),
+            new("Shift+Enter", "Previous match"),
+            new("Esc", "Close"),
+        ], _find.Help().Rows);
     }
 
     [Fact]
