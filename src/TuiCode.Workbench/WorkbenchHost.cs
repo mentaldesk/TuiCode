@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using MentalDesk.Tui.Shell;
 using Terminal.Gui.Drivers;
-using System.Reflection;
 using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
@@ -1782,7 +1781,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeAbout is not null) return;
 
-        var view = new AboutView(AppVersion());
+        var view = new AboutView(AppVersion.Current);
         view.Closed += (_, _) => CloseAbout(view);
         _activeAbout = view;
         _workbench.Add(view);
@@ -3030,15 +3029,6 @@ public sealed class WorkbenchHost : IDisposable
         var relative = explorer.RelativePath(file);
         return relative.StartsWith("..", StringComparison.Ordinal) ? file.FullName : relative;
     }
-
-    private static string AppVersion() =>
-        VersionText(Assembly.GetEntryAssembly()?
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-            .InformationalVersion);
-
-    /// <summary>The version About shows: MinVer's, without the commit it appends (#214).</summary>
-    internal static string VersionText(string? informationalVersion) =>
-        informationalVersion?.Split('+')[0] ?? "unknown";
 
     private void OpenDiagnostics()
     {
