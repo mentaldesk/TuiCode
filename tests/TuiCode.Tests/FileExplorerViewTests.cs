@@ -26,6 +26,22 @@ public class FileExplorerViewTests
     }
 
     [Fact]
+    public void Open_lists_only_the_root_however_many_folders_it_holds()
+    {
+        var fs = new ListingFileSystem();
+        foreach (var name in new[] { "a", "b", "c" })
+            fs.AddFile($"/work/{name}/x.cs", new MockFileData(""));
+        fs.AddDirectory("/work/empty");
+
+        using var explorer = new FileExplorerView();
+        explorer.Open(fs.DirectoryInfo.New("/work"));
+
+        Assert.Equal([fs.Path.GetFullPath("/work")], fs.Listed.Distinct());
+        var root = explorer.Objects!.Single();
+        Assert.All(explorer.GetChildren(root), folder => Assert.True(explorer.CanExpand(folder), folder.Name));
+    }
+
+    [Fact]
     public void ActivateSelected_fires_FileActivated_for_a_selected_file()
     {
         var fs = new MockFileSystem();

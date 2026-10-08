@@ -245,6 +245,33 @@ public class FileExplorerRefreshTests
     }
 
     [Fact]
+    public void ExpandedFolders_keeps_a_folder_whose_files_have_all_gone_so_a_new_one_still_shows()
+    {
+        using var explorer = Open("/work/a/x.cs", "/work/b.cs");
+        Node(explorer, "a/x.cs");
+        explorer.Refresh();
+
+        _fs.RemoveFile("/work/a/x.cs");
+        explorer.Refresh([_fs.Path.GetFullPath("/work/a")]);
+        Assert.Equal([".", "a"], explorer.ExpandedFolders.Select(Full).Select(Relative));
+
+        _fs.AddFile("/work/a/y.cs", new MockFileData(""));
+        explorer.Refresh([_fs.Path.GetFullPath("/work/a")]);
+        Assert.Equal(["y.cs"], explorer.GetChildren(explorer.GetChildren(explorer.Root!).First(c => c.Name == "a")).Select(c => c.Name));
+    }
+
+    [Fact]
+    public void ExpandedFolders_lists_nested_folders_under_their_parent()
+    {
+        using var explorer = Open("/work/a/inner/x.cs", "/work/a/z.cs", "/work/b/y.cs");
+        Node(explorer, "a/inner/x.cs");
+        Node(explorer, "b/y.cs");
+        explorer.Refresh();
+
+        Assert.Equal([".", "a", "a/inner", "b"], explorer.ExpandedFolders.Select(Full).Select(Relative));
+    }
+
+    [Fact]
     public void Refresh_of_some_folders_reads_only_those_that_are_expanded()
     {
         using var explorer = Open("/work/open/a.cs", "/work/other/b.cs", "/work/shut/c.cs");

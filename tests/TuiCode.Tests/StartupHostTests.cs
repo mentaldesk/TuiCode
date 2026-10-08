@@ -1,7 +1,10 @@
+using System.Diagnostics;
+using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
+using TuiCode.Workbench.About;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
@@ -140,6 +143,35 @@ public class StartupHostTests : StaticConfigurationTest
         // Each tab kept the position it was given, not just the one you can see.
         var behind = workbench.Editor.Group.Tabs.Single(tab => tab.File.Name == "long.cs");
         Assert.Equal(127, behind.CursorRow);
+    }
+
+    // Headless, the ANSI driver is a terminal that answers none of the questions TuiCode asks at startup (#450).
+    [Fact]
+    public async Task A_terminal_that_never_answers_still_gets_the_file_and_keys_and_the_features_that_asked_fall_back()
+    {
+        var target = StartupArguments.Resolve(["src/a.cs"], _fs, "/work", NeverAsked);
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git, gitHub: _gitHub);
+        host.OpenWhenRunning(target);
+        AboutView About() => workbench.SubViews.OfType<AboutView>().Single();
+        var started = Stopwatch.StartNew();
+        var typed = TimeSpan.Zero;
+        var waiting = false;
+
+        await HostSteps.Run(host,
+            () => workbench.Editor.Group.ActiveTab is not null,
+            () => host.App.InjectKey(new Key('X')),
+            () => workbench.Editor.Group.ActiveTab!.Content.StartsWith('X'),
+            () => { typed = started.Elapsed; commands.TryExecute(CommandIds.ShowAbout); waiting = About().IsLoading; },
+            () => About().ShowsAsciiArt,
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.True(typed < TimeSpan.FromSeconds(3), $"the first key landed after {typed.TotalSeconds:F1} s");
+        Assert.True(waiting, "About didn't wait for the sixel question");
+        Assert.False(TerminalCursors.IsSupportedBy(host.App));
+        Assert.Equal(KittyKeyboardFlags.None, host.App.Driver?.KittyKeyboardCapabilities?.Flags ?? KittyKeyboardFlags.None);
     }
 
     private static bool NeverAsked(string path, bool directory) =>
