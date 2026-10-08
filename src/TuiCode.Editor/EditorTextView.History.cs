@@ -25,7 +25,7 @@ internal sealed partial class EditorTextView
         AddCommand(Command.Cut, () => CopyAtCarets(cut: true));
     }
 
-    public override string Text
+    public new string Text
     {
         get => base.Text;
         set

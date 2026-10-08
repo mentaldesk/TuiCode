@@ -154,7 +154,9 @@ public class StartupHostTests : StaticConfigurationTest
     private WorkbenchHost BuildHost(Workbench.Workbench workbench)
     {
         var commands = new CommandService();
-        return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
+        var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git, gitHub: _gitHub);
+        HostSteps.PinScreenSize(host, 80, 25);
+        return host;
     }
 }

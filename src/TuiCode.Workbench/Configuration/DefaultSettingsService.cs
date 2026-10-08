@@ -9,16 +9,15 @@ using TuiCode.Workbench.Themes;
 namespace TuiCode.Workbench.Configuration;
 
 /// <summary>
-/// DI-friendly thin wrapper around TG's static <see cref="ConfigurationManager"/> /
+/// DI-friendly thin wrapper around TG's static <see cref="TuiConfigurationBuilder"/> /
 /// <see cref="ThemeManager"/>. Tests substitute an in-memory implementation; production
 /// code never touches the static surface directly.
 ///
-/// <para>Theme persists via TG's native <c>ThemeManager.Theme</c>
-/// (<c>[ConfigurationProperty(Scope = typeof(SettingsScope))]</c>) written as
+/// <para>Theme persists via TG's native <c>Theme</c> setting, written as
 /// <c>{"Theme": "Daylight"}</c> at the JSON root of <c>~/.tui/TuiCode.config.json</c>.
-/// <see cref="Load"/> calls <c>ConfigurationManager.Enable</c> which reads the file and
+/// <see cref="Load"/> calls <c>TuiConfigurationBuilder.ApplyToStaticFacades</c>, which reads the file and
 /// applies the theme — no custom load logic needed. Saving still goes through us because
-/// <c>ConfigurationManager</c> exposes no Save API.</para>
+/// TG exposes no Save API.</para>
 ///
 /// <para>Keybindings persist to a sibling file <c>~/.tui/TuiCode.keybindings.json</c>
 /// that we read and write directly — TG's source-generated <c>JsonTypeInfo</c> only
@@ -56,7 +55,6 @@ public sealed class DefaultSettingsService : ISettingsService
         {
             if (string.Equals(ThemeManager.Theme, value, StringComparison.Ordinal)) return;
             ThemeManager.Theme = value;
-            ConfigurationManager.Apply();
             ThemeChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -65,7 +63,7 @@ public sealed class DefaultSettingsService : ISettingsService
 
     // TG's built-ins don't describe the editor's gutter or cursor, so we only offer our own.
     public IReadOnlyCollection<string> AvailableThemes =>
-        BundledThemes.Names.Where(theme => ThemeManager.Themes?.ContainsKey(theme) ?? false).ToArray();
+        BundledThemes.Names.Where(ThemeManager.GetThemeNames().Contains).ToArray();
 
     public IReadOnlyList<KeybindingOverride> KeybindingOverrides => _keybindings;
 
@@ -91,8 +89,8 @@ public sealed class DefaultSettingsService : ISettingsService
 
     public void Load()
     {
-        ConfigurationManager.RuntimeConfig = BundledThemes.Config;
-        ConfigurationManager.Enable(ConfigLocations.All);
+        TuiConfigurationBuilder.Shared.RuntimeConfig = BundledThemes.Config;
+        TuiConfigurationBuilder.Shared.ApplyToStaticFacades();
         Theme = BundledThemes.Migrate(ThemeManager.Theme);
     }
 

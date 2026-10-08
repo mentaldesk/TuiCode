@@ -586,13 +586,9 @@ public sealed class EditorTab : FrameView
         // The trailing space keeps the marker off the tab's right border.
         var mark = DiskMark.For(_disk, IconStyle);
         Title = $"{(_dirty ? "● " : "")}{File.Name}{(mark.Length > 0 ? $" {mark} " : "")}";
-        // TG redraws the tab header from Title only on layout, and positions headers from a cached width first.
+        PaneTabs.ShowTitle(this);
         if (Border.View is BorderView { TitleView: { } view })
-        {
-            if (view is ITitleView header) header.MeasuredTabLength = 0;
             ColourWhileMarked(view);
-        }
-        SetNeedsLayout();
     }
 
     // TG has no VisualRole for a warning and GetAttributeForRole isn't virtual in 2.1.0, so the marked

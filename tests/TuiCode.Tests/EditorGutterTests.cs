@@ -113,6 +113,7 @@ public class EditorGutterHostTests : StaticConfigurationTest
         var commands = new CommandService();
         using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+        HostSteps.PinScreenSize(host, 80, 25);
         EditorTab? tab = null;
         var withGutter = "";
         var withoutGutter = "";

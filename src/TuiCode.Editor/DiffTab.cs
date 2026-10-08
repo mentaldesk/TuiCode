@@ -483,8 +483,7 @@ public sealed class DiffTab : FrameView
         Title = IsDeleted ? $"{File.Name} ↔ {LeftLabel} (deleted)"
             : RightLabel is { } right ? $"{File.Name} {LeftLabel} ↔ {right}"
             : $"{File.Name} ↔ {LeftLabel}";
-        if (Border.View is BorderView { TitleView: ITitleView header }) header.MeasuredTabLength = 0;
-        SetNeedsLayout();
+        PaneTabs.ShowTitle(this);
     }
 
     /// <summary>The file's lines as the editor would load them.</summary>

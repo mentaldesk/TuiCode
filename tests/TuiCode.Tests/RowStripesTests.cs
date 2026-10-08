@@ -38,29 +38,17 @@ public class RowStripesTests : StaticConfigurationTest
     [Fact]
     public void Every_bundled_theme_keeps_the_stripe_apart_from_the_background_and_the_selection()
     {
-        ConfigurationManager.Enable(ConfigLocations.None);
-        try
+        using var themes = LoadBundledThemes();
+        foreach (var theme in BundledThemes.Names)
         {
-            ConfigurationManager.RuntimeConfig = BundledThemes.Config;
-            ConfigurationManager.Load(ConfigLocations.LibraryResources | ConfigLocations.Runtime);
-
-            foreach (var theme in BundledThemes.Names)
+            ThemeManager.Theme = theme;
+            foreach (var name in new[] { "Base", "Dialog" })
             {
-                ThemeManager.Theme = theme;
-                ConfigurationManager.Apply();
-                foreach (var name in new[] { "Base", "Dialog" })
-                {
-                    Assert.True(SchemeManager.TryGetScheme(name, out var scheme));
-                    var stripe = RowStripes.Stripe(scheme!.GetAttributeForRole(VisualRole.Normal)).Background;
-                    foreach (var role in new[] { VisualRole.Normal, VisualRole.Focus, VisualRole.Active })
-                        Assert.True(scheme.GetAttributeForRole(role).Background != stripe, $"{theme} {name} {role}");
-                }
+                Assert.True(SchemeManager.TryGetScheme(name, out var scheme));
+                var stripe = RowStripes.Stripe(scheme!.GetAttributeForRole(VisualRole.Normal)).Background;
+                foreach (var role in new[] { VisualRole.Normal, VisualRole.Focus, VisualRole.Active })
+                    Assert.True(scheme.GetAttributeForRole(role).Background != stripe, $"{theme} {name} {role}");
             }
-        }
-        finally
-        {
-            ThemeManager.Theme = "Default";
-            ConfigurationManager.Disable(resetToHardCodedDefaults: true);
         }
     }
 }

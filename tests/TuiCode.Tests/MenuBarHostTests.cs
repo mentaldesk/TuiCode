@@ -462,29 +462,18 @@ public class MenuBarHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
-        ConfigurationManager.Enable(ConfigLocations.None);
-        try
+        using var themes = LoadBundledThemes();
+        var drawn = new List<Attribute>();
+        foreach (var theme in BundledThemes.Names)
         {
-            ConfigurationManager.RuntimeConfig = BundledThemes.Config;
-            ConfigurationManager.Load(ConfigLocations.LibraryResources | ConfigLocations.Runtime);
-            var drawn = new List<Attribute>();
-            foreach (var theme in BundledThemes.Names)
-            {
-                ThemeManager.Theme = theme;
-                ConfigurationManager.Apply();
-                var menu = SchemeManager.GetScheme(Schemes.Menu).GetAttributeForRole(VisualRole.Normal, null);
-                var sidebar = SchemeManager.GetScheme("Sidebar").GetAttributeForRole(VisualRole.Normal, null);
-                Assert.Equal(menu, workbench.MenuBar.GetAttributeForRole(VisualRole.Normal));
-                Assert.NotEqual(sidebar.Background, menu.Background);
-                drawn.Add(menu);
-            }
-            Assert.True(drawn.Distinct().Count() > 1);
+            ThemeManager.Theme = theme;
+            var menu = SchemeManager.GetScheme(Schemes.Menu).GetAttributeForRole(VisualRole.Normal, null);
+            var sidebar = SchemeManager.GetScheme("Sidebar").GetAttributeForRole(VisualRole.Normal, null);
+            Assert.Equal(menu, workbench.MenuBar.GetAttributeForRole(VisualRole.Normal));
+            Assert.NotEqual(sidebar.Background, menu.Background);
+            drawn.Add(menu);
         }
-        finally
-        {
-            ThemeManager.Theme = "Default";
-            ConfigurationManager.Disable(resetToHardCodedDefaults: true);
-        }
+        Assert.True(drawn.Distinct().Count() > 1);
     }
 
     private static IEnumerable<string> MenuIds() =>
