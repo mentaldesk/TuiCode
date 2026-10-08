@@ -6,7 +6,7 @@ namespace TuiCode.Workbench.Configuration;
 public sealed record StartupFile(IFileInfo File, FilePosition? Position = null);
 
 /// <summary>What the command line asks the workbench to open (#263).</summary>
-/// <param name="Workspace">The folder the explorer roots at; the current directory when nothing else applies.</param>
+/// <param name="Workspace">The folder the explorer roots at; the current directory when nothing else applies, and null when a file outside it opens on its own (#451).</param>
 /// <param name="Files">The files to open as tabs, in the order given, the first one active (#266).</param>
 /// <param name="Error">A message to print to stderr instead of booting, or null.</param>
 /// <param name="Declined">A path wasn't there and the user said not to create it: exit quietly, don't boot.</param>
@@ -24,7 +24,7 @@ public delegate bool ConfirmCreate(string fullPath, bool directory);
 /// Every positional argument is a path; a missing one is only created once the user agrees, by the rule
 /// <c>Ctrl+N</c> uses (<see cref="FilePaths.IsDirectoryPath"/>): a trailing slash means a folder, anything
 /// else a file, and intermediate folders are created. The first path decides the workspace: a folder
-/// is it, and a file leaves the folder you ran from as it when it's under there, otherwise its own folder.
+/// is it, and a file leaves the folder you ran from as it when it's under there, otherwise no folder at all (#451).
 /// The rest just open as tabs, wherever they live; a folder among them opens nothing and doesn't re-root.
 /// Each file may carry a position (<see cref="PathPosition"/>), which neither a folder argument nor a path
 /// that had to be created does: the first has no cursor to place, and the second is created as typed,
@@ -129,12 +129,10 @@ public static class StartupArguments
         }
     }
 
-    private static IDirectoryInfo Root(IFileSystem fileSystem, IDirectoryInfo workspace, Request first)
+    private static IDirectoryInfo? Root(IFileSystem fileSystem, IDirectoryInfo workspace, Request first)
     {
         if (first.Directory) return fileSystem.DirectoryInfo.New(first.FullPath);
-        return FilePaths.IsSameOrUnder(first.FullPath, workspace.FullName)
-            ? workspace
-            : fileSystem.DirectoryInfo.New(fileSystem.Path.GetDirectoryName(first.FullPath)!);
+        return FilePaths.IsSameOrUnder(first.FullPath, workspace.FullName) ? workspace : null;
     }
 
     private static List<StartupFile> Tabs(IFileSystem fileSystem, IEnumerable<Request> requests) => requests
