@@ -13,6 +13,9 @@ public enum TokenStyle
     Strikethrough = 8,
 }
 
+/// <param name="File">The user grammar file, or null for a built-in grammar.</param>
+public sealed record GrammarFailure(SyntaxLanguage Language, string? File, Exception Exception);
+
 /// <summary>Shared by every editor tab, so each grammar compiles once. Token colours come from <see cref="Theme"/>.</summary>
 public sealed class SyntaxHighlighter
 {
@@ -25,6 +28,7 @@ public sealed class SyntaxHighlighter
     private readonly GrammarBundle _bundle;
     private readonly Registry _registry;
     private Dictionary<string, string> _associations = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _failedScopes = new(StringComparer.Ordinal);
 
     public SyntaxHighlighter(GrammarBundle bundle)
     {
@@ -38,6 +42,9 @@ public sealed class SyntaxHighlighter
     public IReadOnlyDictionary<string, SyntaxLanguage> DefaultAssociations => _bundle.Associations;
 
     public IReadOnlyList<string> Problems => _bundle.Problems;
+
+    /// <summary>A grammar threw as it loaded; raised once per grammar.</summary>
+    public event EventHandler<GrammarFailure>? GrammarFailed;
 
     /// <summary>The user's associations (pattern → language id or <see cref="PlainText"/>), which win over the defaults.</summary>
     public IReadOnlyDictionary<string, string> Associations
@@ -81,8 +88,9 @@ public sealed class SyntaxHighlighter
             return _registry.LoadGrammar(language.ScopeName) is { } grammar ? new LineTokenCache(this, grammar, language) : null;
         }
         // User grammars are untrusted input to TextMateSharp, which throws various exceptions for malformed ones.
-        catch (Exception)
+        catch (Exception e)
         {
+            ReportFailure(language, e);
             return null;
         }
     }
@@ -96,10 +104,17 @@ public sealed class SyntaxHighlighter
             return _registry.LoadGrammar(language.ScopeName) is { } grammar ? new SymbolScan(grammar, lines) : null;
         }
         // As in CreateCache: a user grammar can be broken in ways TextMateSharp only finds while loading it.
-        catch (Exception)
+        catch (Exception e)
         {
+            ReportFailure(language, e);
             return null;
         }
+    }
+
+    private void ReportFailure(SyntaxLanguage language, Exception e)
+    {
+        if (_failedScopes.Add(language.ScopeName))
+            GrammarFailed?.Invoke(this, new GrammarFailure(language, _bundle.UserGrammarFile(language.ScopeName), e));
     }
 
     public static int ForegroundOf(int metadata) => EncodedTokenAttributes.GetForeground(metadata);

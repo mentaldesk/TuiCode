@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Terminal.Gui.Configuration;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Configuration;
@@ -353,6 +354,63 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
 
         Assert.Equal(120, svc.SidebarWidth);
         Assert.Equal(2, svc.Editor.IndentSize);
+    }
+
+    [Fact]
+    public void A_settings_file_that_does_not_parse_logs_where_and_says_defaults_are_in_use()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{\n  \"IndentSize\": 2,\n}"));
+        var logger = new ListLogger<DefaultSettingsService>();
+
+        var svc = new DefaultSettingsService(fs, logger);
+
+        Assert.True(svc.SettingsFileInvalid);
+        var (level, message) = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, level);
+        Assert.Equal(
+            $"{SettingsPath(fs)} has an error at line 3, column 1: The JSON object contains a trailing comma at the end which is not supported in this mode. Defaults are in use for the whole file.",
+            message);
+    }
+
+    [Fact]
+    public void A_keybindings_file_that_does_not_parse_logs_a_warning_naming_it()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(KeybindingsPath(fs), new MockFileData("[ { \"Keys\": [1], "));
+        var logger = new ListLogger<DefaultSettingsService>();
+
+        var svc = new DefaultSettingsService(fs, logger);
+
+        Assert.False(svc.SettingsFileInvalid);
+        Assert.StartsWith($"{KeybindingsPath(fs)} has an error at line 1, column ", Assert.Single(logger.Entries).Message);
+    }
+
+    [Fact]
+    public void A_grammar_associations_file_that_does_not_parse_logs_a_warning_naming_it()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(GrammarsPath(fs), new MockFileData("{ \".h\": cpp }"));
+        var logger = new ListLogger<DefaultSettingsService>();
+
+        var svc = new DefaultSettingsService(fs, logger);
+
+        Assert.False(svc.SettingsFileInvalid);
+        Assert.StartsWith($"{GrammarsPath(fs)} has an error at line 1, column 9: ", Assert.Single(logger.Entries).Message);
+    }
+
+    [Fact]
+    public void Settings_files_that_parse_log_nothing()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{ \"IndentSize\": 2 }"));
+        fs.AddFile(GrammarsPath(fs), new MockFileData("{ \".h\": \"cpp\" }"));
+        var logger = new ListLogger<DefaultSettingsService>();
+
+        var svc = new DefaultSettingsService(fs, logger);
+
+        Assert.False(svc.SettingsFileInvalid);
+        Assert.Empty(logger.Entries);
     }
 
     private static string SettingsPath(MockFileSystem fs)

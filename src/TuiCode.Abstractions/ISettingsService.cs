@@ -43,6 +43,9 @@ public interface ISettingsService
     /// </summary>
     int SidebarWidth { get; set; }
 
+    /// <summary><c>TuiCode.settings.json</c> didn't parse, so every setting in it is at its default (#473).</summary>
+    bool SettingsFileInvalid { get; }
+
     /// <summary>Persist the current settings to disk, writing only values that differ from defaults.</summary>
     void Save();
 

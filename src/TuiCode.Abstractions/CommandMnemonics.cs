@@ -37,6 +37,7 @@ public static class CommandMnemonics
             [CommandIds.SaveActiveEditor] = "sf",
             [CommandIds.SaveAll] = "saf",
             [CommandIds.ShowDiagnostics] = "sd",
+            [CommandIds.ShowLog] = "sl",
             [CommandIds.ShowAbout] = "tui",
             [CommandIds.New] = "nf",
             [CommandIds.DeleteFile] = "df",

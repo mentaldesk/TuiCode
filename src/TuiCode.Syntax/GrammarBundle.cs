@@ -27,6 +27,7 @@ public sealed class GrammarBundle : IRegistryOptions
     private readonly Dictionary<string, SyntaxLanguage> _associations = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SyntaxLanguage> _languages = new(StringComparer.Ordinal);
     private readonly List<string> _problems = [];
+    private readonly Dictionary<string, string> _userGrammarFiles = new(StringComparer.Ordinal);
 
     public static GrammarBundle Load() => new(null, null);
 
@@ -50,13 +51,16 @@ public sealed class GrammarBundle : IRegistryOptions
         foreach (var manifest in _archive.Entries.Where(e => e.Name == "package.json").ToArray())
         {
             var directory = manifest.FullName[..^manifest.Name.Length];
-            AddPackage(ReadJson(manifest), path => _archive.GetEntry(directory + path) is null ? null : () => OpenText(directory + path),
+            AddPackage(ReadJson(manifest), (_, path) => _archive.GetEntry(directory + path) is null ? null : () => OpenText(directory + path),
                 path => OpenText(directory + path));
         }
     }
 
     /// <summary>Why user grammar packages, or grammars in them, weren't loaded.</summary>
     public IReadOnlyList<string> Problems => _problems;
+
+    /// <summary>The file a user package's grammar for <paramref name="scopeName"/> is read from; null for a built-in one.</summary>
+    public string? UserGrammarFile(string scopeName) => _userGrammarFiles.GetValueOrDefault(scopeName);
 
     public IReadOnlyCollection<SyntaxLanguage> Languages => _languages.Values;
 
@@ -151,7 +155,7 @@ public sealed class GrammarBundle : IRegistryOptions
         try
         {
             var manifest = JsonNode.Parse(fs.File.ReadAllText(manifestPath)) ?? throw new JsonException("empty");
-            var added = AddPackage(manifest, path =>
+            var added = AddPackage(manifest, (scope, path) =>
             {
                 var file = fs.Path.GetFullPath(fs.Path.Combine(directory, path));
                 if (!file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
@@ -159,7 +163,10 @@ public sealed class GrammarBundle : IRegistryOptions
                 else if (!fs.File.Exists(file))
                     _problems.Add($"{package}: {path} not found");
                 else
+                {
+                    _userGrammarFiles.TryAdd(scope, file);
                     return () => new StreamReader(new MemoryStream(fs.File.ReadAllBytes(file)));
+                }
                 return null;
             });
             if (added == 0)
@@ -171,8 +178,8 @@ public sealed class GrammarBundle : IRegistryOptions
         }
     }
 
-    /// <summary>Registers a package's grammars and languages; <paramref name="grammarAt"/> opens a grammar by its manifest path, or returns null.</summary>
-    private int AddPackage(JsonNode manifest, Func<string, Func<StreamReader?>?> grammarAt, Func<string, StreamReader?>? configurationAt = null)
+    /// <summary>Registers a package's grammars and languages; <paramref name="grammarAt"/> opens a grammar by its scope and manifest path, or returns null.</summary>
+    private int AddPackage(JsonNode manifest, Func<string, string, Func<StreamReader?>?> grammarAt, Func<string, StreamReader?>? configurationAt = null)
     {
         var contributes = manifest["contributes"];
         var scopeByLanguage = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -181,7 +188,7 @@ public sealed class GrammarBundle : IRegistryOptions
         {
             if (grammar?["scopeName"]?.GetValue<string>() is not { } scope
                 || grammar["path"]?.GetValue<string>() is not { } path
-                || grammarAt(path.TrimStart('.', '/')) is not { } open)
+                || grammarAt(scope, path.TrimStart('.', '/')) is not { } open)
                 continue;
             _grammars.TryAdd(scope, open);
             added++;

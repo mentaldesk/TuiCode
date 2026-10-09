@@ -35,6 +35,8 @@ internal sealed class InMemorySettingsService : ISettingsService
 
     public int SidebarWidth { get; set; } = SidebarSizing.Default;
 
+    public bool SettingsFileInvalid { get; set; }
+
     public int SaveCount { get; private set; }
     public void Save() => SaveCount++;
 

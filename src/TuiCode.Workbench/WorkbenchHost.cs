@@ -17,6 +17,7 @@ using TuiCode.Workbench.Focus;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Help;
+using TuiCode.Workbench.Logging;
 using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
@@ -60,6 +61,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly IReadOnlyList<ITerminalIntegration> _terminalIntegrations;
     private readonly IEnvironment _environment;
     private readonly ILogger<WorkbenchHost> _logger;
+    private readonly LogFile? _log;
     private readonly FileIcons? _icons;
     private readonly IGitCli _git;
     private readonly IGitHubCli _gitHub;
@@ -120,7 +122,8 @@ public sealed class WorkbenchHost : IDisposable
         FileIcons? icons = null,
         IGitCli? git = null,
         IGitHubCli? gitHub = null,
-        IFileSystem? fileSystem = null)
+        IFileSystem? fileSystem = null,
+        LogFile? log = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -158,6 +161,7 @@ public sealed class WorkbenchHost : IDisposable
         _environment = environment ?? new SystemEnvironment();
         Browser = SystemBrowser.For(_environment);
         _logger = logger ?? NullLogger<WorkbenchHost>.Instance;
+        _log = log;
         _icons = icons;
         _git = git ?? new GitCli(new FileSystem());
         _gitHub = gitHub ?? new GitHubCli();
@@ -212,6 +216,7 @@ public sealed class WorkbenchHost : IDisposable
         // history's own heuristic decides which of these count as navigable jumps.
         _workbench.Editor.Group.CursorMoved += OnEditorCursorMoved;
         _workbench.Editor.Group.ActiveTabChanged += OnActiveTabChanged;
+        _workbench.StatusBar.WarningsClicked += (_, _) => ShowLog();
         _workbench.Sidebar.Review.FileActivated += (_, e) => OpenReviewDiff(e.Review, e.Change);
         _workbench.Sidebar.Review.PullRequestActivated += (_, review) => OpenOverview(review);
         _workbench.Sidebar.Review.OutdatedThreadsActivated += (_, e) => OpenOutdatedThreads(e.Review, e.Node);
@@ -353,6 +358,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             _app.Iteration -= Open;
             _workbench.OpenStartupTarget(target);
+            if (_settings.SettingsFileInvalid) _workbench.StatusBar.SetMessage(SettingsErrorMessage);
         }
     }
 
@@ -539,6 +545,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
+        _commands.Register(CommandIds.ShowLog, "Show log", ShowLog);
         _commands.Register(CommandIds.ShowAbout, "About TuiCode", OpenAbout);
         _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo, CommandScope.Editor, FileOpen);
         // No default key (#61): users can bind one in Settings.
@@ -1259,6 +1266,8 @@ public sealed class WorkbenchHost : IDisposable
     private void OnIteration(object? sender, EventArgs<IApplication?> e)
     {
         _workbench.ShowCursorPosition();
+        // Warnings can be logged from any thread, so the count is read here rather than pushed.
+        _workbench.StatusBar.SetWarnings(_log?.Unseen ?? 0);
         // Picks up focus Terminal.Gui moved on its own, and any move that didn't land where it was asked to.
         _focus.Reconcile();
         _activeSymbolPicker?.Advance();
@@ -1275,6 +1284,7 @@ public sealed class WorkbenchHost : IDisposable
     private void OnActiveTabChanged(object? sender, TuiCode.Editor.EditorTab? tab)
     {
         _find.OnActiveTabChanged();
+        if (_log is not null && tab?.File.FullName == _log.File.FullName) _log.MarkSeen();
         if (_suppressHistory || tab is null) return;
         _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
     }
@@ -1294,6 +1304,16 @@ public sealed class WorkbenchHost : IDisposable
         }
         else if (Browser.Open(url) is { } failure) _workbench.StatusBar.SetError($"Couldn't open the link: {failure}");
         else _workbench.StatusBar.SetMessage($"Opened {url}");
+    }
+
+    internal const string SettingsErrorMessage = "TuiCode.settings.json has an error, so defaults are in use. sl shows the log";
+
+    private void ShowLog()
+    {
+        if (_log is null) return;
+        _log.Start();
+        _workbench.OpenFile(_log.File);
+        _log.MarkSeen();
     }
 
     private void NavigateBack()
