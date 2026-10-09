@@ -1,12 +1,16 @@
 namespace TuiCode.Workbench.Configuration;
 
 /// <summary>
-/// <c>tuicode --help</c> / <c>-h</c>: prints the usage block and exits without booting the TUI
-/// (#264). Recognised in <c>Program.cs</c> ahead of every other parser.
+/// <c>tuicode --help</c> / <c>-h</c> prints the usage block (#264), and <c>--version</c> the version,
+/// then exits without booting the TUI. Recognised in <c>Program.cs</c> ahead of every other parser.
 /// </summary>
 public static class UsageCli
 {
-    public static IReadOnlyList<string> Flags { get; } = ["--help", "-h"];
+    public const string VersionFlag = "--version";
+
+    private static readonly string[] HelpFlags = ["--help", "-h"];
+
+    public static IReadOnlyList<string> Flags { get; } = [.. HelpFlags, VersionFlag];
 
     /// <summary>The usage block, wrapped to fit an 80-column terminal.</summary>
     public const string Text = """
@@ -22,6 +26,7 @@ public static class UsageCli
 
         Options:
           --help, -h                 Show this help and exit
+          --version                  Show the version and exit
           --driver <name>            Terminal driver: windows | dotnet | ansi
 
         Terminal integration (<id> defaults to the terminal you're in):
@@ -33,14 +38,14 @@ public static class UsageCli
         Docs: https://github.com/mentaldesk/TuiCode
         """;
 
-    public static int? TryHandle(IReadOnlyList<string> args, TextWriter @out)
+    public static int? TryHandle(IReadOnlyList<string> args, TextWriter @out, string version)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(@out);
 
         if (!args.Any(Flags.Contains)) return null;
 
-        @out.WriteLine(Text);
+        @out.WriteLine(args.Any(HelpFlags.Contains) ? Text : version);
         return 0;
     }
 }

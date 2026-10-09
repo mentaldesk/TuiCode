@@ -10,7 +10,7 @@ public class UsageCliTests
     {
         var @out = new StringWriter();
 
-        Assert.Null(UsageCli.TryHandle(new[] { "--driver", "ansi", "some.txt" }, @out));
+        Assert.Null(UsageCli.TryHandle(new[] { "--driver", "ansi", "some.txt" }, @out, "1.2.3"));
         Assert.Equal("", @out.ToString());
     }
 
@@ -21,7 +21,7 @@ public class UsageCliTests
     {
         var @out = new StringWriter();
 
-        var exit = UsageCli.TryHandle(new[] { flag }, @out);
+        var exit = UsageCli.TryHandle(new[] { flag }, @out, "1.2.3");
 
         Assert.Equal(0, exit);
         Assert.Contains("Usage:", @out.ToString());
@@ -33,7 +33,28 @@ public class UsageCliTests
     {
         var @out = new StringWriter();
 
-        Assert.Equal(0, UsageCli.TryHandle(new[] { "some.txt", "--help" }, @out));
+        Assert.Equal(0, UsageCli.TryHandle(new[] { "some.txt", "--help" }, @out, "1.2.3"));
+    }
+
+    [Fact]
+    public void TryHandle_prints_only_the_version_and_exits_zero()
+    {
+        var @out = new StringWriter();
+
+        var exit = UsageCli.TryHandle(new[] { "--version" }, @out, "1.2.3");
+
+        Assert.Equal(0, exit);
+        Assert.Equal("1.2.3" + Environment.NewLine, @out.ToString());
+    }
+
+    [Fact]
+    public void TryHandle_prints_usage_when_asked_for_both_help_and_the_version()
+    {
+        var @out = new StringWriter();
+
+        UsageCli.TryHandle(new[] { "--version", "--help" }, @out, "1.2.3");
+
+        Assert.Contains("Usage:", @out.ToString());
     }
 
     [Fact]
