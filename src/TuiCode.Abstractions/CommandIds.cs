@@ -84,6 +84,8 @@ public static class CommandIds
     public const string SymbolPickerPageUp = "symbolPicker.action.pageUp";
     public const string SymbolPickerPageDown = "symbolPicker.action.pageDown";
 
+    public const string FollowLink = "workbench.action.followLink";
+
     public const string NavigateBack = "workbench.action.navigateBack";
     public const string NavigateForward = "workbench.action.navigateForward";
 

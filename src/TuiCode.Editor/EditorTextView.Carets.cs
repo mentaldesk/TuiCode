@@ -265,6 +265,17 @@ internal sealed partial class EditorTextView
 
     internal ClipboardTools? ClipboardFallback { get; set; } = ClipboardTools.ThisMachine;
 
+    /// <summary>Copies <paramref name="text"/> as if it had been selected, so a paste puts it at the caret.</summary>
+    public CopyOutcome CopyText(string text)
+    {
+        var outcome = VerifiedClipboard.Write(App?.Clipboard, text, ClipboardFallback);
+        if (outcome is CopyOutcome.Failed) return outcome;
+        _copiedPieces = [text];
+        _copiedText = text;
+        CopyWithoutSelection(this) = false;
+        return outcome;
+    }
+
     private bool CopyAtCarets(bool cut)
     {
         var ordered = Carets.OrderBy(c => c.Start.Y).ThenBy(c => c.Start.X).ToArray();
