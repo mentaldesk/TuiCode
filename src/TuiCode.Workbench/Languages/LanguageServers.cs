@@ -38,6 +38,9 @@ public sealed class LanguageServers : IDisposable
     /// <summary>Applied to every server started from now on.</summary>
     public TimeSpan QuietLoad { get; init; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>Applied to every server started from now on.</summary>
+    public TimeSpan StopTimeout { get; init; } = TimeSpan.FromSeconds(1);
+
     public IReadOnlyCollection<LanguageServer> Running => _servers.Values;
 
     /// <summary>The server <paramref name="tab"/>'s language would use, whether or not it has started.</summary>
@@ -88,7 +91,7 @@ public sealed class LanguageServers : IDisposable
     {
         if (_servers.TryGetValue(spec.LanguageId, out var running)) return running;
         var root = _root ?? tab.File.DirectoryName ?? tab.File.FullName;
-        var server = new LanguageServer(spec, root, _launcher, _post) { QuietLoad = QuietLoad };
+        var server = new LanguageServer(spec, root, _launcher, _post) { QuietLoad = QuietLoad, StopTimeout = StopTimeout };
         server.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
         _servers[spec.LanguageId] = server;
         server.Start();

@@ -137,7 +137,7 @@ public class LanguageServersTests
     }
 
     private LanguageServers Languages(EditorGroup group) =>
-        new(group, _fake, action => action(), (_, action) => _scheduled.Add(action)) { QuietLoad = TimeSpan.FromMinutes(1) };
+        new(group, _fake, action => action(), (_, action) => _scheduled.Add(action)) { QuietLoad = TimeSpan.FromMinutes(1), StopTimeout = Timeout };
 
     private EditorTab Open(EditorGroup group, string path) => group.OpenOrFocus(_fs.FileInfo.New(path));
 

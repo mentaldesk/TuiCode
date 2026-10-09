@@ -154,7 +154,7 @@ public class LanguageServerTests
     }
 
     private LanguageServer Server(TimeSpan? quietLoad = null) =>
-        new(LanguageServerSpec.CSharp, Root, _fake, action => action()) { QuietLoad = quietLoad ?? TimeSpan.FromMinutes(1) };
+        new(LanguageServerSpec.CSharp, Root, _fake, action => action()) { QuietLoad = quietLoad ?? TimeSpan.FromMinutes(1), StopTimeout = Timeout };
 
     private static Task Reached(LanguageServer server, LanguageServerState state)
     {

@@ -21,8 +21,6 @@ public enum LanguageServerState
 /// <summary>One server for one language and folder, never restarted once it stops. <see cref="StateChanged"/> is raised through <c>post</c>.</summary>
 public sealed class LanguageServer : IDisposable
 {
-    private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(1);
-
     private readonly ILanguageServerLauncher _launcher;
     private readonly Action<Action> _post;
     private readonly Lock _gate = new();
@@ -51,6 +49,9 @@ public sealed class LanguageServer : IDisposable
 
     /// <summary>How long after start-up a server that reports no loading progress counts as ready.</summary>
     public TimeSpan QuietLoad { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long stopping waits for the server to answer shutdown, and then to exit, before ending it.</summary>
+    public TimeSpan StopTimeout { get; init; } = TimeSpan.FromSeconds(1);
 
     public event EventHandler? StateChanged;
 
