@@ -109,6 +109,16 @@ public class Iterm2IntegrationTests
     }
 
     [Fact]
+    public void Install_leaves_Cmd_V_to_iTerm2_so_it_pastes_the_local_clipboard_over_SSH()
+    {
+        var (integration, fs, _) = Build();
+
+        integration.Install();
+
+        Assert.DoesNotContain("0x76-0x100000", KeyboardMap(fs).Keys);
+    }
+
+    [Fact]
     public void Install_keys_shifted_letters_by_their_shifted_character()
     {
         // iTerm2 matches on NSEvent.charactersIgnoringModifiers, which still applies Shift (#46).
@@ -261,7 +271,7 @@ public class Iterm2IntegrationTests
 
         Assert.Equal(["&TuiCode*", "&tuicode*"], CursorKey(fs, "Bound Hosts").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(KeyboardMap(plainFs).Keys.Order(), KeyboardMap(fs).Keys.Order());
-        Assert.Equal(26, KeyboardMap(fs).Count);
+        Assert.Equal(25, KeyboardMap(fs).Count);
     }
 
     [Fact]
@@ -302,7 +312,7 @@ public class Iterm2IntegrationTests
         integration.Refresh();
 
         Assert.Equal(TerminalIntegrationStatus.Installed, integration.GetStatus());
-        Assert.Equal(26, KeyboardMap(fs).Count);
+        Assert.Equal(25, KeyboardMap(fs).Count);
     }
 
     [Fact]

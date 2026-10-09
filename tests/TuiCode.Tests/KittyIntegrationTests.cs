@@ -86,6 +86,22 @@ public class KittyIntegrationTests
     }
 
     [Fact]
+    public void GetStatus_returns_Stale_for_the_previous_version()
+    {
+        var (integration, fs, _) = Build();
+        fs.Directory.CreateDirectory(ConfigDir);
+        fs.File.WriteAllText(ConfigPath, $"# TuiCodeIntegrationVersion: {KittyIntegration.CurrentVersion - 1}\n");
+
+        Assert.Equal(TerminalIntegrationStatus.Stale, integration.GetStatus());
+    }
+
+    [Fact]
+    public void Config_leaves_Cmd_V_to_kitty_so_it_pastes_the_local_clipboard_over_SSH()
+    {
+        Assert.DoesNotContain(" cmd+v ", KittyIntegration.Config);
+    }
+
+    [Fact]
     public void GetStatus_returns_Stale_when_version_marker_is_missing()
     {
         var (integration, fs, _) = Build();
