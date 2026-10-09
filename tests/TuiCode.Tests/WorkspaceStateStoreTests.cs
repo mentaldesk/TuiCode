@@ -105,4 +105,31 @@ public class WorkspaceStateStoreTests
         Assert.Null(store.Load("/a"));
         Assert.Equal(["/b/x.cs"], store.Load("/b")!.Files);
     }
+    [Fact]
+    public void A_file_that_cannot_be_read_logs_a_warning_naming_it_once()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(StatePath, new MockFileData("{ not json"));
+        var logger = new ListLogger<WorkspaceStateStore>();
+        var store = new WorkspaceStateStore(fs, StatePath, logger);
+
+        store.Load("/a");
+        store.Folders();
+
+        Assert.Equal($"Couldn't read the open files from {StatePath}", Assert.Single(logger.Entries).Message);
+    }
+
+    [Fact]
+    public void A_file_that_cannot_be_written_logs_a_warning_naming_it_until_a_save_succeeds()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/home/.tui", new MockFileData("a file where the folder should be"));
+        var logger = new ListLogger<WorkspaceStateStore>();
+        var store = new WorkspaceStateStore(fs, StatePath, logger);
+
+        store.Save("/a", new WorkspaceState(["/a/x.cs"], "/a/x.cs"));
+        store.Save("/a", new WorkspaceState(["/a/y.cs"], "/a/y.cs"));
+
+        Assert.Equal($"Couldn't save the open files to {StatePath}", Assert.Single(logger.Entries).Message);
+    }
 }

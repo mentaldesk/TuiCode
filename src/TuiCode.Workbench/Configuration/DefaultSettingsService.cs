@@ -1,6 +1,8 @@
 using System.IO.Abstractions;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Terminal.Gui.Configuration;
 using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
@@ -27,6 +29,7 @@ namespace TuiCode.Workbench.Configuration;
 public sealed class DefaultSettingsService : ISettingsService
 {
     private readonly IFileSystem _fs;
+    private readonly ILogger _logger;
     private readonly string _themeConfigPath;
     private readonly string _keybindingsPath;
     private readonly string _grammarsPath;
@@ -34,9 +37,10 @@ public sealed class DefaultSettingsService : ISettingsService
     private List<KeybindingOverride> _keybindings;
     private Dictionary<string, string> _grammarAssociations;
 
-    public DefaultSettingsService(IFileSystem fs)
+    public DefaultSettingsService(IFileSystem fs, ILogger<DefaultSettingsService>? logger = null)
     {
         _fs = fs;
+        _logger = logger ?? NullLogger<DefaultSettingsService>.Instance;
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var dir = _fs.Path.Combine(home, ".tui");
         _themeConfigPath = _fs.Path.Combine(dir, "TuiCode.config.json");
@@ -86,6 +90,8 @@ public sealed class DefaultSettingsService : ISettingsService
     public EditorSettings Editor { get; set; } = EditorSettings.Default;
 
     public int SidebarWidth { get; set; } = SidebarSizing.Default;
+
+    public bool SettingsFileInvalid { get; private set; }
 
     public void Load()
     {
@@ -166,8 +172,9 @@ public sealed class DefaultSettingsService : ISettingsService
         {
             root = JsonNode.Parse(_fs.File.ReadAllText(_grammarsPath)) as JsonObject;
         }
-        catch (JsonException)
+        catch (JsonException e)
         {
+            LogUnreadable(_grammarsPath, e);
             return result;
         }
 
@@ -200,8 +207,10 @@ public sealed class DefaultSettingsService : ISettingsService
             {
                 root = JsonNode.Parse(_fs.File.ReadAllText(_settingsPath)) as JsonObject;
             }
-            catch (JsonException)
+            catch (JsonException e)
             {
+                SettingsFileInvalid = true;
+                LogUnreadable(_settingsPath, e);
             }
         }
 
@@ -282,9 +291,9 @@ public sealed class DefaultSettingsService : ISettingsService
         {
             arr = JsonNode.Parse(_fs.File.ReadAllText(_keybindingsPath)) as JsonArray;
         }
-        catch (JsonException)
+        catch (JsonException e)
         {
-            // The whole file is not valid JSON (hand-edited into a broken state) — ignore it.
+            LogUnreadable(_keybindingsPath, e);
             return new List<KeybindingOverride>();
         }
         if (arr is null) return new List<KeybindingOverride>();
@@ -328,6 +337,15 @@ public sealed class DefaultSettingsService : ISettingsService
         }
         return chord;
     }
+
+    private void LogUnreadable(string path, JsonException e) =>
+        _logger.LogWarning("{File} has an error at line {Line}, column {Column}: {Reason} Defaults are in use for the whole file.",
+            path, e.LineNumber + 1, e.BytePositionInLine + 1, Reason(e));
+
+    // .NET's message ends with the position, which the log already gives, and some with advice for the developer.
+    private static string Reason(JsonException e) =>
+        (e.Message.IndexOf(" LineNumber:", StringComparison.Ordinal) is var at and >= 0 ? e.Message[..at] : e.Message)
+            .Replace(" Change the reader options.", "", StringComparison.Ordinal);
 
     private void EnsureDirExists(string filePath)
     {

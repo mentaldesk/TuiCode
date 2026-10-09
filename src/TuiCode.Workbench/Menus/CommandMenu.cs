@@ -94,7 +94,7 @@ public sealed class CommandMenu
         [
             CommandIds.ShowHelp, CommandIds.ShowActions, CommandIds.ShowMnemonics,
             Separator,
-            CommandIds.ShowDiagnostics, CommandIds.ShowAbout,
+            CommandIds.ShowDiagnostics, CommandIds.ShowLog, CommandIds.ShowAbout,
         ]),
     ];
 

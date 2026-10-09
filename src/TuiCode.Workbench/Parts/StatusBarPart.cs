@@ -1,3 +1,7 @@
+using System.Text;
+using Terminal.Gui.Text;
+using TuiCode.Abstractions;
+
 namespace TuiCode.Workbench.Parts;
 
 public sealed class StatusBarPart : View
@@ -5,6 +9,8 @@ public sealed class StatusBarPart : View
     private readonly Label _label;
     private readonly Label _position;
     private readonly Label _focus;
+    private readonly Button _warnings;
+    private int _unseenWarnings;
     private string _region = string.Empty;
     private string _message;
     private string? _chord;
@@ -25,15 +31,54 @@ public sealed class StatusBarPart : View
 
         _position = new Label { X = Pos.AnchorEnd() - 1, Y = 0 };
         _focus = new Label { X = 1, Y = 0 };
+        _warnings = new Button
+        {
+            X = Pos.Left(_position),
+            Y = 0,
+            Visible = false,
+            CanFocus = false,
+            NoDecorations = true,
+            NoPadding = true,
+            ShadowStyle = ShadowStyles.None,
+            HotKeySpecifier = (Rune)0xffff,
+            MouseHighlightStates = MouseState.None,
+        };
+        _warnings.Accepting += (_, e) =>
+        {
+            e.Handled = true;
+            WarningsClicked?.Invoke(this, EventArgs.Empty);
+        };
+        _warnings.GettingAttributeForRole += (_, e) =>
+        {
+            e.Result = WarningColour.On(e.Result ?? GetAttributeForRole(e.Role));
+            e.Handled = true;
+        };
         _label = new Label
         {
             X = Pos.Right(_focus),
             Y = 0,
-            Width = Dim.Fill(2, _position),
+            Width = Dim.Fill(2, _warnings),
             Text = _message
         };
-        Add(_focus, _label, _position);
+        Add(_focus, _label, _warnings, _position);
     }
+
+    /// <summary>The <c>⚠ n</c> item was clicked.</summary>
+    public event EventHandler? WarningsClicked;
+
+    /// <summary>Warnings logged since the log was last opened, shown as <c>⚠ n</c> before the position; 0 hides it.</summary>
+    public void SetWarnings(int unseen)
+    {
+        if (unseen == _unseenWarnings) return;
+        _unseenWarnings = unseen;
+        _warnings.Text = unseen > 0 ? $"⚠ {unseen}" : string.Empty;
+        _warnings.Visible = unseen > 0;
+        _warnings.X = Pos.Left(_position) - (unseen > 0 ? _warnings.Text.GetColumns(false) + 3 : 0);
+    }
+
+    internal string DisplayedWarnings => _warnings.Visible ? _warnings.Text : string.Empty;
+
+    internal View WarningsView => _warnings;
 
     /// <summary>The one word for where keys will go, shown at the far left; always present (#227).</summary>
     public void SetFocusRegion(string region)
