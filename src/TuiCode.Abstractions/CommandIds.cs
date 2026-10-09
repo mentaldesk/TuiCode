@@ -90,6 +90,7 @@ public static class CommandIds
     public const string DefinitionPickerDown = "definitionPicker.action.down";
     public const string DefinitionPickerPageUp = "definitionPicker.action.pageUp";
     public const string DefinitionPickerPageDown = "definitionPicker.action.pageDown";
+    public const string FindUsages = "workbench.action.findUsages";
     public const string FollowLink = "workbench.action.followLink";
 
     public const string NavigateBack = "workbench.action.navigateBack";

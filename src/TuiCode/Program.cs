@@ -14,6 +14,7 @@ using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Icons;
 using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.References;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.TerminalIntegration;
@@ -64,6 +65,7 @@ services.AddSingleton<ITerminalIntegration, KittyIntegration>();
 
 services.AddTransient<FileExplorerView>();
 services.AddTransient<SearchView>();
+services.AddTransient<ReferencesView>();
 services.AddTransient<ReviewView>();
 services.AddTransient<SidebarPart>();
 services.AddTransient<EditorPart>();

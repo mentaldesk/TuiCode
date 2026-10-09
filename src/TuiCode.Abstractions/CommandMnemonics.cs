@@ -81,6 +81,7 @@ public static class CommandMnemonics
             [CommandIds.GoToLine] = "gl",
             [CommandIds.GoToSymbol] = "gs",
             [CommandIds.GoToDefinition] = "gd",
+            [CommandIds.FindUsages] = "gu",
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
             [CommandIds.GitBlame] = "gb",

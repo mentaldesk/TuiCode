@@ -1,22 +1,25 @@
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Search;
+using TuiCode.Workbench.References;
 using TuiCode.Workbench.Review;
 
 namespace TuiCode.Workbench.Parts;
 
-public enum SidebarTab { Explorer, Find, Review }
+public enum SidebarTab { Explorer, Find, References, Review }
 
 public sealed class SidebarPart : FrameView
 {
     private readonly PaneTabs _tabs;
     private readonly View _explorerTab;
     private readonly View _findTab;
+    private readonly View _referencesTab;
     private readonly View _reviewTab;
     private readonly View _noFolder;
 
     public FileExplorerView Explorer { get; }
     public SearchView Search { get; }
+    public ReferencesView References { get; }
     public ReviewView Review { get; }
 
     /// <summary>The <c>[ Open Folder ]</c> button shown in place of the tree while no folder is open (#451).</summary>
@@ -28,13 +31,15 @@ public sealed class SidebarPart : FrameView
 
     public SidebarTab ActiveTab =>
         ReferenceEquals(_tabs.Value, _findTab) ? SidebarTab.Find
+        : ReferenceEquals(_tabs.Value, _referencesTab) ? SidebarTab.References
         : ReferenceEquals(_tabs.Value, _reviewTab) ? SidebarTab.Review
         : SidebarTab.Explorer;
 
-    public SidebarPart(FileExplorerView explorer, SearchView? search = null, ReviewView? review = null)
+    public SidebarPart(FileExplorerView explorer, SearchView? search = null, ReviewView? review = null, ReferencesView? references = null)
     {
         Explorer = explorer;
         Search = search ?? new SearchView();
+        References = references ?? new ReferencesView();
         Review = review ?? new ReviewView();
         BorderStyle = LineStyle.Single;
         SchemeName = "Sidebar";
@@ -57,6 +62,7 @@ public sealed class SidebarPart : FrameView
         _explorerTab.Add(_noFolder);
         // Titled after the Find globally / Replace globally commands that open it (fg / rg).
         _findTab = WrapTab("Find", Search);
+        _referencesTab = WrapTab("References", References);
         _reviewTab = WrapTab("Review", Review);
 
         _tabs = new PaneTabs
@@ -67,7 +73,7 @@ public sealed class SidebarPart : FrameView
             Height = Dim.Fill(),
             CanFocus = true,
         };
-        _tabs.Add(_explorerTab, _findTab, _reviewTab);
+        _tabs.Add(_explorerTab, _findTab, _referencesTab, _reviewTab);
         _tabs.Value = _explorerTab;
         _tabs.ValueChanged += (_, _) =>
         {
@@ -89,6 +95,7 @@ public sealed class SidebarPart : FrameView
         _tabs.Value = tab switch
         {
             SidebarTab.Find => _findTab,
+            SidebarTab.References => _referencesTab,
             SidebarTab.Review => _reviewTab,
             _ => _explorerTab,
         };

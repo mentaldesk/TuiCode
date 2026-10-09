@@ -68,7 +68,7 @@ public sealed class CommandMenu
         ]),
         ("_Go",
         [
-            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToDefinition, CommandIds.FollowLink,
+            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToDefinition, CommandIds.FindUsages, CommandIds.FollowLink,
             Separator,
             CommandIds.NavigateBack, CommandIds.NavigateForward,
             Separator,
