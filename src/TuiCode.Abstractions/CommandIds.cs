@@ -83,6 +83,13 @@ public static class CommandIds
     public const string SymbolPickerPageUp = "symbolPicker.action.pageUp";
     public const string SymbolPickerPageDown = "symbolPicker.action.pageDown";
 
+    public const string GoToDefinition = "workbench.action.goToDefinition";
+    public const string DefinitionPickerConfirm = "definitionPicker.action.confirm";
+    public const string DefinitionPickerCancel = "definitionPicker.action.cancel";
+    public const string DefinitionPickerUp = "definitionPicker.action.up";
+    public const string DefinitionPickerDown = "definitionPicker.action.down";
+    public const string DefinitionPickerPageUp = "definitionPicker.action.pageUp";
+    public const string DefinitionPickerPageDown = "definitionPicker.action.pageDown";
     public const string FollowLink = "workbench.action.followLink";
 
     public const string NavigateBack = "workbench.action.navigateBack";

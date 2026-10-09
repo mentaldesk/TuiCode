@@ -280,6 +280,16 @@ public sealed class EditorTab : FrameView
         if (WordWrap) _textView.SetNeedsDraw();
     }
 
+    /// <summary>The cursor's column in UTF-16 chars, as language servers count them.</summary>
+    public int CursorCharacter => ToCharColumn(CursorRow, CursorColumn);
+
+    /// <summary><see cref="MoveCursor"/> with the column in UTF-16 chars.</summary>
+    public void MoveCursorToCharacter(int row, int character)
+    {
+        row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
+        MoveCursor(row, ToCellColumn(row, character));
+    }
+
     internal EditorTextView TextView => _textView;
 
     /// <summary>A screen row while wrapped.</summary>
