@@ -11,7 +11,7 @@ namespace TuiCode.Workbench.TerminalIntegration;
 /// </summary>
 public sealed class KittyIntegration : ITerminalIntegration
 {
-    internal const int CurrentVersion = 1;
+    internal const int CurrentVersion = 2;
     internal const string ConfigFileName = "tuicode.conf";
     internal const string VersionMarker = "# TuiCodeIntegrationVersion:";
     internal const string FocusCondition = "--when-focus-on var:TUICODE_ACTIVE=1";
@@ -116,6 +116,8 @@ public sealed class KittyIntegration : ITerminalIntegration
         ("page_down", @"\x1b[6~"),
         ("shift+page_up", @"\x1b[5;2~"),
         ("shift+page_down", @"\x1b[6;2~"),
+        ("ctrl+page_up", @"\x1b[5;5~"),
+        ("ctrl+page_down", @"\x1b[6;5~"),
         ("opt+delete", @"\x04"),
         ("cmd+delete", @"\x1b[3;5~"),
     ];

@@ -1,3 +1,7 @@
+using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
+using Terminal.Gui.Drivers;
+using Terminal.Gui.Input;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.TerminalIntegration;
 
@@ -151,6 +155,27 @@ public class WezTermIntegrationTests
         integration.Uninstall();
 
         Assert.False(fs.File.Exists(ModulePath));
+    }
+
+    [Theory]
+    [InlineData("PageDown", KeyCode.PageDown)]
+    [InlineData("PageUp", KeyCode.PageUp)]
+    public void The_key_table_passes_Ctrl_PageDown_and_Ctrl_PageUp_through_as_those_keys(string key, KeyCode expected)
+    {
+        var match = Regex.Match(
+            WezTermIntegration.ModuleLua,
+            $@"key = '{key}',\s*mods = 'CTRL',\s*action = wezterm\.action\.SendString '(?<text>[^']+)'");
+        Assert.True(match.Success, $"No CTRL {key} entry in the tuicode key table");
+
+        var queue = new ConcurrentQueue<char>();
+        foreach (var c in match.Groups["text"].Value.Replace(@"\x1b", "\u001b"))
+            queue.Enqueue(c);
+        Key? decoded = null;
+        var processor = new AnsiInputProcessor(queue);
+        processor.KeyDown += (_, k) => decoded = k;
+        processor.ProcessQueue();
+
+        Assert.Equal(new Key(expected).WithCtrl, decoded);
     }
 
     [Fact]

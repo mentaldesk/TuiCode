@@ -756,9 +756,9 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
         keybindings.Bind("Ctrl+Shift+S", CommandIds.SaveAll);
         keybindings.Bind("Ctrl+W", CommandIds.CloseActiveEditor);
-        // Not Ctrl+Tab: Terminal.app and iTerm2 both keep it for their own tabs (#254).
-        keybindings.Bind("Alt+Tab", CommandIds.NextEditor);
-        keybindings.Bind("Alt+Shift+Tab", CommandIds.PreviousEditor);
+        // Not Ctrl+Tab, which Terminal.app and iTerm2 keep (#254), nor Alt+Tab, Windows' app switcher (#459).
+        keybindings.Bind("Ctrl+PageDown", CommandIds.NextEditor);
+        keybindings.Bind("Ctrl+PageUp", CommandIds.PreviousEditor);
 
         // No default key for ToggleSidebar — Ctrl+0 is eaten by the terminal's own zoom-reset
         // in many emulators (#81), so it was unreliable. Reach it via the `ts` mnemonic instead.
