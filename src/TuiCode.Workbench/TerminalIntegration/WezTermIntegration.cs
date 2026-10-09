@@ -21,7 +21,7 @@ namespace TuiCode.Workbench.TerminalIntegration;
 /// </remarks>
 public sealed class WezTermIntegration : ITerminalIntegration
 {
-    internal const int CurrentVersion = 2;
+    internal const int CurrentVersion = 3;
     internal const string ModuleFileName = "tuicode.lua";
     internal const string VersionMarker = "-- TuiCodeIntegrationVersion:";
 
@@ -111,7 +111,7 @@ public sealed class WezTermIntegration : ITerminalIntegration
     // TuiCode signals startup (TUICODE_ACTIVE=1) and pops it on shutdown (=0) so the user's normal
     // WezTerm bindings (Cmd+C for selection copy, etc.) remain untouched in their shell.
     internal const string ModuleLua = """
-        -- TuiCodeIntegrationVersion: 2
+        -- TuiCodeIntegrationVersion: 3
         local M = {}
 
         function M.apply(config)
@@ -127,7 +127,6 @@ public sealed class WezTermIntegration : ITerminalIntegration
           config.key_tables = config.key_tables or {}
           config.key_tables.tuicode = {
             { key = 'c', mods = 'CMD',       action = wezterm.action.SendString '\x03' },
-            { key = 'v', mods = 'CMD',       action = wezterm.action.SendString '\x16' },
             { key = 'x', mods = 'CMD',       action = wezterm.action.SendString '\x18' },
             { key = 'z', mods = 'CMD',       action = wezterm.action.SendString '\x1a' },
             { key = 'z', mods = 'CMD|SHIFT', action = wezterm.action.SendString '\x19' },

@@ -12,7 +12,7 @@ namespace TuiCode.Workbench.TerminalIntegration;
 /// directory and applies the profile to processes matching <c>Bound Hosts</c> automatically.
 /// </summary>
 /// <remarks>
-/// <para>The profile maps macOS shortcuts (Cmd+C/V/X/Z/A, Cmd+arrows, Shift+Cmd+arrows) onto the
+/// <para>The profile maps macOS shortcuts (Cmd+C/X/Z/A, Cmd+arrows, Shift+Cmd+arrows) onto the
 /// CSI sequences Terminal.Gui's <c>TextView</c> understands.</para>
 /// <para>Bound Hosts matches both <c>TuiCode*</c> (upstream binary name) and <c>tuicode*</c>
 /// (Homebrew rename) — iTerm2's matcher is case-sensitive, so both patterns are required to cover
@@ -26,7 +26,7 @@ namespace TuiCode.Workbench.TerminalIntegration;
 public sealed class Iterm2Integration : ITerminalIntegration, ITerminalCursorColour
 {
     internal const string ProfileGuid = "a21365eb-a2a0-4260-b0b7-e7368856dc65";
-    internal const int CurrentProfileVersion = 3;
+    internal const int CurrentProfileVersion = 4;
     internal const string ProfileFileName = "tuicode.json";
 
     private readonly IFileSystem _fileSystem;
@@ -185,7 +185,6 @@ public sealed class Iterm2Integration : ITerminalIntegration, ITerminalCursorCol
                 "0xf728-0x280000" : { "Action" : 10, "Text" : "[3;5~" },
                 "0x7a-0x100000"   : { "Action" : 11, "Text" : "0x1a" },
                 "0xf728-0x200000" : { "Action" : 11, "Text" : "0x04" },
-                "0x76-0x100000"   : { "Action" : 11, "Text" : "0x16" },
                 "0x7f-0x80000"    : { "Action" : 10, "Text" : "[127;5u" },
                 "0x63-0x100000"   : { "Action" : 11, "Text" : "0x03" }
               }

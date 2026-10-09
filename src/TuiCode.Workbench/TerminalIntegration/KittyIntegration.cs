@@ -11,7 +11,7 @@ namespace TuiCode.Workbench.TerminalIntegration;
 /// </summary>
 public sealed class KittyIntegration : ITerminalIntegration
 {
-    internal const int CurrentVersion = 1;
+    internal const int CurrentVersion = 2;
     internal const string ConfigFileName = "tuicode.conf";
     internal const string VersionMarker = "# TuiCodeIntegrationVersion:";
     internal const string FocusCondition = "--when-focus-on var:TUICODE_ACTIVE=1";
@@ -93,7 +93,6 @@ public sealed class KittyIntegration : ITerminalIntegration
     internal static readonly (string Key, string Text)[] Mappings =
     [
         ("cmd+c", @"\x03"),
-        ("cmd+v", @"\x16"),
         ("cmd+x", @"\x18"),
         ("cmd+z", @"\x1a"),
         ("cmd+shift+z", @"\x19"),
