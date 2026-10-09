@@ -1,12 +1,12 @@
+using TuiCode.Abstractions;
 using TuiCode.Editor;
+using TuiCode.Syntax;
 
 namespace TuiCode.Workbench.Languages;
 
 /// <summary>One language server per language for the open folder, kept in step with the open tabs.</summary>
 public sealed class LanguageServers : IDisposable
 {
-    public static readonly IReadOnlyList<LanguageServerSpec> Known = [LanguageServerSpec.CSharp];
-
     /// <summary>How long typing has to pause before the server hears about it.</summary>
     public static readonly TimeSpan ChangeDelay = TimeSpan.FromMilliseconds(250);
 
@@ -17,6 +17,8 @@ public sealed class LanguageServers : IDisposable
     private readonly Dictionary<string, LanguageServer> _servers = new(StringComparer.Ordinal);
     private readonly Dictionary<EditorTab, Synced> _tabs = new();
     private readonly HashSet<EditorTab> _changed = new();
+    private readonly Dictionary<string, LanguageServerSpec?> _specs = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyDictionary<string, LanguageServerSetting> _chosen = new Dictionary<string, LanguageServerSetting>();
     private string? _root;
     private bool _flushScheduled;
 
@@ -44,8 +46,39 @@ public sealed class LanguageServers : IDisposable
     public IReadOnlyCollection<LanguageServer> Running => _servers.Values;
 
     /// <summary>The server <paramref name="tab"/>'s language would use, whether or not it has started.</summary>
-    public static LanguageServerSpec? SpecFor(EditorTab tab) =>
-        tab.HasSyntax ? Known.FirstOrDefault(spec => spec.LanguageId == tab.Grammar?.Id) : null;
+    public LanguageServerSpec? SpecFor(EditorTab tab) => tab is { HasSyntax: true, Grammar: { } grammar } ? SpecFor(grammar) : null;
+
+    private LanguageServerSpec? SpecFor(SyntaxLanguage language)
+    {
+        if (_specs.TryGetValue(language.Id, out var cached)) return cached;
+        var chosen = KnownLanguageServers.Chosen(language.Id, _chosen);
+        var spec = chosen.IsNone
+            ? null
+            : new LanguageServerSpec(language.Id, language.Name, chosen.Command, chosen.Arguments,
+                KnownLanguageServers.WithCommand(language.Id, chosen.Command)?.Install);
+        _specs[language.Id] = spec;
+        return spec;
+    }
+
+    /// <summary>Takes the user's servers, keyed by language id: a language whose server changed stops it and starts the new one.</summary>
+    public void Configure(IReadOnlyDictionary<string, LanguageServerSetting> chosen)
+    {
+        var previous = _chosen;
+        _chosen = chosen;
+        var changed = _specs.Keys
+            .Where(id => KnownLanguageServers.Chosen(id, previous) != KnownLanguageServers.Chosen(id, chosen))
+            .ToList();
+        if (changed.Count == 0) return;
+        foreach (var id in changed)
+        {
+            _specs.Remove(id);
+            foreach (var (tab, synced) in _tabs.ToList())
+                if (string.Equals(synced.Server.Spec.LanguageId, id, StringComparison.OrdinalIgnoreCase)) Untrack(tab);
+            if (_servers.Remove(id, out var server)) _ = server.StopAsync();
+        }
+        Reconcile();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public LanguageServer? ServerFor(EditorTab tab) =>
         SpecFor(tab) is { } spec ? _servers.GetValueOrDefault(spec.LanguageId) : null;

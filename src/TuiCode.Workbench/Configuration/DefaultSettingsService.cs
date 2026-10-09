@@ -87,6 +87,9 @@ public sealed class DefaultSettingsService : ISettingsService
 
     public int SidebarWidth { get; set; } = SidebarSizing.Default;
 
+    public IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; } =
+        new Dictionary<string, LanguageServerSetting>(StringComparer.OrdinalIgnoreCase);
+
     public void Load()
     {
         TuiConfigurationBuilder.Shared.RuntimeConfig = BundledThemes.Config;
@@ -128,6 +131,17 @@ public sealed class DefaultSettingsService : ISettingsService
         }
         if (SidebarWidth != SidebarSizing.Default)
             root["SidebarWidth"] = SidebarWidth;
+        if (LanguageServers.Count > 0)
+        {
+            var servers = new JsonObject();
+            foreach (var (language, server) in LanguageServers.OrderBy(s => s.Key, StringComparer.OrdinalIgnoreCase))
+                servers[language] = new JsonObject
+                {
+                    ["Command"] = server.Command,
+                    ["Arguments"] = new JsonArray([.. server.Arguments.Select(a => (JsonNode?)a)]),
+                };
+            root["LanguageServers"] = servers;
+        }
 
         if (root.Count == 0)
         {
@@ -223,6 +237,27 @@ public sealed class DefaultSettingsService : ISettingsService
         SidebarWidth = Read(root, "SidebarWidth", SidebarSizing.Default) is var width && width >= SidebarSizing.Min
             ? width
             : SidebarSizing.Default;
+        LanguageServers = ReadLanguageServers(root);
+    }
+
+    private static Dictionary<string, LanguageServerSetting> ReadLanguageServers(JsonObject? root)
+    {
+        var result = new Dictionary<string, LanguageServerSetting>(StringComparer.OrdinalIgnoreCase);
+        if (root?["LanguageServers"] is not JsonObject servers) return result;
+        foreach (var (language, value) in servers)
+        {
+            if (language.Length == 0 || value is not JsonObject server) continue;
+            if (server["Command"] is not JsonValue c || !c.TryGetValue<string>(out var command)) continue;
+            var arguments = new List<string>();
+            if (server["Arguments"] is JsonArray array)
+            {
+                foreach (var argument in array)
+                    if (argument is JsonValue a && a.TryGetValue<string>(out var text)) arguments.Add(text);
+                if (arguments.Count != array.Count) continue;
+            }
+            result[language] = new LanguageServerSetting(command.Trim(), arguments);
+        }
+        return result;
     }
 
     private static Dictionary<string, bool> ReadWrapByLanguage(JsonObject? root)
