@@ -752,11 +752,13 @@ public class FocusHostTests : StaticConfigurationTest
         Assert.Equal(("Tabs", "b.txt"), (afterUp, afterUpTab));
     }
 
-    [Fact]
-    public async Task Alt_Tab_Alt_Shift_Tab_and_Ctrl_2_still_change_the_file()
+    [Theory]
+    [InlineData(null, "Editor")]
+    [InlineData(CommandIds.FocusEditorTabStrip, "Tabs")]
+    public async Task Ctrl_PageDown_Ctrl_PageUp_and_Ctrl_2_change_the_file_and_wrap(string? focus, string focused)
     {
         using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out _);
+        using var host = BuildHost(workbench, out var commands);
         var cycled = "";
         var back = "";
 
@@ -768,14 +770,34 @@ public class FocusHostTests : StaticConfigurationTest
                 workbench.OpenFile(_fs.FileInfo.New("/work/Widget.cs"));
             },
             () => workbench.StatusBar.DisplayedFocus == "Editor",
-            () => host.App.InjectKey(Key.Tab.WithAlt),
+            () => { if (focus is not null) commands.TryExecute(focus); },
+            () => workbench.StatusBar.DisplayedFocus == focused,
+            () => host.App.InjectKey(Key.PageDown.WithCtrl),
             () => workbench.Editor.Group.ActiveTab!.File.Name == "a.txt",
-            () => { cycled = workbench.Editor.Group.ActiveTab!.File.Name; host.App.InjectKey(Key.Tab.WithAlt.WithShift); },
+            () => { cycled = workbench.Editor.Group.ActiveTab!.File.Name; host.App.InjectKey(Key.PageUp.WithCtrl); },
             () => workbench.Editor.Group.ActiveTab!.File.Name == "Widget.cs",
             () => { back = workbench.Editor.Group.ActiveTab!.File.Name; host.App.InjectKey(Key.D2.WithCtrl); },
             () => workbench.Editor.Group.ActiveTab!.File.Name == "b.txt");
 
         Assert.Equal(("a.txt", "Widget.cs"), (cycled, back));
+    }
+
+    [Fact]
+    public async Task Alt_Tab_no_longer_changes_the_file()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var afterAltTab = "";
+        var afterAltShiftTab = "";
+
+        await HostSteps.Run(host,
+            () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); workbench.OpenFile(_fs.FileInfo.New("/work/b.txt")); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.Tab.WithAlt),
+            () => { afterAltTab = workbench.Editor.Group.ActiveTab!.File.Name; host.App.InjectKey(Key.Tab.WithAlt.WithShift); },
+            () => { afterAltShiftTab = workbench.Editor.Group.ActiveTab!.File.Name; });
+
+        Assert.Equal(("b.txt", "b.txt"), (afterAltTab, afterAltShiftTab));
     }
 
     private Workbench.Workbench BuildWorkbench()

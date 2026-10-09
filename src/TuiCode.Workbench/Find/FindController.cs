@@ -11,7 +11,7 @@ namespace TuiCode.Workbench.Find;
 /// docks it on the active tab (following tab switches), keeps the match set and highlights in step with the buffer, and
 /// drives selection. While open it layers a non-modal input scope over the workbench: Enter /
 /// Shift+Enter / Tab / Ctrl+Enter act only while the bar has focus, Esc also closes from the editor
-/// body, and every other key — Ctrl+S, Alt+Tab, … — falls through to the workbench as usual.
+/// body, and every other key — Ctrl+S, Ctrl+PageDown, … — falls through to the workbench as usual.
 /// </summary>
 internal sealed class FindController : IDisposable
 {
