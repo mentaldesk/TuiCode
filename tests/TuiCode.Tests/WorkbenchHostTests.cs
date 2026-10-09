@@ -1,3 +1,4 @@
+using System.IO.Abstractions.TestingHelpers;
 using Microsoft.Extensions.Logging;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
@@ -1091,6 +1092,52 @@ public class WorkbenchHostTests : StaticConfigurationTest
         Assert.Equal("TuiCode  •  F1 help", byDefault);
         Assert.Equal("TuiCode  •  F3 help", rebound);
         Assert.Equal("TuiCode", workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public void Next_and_previous_tab_default_to_Ctrl_PageDown_and_Ctrl_PageUp_and_Alt_Tab_is_free()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+
+        var defaults = host.GetDefaultBindings().ToArray();
+        string[] KeysFor(string command) => defaults.Where(b => b.CommandId == command).Select(b => b.Display).ToArray();
+        bool Bound(Key key) => defaults.Any(b => b.CanonicalId == KeyChord.Canonical([key]));
+
+        Assert.Equal(["Ctrl+PageDown"], KeysFor(CommandIds.NextEditor));
+        Assert.Equal(["Ctrl+PageUp"], KeysFor(CommandIds.PreviousEditor));
+        Assert.False(Bound(Key.Tab.WithAlt));
+        Assert.False(Bound(Key.Tab.WithAlt.WithShift));
+    }
+
+    [Fact]
+    public async Task A_users_own_next_tab_binding_survives_the_new_default_and_Alt_Tab_can_be_bound_again()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var settings = new InMemorySettingsService();
+        settings.SetKeybindingOverrides(
+        [
+            new KeybindingOverride(TestKeys.Chord("Alt+Tab"), "-" + CommandIds.NextEditor),
+            new KeybindingOverride(TestKeys.Chord("F6"), CommandIds.PreviousEditor),
+        ]);
+        using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(), settings, driverName: DriverRegistry.Names.ANSI);
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("a"));
+        fs.AddFile("/work/b.txt", new MockFileData("b"));
+        var afterF6 = "";
+        var afterAltTab = "";
+
+        await HostSteps.Run(host,
+            () => { workbench.OpenFile(fs.FileInfo.New("/work/a.txt")); workbench.OpenFile(fs.FileInfo.New("/work/b.txt")); },
+            () => host.App.InjectKey(Key.F6),
+            () => { afterF6 = workbench.Editor.Group.ActiveTab!.File.Name; },
+            () => host.ApplyKeybindings([new KeybindingOverride(TestKeys.Chord("Alt+Tab"), CommandIds.NextEditor)]),
+            () => host.App.InjectKey(Key.Tab.WithAlt),
+            () => { afterAltTab = workbench.Editor.Group.ActiveTab!.File.Name; });
+
+        Assert.Equal(("a.txt", "b.txt"), (afterF6, afterAltTab));
     }
 
     private static Workbench.Workbench BuildWorkbench() =>

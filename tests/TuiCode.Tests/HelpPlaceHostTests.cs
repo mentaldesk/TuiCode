@@ -134,8 +134,8 @@ public class HelpPlaceHostTests : StaticConfigurationTest
         [
             new("← →", "Switch tab"),
             new("Enter", "Go to the file"),
-            new("Alt+Tab", "Next tab"),
-            new("Alt+Shift+Tab", "Previous tab"),
+            new("Ctrl+PageDown", "Next tab"),
+            new("Ctrl+PageUp", "Previous tab"),
             new("Ctrl+W", "Close tab"),
         ], help.Rows);
     }
@@ -143,10 +143,10 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     [Fact]
     public async Task The_tabs_column_follows_a_rebind_of_next_tab()
     {
-        var help = await TabStripHelp(Override("Alt+Tab", "-" + CommandIds.NextEditor), Override("F6", CommandIds.NextEditor));
+        var help = await TabStripHelp(Override("Ctrl+PageDown", "-" + CommandIds.NextEditor), Override("F6", CommandIds.NextEditor));
 
         Assert.Contains(new HelpRow("F6", "Next tab"), help.Rows);
-        Assert.DoesNotContain(new HelpRow("Alt+Tab", "Next tab"), help.Rows);
+        Assert.DoesNotContain(new HelpRow("Ctrl+PageDown", "Next tab"), help.Rows);
     }
 
     [Fact]
