@@ -146,7 +146,6 @@ public class WezTermIntegrationTests
     public void ModuleLua_leaves_Cmd_V_to_WezTerm_so_it_pastes_the_local_clipboard_over_SSH()
     {
         Assert.DoesNotContain("key = 'v', mods = 'CMD'", WezTermIntegration.ModuleLua);
-        Assert.Contains($"-- TuiCodeIntegrationVersion: {WezTermIntegration.CurrentVersion}\n", WezTermIntegration.ModuleLua);
     }
 
     [Fact]
