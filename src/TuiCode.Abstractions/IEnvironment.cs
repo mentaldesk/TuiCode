@@ -24,4 +24,9 @@ public interface IEnvironment
     /// (issue #82), so we default to the native <c>windows</c> driver there.
     /// </summary>
     bool IsWindows => OperatingSystem.IsWindows();
+
+    /// <summary>True when the session came in over SSH, where there's no browser to open a link in.</summary>
+    bool IsOverSsh => !string.IsNullOrEmpty(GetEnvironmentVariable("SSH_CONNECTION"))
+        || !string.IsNullOrEmpty(GetEnvironmentVariable("SSH_CLIENT"))
+        || !string.IsNullOrEmpty(GetEnvironmentVariable("SSH_TTY"));
 }
