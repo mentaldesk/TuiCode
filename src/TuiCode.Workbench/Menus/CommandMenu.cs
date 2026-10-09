@@ -37,7 +37,7 @@ public sealed class CommandMenu
             Separator,
             CommandIds.OpenSettings,
             Separator,
-            CommandIds.Quit,
+            CommandIds.SuspendToShell, CommandIds.Quit,
         ]),
         ("_Edit",
         [

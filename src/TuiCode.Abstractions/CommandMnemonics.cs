@@ -33,6 +33,7 @@ public static class CommandMnemonics
         var map = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [CommandIds.Quit] = "q",
+            [CommandIds.SuspendToShell] = "sts",
             [CommandIds.ShowHelp] = "?",
             [CommandIds.SaveActiveEditor] = "sf",
             [CommandIds.SaveAll] = "saf",

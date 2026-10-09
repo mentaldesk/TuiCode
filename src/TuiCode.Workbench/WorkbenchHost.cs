@@ -143,7 +143,7 @@ public sealed class WorkbenchHost : IDisposable
         // OSC 1337 SetUserVar TUICODE_ACTIVE=1 (base64 "MQ=="). WezTerm's tuicode.lua and kitty's
         // tuicode.conf key off this user-var to remap keys only while TuiCode runs; other terminals
         // strip the unknown OSC silently. Unconditional — no detection needed.
-        WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MQ==\x07");
+        WriteToTerminal(TerminalModes.Active);
         if (_app.Driver is { } output) output.Clipboard = new TerminalClipboard(output.Clipboard, output.WriteRaw);
         _terminalCursors = new TerminalCursors(_app);
         _terminalCursors.Detect();
@@ -161,6 +161,7 @@ public sealed class WorkbenchHost : IDisposable
         _settings = settings;
         _terminalIntegrations = (terminalIntegrations ?? Array.Empty<ITerminalIntegration>()).ToArray();
         _environment = environment ?? new SystemEnvironment();
+        ShellSuspend = new ShellSuspend(_environment, JobControl.IsAvailable, WriteToTerminal, () => _app.Driver?.Suspend());
         Browser = SystemBrowser.For(_environment);
         _logger = logger ?? NullLogger<WorkbenchHost>.Instance;
         _icons = icons;
@@ -476,6 +477,7 @@ public sealed class WorkbenchHost : IDisposable
         bool Reviewing() => review.Review is { PullRequest: not null };
 
         _commands.Register(CommandIds.Quit, "Quit", Quit);
+        _commands.Register(CommandIds.SuspendToShell, "Suspend to shell", SuspendToShell);
         _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor, CommandScope.Global, EditorOpen);
         _commands.Register(CommandIds.SaveAll, "Save all", SaveAll);
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", CloseActiveEditor, CommandScope.Global,
@@ -1686,6 +1688,26 @@ public sealed class WorkbenchHost : IDisposable
         }
         tab.Save();
         _workbench.Editor.Group.CloseEditor(tab);
+    }
+
+    internal ShellSuspend ShellSuspend { get; set; }
+
+    private void SuspendToShell()
+    {
+        var driver = _app.Driver;
+        var modes = new TerminalModes(
+            driver?.KittyKeyboardCapabilities is { IsSupported: true } ? EscSeqUtils.KittyKeyboardRequestedFlags : KittyKeyboardFlags.None,
+            _terminalCursors.IsSupported,
+            driver?.GetCursor().Style ?? CursorStyle.Default,
+            _cursorColour);
+        if (ShellSuspend.Run(modes) is { } refusal)
+        {
+            _workbench.StatusBar.SetMessage(refusal);
+            return;
+        }
+        _terminalCursors.Forget();
+        _app.ClearScreenNextIteration = true;
+        _app.LayoutAndDraw(forceRedraw: true);
     }
 
     private void Quit() => AskToSaveDirtyTabs("Save them before quitting?", () => _app.RequestStop());
@@ -3278,9 +3300,9 @@ public sealed class WorkbenchHost : IDisposable
         _app.Dispose();
         // Tell WezTerm and kitty to stop remapping keys; matches the startup activation.
         // Emitted post-Dispose so it reaches the live terminal after TG restores it.
-        WriteToTerminal("\x1b]1337;SetUserVar=TUICODE_ACTIVE=MA==\x07");
+        WriteToTerminal(TerminalModes.Inactive);
         // OSC 112 restores the terminal's own cursor colour.
-        WriteToTerminal("\x1b]112\x07");
+        WriteToTerminal(TerminalModes.DefaultCursorColour);
         _flowControl.Dispose();
     }
 }

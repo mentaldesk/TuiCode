@@ -55,6 +55,7 @@ public class CommandMnemonicsTests
         Assert.Equal("fg", CommandMnemonics.For(CommandIds.FindGlobally));
         Assert.Equal("rg", CommandMnemonics.For(CommandIds.ReplaceGlobally));
         Assert.Equal("tui", CommandMnemonics.For(CommandIds.ShowAbout));
+        Assert.Equal("sts", CommandMnemonics.For(CommandIds.SuspendToShell));
     }
 
     [Fact]

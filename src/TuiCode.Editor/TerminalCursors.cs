@@ -11,7 +11,7 @@ namespace TuiCode.Editor;
 /// </summary>
 public sealed partial class TerminalCursors : IDisposable
 {
-    private const string ClearAll = "\e[>0;4 q";
+    public const string ClearAll = "\e[>0;4 q";
 
     private static readonly ConditionalWeakTable<IApplication, TerminalCursors> ByApp = new();
 
@@ -73,6 +73,9 @@ public sealed partial class TerminalCursors : IDisposable
         _write(ClearAll + shown);
         _shown = shown;
     }
+
+    /// <summary>Forgets what the terminal was last sent, so the next frame sends the cursors again.</summary>
+    public void Forget() => _shown = "";
 
     public void Dispose()
     {
