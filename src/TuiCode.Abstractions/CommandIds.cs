@@ -3,6 +3,7 @@ namespace TuiCode.Abstractions;
 public static class CommandIds
 {
     public const string Quit = "workbench.action.quit";
+    public const string SuspendToShell = "workbench.action.suspendToShell";
     public const string SaveActiveEditor = "workbench.action.saveActiveEditor";
     public const string SaveAll = "workbench.action.files.saveAll";
     public const string CloseActiveEditor = "workbench.action.closeActiveEditor";

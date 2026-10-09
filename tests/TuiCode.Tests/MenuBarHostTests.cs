@@ -446,15 +446,18 @@ public class MenuBarHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Quit_stands_apart_from_Open_settings()
+    public void Suspend_to_shell_and_Quit_stand_apart_from_Open_settings()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
         var file = Title(workbench, "File").PopoverMenu!.Root!.SubViews.ToList();
         var quit = file.IndexOf(Item(host, CommandIds.Quit));
 
-        Assert.IsType<Line>(file[quit - 1]);
-        Assert.Same(Item(host, CommandIds.OpenSettings), file[quit - 2]);
+        Assert.Same(Item(host, CommandIds.SuspendToShell), file[quit - 1]);
+        Assert.Equal("Suspend to shell", Item(host, CommandIds.SuspendToShell).Title);
+        Assert.Equal("", KeyShown(host, CommandIds.SuspendToShell));
+        Assert.IsType<Line>(file[quit - 2]);
+        Assert.Same(Item(host, CommandIds.OpenSettings), file[quit - 3]);
     }
 
     [Fact]
