@@ -127,7 +127,6 @@ public sealed class WezTermIntegration : ITerminalIntegration
           config.key_tables = config.key_tables or {}
           config.key_tables.tuicode = {
             { key = 'c', mods = 'CMD',       action = wezterm.action.SendString '\x03' },
-            { key = 'v', mods = 'CMD',       action = wezterm.action.SendString '\x16' },
             { key = 'x', mods = 'CMD',       action = wezterm.action.SendString '\x18' },
             { key = 'z', mods = 'CMD',       action = wezterm.action.SendString '\x1a' },
             { key = 'z', mods = 'CMD|SHIFT', action = wezterm.action.SendString '\x19' },

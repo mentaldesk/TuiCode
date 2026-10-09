@@ -161,6 +161,7 @@ public sealed class WorkbenchHost : IDisposable
         _settings = settings;
         _terminalIntegrations = (terminalIntegrations ?? Array.Empty<ITerminalIntegration>()).ToArray();
         _environment = environment ?? new SystemEnvironment();
+        Browser = SystemBrowser.For(_environment);
         _logger = logger ?? NullLogger<WorkbenchHost>.Instance;
         _icons = icons;
         _git = git ?? new GitCli(new FileSystem());
@@ -543,6 +544,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
         // No default key (#21): rarely needed, and users can bind one in Settings.
         _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker, CommandScope.Editor, FileOpen);
+        // No default key (#466).
+        _commands.Register(CommandIds.FollowLink, "Follow link", FollowLink, CommandScope.Editor, () => LinkUnderCursor() is not null);
         _commands.Register(CommandIds.NavigateBack, "Previous cursor position", NavigateBack, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
@@ -1405,6 +1408,23 @@ public sealed class WorkbenchHost : IDisposable
         _find.OnActiveTabChanged();
         if (_suppressHistory || tab is null) return;
         _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
+    }
+
+    internal IBrowser Browser { get; set; }
+
+    private string? LinkUnderCursor() =>
+        _workbench.Editor.Group.ActiveTab?.CursorLine is { } line ? Links.At(line.Text, line.Column) : null;
+
+    private void FollowLink()
+    {
+        if (_workbench.Editor.Group.ActiveTab is not { } tab || LinkUnderCursor() is not { } url) return;
+        if (_environment.IsOverSsh)
+        {
+            if (tab.CopyText(url) is CopyOutcome.Failed(var reason)) _workbench.StatusBar.SetError($"Couldn't copy the link: {reason}");
+            else _workbench.StatusBar.SetMessage($"Copied {url} (no browser over SSH)");
+        }
+        else if (Browser.Open(url) is { } failure) _workbench.StatusBar.SetError($"Couldn't open the link: {failure}");
+        else _workbench.StatusBar.SetMessage($"Opened {url}");
     }
 
     private void NavigateBack()

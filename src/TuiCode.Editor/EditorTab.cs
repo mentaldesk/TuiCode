@@ -324,6 +324,12 @@ public sealed class EditorTab : FrameView
 
     public string SelectedText => _textView.SelectedText;
 
+    /// <summary>The cursor's line, with the cursor's column in UTF-16 chars.</summary>
+    public (string Text, int Column) CursorLine =>
+        (Cell.ToString(_textView.GetLine(CursorRow)), ToCharColumn(CursorRow, CursorColumn));
+
+    public CopyOutcome CopyText(string text) => _textView.CopyText(text);
+
     public int CaretCount => _textView.CaretCount;
 
     public DocumentStats CountDocument() => DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()));
