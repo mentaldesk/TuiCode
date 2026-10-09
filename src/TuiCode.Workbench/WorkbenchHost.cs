@@ -22,7 +22,7 @@ using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
-using TuiCode.Workbench.References;
+using TuiCode.Workbench.Usages;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
@@ -207,7 +207,7 @@ public sealed class WorkbenchHost : IDisposable
         if (languageServers is not null)
             _workbench.Languages = new LanguageServers(_workbench.Editor.Group, languageServers, action => _app.Invoke(action), ScheduleFlush);
 
-        _workbench.Sidebar.References.UsageActivated += (_, location) =>
+        _workbench.Sidebar.Usages.UsageActivated += (_, location) =>
         {
             if (_usagesFileSystem is { } usages) JumpTo(usages, _workbench.Editor.Group.ActiveTab, location);
         };
@@ -263,7 +263,7 @@ public sealed class WorkbenchHost : IDisposable
 
         _focus.Register(FocusRegion.Find, () => Take(sidebar.Search, sidebar.Search.FocusQuery), focused => Owns(sidebar.Search, focused));
         _focus.Register(FocusRegion.Review, () => Take(sidebar.Review, sidebar.Review.FocusList), focused => Owns(sidebar.Review, focused));
-        _focus.Register(FocusRegion.References, () => Take(sidebar.References, sidebar.References.FocusResults), focused => Owns(sidebar.References, focused));
+        _focus.Register(FocusRegion.Usages, () => Take(sidebar.Usages, sidebar.Usages.FocusResults), focused => Owns(sidebar.Usages, focused));
         _focus.Register(FocusRegion.Explorer,
             () => sidebar.IsShowingNoFolder ? Take(sidebar.OpenFolderButton) : Take(sidebar.Explorer),
             focused => Owns(sidebar.Explorer, focused) || Owns(sidebar.OpenFolderButton, focused));
@@ -279,7 +279,7 @@ public sealed class WorkbenchHost : IDisposable
 
         _focus.RegionChanged += (_, region) =>
         {
-            var inSidebar = region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.References or FocusRegion.Review;
+            var inSidebar = region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review;
             _workbench.StatusBar.SetFocusRegion(FocusService.Label(region));
             ShowAvailableMenus();
             sidebarBorder.Show(inSidebar);
@@ -503,6 +503,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", () => OpenFindPane(replace: true));
         // No default key (#180).
         _commands.Register(CommandIds.FocusReview, "Focus review", FocusReview);
+        _commands.Register(CommandIds.FocusUsages, "Focus usages", () => ShowSidebarTab(SidebarTab.Usages));
         // Left ungated: with no tab these are Ctrl+F falling back to the Find pane and Esc's "Nothing to focus".
         _commands.Register(CommandIds.FindInFile, "Find in file", () => OpenFind(replace: false));
         _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => OpenFind(replace: true));
@@ -656,7 +657,7 @@ public sealed class WorkbenchHost : IDisposable
             FocusRegion.Find => ScopeHelp("Find", CommandScope.Find, _workbench.Sidebar.Search.InputsHaveFocus ? [] : FindResultKeys),
             FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, []),
             FocusRegion.Review => ReviewHelp(),
-            FocusRegion.References => new HelpColumn("References", ReferencesKeys),
+            FocusRegion.Usages => new HelpColumn("Usages", UsagesKeys),
             FocusRegion.Tabs => TabsHelp(),
             _ => null,
         };
@@ -692,7 +693,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private static readonly HelpRow[] FindResultKeys = [new("Enter", "Open result")];
 
-    private static readonly HelpRow[] ReferencesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
+    private static readonly HelpRow[] UsagesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
 
     /// <summary>A region's keys for F1: its fixed keys, then each command in its scope that's bound and can run now.</summary>
     private HelpColumn ScopeHelp(string title, CommandScope scope, IEnumerable<HelpRow> fixedKeys)
@@ -827,6 +828,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Shift+H", CommandIds.ReplaceGlobally);
         keybindings.Bind("Ctrl+Shift+E", CommandIds.ShowExplorer);
         keybindings.Bind("Ctrl+Shift+R", CommandIds.FocusReview);
+        keybindings.Bind("Ctrl+Shift+U", CommandIds.FocusUsages);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -865,7 +867,7 @@ public sealed class WorkbenchHost : IDisposable
     // view. We read the focus state *before* the flip — TG doesn't clear HasFocus on hide.
     private void ToggleSidebar()
     {
-        var sidebarWasFocused = _focus.Region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.References or FocusRegion.Review;
+        var sidebarWasFocused = _focus.Region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review;
         _workbench.ToggleSidebar();
 
         if (_workbench.IsSidebarVisible)
@@ -1329,7 +1331,7 @@ public sealed class WorkbenchHost : IDisposable
         return server;
     }
 
-    /// <summary>Find usages (<c>gu</c>): every place the language server says the symbol under the cursor is used, in the References tab.</summary>
+    /// <summary>Find usages (<c>gu</c>): every place the language server says the symbol under the cursor is used, in the Usages tab.</summary>
     private void FindUsages()
     {
         if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
@@ -1339,26 +1341,26 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
         var (path, row, character) = (tab.File.FullName, tab.CursorRow, tab.CursorCharacter);
-        var references = _workbench.Sidebar.References;
+        var pane = _workbench.Sidebar.Usages;
         var request = ++_usagesRequest;
-        references.ShowSearching(symbol);
-        ShowSidebarTab(SidebarTab.References);
+        pane.ShowSearching(symbol);
+        ShowSidebarTab(SidebarTab.Usages);
         UsagesAsync(server, path, row, character, symbol).ContinueWith(answer => _app.Invoke(() =>
         {
             if (_disposed || request != _usagesRequest) return;
             if (answer.Exception?.InnerException is { } error)
             {
-                references.ShowFailed(symbol);
+                pane.ShowFailed(symbol);
                 _workbench.StatusBar.SetMessage($"Find usages failed: {error.Message}");
                 return;
             }
             var (name, usages) = answer.Result;
             var fileSystem = tab.File.FileSystem;
             var files = UsageTree.Build(usages.Where(u => fileSystem.File.Exists(u.Path)), p => LinesOf(fileSystem, p), _workbench.Sidebar.Explorer.Root?.FullName);
-            var focused = _focus.Region == FocusRegion.References;
+            var focused = _focus.Region == FocusRegion.Usages;
             _usagesFileSystem = fileSystem;
-            references.ShowUsages(name, files);
-            if (focused) MoveFocus(FocusRegion.References);
+            pane.ShowUsages(name, files);
+            if (focused) MoveFocus(FocusRegion.Usages);
         }), TaskScheduler.Default);
     }
 
@@ -1989,7 +1991,7 @@ public sealed class WorkbenchHost : IDisposable
         MoveFocus(_workbench.Sidebar.ActiveTab switch
         {
             SidebarTab.Find => FocusRegion.Find,
-            SidebarTab.References => FocusRegion.References,
+            SidebarTab.Usages => FocusRegion.Usages,
             SidebarTab.Review => FocusRegion.Review,
             _ => FocusRegion.Explorer,
         });

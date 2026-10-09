@@ -1,5 +1,5 @@
 using TuiCode.Workbench.Languages;
-using TuiCode.Workbench.References;
+using TuiCode.Workbench.Usages;
 
 namespace TuiCode.Tests;
 

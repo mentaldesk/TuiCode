@@ -78,6 +78,7 @@ public static class CommandMnemonics
             [CommandIds.FocusEditorBody] = "fe",
             [CommandIds.FocusEditorTabStrip] = "ft",
             [CommandIds.FocusReview] = "fr",
+            [CommandIds.FocusUsages] = "fu",
             [CommandIds.FollowLink] = "fl",
             [CommandIds.GoToLine] = "gl",
             [CommandIds.GoToSymbol] = "gs",

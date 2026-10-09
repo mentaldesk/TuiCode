@@ -1,9 +1,9 @@
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Languages;
 
-namespace TuiCode.Workbench.References;
+namespace TuiCode.Workbench.Usages;
 
-/// <summary>A row in the References tab: a file, or a usage in it.</summary>
+/// <summary>A row in the Usages tab: a file, or a usage in it.</summary>
 public abstract class UsageNode
 {
     public List<UsageNode> Children { get; } = [];

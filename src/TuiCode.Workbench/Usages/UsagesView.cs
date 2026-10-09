@@ -5,10 +5,10 @@ using TuiCode.Icons;
 using TuiCode.Workbench.Languages;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 
-namespace TuiCode.Workbench.References;
+namespace TuiCode.Workbench.Usages;
 
-/// <summary>The sidebar's References tab (#455): one symbol's usages, kept until the next Find usages.</summary>
-public sealed class ReferencesView : View
+/// <summary>The sidebar's Usages tab (#455): one symbol's usages, kept until the next Find usages.</summary>
+public sealed class UsagesView : View
 {
     private readonly Label _header;
     private readonly Label _count;
@@ -24,7 +24,7 @@ public sealed class ReferencesView : View
 
     internal TreeView<UsageNode> Tree => _tree;
 
-    public ReferencesView(FileIcons? icons = null)
+    public UsagesView(FileIcons? icons = null)
     {
         CanFocus = true;
         _header = new Label { X = 0, Y = 0, Width = Dim.Fill(), Height = 1, Text = _title };

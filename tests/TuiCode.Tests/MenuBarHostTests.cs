@@ -442,8 +442,8 @@ public class MenuBarHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench, out _);
         var view = Title(workbench, "View").PopoverMenu!.Root!.SubViews.ToList();
 
-        Assert.Equal(["Explorer", "Find", "Review", "-", "Toggle sidebar", "Widen sidebar", "Narrow sidebar"],
-            view.Take(7).Select(v => v is MenuItem item ? item.Title : "-"));
+        Assert.Equal(["Explorer", "Find", "Usages", "Review", "-", "Toggle sidebar", "Widen sidebar", "Narrow sidebar"],
+            view.Take(8).Select(v => v is MenuItem item ? item.Title : "-"));
     }
 
     [Fact]

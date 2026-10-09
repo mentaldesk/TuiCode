@@ -17,6 +17,7 @@ public static class CommandIds
     public const string FocusEditorBody = "workbench.action.focusEditorBody";
     public const string FocusEditorTabStrip = "workbench.action.focusEditorTabStrip";
     public const string FocusReview = "workbench.action.focusReview";
+    public const string FocusUsages = "workbench.action.focusUsages";
     public const string ToggleGutter = "workbench.action.toggleGutter";
     public const string OpenSettings = "workbench.action.openSettings";
     public const string Open = "workbench.action.open";
