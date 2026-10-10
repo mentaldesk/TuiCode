@@ -23,6 +23,7 @@ using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Usages;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Settings;
@@ -89,6 +90,8 @@ public sealed class WorkbenchHost : IDisposable
     private DefinitionPickerView? _activeDefinitionPicker;
     // Only the latest Go to definition jumps, however the answers come back.
     private int _definitionRequest;
+    private int _usagesRequest;
+    private IFileSystem? _usagesFileSystem;
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
     private string? _cursorColour;
@@ -208,6 +211,11 @@ public sealed class WorkbenchHost : IDisposable
         if (languageServers is not null)
             _workbench.Languages = new LanguageServers(_workbench.Editor.Group, languageServers, action => _app.Invoke(action), ScheduleFlush);
 
+        _workbench.Sidebar.Usages.UsageActivated += (_, location) =>
+        {
+            if (_usagesFileSystem is { } usages) JumpTo(usages, _workbench.Editor.Group.ActiveTab, location);
+        };
+
         var explorer = _workbench.Sidebar.Explorer;
         _folderWatcher = new FolderWatcher(fileSystem, ScheduleFlush, _logger);
         explorer.ExpandedFoldersChanged += (_, _) => _folderWatcher.Follow(explorer.ExpandedFolders);
@@ -260,6 +268,7 @@ public sealed class WorkbenchHost : IDisposable
 
         _focus.Register(FocusRegion.Find, () => Take(sidebar.Search, sidebar.Search.FocusQuery), focused => Owns(sidebar.Search, focused));
         _focus.Register(FocusRegion.Review, () => Take(sidebar.Review, sidebar.Review.FocusList), focused => Owns(sidebar.Review, focused));
+        _focus.Register(FocusRegion.Usages, () => Take(sidebar.Usages, sidebar.Usages.FocusResults), focused => Owns(sidebar.Usages, focused));
         _focus.Register(FocusRegion.Explorer,
             () => sidebar.IsShowingNoFolder ? Take(sidebar.OpenFolderButton) : Take(sidebar.Explorer),
             focused => Owns(sidebar.Explorer, focused) || Owns(sidebar.OpenFolderButton, focused));
@@ -275,7 +284,7 @@ public sealed class WorkbenchHost : IDisposable
 
         _focus.RegionChanged += (_, region) =>
         {
-            var inSidebar = region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Review;
+            var inSidebar = region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review;
             _workbench.StatusBar.SetFocusRegion(FocusService.Label(region));
             ShowAvailableMenus();
             sidebarBorder.Show(inSidebar);
@@ -500,6 +509,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ReplaceGlobally, "Replace globally", () => OpenFindPane(replace: true));
         // No default key (#180).
         _commands.Register(CommandIds.FocusReview, "Focus review", FocusReview);
+        _commands.Register(CommandIds.FocusUsages, "Focus usages", () => ShowSidebarTab(SidebarTab.Usages));
         // Left ungated: with no tab these are Ctrl+F falling back to the Find pane and Esc's "Nothing to focus".
         _commands.Register(CommandIds.FindInFile, "Find in file", () => OpenFind(replace: false));
         _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => OpenFind(replace: true));
@@ -550,6 +560,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.GoToSymbol, "Go to symbol in file", OpenSymbolPicker, CommandScope.Editor);
         // Enabled without a ready server, so the key can say what's missing; the menu dims it (IsAvailableFrom).
         _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
         // No default key (#21): rarely needed, and users can bind one in Settings.
         _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker, CommandScope.Editor, FileOpen);
         // No default key (#466).
@@ -653,6 +664,7 @@ public sealed class WorkbenchHost : IDisposable
             FocusRegion.Find => ScopeHelp("Find", CommandScope.Find, _workbench.Sidebar.Search.InputsHaveFocus ? [] : FindResultKeys),
             FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, []),
             FocusRegion.Review => ReviewHelp(),
+            FocusRegion.Usages => new HelpColumn("Usages", UsagesKeys),
             FocusRegion.Tabs => TabsHelp(),
             _ => null,
         };
@@ -687,6 +699,8 @@ public sealed class WorkbenchHost : IDisposable
     private static readonly HelpRow[] ExplorerKeys = [new("Enter", "Open"), new("→ ←", "Expand or collapse")];
 
     private static readonly HelpRow[] FindResultKeys = [new("Enter", "Open result")];
+
+    private static readonly HelpRow[] UsagesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
 
     /// <summary>A region's keys for F1: its fixed keys, then each command in its scope that's bound and can run now.</summary>
     private HelpColumn ScopeHelp(string title, CommandScope scope, IEnumerable<HelpRow> fixedKeys)
@@ -801,6 +815,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("Ctrl+G B", CommandIds.GitBlame);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
+        keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
         keybindings.Bind("Alt+CursorUp", CommandIds.MoveLinesUp);
         keybindings.Bind("Alt+CursorDown", CommandIds.MoveLinesDown);
@@ -820,6 +835,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Shift+H", CommandIds.ReplaceGlobally);
         keybindings.Bind("Ctrl+Shift+E", CommandIds.ShowExplorer);
         keybindings.Bind("Ctrl+Shift+R", CommandIds.FocusReview);
+        keybindings.Bind("Ctrl+Shift+U", CommandIds.FocusUsages);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -858,7 +874,7 @@ public sealed class WorkbenchHost : IDisposable
     // view. We read the focus state *before* the flip — TG doesn't clear HasFocus on hide.
     private void ToggleSidebar()
     {
-        var sidebarWasFocused = _focus.Region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Review;
+        var sidebarWasFocused = _focus.Region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review;
         _workbench.ToggleSidebar();
 
         if (_workbench.IsSidebarVisible)
@@ -1135,7 +1151,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         var scope = _commands.ScopeOf(id);
         return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id)
-            && (id != CommandIds.GoToDefinition || ActiveLanguageServer() is { State: LanguageServerState.Ready });
+            && (id is not (CommandIds.GoToDefinition or CommandIds.FindUsages) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
     }
 
     private LanguageServer? ActiveLanguageServer() =>
@@ -1283,29 +1299,8 @@ public sealed class WorkbenchHost : IDisposable
     /// <summary>Go to definition (<c>gd</c>): where the language server says the symbol under the cursor is defined.</summary>
     private void GoToDefinition()
     {
-        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
+        if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
         var status = _workbench.StatusBar;
-        if (ActiveLanguageServer() is not { } server)
-        {
-            status.SetMessage(LanguageServers.SpecFor(tab) is { } spec
-                ? spec.NotInstalled
-                : $"No language server for {(tab.HasSyntax ? tab.Grammar?.Name : null) ?? Workbench.PlainTextName}");
-            return;
-        }
-        switch (server.State)
-        {
-            case LanguageServerState.Missing:
-                status.SetMessage(server.Spec.NotInstalled);
-                return;
-            case LanguageServerState.Loading:
-                status.SetMessage($"The {server.Spec.Name} language server is still loading");
-                return;
-            case LanguageServerState.Stopped:
-                status.SetMessage($"The {server.Spec.Name} language server stopped");
-                return;
-        }
-
-        _workbench.Languages!.Flush();
         var symbol = IdentifierAt(tab.Lines[tab.CursorRow], tab.CursorCharacter);
         var request = ++_definitionRequest;
         server.DefinitionAsync(tab.File.FullName, tab.CursorRow, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
@@ -1315,6 +1310,86 @@ public sealed class WorkbenchHost : IDisposable
             else ShowDefinitions(tab, symbol, answer.Result);
         }), TaskScheduler.Default);
     }
+
+    /// <summary>The active file's language server, flushed of edits, or null once the status bar has said why there isn't one.</summary>
+    private LanguageServer? ReadyLanguageServer(EditorTab tab)
+    {
+        var status = _workbench.StatusBar;
+        if (ActiveLanguageServer() is not { } server)
+        {
+            status.SetMessage(LanguageServers.SpecFor(tab) is { } spec
+                ? spec.NotInstalled
+                : $"No language server for {(tab.HasSyntax ? tab.Grammar?.Name : null) ?? Workbench.PlainTextName}");
+            return null;
+        }
+        switch (server.State)
+        {
+            case LanguageServerState.Missing:
+                status.SetMessage(server.Spec.NotInstalled);
+                return null;
+            case LanguageServerState.Loading:
+                status.SetMessage($"The {server.Spec.Name} language server is still loading");
+                return null;
+            case LanguageServerState.Stopped:
+                status.SetMessage($"The {server.Spec.Name} language server stopped");
+                return null;
+        }
+        _workbench.Languages!.Flush();
+        return server;
+    }
+
+    /// <summary>Find usages (<c>gu</c>): every place the language server says the symbol under the cursor is used, in the Usages tab.</summary>
+    private void FindUsages()
+    {
+        if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
+        if (IdentifierAt(tab.Lines[tab.CursorRow], tab.CursorCharacter) is not { } symbol)
+        {
+            _workbench.StatusBar.SetMessage("No symbol here to find usages of");
+            return;
+        }
+        var (path, row, character) = (tab.File.FullName, tab.CursorRow, tab.CursorCharacter);
+        var pane = _workbench.Sidebar.Usages;
+        var request = ++_usagesRequest;
+        pane.ShowSearching(symbol);
+        ShowSidebarTab(SidebarTab.Usages);
+        UsagesAsync(server, path, row, character, symbol).ContinueWith(answer => _app.Invoke(() =>
+        {
+            if (_disposed || request != _usagesRequest) return;
+            if (answer.Exception?.InnerException is { } error)
+            {
+                pane.ShowFailed(symbol);
+                _workbench.StatusBar.SetMessage($"Find usages failed: {error.Message}");
+                return;
+            }
+            var (name, usages) = answer.Result;
+            var fileSystem = tab.File.FileSystem;
+            var files = UsageTree.Build(usages.Where(u => fileSystem.File.Exists(u.Path)), p => LinesOf(fileSystem, p), _workbench.Sidebar.Explorer.Root?.FullName);
+            var focused = _focus.Region == FocusRegion.Usages;
+            _usagesFileSystem = fileSystem;
+            pane.ShowUsages(name, files);
+            if (focused) MoveFocus(FocusRegion.Usages);
+        }), TaskScheduler.Default);
+    }
+
+    /// <summary>The usages, and the symbol named after its type when the server can say what it is.</summary>
+    private static async Task<(string Name, IReadOnlyList<SourceLocation> Usages)> UsagesAsync(
+        LanguageServer server, string path, int row, int character, string symbol)
+    {
+        var usages = server.ReferencesAsync(path, row, character);
+        string? name = null;
+        try
+        {
+            if ((await server.DefinitionAsync(path, row, character).ConfigureAwait(false)) is [var definition, ..])
+                name = await server.SymbolNameAsync(definition).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is JsonRpcException or IOException) { }
+        return (name ?? symbol, await usages.ConfigureAwait(false));
+    }
+
+    private IReadOnlyList<string> LinesOf(IFileSystem fileSystem, string path) =>
+        _workbench.Editor.Group.Tabs.FirstOrDefault(t => t.File.FullName == path) is { } open
+            ? open.Lines
+            : [.. fileSystem.File.ReadLines(path)];
 
     private void ShowDefinitions(EditorTab origin, string? symbol, IReadOnlyList<SourceLocation> locations)
     {
@@ -1366,14 +1441,17 @@ public sealed class WorkbenchHost : IDisposable
         FocusCallingRegion();
     }
 
-    private void JumpToDefinition(EditorTab origin, SourceLocation location)
+    private void JumpToDefinition(EditorTab origin, SourceLocation location) => JumpTo(origin.File.FileSystem, origin, location);
+
+    /// <summary>Opens <paramref name="location"/> with the caret on it, recorded as an explicit jump from <paramref name="origin"/>.</summary>
+    private void JumpTo(IFileSystem fileSystem, EditorTab? origin, SourceLocation location)
     {
-        _history.Visit(new CursorLocation(origin.File.FullName, origin.CursorRow, origin.CursorColumn));
+        if (origin is not null) _history.Visit(new CursorLocation(origin.File.FullName, origin.CursorRow, origin.CursorColumn));
         EditorTab tab;
         _suppressHistory = true;
         try
         {
-            tab = _workbench.Editor.Group.OpenOrFocus(origin.File.FileSystem.FileInfo.New(location.Path));
+            tab = _workbench.Editor.Group.OpenOrFocus(fileSystem.FileInfo.New(location.Path));
             tab.MoveCursorToCharacter(location.Line, location.Character);
             tab.RevealLines(location.Line, location.Line);
             MoveFocus(FocusRegion.Editor);
@@ -1933,6 +2011,7 @@ public sealed class WorkbenchHost : IDisposable
         MoveFocus(_workbench.Sidebar.ActiveTab switch
         {
             SidebarTab.Find => FocusRegion.Find,
+            SidebarTab.Usages => FocusRegion.Usages,
             SidebarTab.Review => FocusRegion.Review,
             _ => FocusRegion.Explorer,
         });
