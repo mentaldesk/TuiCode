@@ -25,6 +25,9 @@ public sealed class EditorGroup : PaneTabs
     /// <summary>Raised when the cursor moves in any tab, tagged with the owning file (#35).</summary>
     public event EventHandler<(IFileInfo File, int Row, int Column)>? CursorMoved;
 
+    /// <summary>Raised when a pinned definition is clicked, with the tab and its line.</summary>
+    public event EventHandler<(EditorTab Tab, int Line)>? PinnedLineClicked;
+
     /// <summary>The active editor tab; null while a diff tab is active, so editor commands leave it alone.</summary>
     public EditorTab? ActiveTab => Value as EditorTab;
 
@@ -137,6 +140,7 @@ public sealed class EditorGroup : PaneTabs
         tab.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
         tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         tab.GrammarChanged += (_, _) => GrammarChanged?.Invoke(this, tab);
+        tab.PinnedLineClicked += (_, line) => PinnedLineClicked?.Invoke(this, (tab, line));
         // Tabs selects the first tab it's given during Add, so register it first for ActiveTabChanged listeners to
         // see — and announce it before that, so the file is being watched by the time anything reacts to it (#269).
         _byPath[tab.File.FullName] = tab;

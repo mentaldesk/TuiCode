@@ -65,6 +65,29 @@ public class EditorSettingsViewTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Show_sticky_lines_is_ticked_by_default_and_unticking_it_saves_it_to_open_tabs()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.cs", new MockFileData("class A { }\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var shown = CheckState.UnChecked;
+        EditorTab? open = null;
+
+        await HostSteps.Run(host,
+            () => { open = workbench.Editor.Open(fs.FileInfo.New("/work/a.cs")); },
+            OpenEditorSettings(host, workbench),
+            () => { shown = StickyCheckBox(workbench).Value; },
+            () => StickyCheckBox(workbench).SetFocus(),
+            () => host.App.InjectKey(Key.Space),
+            () => host.App.InjectKey(Key.Enter.WithCtrl));
+
+        Assert.Equal(CheckState.Checked, shown);
+        Assert.False(_settings.Editor.StickyLines);
+        Assert.False(open!.Settings.StickyLines);
+    }
+
+    [Fact]
     public async Task Saving_wrap_long_lines_wraps_files_opened_afterwards_but_not_open_ones()
     {
         var fs = new MockFileSystem();
@@ -164,6 +187,10 @@ public class EditorSettingsViewTests : StaticConfigurationTest
             }
         };
     }
+
+    private static CheckBox StickyCheckBox(Workbench.Workbench workbench) =>
+        workbench.SubViews.OfType<SettingsView>().Single().SubViews.OfType<EditorSettingsView>().Single()
+            .SubViews.OfType<CheckBox>().Single(c => c.Text == "Show sticky lines");
 
     private static CheckBox WrapCheckBox(Workbench.Workbench workbench) =>
         workbench.SubViews.OfType<SettingsView>().Single().SubViews.OfType<EditorSettingsView>().Single()

@@ -75,7 +75,7 @@ internal sealed partial class EditorTextView
     {
         RefreshWrap();
         var lastRow = _wrap.FirstRow(last + 1) - 1;
-        if (Reveal.TopRow(Viewport.Y, Viewport.Height, _wrap.Rows, _wrap.FirstRow(first), lastRow) is { } top)
+        if (Reveal.TopRow(Viewport.Y, Viewport.Height, _wrap.Rows, _wrap.FirstRow(first), lastRow, PinnedCountAt) is { } top)
             ScrollToRow(top);
     }
 

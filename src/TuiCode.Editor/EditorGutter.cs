@@ -16,6 +16,7 @@ internal sealed class EditorGutter : View
     private string[] _saved;
     private IReadOnlyList<string>? _committed;
     private LineChange[]? _changes;
+    private IReadOnlyList<int> _pinned = [];
 
     public EditorGutter(EditorTextView text, SyntaxHighlighter? syntax = null)
     {
@@ -28,7 +29,7 @@ internal sealed class EditorGutter : View
         // Wrapped rows can shift on any edit or caret move, and the text view draws first.
         _text.DrawComplete += (_, _) =>
         {
-            if (_text.SoftWrap) SetNeedsDraw();
+            if (_text.SoftWrap || !_pinned.SequenceEqual(_text.Pinned)) SetNeedsDraw();
         };
     }
 
@@ -75,10 +76,12 @@ internal sealed class EditorGutter : View
         var added = ThemeColor("editorGutter.addedBackground") ?? DefaultAdded;
         var modified = ThemeColor("editorGutter.modifiedBackground") ?? DefaultModified;
         var deleted = ThemeColor("editorGutter.deletedBackground") ?? DefaultDeleted;
+        _pinned = [.. _text.Pinned];
 
         for (var row = 0; row < Viewport.Height; row++)
         {
-            var (line, continuation) = LineOn(top + row, changes.Count);
+            var (line, continuation) = row < _pinned.Count ? (_pinned[row], false) : LineOn(top + row, changes.Count);
+            var background = row < _pinned.Count ? _text.PinnedAttribute(editable) : editable;
             Move(0, row);
             if (row >= _text.Viewport.Height || line >= changes.Count)
             {
@@ -95,13 +98,13 @@ internal sealed class EditorGutter : View
                 LineChange.Deleted => deleted,
                 _ => editable.Foreground,
             };
-            var number = change is LineChange.Added or LineChange.Modified ? editable with { Foreground = marker }
-                : line == _text.CurrentRow ? editable with { Foreground = activeLineNumber }
-                : lineNumber is { } color ? editable with { Foreground = color }
-                : editable with { Style = editable.Style | TextStyle.Faint };
+            var number = change is LineChange.Added or LineChange.Modified ? background with { Foreground = marker }
+                : line == _text.CurrentRow ? background with { Foreground = activeLineNumber }
+                : lineNumber is { } color ? background with { Foreground = color }
+                : background with { Style = background.Style | TextStyle.Faint };
             SetAttribute(number);
             AddStr((continuation ? "" : (line + 1).ToString()).PadLeft(digits) + " ");
-            SetAttribute(editable with { Foreground = marker });
+            SetAttribute(background with { Foreground = marker });
             AddStr(continuation && change == LineChange.Deleted ? " " : Glyph(change));
         }
         return true;

@@ -12,16 +12,27 @@ public static class Reveal
     /// <summary>
     /// The row to scroll a <paramref name="height"/>-row viewport currently at <paramref name="top"/> to,
     /// so that lines <paramref name="first"/> to <paramref name="last"/> of a <paramref name="lineCount"/>-line
-    /// file are in view with <see cref="Margin"/> rows to spare at each end; null to leave it where it is,
+    /// file are in view with <see cref="Margin"/> rows to spare at each end, below the rows
+    /// <paramref name="pinnedAt"/> says are pinned over a given top (#474); null to leave it where it is,
     /// which includes a view that hasn't been laid out yet.
     /// </summary>
-    public static int? TopRow(int top, int height, int lineCount, int first, int last)
+    public static int? TopRow(int top, int height, int lineCount, int first, int last, Func<int, int>? pinnedAt = null)
     {
         if (height <= 0) return null;
-        if (first - top >= Margin && top + height - 1 - last >= Margin) return null;
+        pinnedAt ??= _ => 0;
+        if (first - top - pinnedAt(top) >= Margin && top + height - 1 - last >= Margin) return null;
 
         // A viewport shorter than the margin would otherwise push the line we're revealing off the bottom.
         var margin = Math.Min(Margin, height - 1);
-        return Math.Clamp(first - margin, 0, Math.Max(lineCount - height, 0));
+        return Below(first, margin, Math.Max(lineCount - height, 0), pinnedAt);
+    }
+
+    /// <summary>The lowest top, up to <paramref name="maxTop"/>, that leaves <paramref name="row"/> <paramref name="margin"/> rows below whatever is pinned.</summary>
+    public static int Below(int row, int margin, int maxTop, Func<int, int> pinnedAt)
+    {
+        var top = Math.Clamp(row - margin, 0, maxTop);
+        for (var pinned = 1; pinned <= StickyLines.Max && pinnedAt(top) > row - margin - top; pinned++)
+            top = Math.Clamp(row - margin - pinned, 0, maxTop);
+        return top;
     }
 }
