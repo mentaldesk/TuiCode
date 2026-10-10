@@ -108,9 +108,9 @@ public class MnemonicScopeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Space.WithCtrl),
             () => Leader(workbench) is not null,
             () => host.App.InjectKey(new Key('m')),
-            () => Leader(workbench)!.Mnemonics.SequenceEqual(["mf"]),
+            () => Leader(workbench)!.Mnemonics.SequenceEqual(["mf", "mg"]),
             () => { said = workbench.StatusBar.DisplayedText; host.App.InjectKey(new Key('u')); },
-            () => { stillOpen = Leader(workbench)?.Mnemonics.SequenceEqual(["mf"]) == true; host.App.InjectKey(Key.Esc); },
+            () => { stillOpen = Leader(workbench)?.Mnemonics.SequenceEqual(["mf", "mg"]) == true; host.App.InjectKey(Key.Esc); },
             () => Leader(workbench) is null);
 
         Assert.True(stillOpen, "The leader closed or re-widened after a key no in-scope mnemonic could complete");
@@ -133,10 +133,10 @@ public class MnemonicScopeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Space.WithCtrl),
             () => Leader(workbench) is not null,
             () => host.App.InjectKey(new Key('m')),
-            () => Leader(workbench)!.Mnemonics.SequenceEqual(["md", "mu"]),
+            () => Leader(workbench)!.Mnemonics.SequenceEqual(["md", "mg", "mu"]),
             // 'f' would have completed mf, which belongs to the explorer: ignored, prefix intact.
             () => host.App.InjectKey(new Key('f')),
-            () => Leader(workbench)!.Mnemonics.SequenceEqual(["md", "mu"]),
+            () => Leader(workbench)!.Mnemonics.SequenceEqual(["md", "mg", "mu"]),
             () => host.App.InjectKey(new Key('u')),
             () => Leader(workbench) is null);
 

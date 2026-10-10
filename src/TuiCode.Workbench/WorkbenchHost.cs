@@ -179,7 +179,7 @@ public sealed class WorkbenchHost : IDisposable
         _menu.Opened += (_, _) => OnMenuOpened();
         _menu.Closed += (_, picked) => OnMenuClosed(picked);
         ApplyKeybindings(_settings.KeybindingOverrides);
-        _workbench.Editor.Group.Settings = _settings.Editor;
+        _workbench.Editor.Groups.Settings = _settings.Editor;
         _workbench.SetSidebarWidth(_settings.SidebarWidth);
         ApplyTokenTheme();
         _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
@@ -189,7 +189,7 @@ public sealed class WorkbenchHost : IDisposable
         // Workbench scope is the bottom of the input stack; never popped. The find bar layers above it while it's open.
         _keybindings.FocusedScope = FocusedScope;
         _scopes.Push(_keybindings);
-        _find = new FindController(_workbench.Editor.Group, _scopes, _keybindings);
+        _find = new FindController(_workbench.Editor.Groups, _scopes, _keybindings);
         _find.Closed += (_, _) => FocusEditorBody();
 
         ApplyIconStyle();
@@ -198,15 +198,15 @@ public sealed class WorkbenchHost : IDisposable
         fileSystem ??= new FileSystem();
         // Tell a tab its file changed the moment it happens, rather than at the save it would lose (#268).
         _diskChanges = new DiskChanges(
-            _workbench.Editor.Group,
+            _workbench.Editor.Groups,
             _workbench.Sidebar.Explorer,
             _workbench.StatusBar.SetMessage,
             new DiskWatcher(fileSystem, ScheduleFlush, _logger));
         _baselines = new CommittedBaselines(
-            _workbench.Editor.Group, _git, action => _app.Invoke(action), new HeadWatcher(fileSystem, ScheduleFlush, _logger));
+            _workbench.Editor.Groups, _git, action => _app.Invoke(action), new HeadWatcher(fileSystem, ScheduleFlush, _logger));
 
         if (languageServers is not null)
-            _workbench.Languages = new LanguageServers(_workbench.Editor.Group, languageServers, action => _app.Invoke(action), ScheduleFlush);
+            _workbench.Languages = new LanguageServers(_workbench.Editor.Groups, languageServers, action => _app.Invoke(action), ScheduleFlush);
 
         var explorer = _workbench.Sidebar.Explorer;
         _folderWatcher = new FolderWatcher(fileSystem, ScheduleFlush, _logger);
@@ -223,8 +223,8 @@ public sealed class WorkbenchHost : IDisposable
         // Feed the cursor-location history (#35): within-file moves come from CursorMoved,
         // file switches (manual tab cycling, opening a file) from ActiveTabChanged. The
         // history's own heuristic decides which of these count as navigable jumps.
-        _workbench.Editor.Group.CursorMoved += OnEditorCursorMoved;
-        _workbench.Editor.Group.ActiveTabChanged += OnActiveTabChanged;
+        _workbench.Editor.Groups.CursorMoved += OnEditorCursorMoved;
+        _workbench.Editor.Groups.ActiveTabChanged += OnActiveTabChanged;
         _workbench.StatusBar.WarningsClicked += (_, _) => ShowLog();
         _workbench.Sidebar.Review.FileActivated += (_, e) => OpenReviewDiff(e.Review, e.Change);
         _workbench.Sidebar.Review.PullRequestActivated += (_, review) => OpenOverview(review);
@@ -240,7 +240,7 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     private void ApplyIconStyle() =>
-        _workbench.Editor.Group.IconStyle = _icons?.Style ?? FileIconStyle.Off;
+        _workbench.Editor.Groups.IconStyle = _icons?.Style ?? FileIconStyle.Off;
 
     // Watcher events arrive on a background thread, and the marker touches views: AddTimeout's callback
     // runs on the main loop, so the debounce doubles as the hop back onto it.
@@ -254,9 +254,9 @@ public sealed class WorkbenchHost : IDisposable
     private void RegisterFocusRegions()
     {
         var sidebar = _workbench.Sidebar;
-        var group = _workbench.Editor.Group;
+        var editor = _workbench.Editor;
         var sidebarBorder = new FocusBorder(sidebar);
-        var editorBorder = new FocusBorder(_workbench.Editor);
+        var groupBorders = editor.Frames.Select(frame => new FocusBorder(frame)).ToList();
 
         _focus.Register(FocusRegion.Find, () => Take(sidebar.Search, sidebar.Search.FocusQuery), focused => Owns(sidebar.Search, focused));
         _focus.Register(FocusRegion.Review, () => Take(sidebar.Review, sidebar.Review.FocusList), focused => Owns(sidebar.Review, focused));
@@ -265,24 +265,52 @@ public sealed class WorkbenchHost : IDisposable
             focused => Owns(sidebar.Explorer, focused) || Owns(sidebar.OpenFolderButton, focused));
         // The find bar sits inside the active tab, so the editor regions have to let it through (#229).
         _focus.Register(FocusRegion.FindBar, () => Take(_find.Bar, _find.FocusInput), OnFindBar);
-        _focus.Register(FocusRegion.Diff, () => Take(group.ActiveDiffTab),
-            focused => group.ActiveDiffTab is { } diff && Owns(diff, focused) && !OnFindBar(focused));
-        _focus.Register(FocusRegion.Editor, () => Take(group.Value, group.FocusActive),
-            focused => group.ActiveDiffTab is null && Owns(_workbench.Editor, focused)
+        _focus.Register(FocusRegion.Diff, () => Take(editor.Group.ActiveDiffTab),
+            focused => editor.GroupOf(focused as View)?.ActiveDiffTab is { } diff && Owns(diff, focused) && !OnFindBar(focused));
+        _focus.Register(FocusRegion.Editor, () => Take(editor.Group.Value, editor.Group.FocusActive),
+            focused => editor.GroupOf(focused as View) is { ActiveDiffTab: null } group
                 && !OnTabStrip(group, focused) && !OnFindBar(focused));
         // Reached by ft and by TG's own navigation (#237); owning the editor pane is what keeps cycling tabs in it.
-        _focus.Register(FocusRegion.Tabs, () => true, focused => Owns(_workbench.Editor, focused) && !OnFindBar(focused));
+        _focus.Register(FocusRegion.Tabs, () => true, focused => Owns(editor, focused) && !OnFindBar(focused));
+
+        void ShowBorders()
+        {
+            var inSidebar = _focus.Region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Review;
+            sidebarBorder.Show(inSidebar);
+            for (var i = 0; i < groupBorders.Count; i++)
+                groupBorders[i].Show(!inSidebar && ReferenceEquals(editor.Groups.All[i], editor.Group));
+        }
 
         _focus.RegionChanged += (_, region) =>
         {
-            var inSidebar = region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Review;
             _workbench.StatusBar.SetFocusRegion(FocusService.Label(region));
             ShowAvailableMenus();
-            sidebarBorder.Show(inSidebar);
-            editorBorder.Show(!inSidebar);
+            ShowBorders();
         };
+        editor.Groups.ActiveTabChanged += (_, _) => ShowBorders();
         _workbench.StatusBar.SetFocusRegion(FocusService.Label(_focus.Region));
-        editorBorder.Show(true);
+        ShowBorders();
+    }
+
+    private View? _lastFocused;
+
+    // A click or Terminal.Gui's own navigation can take the keys into the other group; the commands follow them there.
+    private void Reconcile()
+    {
+        var focused = FocusedView();
+        if (!ReferenceEquals(focused, _lastFocused))
+        {
+            var starting = _lastFocused is null;
+            _lastFocused = focused;
+            var groups = _workbench.Editor.Groups;
+            if (_workbench.Editor.GroupOf(focused) is { } group && !ReferenceEquals(group, groups.Focused))
+            {
+                // Terminal.Gui's first focus is wherever it lands; a restored focus on the second group wins over it.
+                if (starting) Take(groups.Focused.Value, groups.Focused.FocusActive);
+                else groups.Focused = group;
+            }
+        }
+        _focus.Reconcile();
     }
 
     private bool OnFindBar(object? focused) => Owns(_find.Bar, focused);
@@ -314,7 +342,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_workbench.Editor.Group.Syntax is not { } syntax) return;
         syntax.UseTheme(BundledThemes.TokenThemeFor(_settings.Theme));
-        foreach (var diff in _workbench.Editor.Group.DiffTabs) diff.SetNeedsDraw();
+        foreach (var diff in _workbench.Editor.Groups.DiffTabs) diff.SetNeedsDraw();
         _workbench.Sidebar.Review.SetNeedsDraw();
         // OSC 12 sets the terminal's cursor colour, which no TG scheme covers; terminals without it ignore the sequence.
         if (syntax.EditorColors.TryGetValue("editorCursor.foreground", out var hex) && Color.TryParse(hex, out Color? cursor))
@@ -468,18 +496,19 @@ public sealed class WorkbenchHost : IDisposable
     private CommandScope FocusedScope()
     {
         // A mouse click lands between iterations, so re-read the region rather than reuse the last one.
-        _focus.Reconcile();
+        Reconcile();
         return FocusService.ScopeOf(_focus.Region);
     }
 
+    private EditorGroup Group => _workbench.Editor.Group;
+
     private void RegisterDefaultCommands()
     {
-        var group = _workbench.Editor.Group;
         var explorer = _workbench.Sidebar.Explorer;
         var review = _workbench.Sidebar.Review;
-        bool EditorOpen() => group.ActiveTab is not null || group.ActiveDiffTab is not null;
-        bool NotPastChange() => group.ActiveDiffTab is not { RightLabel: not null };
-        bool FileOpen() => group.ActiveTab is not null;
+        bool EditorOpen() => Group.ActiveTab is not null || Group.ActiveDiffTab is not null;
+        bool NotPastChange() => Group.ActiveDiffTab is not { RightLabel: not null };
+        bool FileOpen() => Group.ActiveTab is not null;
         bool Reviewing() => review.Review is { PullRequest: not null };
 
         _commands.Register(CommandIds.Quit, "Quit", Quit);
@@ -487,9 +516,15 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.SaveActiveEditor, "Save active editor", SaveActiveEditor, CommandScope.Global, EditorOpen);
         _commands.Register(CommandIds.SaveAll, "Save all", SaveAll);
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", CloseActiveEditor, CommandScope.Global,
-            () => group.Value is not null);
+            () => Group.Value is not null);
         _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
         _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => _workbench.Editor.PreviousTab());
+        _commands.Register(CommandIds.MoveToOtherGroup, "Move to other group", MoveToOtherGroup, CommandScope.Global,
+            () => Group.Value is not null);
+        _commands.Register(CommandIds.FocusOtherGroup, "Focus other group", FocusOtherGroup, CommandScope.Global,
+            () => _workbench.Editor.Groups.IsSplit);
+        _commands.Register(CommandIds.JoinGroups, "Join groups", JoinGroups, CommandScope.Global,
+            () => _workbench.Editor.Groups.IsSplit);
 
         _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
         _commands.Register(CommandIds.WidenSidebar, "Widen sidebar", () => NudgeSidebar(SidebarSizing.Step));
@@ -572,7 +607,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ScrollDiffPageLeft, "Scroll diff a page left", () => ScrollDiff(-1, page: true), CommandScope.Diff);
         _commands.Register(CommandIds.ScrollDiffPageRight, "Scroll diff a page right", () => ScrollDiff(1, page: true), CommandScope.Diff);
         _commands.Register(CommandIds.CompareToRevision, "Compare to revision", CompareToRevision,
-            CommandScope.Editor, () => GitRepository.Contains(group.ActiveTab?.File.Directory));
+            CommandScope.Editor, () => GitRepository.Contains(Group.ActiveTab?.File.Directory));
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.GitBlame, "Git blame", GitBlame, CommandScope.Editor, FileOpen);
         // No default key (#272).
@@ -586,10 +621,10 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleLineComment, "Toggle line comment", () => EditActiveTab(ToggleLineComment), CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => AddCursor(LineDirection.Up), CommandScope.Editor);
         _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => AddCursor(LineDirection.Down), CommandScope.Editor);
-        _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => group.ActiveTab?.RemoveSecondaryCursors(),
-            CommandScope.Editor, () => group.ActiveTab is { HasSecondaryCursors: true });
-        _commands.Register(CommandIds.ClearSelection, "Clear selection", () => group.ActiveTab?.ClearSelectionAndCursors(),
-            CommandScope.Editor, () => group.ActiveTab is { HasSecondaryCursors: true } or { HasSelection: true });
+        _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => Group.ActiveTab?.RemoveSecondaryCursors(),
+            CommandScope.Editor, () => Group.ActiveTab is { HasSecondaryCursors: true });
+        _commands.Register(CommandIds.ClearSelection, "Clear selection", () => Group.ActiveTab?.ClearSelectionAndCursors(),
+            CommandScope.Editor, () => Group.ActiveTab is { HasSecondaryCursors: true } or { HasSelection: true });
         // No default keys (#113).
         _commands.Register(CommandIds.SelectNextOccurrence, "Select next occurrence", () => EditActiveTab(tab => tab.SelectNextOccurrence()), CommandScope.Editor);
         _commands.Register(CommandIds.SelectPreviousOccurrence, "Select previous occurrence", () => EditActiveTab(tab => tab.SelectPreviousOccurrence()), CommandScope.Editor);
@@ -644,14 +679,14 @@ public sealed class WorkbenchHost : IDisposable
 
     private HelpColumn? PlaceHelp()
     {
-        _focus.Reconcile();
+        Reconcile();
         return _focus.Region switch
         {
             FocusRegion.FindBar => _find.Help(),
             FocusRegion.Diff => DiffHelp(),
             FocusRegion.Explorer => ScopeHelp("Explorer", CommandScope.Explorer, ExplorerKeys),
             FocusRegion.Find => ScopeHelp("Find", CommandScope.Find, _workbench.Sidebar.Search.InputsHaveFocus ? [] : FindResultKeys),
-            FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, []),
+            FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, GroupHelp()),
             FocusRegion.Review => ReviewHelp(),
             FocusRegion.Tabs => TabsHelp(),
             _ => null,
@@ -679,7 +714,14 @@ public sealed class WorkbenchHost : IDisposable
         .. HelpRowOf(CommandIds.NextEditor, "Next tab"),
         .. HelpRowOf(CommandIds.PreviousEditor, "Previous tab"),
         .. HelpRowOf(CommandIds.CloseActiveEditor, "Close tab"),
+        .. GroupHelp(),
     ]);
+
+    private HelpRow[] GroupHelp() =>
+    [
+        .. HelpRowOf(CommandIds.MoveToOtherGroup, "Move to other group"),
+        .. HelpRowOf(CommandIds.FocusOtherGroup, "Focus other group"),
+    ];
 
     private IEnumerable<HelpRow> HelpRowOf(string commandId, string description) =>
         _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
@@ -711,6 +753,7 @@ public sealed class WorkbenchHost : IDisposable
             .. HelpRowOf(CommandIds.GoToChangeLine, "Go to this line"),
             .. PairRow(CommandIds.ScrollDiffLeft, CommandIds.ScrollDiffRight, "Scroll sideways"),
             .. PairRow(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "Page sideways"),
+            .. GroupHelp(),
         ];
         return rows.Length == 0 ? null : new HelpColumn("Diff", rows);
 
@@ -781,6 +824,8 @@ public sealed class WorkbenchHost : IDisposable
         // Not Ctrl+Tab, which Terminal.app and iTerm2 keep (#254), nor Alt+Tab, Windows' app switcher (#459).
         keybindings.Bind("Ctrl+PageDown", CommandIds.NextEditor);
         keybindings.Bind("Ctrl+PageUp", CommandIds.PreviousEditor);
+        keybindings.Bind("Ctrl+\\", CommandIds.MoveToOtherGroup);
+        keybindings.Bind("F6", CommandIds.FocusOtherGroup);
 
         // No default key for ToggleSidebar — Ctrl+0 is eaten by the terminal's own zoom-reset
         // in many emulators (#81), so it was unreliable. Reach it via the `ts` mnemonic instead.
@@ -893,16 +938,16 @@ public sealed class WorkbenchHost : IDisposable
 
     private void ToggleGutter()
     {
-        var group = _workbench.Editor.Group;
-        group.GutterVisible = !group.GutterVisible;
+        var groups = _workbench.Editor.Groups;
+        groups.GutterVisible = !groups.GutterVisible;
     }
 
     // Unlike the gutter this mode is invisible until a selection is swept, so flag it in the status bar.
     private void ToggleColumnSelect()
     {
-        var group = _workbench.Editor.Group;
-        group.ColumnSelect = !group.ColumnSelect;
-        _workbench.StatusBar.SetMode(group.ColumnSelect ? "Column select" : null);
+        var groups = _workbench.Editor.Groups;
+        groups.ColumnSelect = !groups.ColumnSelect;
+        _workbench.StatusBar.SetMode(groups.ColumnSelect ? "Column select" : null);
         FocusEditorBody();
     }
 
@@ -966,6 +1011,27 @@ public sealed class WorkbenchHost : IDisposable
         }
         _find.Open(replace);
         MoveFocus(FocusRegion.FindBar);
+    }
+
+    private void MoveToOtherGroup()
+    {
+        if (!_workbench.Editor.Groups.MoveActiveToOther())
+        {
+            _workbench.StatusBar.SetMessage("Open another file to split with");
+            return;
+        }
+        FocusEditorBody();
+    }
+
+    private void FocusOtherGroup()
+    {
+        if (_workbench.Editor.Groups.FocusOther()) FocusEditorBody();
+    }
+
+    private void JoinGroups()
+    {
+        _workbench.Editor.Groups.Join();
+        FocusEditorBody();
     }
 
     private void FocusEditorBody() =>
@@ -1051,7 +1117,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Remove(view);
         view.Dispose();
         _activeSettings = null;
-        _workbench.Editor.Group.Settings = _settings.Editor;
+        _workbench.Editor.Groups.Settings = _settings.Editor;
         _workbench.SetSidebarWidth(_settings.SidebarWidth);
         FocusCallingRegion();
     }
@@ -1060,7 +1126,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_workbench.Editor.Group.Syntax is not { } syntax) return;
         syntax.Associations = _settings.GrammarAssociations;
-        _workbench.Editor.Group.InferGrammars();
+        _workbench.Editor.Groups.InferGrammars();
     }
 
     private void OpenGrammarPicker()
@@ -1351,7 +1417,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private string LineAt(IFileSystem fileSystem, SourceLocation location)
     {
-        if (_workbench.Editor.Group.Tabs.FirstOrDefault(t => t.File.FullName == location.Path) is { } open)
+        if (_workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == location.Path) is { } open)
             return open.Lines.ElementAtOrDefault(location.Line) ?? "";
         return fileSystem.File.ReadLines(location.Path).Skip(location.Line).FirstOrDefault() ?? "";
     }
@@ -1373,7 +1439,7 @@ public sealed class WorkbenchHost : IDisposable
         _suppressHistory = true;
         try
         {
-            tab = _workbench.Editor.Group.OpenOrFocus(origin.File.FileSystem.FileInfo.New(location.Path));
+            tab = _workbench.Editor.Open(origin.File.FileSystem.FileInfo.New(location.Path));
             tab.MoveCursorToCharacter(location.Line, location.Character);
             tab.RevealLines(location.Line, location.Line);
             MoveFocus(FocusRegion.Editor);
@@ -1402,7 +1468,7 @@ public sealed class WorkbenchHost : IDisposable
         // Warnings can be logged from any thread, so the count is read here rather than pushed.
         _workbench.StatusBar.SetWarnings(_log?.Unseen ?? 0);
         // Picks up focus Terminal.Gui moved on its own, and any move that didn't land where it was asked to.
-        _focus.Reconcile();
+        Reconcile();
         _activeSymbolPicker?.Advance();
         // Some isEnabled checks touch the disk, so not on every iteration.
         if (Environment.TickCount64 - _menuShownAt >= 250) ShowAvailableMenus();
@@ -1475,7 +1541,7 @@ public sealed class WorkbenchHost : IDisposable
         _suppressHistory = true;
         try
         {
-            var tab = _workbench.Editor.Group.OpenOrFocus(file);
+            var tab = _workbench.Editor.Open(file);
             tab.MoveCursor(loc.Row, loc.Column);
             tab.RevealLines(loc.Row, loc.Row);
             MoveFocus(FocusRegion.Editor);
@@ -1663,7 +1729,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         EditorTab? conflict = null;
         var saved = 0;
-        foreach (var tab in _workbench.Editor.Group.Tabs.Where(t => t.IsDirty))
+        foreach (var tab in _workbench.Editor.Groups.Tabs.Where(t => t.IsDirty))
         {
             if (tab.DiskNow == DiskState.Changed)
             {
@@ -1694,7 +1760,7 @@ public sealed class WorkbenchHost : IDisposable
         var view = new ConfirmView("Unsaved changes",
             $"Save changes to '{tab.File.Name}' before closing?\nYour changes will be lost if you don't save them.",
             new ConfirmChoice("Save", () => SaveAndClose(tab)),
-            new ConfirmChoice("Don't save", () => group.CloseEditor(tab)));
+            new ConfirmChoice("Don't save", () => CloseEditor(tab)));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }
@@ -1703,12 +1769,14 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (tab.DiskNow == DiskState.Changed)
         {
-            ConfirmOverwrite(tab, () => _workbench.Editor.Group.CloseEditor(tab));
+            ConfirmOverwrite(tab, () => CloseEditor(tab));
             return;
         }
         tab.Save();
-        _workbench.Editor.Group.CloseEditor(tab);
+        CloseEditor(tab);
     }
+
+    private void CloseEditor(EditorTab tab) => _workbench.Editor.Groups.Holding(tab)?.CloseEditor(tab);
 
     internal ShellSuspend ShellSuspend { get; set; }
 
@@ -1794,7 +1862,7 @@ public sealed class WorkbenchHost : IDisposable
         if (DirtyTabs().Count == 0) proceed();
     }
 
-    private List<EditorTab> DirtyTabs() => [.. _workbench.Editor.Group.Tabs.Where(t => t.IsDirty)];
+    private List<EditorTab> DirtyTabs() => [.. _workbench.Editor.Groups.Tabs.Where(t => t.IsDirty)];
 
     private void ConfirmOverwrite(EditorTab tab, Action? afterOverwrite = null)
     {
@@ -1851,7 +1919,7 @@ public sealed class WorkbenchHost : IDisposable
         var fromExplorer = ExplorerIsContext;
         if (FileCommandTarget(fromExplorer, "deleted") is not { } item) return;
 
-        var unsaved = _workbench.Editor.Group.TabsUnder(item.FullName).Count(t => t.IsDirty);
+        var unsaved = _workbench.Editor.Groups.TabsUnder(item.FullName).Count(t => t.IsDirty);
         var message = string.Join('\n', new[]
         {
             item is IDirectoryInfo ? $"Permanently delete '{item.Name}' and its contents?" : $"Permanently delete '{item.Name}'?",
@@ -2081,7 +2149,7 @@ public sealed class WorkbenchHost : IDisposable
         _suppressHistory = true;
         try
         {
-            _workbench.Editor.Group.OpenOrFocus(tab.File);
+            _workbench.Editor.Open(tab.File);
             tab.MoveCursor(line, 0);
         }
         finally { _suppressHistory = false; }
@@ -2150,7 +2218,7 @@ public sealed class WorkbenchHost : IDisposable
     /// </summary>
     private void RestoreDeleted(DiffTab diff)
     {
-        _workbench.Editor.Group.Restore(diff.File, diff.LeftLines);
+        _workbench.Editor.Groups.Restore(diff.File, diff.LeftLines);
         FocusEditorBody();
         _workbench.StatusBar.SetMessage($"{diff.File.Name} restored — Ctrl+S to write it back");
     }
@@ -2504,7 +2572,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         OpenDrafts(review);
         var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
-        foreach (var diff in _workbench.Editor.Group.DiffTabs)
+        foreach (var diff in _workbench.Editor.Groups.DiffTabs)
         {
             if (diff.Review is not { } spot || spot.Key != review.MergeBase) continue;
             var path = RepoPath(fileSystem, review.RepoRoot, diff.File);
@@ -2550,17 +2618,19 @@ public sealed class WorkbenchHost : IDisposable
     /// </summary>
     private void ShowReviewDiff(BranchReview review, GitChange change, int index, int count, Action<DiffTab?> done)
     {
-        var group = _workbench.Editor.Group;
         var fs = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
         var file = fs.FileInfo.New(fs.Path.Combine(review.RepoRoot, change.Path));
         var tab = change.Kind == GitChangeKind.Deleted ? null : _workbench.Editor.Open(file);
         var basePath = change.OldPath ?? change.Path;
         var key = $"{review.MergeBase}:{basePath}";
-        if ((tab is null ? group.FocusDeletedDiff(file, key) : group.FocusDiff(tab, key)) is { } open)
+        foreach (var holder in _workbench.Editor.Groups.All)
         {
+            if ((tab is null ? holder.FocusDeletedDiff(file, key) : holder.FocusDiff(tab, key)) is not { } open) continue;
+            _workbench.Editor.Groups.Focused = holder;
             Showing(open);
             return;
         }
+        var group = _workbench.Editor.Group;
 
         var content = change.Kind == GitChangeKind.Added
             ? Task.FromResult(GitResult<string?>.Success(null))
@@ -3057,7 +3127,7 @@ public sealed class WorkbenchHost : IDisposable
     private void ShowReply(GitHubReviewThread thread, GitHubComment reply)
     {
         var updated = thread with { Comments = [.. thread.Comments, reply] };
-        foreach (var diff in _workbench.Editor.Group.DiffTabs) diff.ReplaceThread(thread, updated);
+        foreach (var diff in _workbench.Editor.Groups.DiffTabs) diff.ReplaceThread(thread, updated);
         _workbench.Sidebar.Review.ReplaceThread(thread, updated);
     }
 
@@ -3094,7 +3164,7 @@ public sealed class WorkbenchHost : IDisposable
     private void ClearDrafts()
     {
         Drafts.Clear();
-        foreach (var diff in _workbench.Editor.Group.DiffTabs)
+        foreach (var diff in _workbench.Editor.Groups.DiffTabs)
             if (diff.Drafts.Count > 0)
                 diff.ShowDrafts([]);
         _workbench.Sidebar.Review.ShowDraftReview(Drafts.Line);
@@ -3308,8 +3378,8 @@ public sealed class WorkbenchHost : IDisposable
         _app.Mouse.MouseEvent -= OnAppMouseEvent;
         _app.Iteration -= OnIteration;
         _keybindings.ChordChanged -= OnChordChanged;
-        _workbench.Editor.Group.CursorMoved -= OnEditorCursorMoved;
-        _workbench.Editor.Group.ActiveTabChanged -= OnActiveTabChanged;
+        _workbench.Editor.Groups.CursorMoved -= OnEditorCursorMoved;
+        _workbench.Editor.Groups.ActiveTabChanged -= OnActiveTabChanged;
         _workbench.Languages?.Dispose();
         _diskChanges.Dispose();
         _baselines.Dispose();

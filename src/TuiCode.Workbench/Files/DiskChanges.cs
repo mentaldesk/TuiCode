@@ -13,12 +13,12 @@ namespace TuiCode.Workbench.Files;
 /// </summary>
 internal sealed class DiskChanges : IDisposable
 {
-    private readonly EditorGroup _group;
+    private readonly EditorGroups _group;
     private readonly FileExplorerView _explorer;
     private readonly Action<string> _announce;
     private readonly DiskWatcher _watcher;
 
-    public DiskChanges(EditorGroup group, FileExplorerView explorer, Action<string> announce, DiskWatcher watcher)
+    public DiskChanges(EditorGroups group, FileExplorerView explorer, Action<string> announce, DiskWatcher watcher)
     {
         _group = group;
         _explorer = explorer;
@@ -82,8 +82,8 @@ internal sealed class DiskChanges : IDisposable
             return true;
         }
 
-        // A background tab reloads with nothing on screen at all.
-        if (ReferenceEquals(tab, _group.ActiveTab)) _announce($"⟳ Reloaded {tab.File.Name} — changed on disk");
+        // A tab no group is showing reloads with nothing on screen at all.
+        if (_group.All.Any(g => ReferenceEquals(tab, g.ActiveTab))) _announce($"⟳ Reloaded {tab.File.Name} — changed on disk");
         return true;
     }
 

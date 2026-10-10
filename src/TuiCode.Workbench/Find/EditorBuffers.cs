@@ -4,7 +4,7 @@ using TuiCode.Search;
 namespace TuiCode.Workbench.Find;
 
 /// <summary>Exposes the editor's open tabs to workspace search, so dirty buffers are searched and replaced in place.</summary>
-internal sealed class EditorBuffers(EditorGroup group) : IOpenBuffers
+internal sealed class EditorBuffers(EditorGroups group) : IOpenBuffers
 {
     public IReadOnlyDictionary<string, string> Snapshot() =>
         group.Tabs.ToDictionary(t => t.File.FullName, t => string.Join('\n', t.Lines), StringComparer.Ordinal);

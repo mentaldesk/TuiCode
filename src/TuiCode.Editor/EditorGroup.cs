@@ -8,6 +8,7 @@ public sealed class EditorGroup : PaneTabs
     private readonly Dictionary<string, EditorTab> _byPath = new(StringComparer.Ordinal);
     private readonly List<DiffTab> _diffs = [];
     private readonly Dictionary<string, DocumentTab> _documents = new(StringComparer.Ordinal);
+    private readonly Dictionary<EditorTab, Action> _unwire = [];
     private readonly SyntaxHighlighter? _syntax;
 
     public event EventHandler<IFileInfo>? FileSaved;
@@ -18,6 +19,9 @@ public sealed class EditorGroup : PaneTabs
     public event EventHandler? TabsChanged;
 
     public event EventHandler<EditorTab>? BaselineReset;
+
+    /// <summary>Raised as a file's tab closes, so a diff of it in another group can close too.</summary>
+    public event EventHandler<EditorTab>? EditorClosed;
 
     /// <summary>Raised when any tab's grammar changes, e.g. from the grammar picker or new associations.</summary>
     public event EventHandler<EditorTab>? GrammarChanged;
@@ -132,11 +136,7 @@ public sealed class EditorGroup : PaneTabs
         tab.IconStyle = IconStyle;
         tab.Settings = Settings;
         tab.WordWrap = Settings.WrapsLanguage(tab.HasSyntax ? tab.Grammar?.Id ?? SyntaxHighlighter.PlainText : null);
-        tab.Saved += (_, _) => FileSaved?.Invoke(this, tab.File);
-        tab.BaselineReset += (_, _) => BaselineReset?.Invoke(this, tab);
-        tab.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
-        tab.CursorMoved += (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
-        tab.GrammarChanged += (_, _) => GrammarChanged?.Invoke(this, tab);
+        Wire(tab);
         // Tabs selects the first tab it's given during Add, so register it first for ActiveTabChanged listeners to
         // see — and announce it before that, so the file is being watched by the time anything reacts to it (#269).
         _byPath[tab.File.FullName] = tab;
@@ -144,6 +144,72 @@ public sealed class EditorGroup : PaneTabs
         Add(tab);
         Value = tab;
         return tab;
+    }
+
+    private void Wire(EditorTab tab)
+    {
+        EventHandler saved = (_, _) => FileSaved?.Invoke(this, tab.File);
+        EventHandler baseline = (_, _) => BaselineReset?.Invoke(this, tab);
+        EventHandler<CopyOutcome> copied = (_, outcome) => Copied?.Invoke(this, outcome);
+        EventHandler<(int Row, int Column)> moved = (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
+        EventHandler grammar = (_, _) => GrammarChanged?.Invoke(this, tab);
+        tab.Saved += saved;
+        tab.BaselineReset += baseline;
+        tab.Copied += copied;
+        tab.CursorMoved += moved;
+        tab.GrammarChanged += grammar;
+        _unwire[tab] = () =>
+        {
+            tab.Saved -= saved;
+            tab.BaselineReset -= baseline;
+            tab.Copied -= copied;
+            tab.CursorMoved -= moved;
+            tab.GrammarChanged -= grammar;
+        };
+    }
+
+    /// <summary>Moves <paramref name="tab"/> into <paramref name="other"/> and makes it active there.</summary>
+    public void MoveTo(EditorGroup other, View tab)
+    {
+        var strip = TabCollection.ToList();
+        if (!strip.Contains(tab)) return;
+        var before = strip.IndexOf(tab);
+
+        if (tab is EditorTab editor)
+        {
+            _byPath.Remove(editor.File.FullName);
+            if (_unwire.Remove(editor, out var unwire)) unwire();
+        }
+        if (tab is DiffTab diff) _diffs.Remove(diff);
+        if (tab is DocumentTab document) _documents.Remove(document.File.FullName);
+        Remove(tab);
+
+        var remaining = TabCollection.ToList();
+        if (remaining.Count == 0) ClearValue();
+        else if (Value is null || ReferenceEquals(Value, tab)) Value = remaining[Math.Min(before, remaining.Count - 1)];
+
+        other.Adopt(tab);
+        TabsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void Adopt(View tab)
+    {
+        switch (tab)
+        {
+            case EditorTab editor:
+                Wire(editor);
+                _byPath[editor.File.FullName] = editor;
+                break;
+            case DiffTab diff:
+                _diffs.Add(diff);
+                break;
+            case DocumentTab document:
+                _documents[document.File.FullName] = document;
+                break;
+        }
+        TabsChanged?.Invoke(this, EventArgs.Empty);
+        Add(tab);
+        Value = tab;
     }
 
     /// <summary>Returns null, opening nothing, when the buffer matches the file on disk.</summary>
@@ -270,7 +336,11 @@ public sealed class EditorGroup : PaneTabs
 
         foreach (var closed in closing)
         {
-            if (closed is EditorTab e) _byPath.Remove(e.File.FullName);
+            if (closed is EditorTab e)
+            {
+                _byPath.Remove(e.File.FullName);
+                if (_unwire.Remove(e, out var unwire)) unwire();
+            }
             if (closed is DiffTab d) _diffs.Remove(d);
             if (closed is DocumentTab doc) _documents.Remove(doc.File.FullName);
             Remove(closed);
@@ -278,15 +348,10 @@ public sealed class EditorGroup : PaneTabs
         }
 
         var remaining = strip.Where(t => !closing.Contains(t)).ToList();
+        if (tab is EditorTab closedEditor) EditorClosed?.Invoke(this, closedEditor);
+        if (remaining.Count == 0) ClearValue();
+        else if (wasActive) Value = remaining[Math.Min(before, remaining.Count - 1)];
         TabsChanged?.Invoke(this, EventArgs.Empty);
-        if (remaining.Count == 0)
-        {
-            ClearValue();
-            return;
-        }
-        if (!wasActive) return;
-
-        Value = remaining[Math.Min(before, remaining.Count - 1)];
     }
 
     /// <summary>Close every open tab — used when switching workspace folders.</summary>
@@ -298,6 +363,7 @@ public sealed class EditorGroup : PaneTabs
             tab.Dispose();
         }
         _byPath.Clear();
+        _unwire.Clear();
         _diffs.Clear();
         _documents.Clear();
         TabsChanged?.Invoke(this, EventArgs.Empty);

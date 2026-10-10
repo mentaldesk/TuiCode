@@ -19,7 +19,7 @@ public class CommittedBaselinesTests
     public CommittedBaselinesTests()
     {
         Repo("/repo");
-        _baselines = new CommittedBaselines(_group, _git, action =>
+        _baselines = new CommittedBaselines(new EditorGroups(_group, new EditorGroup()), _git, action =>
         {
             action();
             _applied.Release();

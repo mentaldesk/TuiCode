@@ -65,6 +65,8 @@ public sealed class CommandMenu
             CommandIds.RefreshExplorer,
             Separator,
             CommandIds.ToggleGutter, CommandIds.ToggleWordWrap,
+            Separator,
+            CommandIds.MoveToOtherGroup, CommandIds.FocusOtherGroup, CommandIds.JoinGroups,
         ]),
         ("_Go",
         [

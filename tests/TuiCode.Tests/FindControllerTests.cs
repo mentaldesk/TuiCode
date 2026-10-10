@@ -16,7 +16,7 @@ public class FindControllerTests : IDisposable
     public FindControllerTests()
     {
         _scopes.Push(_workbenchScope);
-        _find = new FindController(_group, _scopes, _workbenchScope);
+        _find = new FindController(new EditorGroups(_group, new EditorGroup()), _scopes, _workbenchScope);
         // Mirror WorkbenchHost, which forwards the group's tab changes.
         _group.ActiveTabChanged += (_, _) => _find.OnActiveTabChanged();
     }
