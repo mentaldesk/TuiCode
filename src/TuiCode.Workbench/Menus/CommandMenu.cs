@@ -22,6 +22,7 @@ public sealed class CommandMenu
     {
         [CommandIds.ShowExplorer] = "Explorer",
         [CommandIds.FindGlobally] = "Find",
+        [CommandIds.FocusUsages] = "Usages",
         [CommandIds.FocusReview] = "Review",
     };
 
@@ -58,7 +59,7 @@ public sealed class CommandMenu
         ]),
         ("_View",
         [
-            CommandIds.ShowExplorer, CommandIds.FindGlobally, CommandIds.FocusReview,
+            CommandIds.ShowExplorer, CommandIds.FindGlobally, CommandIds.FocusUsages, CommandIds.FocusReview,
             Separator,
             CommandIds.ToggleSidebar, CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
             Separator,
@@ -68,7 +69,7 @@ public sealed class CommandMenu
         ]),
         ("_Go",
         [
-            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToDefinition, CommandIds.FollowLink,
+            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToDefinition, CommandIds.FindUsages, CommandIds.FollowLink,
             Separator,
             CommandIds.NavigateBack, CommandIds.NavigateForward,
             Separator,

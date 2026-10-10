@@ -126,6 +126,7 @@ public sealed class LanguageServer : IDisposable
                 {
                     ["synchronization"] = new JsonObject { ["didSave"] = true },
                     ["definition"] = new JsonObject { ["linkSupport"] = true },
+                    ["documentSymbol"] = new JsonObject { ["hierarchicalDocumentSymbolSupport"] = true },
                 },
             },
         };
@@ -233,18 +234,39 @@ public sealed class LanguageServer : IDisposable
     }
 
     /// <summary>Where the symbol at <paramref name="line"/> and UTF-16 <paramref name="character"/> is defined.</summary>
-    public async Task<IReadOnlyList<SourceLocation>> DefinitionAsync(string path, int line, int character)
+    public async Task<IReadOnlyList<SourceLocation>> DefinitionAsync(string path, int line, int character) =>
+        LspLocations.Parse(await RequestAsync("textDocument/definition", Position(path, line, character)).ConfigureAwait(false));
+
+    /// <summary>Where the symbol at <paramref name="line"/> and UTF-16 <paramref name="character"/> is used, leaving out its declaration.</summary>
+    public async Task<IReadOnlyList<SourceLocation>> ReferencesAsync(string path, int line, int character)
+    {
+        var parameters = Position(path, line, character);
+        parameters["context"] = new JsonObject { ["includeDeclaration"] = false };
+        return LspLocations.Parse(await RequestAsync("textDocument/references", parameters).ConfigureAwait(false));
+    }
+
+    /// <summary>The symbol declared at <paramref name="location"/>, named after its type (<c>LineDiff.Hunks</c>), or null.</summary>
+    public async Task<string?> SymbolNameAsync(SourceLocation location)
+    {
+        var symbols = await RequestAsync("textDocument/documentSymbol", new JsonObject
+        {
+            ["textDocument"] = new JsonObject { ["uri"] = LspLocations.ToUri(location.Path) },
+        }).ConfigureAwait(false);
+        return LspSymbols.QualifiedName(symbols, location.Line, location.Character);
+    }
+
+    private async Task<JsonNode?> RequestAsync(string method, JsonObject parameters)
     {
         JsonRpcConnection? connection;
         lock (_gate) connection = State == LanguageServerState.Ready ? _connection : null;
-        if (connection is null) return [];
-        var result = await connection.RequestAsync("textDocument/definition", new JsonObject
-        {
-            ["textDocument"] = new JsonObject { ["uri"] = LspLocations.ToUri(path) },
-            ["position"] = new JsonObject { ["line"] = line, ["character"] = character },
-        }).ConfigureAwait(false);
-        return LspLocations.Parse(result);
+        return connection is null ? null : await connection.RequestAsync(method, parameters).ConfigureAwait(false);
     }
+
+    private static JsonObject Position(string path, int line, int character) => new()
+    {
+        ["textDocument"] = new JsonObject { ["uri"] = LspLocations.ToUri(path) },
+        ["position"] = new JsonObject { ["line"] = line, ["character"] = character },
+    };
 
     private JsonObject DidOpen(string uri, int version, string text) => new()
     {
