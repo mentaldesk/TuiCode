@@ -39,7 +39,6 @@ public class LanguageServersSettingsHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter),
             () => Pane(workbench).Dialog is not null,
             () => host.App.InjectKey(Key.CursorDown),
-            () => host.App.InjectKey(Key.Space),
             () => { dialogTitle = Pane(workbench).Dialog!.Title; status = Pane(workbench).Dialog!.Form.Status()[0]; },
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Pane(workbench).Dialog is null,
@@ -70,7 +69,6 @@ public class LanguageServersSettingsHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter),
             () => Pane(workbench).Dialog is not null,
             () => host.App.InjectKey(Key.CursorDown),
-            () => host.App.InjectKey(Key.Space),
             () => host.App.InjectKey(Key.Esc),
             () => Pane(workbench).Dialog is null,
             () => { afterEsc = Row(workbench, "csharp").Server; host.App.InjectKey(Key.Delete); },
@@ -80,6 +78,27 @@ public class LanguageServersSettingsHostTests : StaticConfigurationTest
         Assert.Equal(LanguageServerRows.NoServer, afterEsc);
         Assert.Equal("csharp-ls (default)", afterDelete);
         Assert.Empty(_settings.LanguageServers);
+    }
+
+    [Fact]
+    public async Task Down_from_the_current_server_selects_the_next_one()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var opened = "";
+        var afterDown = "";
+
+        await HostSteps.Run(host,
+            OpenPane(host, workbench),
+            SelectRow(host, workbench, "csharp"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Pane(workbench).Dialog is not null,
+            () => { opened = Pane(workbench).Dialog!.Form.Command; host.App.InjectKey(Key.CursorDown); },
+            () => { afterDown = Pane(workbench).Dialog!.Form.Command; host.App.InjectKey(Key.Esc); },
+            () => Pane(workbench).Dialog is null);
+
+        Assert.Equal("csharp-ls", opened);
+        Assert.Equal("roslyn-language-server", afterDown);
     }
 
     private static Func<bool> OpenPane(WorkbenchHost host, Workbench.Workbench workbench)

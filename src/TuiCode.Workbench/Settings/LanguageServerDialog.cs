@@ -46,6 +46,7 @@ public sealed class LanguageServerDialog : Window
             Value = _form.Selected,
         };
         _server.ValueChanged += (_, _) => OnServerChanged();
+        _server.FocusedChanged += (_, e) => FollowFocus(e);
 
         var fieldsTop = _form.Options.Count + 1;
         var commandLabel = new Label { X = 1, Y = fieldsTop, Text = "Command:" };
@@ -82,6 +83,17 @@ public sealed class LanguageServerDialog : Window
         _arguments.Text = _form.Arguments;
         _filling = false;
         ShowStatus();
+    }
+
+    private void FollowFocus(HasFocusEventArgs e)
+    {
+        if (e.CurrentFocused?.SuperView == _server) _server.Value = _server.FocusedItem;
+        // TG throws if focus moves again while it's still being set.
+        else App?.AddTimeout(TimeSpan.Zero, () =>
+        {
+            if (_server.HasFocus) _server.FocusedItem = _form.Selected;
+            return false;
+        });
     }
 
     private void OnFieldsChanged()
