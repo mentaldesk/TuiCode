@@ -8,7 +8,8 @@ namespace TuiCode.Tests;
 /// <summary>
 /// Launches in-process fake language servers. Each keeps the documents it's told about, and answers a definition
 /// with every declaration (<c>class X</c>, <c>void X</c>, ...) of the word at the position, in those documents and
-/// in <see cref="Files"/>.
+/// in <see cref="Files"/>. References are every other whole-word use of it, and document symbols the file's first class
+/// with its methods.
 /// </summary>
 internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 {
@@ -25,6 +26,9 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 
     /// <summary>Answers initialize with this error.</summary>
     public string? InitializeError { get; set; }
+
+    /// <summary>Holds every references request until it's set.</summary>
+    public ManualResetEventSlim? HoldReferences { get; set; }
 
     /// <summary>Files the server has loaded from the solution, by path.</summary>
     public ConcurrentDictionary<string, string> Files { get; } = new(StringComparer.Ordinal);
@@ -69,6 +73,8 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             "initialize" when InitializeError is { } error => throw new JsonRpcException(-32603, error),
             "initialize" => new JsonObject { ["capabilities"] = new JsonObject { ["definitionProvider"] = true } },
             "textDocument/definition" => Definitions(parameters!),
+            "textDocument/references" => References(parameters!),
+            "textDocument/documentSymbol" => Symbols(parameters!),
             _ => null,
         };
     }
@@ -125,6 +131,69 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                     });
         }
         return found;
+    }
+
+    private JsonArray References(JsonNode parameters)
+    {
+        HoldReferences?.Wait(TimeSpan.FromSeconds(30));
+        if (WordAt(parameters) is not { } word) return [];
+        var found = new JsonArray();
+        foreach (var (file, text) in Sources().OrderBy(s => s.Key, StringComparer.Ordinal))
+        {
+            var fileLines = Lines(text);
+            for (var row = 0; row < fileLines.Length; row++)
+            {
+                var declared = Regex.Matches(fileLines[row], $@"\b(?:class|struct|interface|void|int|string|var)\s+({Regex.Escape(word)})\b")
+                    .Select(m => m.Groups[1].Index).ToHashSet();
+                foreach (Match match in Regex.Matches(fileLines[row], $@"\b{Regex.Escape(word)}\b"))
+                    if (!declared.Contains(match.Index)) found.Add(Location(file, row, match.Index, word.Length));
+            }
+        }
+        return found;
+    }
+
+    private JsonArray Symbols(JsonNode parameters)
+    {
+        var lines = Lines(Sources().GetValueOrDefault(Path(parameters["textDocument"]!)) ?? "");
+        JsonObject? type = null;
+        var members = new JsonArray();
+        for (var row = 0; row < lines.Length; row++)
+        {
+            if (type is null && Regex.Match(lines[row], @"\bclass\s+(\w+)") is { Success: true } declaration)
+                type = Symbol(declaration.Groups[1].Value, 5, Range(0, 0, lines.Length, 0), Range(row, declaration.Groups[1].Index, row, declaration.Groups[1].Index + declaration.Groups[1].Length));
+            else if (type is not null && Regex.Match(lines[row], @"\b(?:void|int|string)\s+(\w+)\(") is { Success: true } member)
+                members.Add(Symbol($"{member.Groups[1].Value}()", 6, Range(row, 0, row + 1, 0), Range(row, member.Groups[1].Index, row, member.Groups[1].Index + member.Groups[1].Length)));
+        }
+        if (type is null) return [];
+        type["children"] = members;
+        return [type];
+    }
+
+    private static JsonObject Symbol(string name, int kind, JsonObject range, JsonObject selection) =>
+        new() { ["name"] = name, ["kind"] = kind, ["range"] = range, ["selectionRange"] = selection };
+
+    private static JsonObject Range(int startLine, int startCharacter, int endLine, int endCharacter) => new()
+    {
+        ["start"] = new JsonObject { ["line"] = startLine, ["character"] = startCharacter },
+        ["end"] = new JsonObject { ["line"] = endLine, ["character"] = endCharacter },
+    };
+
+    private static JsonObject Location(string file, int row, int character, int length) =>
+        new() { ["uri"] = LspLocations.ToUri(file), ["range"] = Range(row, character, row, character + length) };
+
+    private string? WordAt(JsonNode parameters)
+    {
+        var line = parameters["position"]!["line"]!.GetValue<int>();
+        var character = parameters["position"]!["character"]!.GetValue<int>();
+        var lines = Lines(Sources().GetValueOrDefault(Path(parameters["textDocument"]!)) ?? "");
+        return line < lines.Length ? Word(lines[line], character) : null;
+    }
+
+    private Dictionary<string, string> Sources()
+    {
+        var sources = Files.ToDictionary();
+        foreach (var (open, text) in Documents) sources[open] = text;
+        return sources;
     }
 
     private static string[] Lines(string text) => text.ReplaceLineEndings("\n").Split('\n');

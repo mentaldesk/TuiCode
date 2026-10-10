@@ -274,8 +274,8 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => { undimmed = [.. host.Menu.Items.Where(i => !i.Item.Dimmed).Select(i => i.Id)]; host.App.InjectKey(Key.Esc); },
             () => !workbench.MenuBar.IsOpen()]);
 
-        // The one exception: the palette keeps Go to definition to say why it can't run, the menu dims it until a server is ready (#454).
-        var offered = MenuIds().Where(id => id != CommandIds.GoToDefinition && palette.Contains(commands.Registered.Single(c => c.Id == id).Label));
+        // The exceptions: the palette keeps the language server's commands to say why they can't run, the menu dims them until a server is ready (#454).
+        var offered = MenuIds().Where(id => id is not (CommandIds.GoToDefinition or CommandIds.FindUsages) && palette.Contains(commands.Registered.Single(c => c.Id == id).Label));
         Assert.Equal(offered.Order(), undimmed.Order());
         if (context == "pull request") Assert.Contains(CommandIds.SubmitReview, undimmed);
         if (context == "diff") Assert.Contains(CommandIds.RevertChange, undimmed);
@@ -442,8 +442,8 @@ public class MenuBarHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench, out _);
         var view = Title(workbench, "View").PopoverMenu!.Root!.SubViews.ToList();
 
-        Assert.Equal(["Explorer", "Find", "Review", "-", "Toggle sidebar", "Widen sidebar", "Narrow sidebar"],
-            view.Take(7).Select(v => v is MenuItem item ? item.Title : "-"));
+        Assert.Equal(["Explorer", "Find", "Usages", "Review", "-", "Toggle sidebar", "Widen sidebar", "Narrow sidebar"],
+            view.Take(8).Select(v => v is MenuItem item ? item.Title : "-"));
     }
 
     [Fact]
