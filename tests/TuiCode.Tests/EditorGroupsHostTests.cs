@@ -100,7 +100,7 @@ public class EditorGroupsHostTests : StaticConfigurationTest
             () => groups.First.ActiveTab!.Content.StartsWith('X'));
 
         Assert.Same(groups.First, workbench.Editor.Group);
-        Assert.Equal("b.txt\n", groups.Second.ActiveTab!.Content);
+        Assert.Equal("b.txt\n", groups.Second.ActiveTab!.Content.ReplaceLineEndings("\n"));
         Assert.EndsWith("a.txt", workbench.StatusBar.Message);
     }
 

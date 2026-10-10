@@ -179,12 +179,12 @@ public sealed class EditorGroupsTests : IDisposable
         _groups.MoveActiveToOther();
 
         _groups.GutterVisible = false;
-        _groups.Relocate("/work/b.txt", "/work/renamed.txt");
+        _groups.Relocate(_fs.Path.GetFullPath("/work/b.txt"), _fs.Path.GetFullPath("/work/renamed.txt"));
 
         Assert.Equal(["a.txt", "renamed.txt"], _groups.Tabs.Select(t => t.File.Name).Order());
         Assert.All(_groups.Tabs, t => Assert.False(t.GutterVisible));
 
-        _groups.CloseUnder("/work/renamed.txt");
+        _groups.CloseUnder(_fs.Path.GetFullPath("/work/renamed.txt"));
 
         Assert.False(_groups.IsSplit);
         Assert.Equal(["a.txt"], Names(_groups.First));

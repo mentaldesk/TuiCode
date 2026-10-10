@@ -182,7 +182,7 @@ public class BlameHostTests : StaticConfigurationTest
         Assert.False(revert);
         Assert.False(revertAll);
         Assert.False(goToLine);
-        Assert.Equal(["Next change", "Previous change", "Scroll sideways", "Page sideways"], help!.Place!.Rows.Select(row => row.Description));
+        Assert.Equal(["Next change", "Previous change", "Scroll sideways", "Page sideways", "Move to other group"], help!.Place!.Rows.Select(row => row.Description));
         Assert.False(group.Tabs.Single().IsDirty);
         Assert.Equal((null, null), (diff.Source, diff.Review));
     }
