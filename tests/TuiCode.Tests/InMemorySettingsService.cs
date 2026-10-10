@@ -38,6 +38,8 @@ internal sealed class InMemorySettingsService : ISettingsService
     public IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; } =
         new Dictionary<string, LanguageServerSetting>(StringComparer.OrdinalIgnoreCase);
 
+    public bool SettingsFileInvalid { get; set; }
+
     public int SaveCount { get; private set; }
     public void Save() => SaveCount++;
 

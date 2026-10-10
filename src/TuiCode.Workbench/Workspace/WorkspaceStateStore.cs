@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace TuiCode.Workbench.Workspace;
 
@@ -16,15 +18,20 @@ public sealed class WorkspaceStateStore
 
     private readonly IFileSystem _fs;
     private readonly string _path;
+    private readonly ILogger _logger;
+    // Read and saved on every tab switch, so a failure that repeats is logged once until it stops.
+    private bool _readFailed;
+    private bool _writeFailed;
 
-    public WorkspaceStateStore(IFileSystem fs, string path)
+    public WorkspaceStateStore(IFileSystem fs, string path, ILogger? logger = null)
     {
         _fs = fs;
         _path = path;
+        _logger = logger ?? NullLogger.Instance;
     }
 
-    public static WorkspaceStateStore ForUser(IFileSystem fs) =>
-        new(fs, fs.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".tui", "TuiCode.workspaces.json"));
+    public static WorkspaceStateStore ForUser(IFileSystem fs, ILogger? logger = null) =>
+        new(fs, fs.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".tui", "TuiCode.workspaces.json"), logger);
 
     public WorkspaceState? Load(string folder)
     {
@@ -65,10 +72,12 @@ public sealed class WorkspaceStateStore
             var dir = _fs.Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(dir)) _fs.Directory.CreateDirectory(dir);
             _fs.File.WriteAllText(_path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            _writeFailed = false;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // Losing the session is better than crashing on every tab switch.
+            if (!_writeFailed) _logger.LogWarning(e, "Couldn't save the open files to {File}", _path);
+            _writeFailed = true;
         }
     }
 
@@ -77,10 +86,14 @@ public sealed class WorkspaceStateStore
         try
         {
             if (!_fs.File.Exists(_path)) return [];
-            return JsonNode.Parse(_fs.File.ReadAllText(_path)) is JsonArray arr ? arr.OfType<JsonObject>().ToList() : [];
+            var entries = JsonNode.Parse(_fs.File.ReadAllText(_path)) is JsonArray arr ? arr.OfType<JsonObject>().ToList() : [];
+            _readFailed = false;
+            return entries;
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
         {
+            if (!_readFailed) _logger.LogWarning(e, "Couldn't read the open files from {File}", _path);
+            _readFailed = true;
             return [];
         }
     }

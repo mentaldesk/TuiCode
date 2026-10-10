@@ -1,4 +1,5 @@
 using TuiCode.Syntax;
+using TuiCode.Workbench.Logging;
 using TuiCode.Workbench.Settings;
 
 namespace TuiCode.Tests;
@@ -64,6 +65,27 @@ public class UserGrammarTests
             p => Assert.StartsWith("plist: syntaxes/plist.tmLanguage isn't a JSON grammar", p),
             p => Assert.Equal("plist: no usable grammars", p),
             p => Assert.StartsWith("wrongtype: package.json couldn't be read", p));
+    }
+
+    [Fact]
+    public void Each_unusable_package_and_a_grammar_that_fails_to_load_logs_a_warning_naming_it()
+    {
+        _fs.AddDirectory($"{Root}/empty");
+        AddPackage("demo", Manifest("demo", "Demo", ".demo", "source.demo", "syntaxes/demo.json"));
+        _fs.AddFile($"{Root}/demo/syntaxes/demo.json", new MockFileData("{ not json"));
+        var syntax = new SyntaxHighlighter(GrammarBundle.Load(_fs, Root));
+        var logger = new ListLogger<SyntaxHighlighter>();
+
+        GrammarWarnings.Log(syntax, Root, logger);
+        syntax.CreateCache(syntax.LanguageForFile("a.demo"));
+        syntax.CreateCache(syntax.LanguageForFile("b.demo"));
+
+        Assert.Equal(
+            [
+                $"Skipped a grammar package in {Root}: empty: no package.json",
+                $"Couldn't load the Demo grammar from {_fs.Path.GetFullPath($"{Root}/demo/syntaxes/demo.json")}",
+            ],
+            logger.Entries.Select(e => e.Message));
     }
 
     [Fact]

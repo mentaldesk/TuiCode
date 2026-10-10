@@ -13,6 +13,7 @@ using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Icons;
 using TuiCode.Workbench.Languages;
+using TuiCode.Workbench.Logging;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
@@ -32,11 +33,12 @@ if (UsageCli.TryHandle(args, Console.Out, AppVersion.Current) is int usageExit)
 
 var services = new ServiceCollection();
 
-// No provider is registered yet — ILogger output is captured through the abstraction but not
-// surfaced anywhere. Deciding the sink (file / status bar / diagnostics view) is tracked in #92.
-services.AddLogging();
+IFileSystem files = new FileSystem();
+var log = LogFile.ForUser(files);
+services.AddLogging(logging => logging.AddProvider(log).SetMinimumLevel(LogLevel.Warning));
+services.AddSingleton(log);
 
-services.AddSingleton<IFileSystem>(_ => new FileSystem());
+services.AddSingleton(files);
 services.AddSingleton<ICommandService, CommandService>();
 services.AddSingleton<IKeybindingService, KeybindingService>();
 services.AddSingleton<IInputScopeStack, InputScopeStack>();
@@ -48,10 +50,12 @@ services.AddSingleton(sp =>
 {
     var fs = sp.GetRequiredService<IFileSystem>();
     var userGrammars = fs.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".tui", "grammars");
-    return new SyntaxHighlighter(GrammarBundle.Load(fs, userGrammars))
+    var syntax = new SyntaxHighlighter(GrammarBundle.Load(fs, userGrammars))
     {
         Associations = sp.GetRequiredService<ISettingsService>().GrammarAssociations,
     };
+    GrammarWarnings.Log(syntax, userGrammars, sp.GetRequiredService<ILogger<SyntaxHighlighter>>());
+    return syntax;
 });
 services.AddSingleton(sp => new FileIcons(() => TerminalFontDetection.Detect(
     sp.GetRequiredService<IEnvironment>(), sp.GetRequiredService<IFileSystem>()))
@@ -68,7 +72,7 @@ services.AddTransient<ReviewView>();
 services.AddTransient<SidebarPart>();
 services.AddTransient<EditorPart>();
 services.AddTransient<StatusBarPart>();
-services.AddSingleton(sp => WorkspaceStateStore.ForUser(sp.GetRequiredService<IFileSystem>()));
+services.AddSingleton(sp => WorkspaceStateStore.ForUser(sp.GetRequiredService<IFileSystem>(), sp.GetRequiredService<ILogger<WorkspaceStateStore>>()));
 services.AddTransient<Workbench>();
 // Driver override (--driver <name> / TUICODE_DRIVER) lets us A/B the TG driver on Windows,
 // where the auto-selected `ansi` driver mis-decodes kitty key events (issue #82). Resolved
@@ -88,7 +92,8 @@ services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
     git: sp.GetRequiredService<IGitCli>(),
     gitHub: sp.GetRequiredService<IGitHubCli>(),
     fileSystem: sp.GetRequiredService<IFileSystem>(),
-    languageServers: new ProcessLauncher()));
+    languageServers: new ProcessLauncher(),
+    log: log));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();
@@ -121,6 +126,13 @@ if (startup.Error is { } startupError)
 if (startup.Declined)
     return 0;
 
+log.Start();
+var crashLogger = provider.GetRequiredService<ILogger<App>>();
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    if (e.ExceptionObject is Exception exception) crashLogger.LogCritical(exception, "TuiCode crashed");
+};
+
 // Load persisted settings before resolving App — App's construction triggers
 // Application.Init() which reads ThemeManager.Theme for the first paint.
 provider.GetRequiredService<ISettingsService>().Load();
@@ -141,5 +153,4 @@ if (args.Contains("--smoke"))
     app.Host.App.Iteration += QuitOnFirstIteration;
 }
 
-app.Run();
-return 0;
+return Crash.Report(app.Run, app.Dispose, crashLogger, Console.Error, log.DisplayPath);
