@@ -137,7 +137,7 @@ public class LanguageServersSettingsHostTests : StaticConfigurationTest
         var commands = new CommandService();
         var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             _settings, driverName: DriverRegistry.Names.ANSI, languageServers: _server);
-        HostSteps.PinScreenSize(host, 100, 30);
+        HostSteps.PinScreenSize(host, 80, 25);
         return host;
     }
 }
