@@ -27,7 +27,7 @@ public class LanguageServersSettingsHostTests : StaticConfigurationTest
     public async Task Choosing_gopls_for_Go_saves_it_and_starts_it_for_the_open_Go_file()
     {
         using var workbench = BuildWorkbench();
-        var host = BuildHost(workbench);
+        using var host = BuildHost(workbench);
         var dialogTitle = "";
         var status = "";
         var row = "";
@@ -60,7 +60,7 @@ public class LanguageServersSettingsHostTests : StaticConfigurationTest
     {
         _settings.LanguageServers = new Dictionary<string, LanguageServerSetting> { ["csharp"] = LanguageServerSetting.None };
         using var workbench = BuildWorkbench();
-        var host = BuildHost(workbench);
+        using var host = BuildHost(workbench);
         var afterEsc = "";
         var afterDelete = "";
 
