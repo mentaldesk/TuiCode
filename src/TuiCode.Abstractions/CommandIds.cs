@@ -186,6 +186,9 @@ public static class CommandIds
     public const string GrammarPickerConfirm = "grammarPicker.action.confirm";
     public const string GrammarPickerCancel = "grammarPicker.action.cancel";
 
+    public const string LanguageServerSave = "languageServer.action.save";
+    public const string LanguageServerCancel = "languageServer.action.cancel";
+
     public static string FocusEditorByIndex(int oneBasedIndex) =>
         $"workbench.action.focusEditor{oneBasedIndex}";
 }

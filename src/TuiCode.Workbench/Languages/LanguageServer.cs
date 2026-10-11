@@ -2,12 +2,15 @@ using System.Text.Json.Nodes;
 
 namespace TuiCode.Workbench.Languages;
 
-/// <summary>A language server TuiCode knows how to run, keyed by the grammar's language id.</summary>
-public sealed record LanguageServerSpec(string LanguageId, string Name, string Command, IReadOnlyList<string> Arguments, string Install)
+/// <summary>The server a language runs, keyed by the grammar's language id. <see cref="Install"/> is null for a custom command.</summary>
+public sealed record LanguageServerSpec(string LanguageId, string Name, string Command, IReadOnlyList<string> Arguments, string? Install)
 {
-    public static readonly LanguageServerSpec CSharp = new("csharp", "C#", "csharp-ls", [], "dotnet tool install -g csharp-ls");
+    public static readonly LanguageServerSpec CSharp = new(
+        "csharp", "C#", KnownLanguageServers.CSharpLs.Command, KnownLanguageServers.CSharpLs.Arguments, KnownLanguageServers.CSharpLs.Install);
 
-    public string NotInstalled => $"No {Name} language server. Install: {Install}";
+    public string NotInstalled => Install is null
+        ? $"No {Name} language server: {Command} isn't on PATH"
+        : $"No {Name} language server. Install: {Install}";
 }
 
 public enum LanguageServerState

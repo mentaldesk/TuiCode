@@ -357,6 +357,51 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void Language_servers_round_trip_through_the_settings_file()
+    {
+        var fs = new MockFileSystem();
+        var chosen = new Dictionary<string, LanguageServerSetting>
+        {
+            ["go"] = new("gopls", []),
+            ["python"] = new("pyright-langserver", ["--stdio"]),
+            ["csharp"] = LanguageServerSetting.None,
+        };
+        new DefaultSettingsService(fs) { LanguageServers = chosen }.Save();
+
+        var loaded = new DefaultSettingsService(fs).LanguageServers;
+
+        Assert.Equal(chosen.OrderBy(c => c.Key), loaded.OrderBy(c => c.Key));
+    }
+
+    [Fact]
+    public void No_language_servers_file_means_every_language_has_its_default()
+    {
+        Assert.Empty(new DefaultSettingsService(new MockFileSystem()).LanguageServers);
+    }
+
+    [Fact]
+    public void A_bad_language_server_entry_is_skipped_and_the_rest_load()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("""
+            { "LanguageServers": {
+                "go": { "Command": "gopls" },
+                "rust": { "Command": 7 },
+                "python": { "Command": "pylsp", "Arguments": ["-v", 3] },
+                "ruby": "solargraph",
+                "lua": { "Command": "lua-language-server", "Arguments": ["--stdio"] } },
+              "IndentSize": 2 }
+            """));
+
+        var svc = new DefaultSettingsService(fs);
+
+        Assert.Equal(new LanguageServerSetting("gopls", []), svc.LanguageServers["go"]);
+        Assert.Equal(new LanguageServerSetting("lua-language-server", ["--stdio"]), svc.LanguageServers["lua"]);
+        Assert.Equal(2, svc.LanguageServers.Count);
+        Assert.Equal(2, svc.Editor.IndentSize);
+    }
+
+    [Fact]
     public void A_settings_file_that_does_not_parse_logs_where_and_says_defaults_are_in_use()
     {
         var fs = new MockFileSystem();
