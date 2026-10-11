@@ -291,9 +291,11 @@ public sealed class LanguageServer : IDisposable
             Failure = reason;
             process = _process;
             _connection = null;
+            // Stopped before the kill, whose exit calls back in here, so that call can't replace the reason.
+            State = LanguageServerState.Stopped;
         }
         process?.Kill();
-        SetState(LanguageServerState.Stopped);
+        _post(() => StateChanged?.Invoke(this, EventArgs.Empty));
     }
 
     private void SetState(LanguageServerState state)
