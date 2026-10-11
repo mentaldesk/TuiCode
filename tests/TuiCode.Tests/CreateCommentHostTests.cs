@@ -66,7 +66,7 @@ public class CreateCommentHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Dialog(workbench) is null);
 
-        Assert.Equal([new DraftComment("src/a.txt", 1, "Rename\nthis?")], workbench.Editor.Group.ActiveDiffTab!.Drafts);
+        Assert.Equal([new DraftComment("src/a.txt", 1, $"Rename{Environment.NewLine}this?")], workbench.Editor.Group.ActiveDiffTab!.Drafts);
     }
 
     [Fact]
