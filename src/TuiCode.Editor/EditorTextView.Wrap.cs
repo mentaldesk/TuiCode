@@ -55,7 +55,8 @@ internal sealed partial class EditorTextView
         {
             if (!SoftWrap)
             {
-                base.Viewport = value;
+                // TG scrolls a view with no width yet sideways to "show" the caret, and nothing scrolls it back (#513).
+                base.Viewport = base.Viewport.Width == 0 ? value with { X = base.Viewport.X } : value;
                 return;
             }
             base.Viewport = _barScrolling ? value with { X = 0 } : value with { X = 0, Y = base.Viewport.Y };
