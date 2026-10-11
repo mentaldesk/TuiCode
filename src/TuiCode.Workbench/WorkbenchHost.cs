@@ -236,6 +236,7 @@ public sealed class WorkbenchHost : IDisposable
         // file switches (manual tab cycling, opening a file) from ActiveTabChanged. The
         // history's own heuristic decides which of these count as navigable jumps.
         _workbench.Editor.Group.CursorMoved += OnEditorCursorMoved;
+        _workbench.Editor.Group.PinnedLineClicked += (_, pinned) => JumpToLine(pinned.Tab, pinned.Line);
         _workbench.Editor.Group.ActiveTabChanged += OnActiveTabChanged;
         _workbench.StatusBar.WarningsClicked += (_, _) => ShowLog();
         _workbench.Sidebar.Review.FileActivated += (_, e) => OpenReviewDiff(e.Review, e.Change);
@@ -1277,21 +1278,26 @@ public sealed class WorkbenchHost : IDisposable
         view.Submitted += (_, symbol) =>
         {
             CloseSymbolPicker(view);
-            // As in Go to line: drive the move ourselves so even a short hop records as a deliberate jump.
-            _suppressHistory = true;
-            try
-            {
-                tab.MoveCursor(symbol.Line, 0);
-                tab.RevealLines(symbol.Line, symbol.Line);
-            }
-            finally { _suppressHistory = false; }
-            _history.Visit(new CursorLocation(tab.File.FullName, symbol.Line, 0), explicitJump: true);
+            JumpToLine(tab, symbol.Line);
         };
 
         _activeSymbolPicker = view;
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusFilter();
+    }
+
+    // As in Go to line: drive the move ourselves so even a short hop records as a deliberate jump.
+    private void JumpToLine(EditorTab tab, int line)
+    {
+        _suppressHistory = true;
+        try
+        {
+            tab.MoveCursor(line, 0);
+            tab.RevealLines(line, line);
+        }
+        finally { _suppressHistory = false; }
+        _history.Visit(new CursorLocation(tab.File.FullName, line, 0), explicitJump: true);
     }
 
     private void CloseSymbolPicker(SymbolPickerView view)

@@ -106,6 +106,9 @@ public sealed class SymbolScan
     /// <summary>The definitions found so far, in file order.</summary>
     public IReadOnlyList<FileSymbol> Symbols => _symbols;
 
+    /// <summary>The buffer being scanned, as it was when the scan began.</summary>
+    public IReadOnlyList<string> Lines => _lines;
+
     /// <summary>Whether the whole buffer has been scanned.</summary>
     public bool Done => _failed || _next >= _lines.Count;
 

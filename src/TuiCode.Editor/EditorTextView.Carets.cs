@@ -419,6 +419,7 @@ internal sealed partial class EditorTextView
 
     protected override bool OnMouseEvent(Mouse mouse)
     {
+        if (OnPinnedMouse(mouse)) return true;
         if (SoftWrap) return OnWrappedMouse(mouse) || base.OnMouseEvent(mouse);
         const MouseFlags leftButton = MouseFlags.LeftButtonPressed | MouseFlags.LeftButtonReleased | MouseFlags.LeftButtonClicked
                                       | MouseFlags.LeftButtonDoubleClicked | MouseFlags.LeftButtonTripleClicked;
@@ -487,10 +488,10 @@ internal sealed partial class EditorTextView
         {
             var (screenRow, column) = Locate(caret.Position);
             var y = screenRow - Viewport.Y;
-            return y < 0 || y >= Viewport.Height || column >= Viewport.Width ? null : new Point(column, y);
+            return y < _pinned.Count || y >= Viewport.Height || column >= Viewport.Width ? null : new Point(column, y);
         }
         var row = caret.Position.Y - Viewport.Y;
-        if (row < 0 || row >= Viewport.Height || caret.Position.Y >= Lines) return null;
+        if (row < _pinned.Count || row >= Viewport.Height || caret.Position.Y >= Lines) return null;
         var line = GetLine(caret.Position.Y);
         var x = ColumnsBefore(line, Math.Min(caret.Position.X, line.Count)) - Viewport.X;
         return x < 0 || x >= Viewport.Width ? null : new Point(x, row);

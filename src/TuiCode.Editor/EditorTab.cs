@@ -24,6 +24,8 @@ public sealed class EditorTab : FrameView
     private (int Edits, (System.Drawing.Point Start, System.Drawing.Point End)[] Ranges, DocumentStats Stats)? _selectionStats;
     private (int Edits, SyntaxLanguage? Grammar, SymbolScan? Scan)? _symbols;
     private (bool Vertical, bool Horizontal) _barsLaidOut;
+    private (int Edits, SyntaxLanguage? Grammar, SymbolScan? Scan)? _stickyScan;
+    private SymbolScan? _stickyFrom;
 
     public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
@@ -88,6 +90,9 @@ public sealed class EditorTab : FrameView
 
     public event EventHandler? GrammarChanged;
 
+    /// <summary>Raised with the line of a pinned definition the user clicked (#474).</summary>
+    public event EventHandler<int>? PinnedLineClicked;
+
     public EditorTab(IFileInfo file, SyntaxHighlighter? syntax = null)
         : this(file, syntax, null)
     {
@@ -130,6 +135,8 @@ public sealed class EditorTab : FrameView
         _textView.ContentsChanged += (_, _) => OnEdited();
         // Point is (X=column, Y=row). Re-expose in (row, column) order to match the rest of the editor API.
         _textView.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
+        _textView.RefreshingSticky = RefreshSticky;
+        _textView.PinnedLineClicked += (_, line) => PinnedLineClicked?.Invoke(this, line);
         _textView.UnwrappedCursorPositionChanged += (_, point) =>
         {
             if (!_textView.IsVisitingCarets) CursorMoved?.Invoke(this, (point.Y, point.X));
@@ -159,7 +166,52 @@ public sealed class EditorTab : FrameView
             field = value;
             _textView.TabWidth = value.IndentSize;
             _textView.InsertSpaces = value.InsertSpaces;
+            _textView.SetNeedsDraw();
         }
+    }
+
+    /// <summary>Time per frame for the scan that finds what to pin, on top of syntax colouring's.</summary>
+    internal TimeSpan StickyBudget { get; set; } = TimeSpan.FromMilliseconds(10);
+
+    internal SymbolScan? StickyScan => _stickyScan?.Scan;
+
+    /// <summary>The lines pinned over the top of the text at its last draw.</summary>
+    public IReadOnlyList<int> PinnedLines => _textView.Pinned;
+
+    // Invoke would run inline, inside this draw, which clears the request.
+    private void DrawAgainSoon() => _textView.App?.AddTimeout(TimeSpan.Zero, () =>
+    {
+        _textView.SetNeedsDraw();
+        return false;
+    });
+
+    // Not ScanSymbols(): the gs picker draws from that scan as it fills (see "Sticky lines" in AGENTS.md).
+    private void RefreshSticky()
+    {
+        if (!Settings.StickyLines || Grammar is null || _textView.Viewport.Height < StickyLines.MinHeight)
+        {
+            _textView.Sticky = StickyLines.None;
+            _stickyScan = null;
+            _stickyFrom = null;
+            return;
+        }
+        var stale = _stickyScan is not var (edits, grammar, _) || edits != _edits || !Equals(grammar, Grammar);
+        if (stale && _stickyScan?.Scan is not { Done: false })
+            _stickyScan = (_edits, Grammar, _syntax?.CreateSymbolScan(Grammar, Lines));
+        if (_stickyScan?.Scan is not { } scan)
+        {
+            _textView.Sticky = StickyLines.None;
+            return;
+        }
+        if (!scan.Advance(StickyBudget))
+        {
+            DrawAgainSoon();
+            return;
+        }
+        if (ReferenceEquals(scan, _stickyFrom)) return;
+        _stickyFrom = scan;
+        _textView.Sticky = StickyLines.From(scan.Symbols, scan.Lines);
+        if (stale) DrawAgainSoon();
     }
 
     public bool GutterVisible
@@ -309,7 +361,7 @@ public sealed class EditorTab : FrameView
             return;
         }
         var viewport = _textView.Viewport;
-        if (Reveal.TopRow(viewport.Y, viewport.Height, _textView.Lines, first, last) is not { } top) return;
+        if (Reveal.TopRow(viewport.Y, viewport.Height, _textView.Lines, first, last, _textView.PinnedCountAt) is not { } top) return;
         _textView.ScrollTo(new System.Drawing.Point(viewport.X, top));
     }
 
@@ -719,7 +771,9 @@ internal sealed partial class EditorTextView : TextView
     // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
     protected override bool OnDrawingContent(DrawContext? context)
     {
+        RefreshingSticky?.Invoke();
         if (SoftWrap) FollowCaret();
+        PinForCaret();
         _editable = GetAttributeForRole(VisualRole.Editable);
         _highlight = GetAttributeForRole(VisualRole.Highlight);
         (_selectionStart, _selectionEnd) = SelectionBounds();
@@ -742,8 +796,10 @@ internal sealed partial class EditorTextView : TextView
                 DrawRow(line, idxRow, row, right, FirstVisibleGlyph(line), line.Count);
             }
         }
+        DrawPinned(right);
         DrawCarets();
         if (SoftWrap) PlaceWrappedCursor();
+        HideCursorUnderPinned();
 
         if (row < bottom)
         {
@@ -766,7 +822,7 @@ internal sealed partial class EditorTextView : TextView
     }
 
     // Tab stops count from first.ColWidths.
-    private void DrawRow(List<Cell> line, int idxRow, int row, int right, (int ColWidths, int Col, int Index) first, int end)
+    private int DrawRow(List<Cell> line, int idxRow, int row, int right, (int ColWidths, int Col, int Index) first, int end)
     {
         var (colWidths, col, idxCol) = first;
         var wasPreviousWideGlyphNegativeCol = false;
@@ -795,7 +851,9 @@ internal sealed partial class EditorTextView : TextView
                 chars += text.Length;
             }
 
-            if (InSelection(idxCol, idxRow))
+            if (_drawingPinned)
+                SetAttribute(_cellAttribute);
+            else if (InSelection(idxCol, idxRow))
                 OnDrawSelectionColor(line, idxCol, idxRow);
             else if (idxCol == CurrentColumn && idxRow == CurrentRow && !IsSelecting && !Used && HasFocus)
                 OnDrawUsedColor(line, idxCol, idxRow);
@@ -831,9 +889,11 @@ internal sealed partial class EditorTextView : TextView
 
         if (col < right)
         {
-            SetAttributeForRole(ReadOnly ? VisualRole.ReadOnly : VisualRole.Editable);
+            if (_drawingPinned) SetAttribute(_editable);
+            else SetAttributeForRole(ReadOnly ? VisualRole.ReadOnly : VisualRole.Editable);
             ClearRegion(col, row, right, row + 1);
         }
+        return col;
     }
 
     // Col is where that glyph starts relative to the viewport, so <= 0 when it straddles the left edge.
