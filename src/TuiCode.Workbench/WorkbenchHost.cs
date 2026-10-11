@@ -209,7 +209,11 @@ public sealed class WorkbenchHost : IDisposable
             _workbench.Editor.Groups, _git, action => _app.Invoke(action), new HeadWatcher(fileSystem, ScheduleFlush, _logger));
 
         if (languageServers is not null)
+        {
             _workbench.Languages = new LanguageServers(_workbench.Editor.Groups, languageServers, action => _app.Invoke(action), ScheduleFlush);
+            _workbench.Languages.Configure(_settings.LanguageServers);
+        }
+        CommandInstalled = command => CommandPath.Exists(command, fileSystem, _environment);
 
         _workbench.Sidebar.Usages.UsageActivated += (_, location) =>
         {
@@ -1110,13 +1114,16 @@ public sealed class WorkbenchHost : IDisposable
         FocusEditorBody();
     }
 
+    /// <summary>Whether a language server's command is on <c>PATH</c>, for Settings › Language Servers.</summary>
+    internal Func<string, bool> CommandInstalled { get; set; }
+
     private void OpenSettings()
     {
         if (_activeSettings is not null) return;
 
         var view = new SettingsView(
             _settings, _keybindings, _commands, _scopes, ApplyEditedBindings,
-            _terminalIntegrations, _environment, _workbench.Editor.Group.Syntax, ApplyGrammarAssociations, _icons);
+            _terminalIntegrations, _environment, _workbench.Editor.Group.Syntax, ApplyGrammarAssociations, _icons, CommandInstalled);
         view.Closed += (_, _) => CloseSettings(view);
         _activeSettings = view;
         _workbench.Add(view);
@@ -1135,6 +1142,7 @@ public sealed class WorkbenchHost : IDisposable
         _activeSettings = null;
         _workbench.Editor.Groups.Settings = _settings.Editor;
         _workbench.SetSidebarWidth(_settings.SidebarWidth);
+        _workbench.Languages?.Configure(_settings.LanguageServers);
         FocusCallingRegion();
     }
 
@@ -1383,7 +1391,7 @@ public sealed class WorkbenchHost : IDisposable
         var status = _workbench.StatusBar;
         if (ActiveLanguageServer() is not { } server)
         {
-            status.SetMessage(LanguageServers.SpecFor(tab) is { } spec
+            status.SetMessage(_workbench.Languages?.SpecFor(tab) is { } spec
                 ? spec.NotInstalled
                 : $"No language server for {(tab.HasSyntax ? tab.Grammar?.Name : null) ?? Workbench.PlainTextName}");
             return null;

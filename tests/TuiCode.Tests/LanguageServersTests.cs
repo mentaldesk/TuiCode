@@ -1,3 +1,4 @@
+using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Syntax;
 using TuiCode.Workbench.Languages;
@@ -19,7 +20,87 @@ public class LanguageServersTests
         _fs.AddFile("/work/Gadget.cs", new MockFileData("class Gadget { }"));
         _fs.AddFile("/work/README.md", new MockFileData("# Widgets"));
         _fs.AddFile("/other/Thing.cs", new MockFileData("class Thing { }"));
+        _fs.AddFile("/work/main.go", new MockFileData("package main"));
+        _fs.AddFile("/work/notes.txt", new MockFileData("package notes"));
     }
+
+    [Fact]
+    public async Task A_language_with_a_chosen_server_starts_it_and_a_language_without_one_starts_none()
+    {
+        using var group = new EditorGroup(Syntax);
+        using var languages = Languages(group);
+        languages.Configure(Chosen(("go", new LanguageServerSetting("gopls", ["serve"]))));
+
+        var go = Open(group, "/work/main.go");
+        await Until(() => _fake.Documents.ContainsKey(Full("/work/main.go")));
+
+        Assert.Equal("gopls", _fake.Launches.Single().Command);
+        Assert.Equal("Go", languages.ServerFor(go)!.Spec.Name);
+        Assert.Null(languages.ServerFor(Open(group, "/work/README.md")));
+    }
+
+    [Fact]
+    public void Choosing_no_server_for_CSharp_starts_none()
+    {
+        using var group = new EditorGroup(Syntax);
+        using var languages = Languages(group);
+        languages.Configure(Chosen(("csharp", LanguageServerSetting.None)));
+
+        var widget = Open(group, "/work/Widget.cs");
+
+        Assert.Empty(_fake.Launches);
+        Assert.Null(languages.SpecFor(widget));
+    }
+
+    [Fact]
+    public async Task Changing_a_languages_server_restarts_only_that_one_with_its_open_files()
+    {
+        using var group = new EditorGroup(Syntax);
+        using var languages = Languages(group);
+        languages.Configure(Chosen(("go", new LanguageServerSetting("gopls", []))));
+        Open(group, "/work/Widget.cs");
+        Open(group, "/work/main.go");
+        await Until(() => _fake.Documents.Count == 2);
+        var csharp = _fake.Servers[0];
+        var gopls = _fake.Servers[1];
+
+        languages.Configure(Chosen(("go", new LanguageServerSetting("/opt/gopls", ["-remote=auto"]))));
+
+        await gopls.Exited.WaitAsync(Timeout);
+        Assert.False(csharp.Exited.IsCompleted);
+        Assert.Equal(["csharp-ls", "gopls", "/opt/gopls"], _fake.Launches.Select(l => l.Command));
+        await Until(() => _fake.Received("textDocument/didOpen").Count() == 3);
+    }
+
+    [Fact]
+    public void Saving_the_same_servers_again_restarts_nothing()
+    {
+        using var group = new EditorGroup(Syntax);
+        using var languages = Languages(group);
+        Open(group, "/work/Widget.cs");
+
+        languages.Configure(Chosen(("csharp", new LanguageServerSetting("csharp-ls", []))));
+
+        Assert.Single(_fake.Launches);
+    }
+
+    [Fact]
+    public async Task A_file_whose_grammar_was_changed_uses_that_languages_server()
+    {
+        using var group = new EditorGroup(Syntax);
+        using var languages = Languages(group);
+        languages.Configure(Chosen(("go", new LanguageServerSetting("gopls", []))));
+        var notes = Open(group, "/work/notes.txt");
+        Assert.Empty(_fake.Launches);
+
+        notes.SetGrammar(Syntax.LanguageById("go"));
+
+        await Until(() => _fake.Documents.ContainsKey(Full("/work/notes.txt")));
+        Assert.Equal("gopls", _fake.Launches.Single().Command);
+    }
+
+    private static Dictionary<string, LanguageServerSetting> Chosen(params (string Id, LanguageServerSetting Setting)[] chosen) =>
+        chosen.ToDictionary(c => c.Id, c => c.Setting, StringComparer.OrdinalIgnoreCase);
 
     [Fact]
     public async Task The_first_CSharp_file_starts_one_server_in_the_folder_for_every_CSharp_file()

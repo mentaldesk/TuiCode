@@ -28,6 +28,7 @@ public sealed class SettingsView : Window
     private readonly EditorSettingsView _editorSettings;
     private readonly KeybindingsPickerView _keybindingsPicker;
     private readonly GrammarAssociationsView _grammarAssociations;
+    private readonly LanguageServersView _languageServers;
     private readonly TerminalIntegrationPickerView _terminalIntegrationPicker;
     private readonly InterfaceSettingsView _interfaceSettings;
     private readonly List<(string Name, View Panel, Func<bool> Focus)> _panels;
@@ -50,7 +51,8 @@ public sealed class SettingsView : Window
         IEnvironment environment,
         SyntaxHighlighter? syntax = null,
         Action? applyGrammarAssociations = null,
-        FileIcons? icons = null)
+        FileIcons? icons = null,
+        Func<string, bool>? commandInstalled = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(workbenchKeybindings);
@@ -134,6 +136,15 @@ public sealed class SettingsView : Window
             Visible = false
         };
 
+        _languageServers = new LanguageServersView(syntax, settings.LanguageServers, commandInstalled ?? (_ => false), scopes)
+        {
+            X = Pos.Right(_separator) + 1,
+            Y = 1,
+            Width = Dim.Fill(2),
+            Height = Dim.Fill(2),
+            Visible = false
+        };
+
         _terminalIntegrationPicker = new TerminalIntegrationPickerView(terminalIntegrations, environment)
         {
             X = Pos.Right(_separator) + 1,
@@ -158,6 +169,7 @@ public sealed class SettingsView : Window
             ("Editor", _editorSettings, _editorSettings.FocusContent),
             ("Keyboard Shortcuts", _keybindingsPicker, _keybindingsPicker.FocusContent),
             ("Grammars", _grammarAssociations, _grammarAssociations.FocusContent),
+            ("Language Servers", _languageServers, _languageServers.FocusContent),
             ("Terminal Integration", _terminalIntegrationPicker, _terminalIntegrationPicker.FocusContent),
             ("Interface", _interfaceSettings, _interfaceSettings.FocusContent),
         ];
@@ -250,6 +262,7 @@ public sealed class SettingsView : Window
             _settings.FileIcons = _icons.Setting;
         _settings.Editor = _editorSettings.Current;
         _settings.SidebarWidth = _interfaceSettings.Current;
+        _settings.LanguageServers = new Dictionary<string, LanguageServerSetting>(_languageServers.Current, StringComparer.OrdinalIgnoreCase);
         _settings.Save();
         _applyGrammarAssociations?.Invoke();
         Closed?.Invoke(this, EventArgs.Empty);
