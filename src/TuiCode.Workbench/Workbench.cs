@@ -207,7 +207,7 @@ public sealed class Workbench : Window
     public void OpenStartupTarget(StartupTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
-        if (target.Workspace is { } workspace) OpenFolder(workspace);
+        if (target.Workspace is { } workspace) OpenFolder(workspace, target.RememberTabs);
         else if (target.Files.Count == 0) throw new ArgumentException("Nothing to open.", nameof(target));
         else Sidebar.ShowNoFolder(true);
         foreach (var startup in target.Files)
@@ -231,7 +231,7 @@ public sealed class Workbench : Window
     /// Switch the workspace to <paramref name="directory"/>: close every open editor, re-root the
     /// explorer and reopen the files that were open when this folder was last used (#13).
     /// </summary>
-    public void OpenFolder(IDirectoryInfo directory)
+    public void OpenFolder(IDirectoryInfo directory, bool rememberTabs = true)
     {
         _workspaceFolder = null;
         Languages?.OpenFolder(directory.FullName);
@@ -242,6 +242,7 @@ public sealed class Workbench : Window
         RefreshReviewIfShowing();
         StatusBar.SetMessage($"Opened folder: {directory.FullName}");
 
+        if (!rememberTabs) return;
         RestoreOpenFiles(directory);
         _workspaceFolder = directory.FullName;
         SaveWorkspaceState();
