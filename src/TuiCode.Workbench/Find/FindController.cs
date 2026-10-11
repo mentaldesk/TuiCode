@@ -15,7 +15,7 @@ namespace TuiCode.Workbench.Find;
 /// </summary>
 internal sealed class FindController : IDisposable
 {
-    private readonly EditorGroup _group;
+    private readonly EditorGroups _group;
     private readonly IInputScopeStack _scopes;
     private readonly FindBarView _bar = new();
     private readonly LayeredScope _scope;
@@ -30,7 +30,7 @@ internal sealed class FindController : IDisposable
     /// <summary>Raised after the bar closes, so the host can hand focus back to the editor.</summary>
     public event EventHandler? Closed;
 
-    public FindController(EditorGroup group, IInputScopeStack scopes, IKeybindingService below)
+    public FindController(EditorGroups group, IInputScopeStack scopes, IKeybindingService below)
     {
         _group = group;
         _scopes = scopes;
@@ -65,7 +65,7 @@ internal sealed class FindController : IDisposable
     /// <summary>Show the bar on the active tab, with the replace row if asked and it isn't a diff; the host then focuses it (#229).</summary>
     public void Open(bool replace)
     {
-        if (FindTarget.For(_group.Value) is not { } tab) return;
+        if (FindTarget.For(_group.Focused.Value) is not { } tab) return;
 
         if (_tab is null)
             _scopes.Push(_scope);
@@ -114,8 +114,8 @@ internal sealed class FindController : IDisposable
     /// <summary>Follow the active tab: the bar moves to the newly active file or diff, or closes when there's none.</summary>
     public void OnActiveTabChanged()
     {
-        if (_tab is null || ReferenceEquals(_tab.View, _group.Value)) return;
-        if (FindTarget.For(_group.Value) is not { } tab)
+        if (_tab is null || ReferenceEquals(_tab.View, _group.Focused.Value)) return;
+        if (FindTarget.For(_group.Focused.Value) is not { } tab)
         {
             Close();
             return;

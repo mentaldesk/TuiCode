@@ -990,6 +990,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             new("Enter", "Go to this line"),
             new("← →", "Scroll sideways"),
             new("Shift+← →", "Page sideways"),
+            new("Ctrl+\\", "Move to other group"),
         ], help.Place.Rows);
     }
 
@@ -1042,7 +1043,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal(new HelpRow(expected, "Page sideways"), help!.Place!.Rows[^1]);
+        Assert.Equal(expected, help!.Place!.Rows.Single(row => row.Description == "Page sideways").Key);
     }
 
     [Fact]

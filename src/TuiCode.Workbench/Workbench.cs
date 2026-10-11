@@ -64,7 +64,7 @@ public sealed class Workbench : Window
         sidebar.Explorer.FileActivated += (_, file) => OpenFile(file);
 
         sidebar.Search.RootProvider = () => sidebar.Explorer.Root;
-        sidebar.Search.OpenBuffers = new EditorBuffers(editor.Group);
+        sidebar.Search.OpenBuffers = new EditorBuffers(editor.Groups);
         sidebar.Search.MatchActivated += (_, hit) => OpenMatch(hit.File, hit.Match);
         sidebar.Search.Message += (_, message) => statusBar.SetMessage(message);
 
@@ -76,14 +76,14 @@ public sealed class Workbench : Window
             RefreshReviewIfShowing();
         };
 
-        editor.Group.Copied += (_, outcome) => ShowCopy(outcome);
+        editor.Groups.Copied += (_, outcome) => ShowCopy(outcome);
 
-        editor.Group.ActiveTabChanged += (_, tab) =>
+        editor.Groups.ActiveTabChanged += (_, tab) =>
         {
             ShowActiveFile(tab);
             SaveWorkspaceState();
         };
-        editor.Group.GrammarChanged += (_, tab) =>
+        editor.Groups.GrammarChanged += (_, tab) =>
         {
             if (ReferenceEquals(tab, editor.Group.ActiveTab)) ShowActiveFile(tab);
         };
@@ -235,7 +235,7 @@ public sealed class Workbench : Window
     {
         _workspaceFolder = null;
         Languages?.OpenFolder(directory.FullName);
-        Editor.Group.CloseAll();
+        Editor.Groups.CloseAll();
         Sidebar.ShowNoFolder(false);
         Sidebar.Explorer.Open(directory);
         Sidebar.Search.RunSearch();
@@ -251,7 +251,7 @@ public sealed class Workbench : Window
     public void Delete(IFileSystemInfo item)
     {
         Sidebar.Explorer.Delete(item);
-        Editor.Group.CloseUnder(item.FullName);
+        Editor.Groups.CloseUnder(item.FullName);
         Sidebar.Search.RunSearch();
         StatusBar.SetMessage($"Deleted: {item.FullName}");
         SaveWorkspaceState();
@@ -263,7 +263,7 @@ public sealed class Workbench : Window
         var moved = Sidebar.Explorer.Move(item, relativePath);
         if (ReferenceEquals(moved, item)) return item;
 
-        Editor.Group.Relocate(item.FullName, moved.FullName);
+        Editor.Groups.Relocate(item.FullName, moved.FullName);
         ShowActiveFile(Editor.Group.ActiveTab);
         Sidebar.Search.RunSearch();
         StatusBar.SetMessage($"Renamed: {moved.FullName}");
@@ -275,30 +275,45 @@ public sealed class Workbench : Window
     {
         if (_workspaceState?.Load(directory.FullName) is not { } state) return;
 
-        EditorTab? active = null;
-        foreach (var path in state.Files)
+        var groups = Editor.Groups;
+        var first = Restore(groups.First, state.Files, state.ActiveFile);
+        var second = state.Second is { } split ? Restore(groups.Second, split.Files, split.ActiveFile) : null;
+        if (first is not null) groups.Holding(first)?.Focus(first.File.FullName);
+        if (second is not null) groups.Holding(second)?.Focus(second.File.FullName);
+        groups.Focused = state.SecondFocused && groups.IsSplit ? groups.Second : groups.First;
+
+        EditorTab? Restore(EditorGroup group, IReadOnlyList<string> files, string? activeFile)
         {
-            var file = directory.FileSystem.FileInfo.New(path);
-            if (!file.Exists) continue;
-            try
+            EditorTab? active = null;
+            foreach (var path in files)
             {
-                var tab = Editor.Open(file);
-                if (path == state.ActiveFile) active = tab;
+                var file = directory.FileSystem.FileInfo.New(path);
+                if (!file.Exists || groups.Holding(path) is not null) continue;
+                try
+                {
+                    var tab = group.OpenOrFocus(file);
+                    if (path == activeFile) active = tab;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                }
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-            }
+            return active;
         }
-        if (active is not null) Editor.Open(active.File);
     }
 
     private void SaveWorkspaceState()
     {
         if (_workspaceState is null || _workspaceFolder is null) return;
-        var group = Editor.Group;
-        _workspaceState.Save(_workspaceFolder, new WorkspaceState(
-            group.Tabs.Select(t => t.File.FullName).ToList(),
-            (group.ActiveTab ?? group.ActiveDiffTab?.Source)?.File.FullName));
+        var groups = Editor.Groups;
+        _workspaceState.Save(_workspaceFolder, new WorkspaceState(Files(groups.First), ActiveFile(groups.First))
+        {
+            Second = groups.IsSplit ? new WorkspaceGroup(Files(groups.Second), ActiveFile(groups.Second)) : null,
+            SecondFocused = groups.IsSplit && ReferenceEquals(groups.Focused, groups.Second),
+        });
+
+        static List<string> Files(EditorGroup group) => [.. group.Tabs.Select(t => t.File.FullName)];
+        static string? ActiveFile(EditorGroup group) => (group.ActiveTab ?? group.ActiveDiffTab?.Source)?.File.FullName;
     }
 
     protected override void Dispose(bool disposing)

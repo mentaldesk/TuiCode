@@ -23,7 +23,7 @@ public class DiskChangesTests : IDisposable
     {
         _fs.AddDirectory("/work");
         _watcher = new DiskWatcher(_fs, (_, flush) => _flushes.Add(flush), NullLogger.Instance);
-        _changes = new DiskChanges(_group, _explorer, _said.Add, _watcher);
+        _changes = new DiskChanges(new EditorGroups(_group, new EditorGroup()), _explorer, _said.Add, _watcher);
     }
 
     public void Dispose()
