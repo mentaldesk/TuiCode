@@ -10,12 +10,18 @@ namespace TuiCode.Workbench.Settings;
 /// </summary>
 internal static class KeybindingConflictDialog
 {
-    public static void Confirm(View host, IInputScopeStack scopes, string message, string confirmText, Action<bool> onChoice)
+    public static void Confirm(View host, IInputScopeStack scopes, string message, string confirmText, bool destructive, Action<bool> onChoice)
     {
         var dialog = Create("Shortcut in use", message);
 
-        var yes = new Button { Text = confirmText, X = Pos.Center() - 12, Y = Pos.AnchorEnd(2) };
-        var no = new Button { Text = "Cancel", X = Pos.Center() + 2, Y = Pos.AnchorEnd(2), IsDefault = true };
+        var yes = destructive ? AppButton.Danger(confirmText) : AppButton.Primary(confirmText);
+        yes.IsDefault = false;
+        yes.X = Pos.Center() - 12;
+        yes.Y = Pos.AnchorEnd(2);
+        var no = AppButton.Secondary("Cancel");
+        no.IsDefault = true;
+        no.X = Pos.Center() + 2;
+        no.Y = Pos.AnchorEnd(2);
 
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
