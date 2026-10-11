@@ -9,6 +9,9 @@ public static class CommandIds
     public const string CloseActiveEditor = "workbench.action.closeActiveEditor";
     public const string NextEditor = "workbench.action.nextEditor";
     public const string PreviousEditor = "workbench.action.previousEditor";
+    public const string MoveToOtherGroup = "workbench.action.moveEditorToOtherGroup";
+    public const string FocusOtherGroup = "workbench.action.focusOtherGroup";
+    public const string JoinGroups = "workbench.action.joinAllGroups";
 
     public const string ToggleSidebar = "workbench.action.toggleSidebar";
     public const string WidenSidebar = "workbench.action.widenSidebar";

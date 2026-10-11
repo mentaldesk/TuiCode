@@ -6,7 +6,15 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace TuiCode.Workbench.Workspace;
 
 /// <summary>The files open in a workspace folder, in tab order, and which one is active (#13).</summary>
-public sealed record WorkspaceState(IReadOnlyList<string> Files, string? ActiveFile);
+public sealed record WorkspaceState(IReadOnlyList<string> Files, string? ActiveFile)
+{
+    /// <summary>The second editor group's files (#460); null with one group.</summary>
+    public WorkspaceGroup? Second { get; init; }
+
+    public bool SecondFocused { get; init; }
+}
+
+public sealed record WorkspaceGroup(IReadOnlyList<string> Files, string? ActiveFile);
 
 /// <summary>
 /// Persists <see cref="WorkspaceState"/> per folder to a JSON array ordered most recently used first,
@@ -40,11 +48,12 @@ public sealed class WorkspaceStateStore
             if (FolderOf(obj) != folder) continue;
             try
             {
-                var files = (obj["Files"] as JsonArray ?? [])
-                    .Select(n => n?.GetValue<string>())
-                    .OfType<string>()
-                    .ToList();
-                return new WorkspaceState(files, obj["Active"]?.GetValue<string>());
+                var second = obj["Second"] as JsonObject;
+                return new WorkspaceState(Files(obj), obj["Active"]?.GetValue<string>())
+                {
+                    Second = second is null ? null : new WorkspaceGroup(Files(second), second["Active"]?.GetValue<string>()),
+                    SecondFocused = second?["Focused"]?.GetValue<bool>() ?? false,
+                };
             }
             catch (InvalidOperationException)
             {
@@ -54,14 +63,24 @@ public sealed class WorkspaceStateStore
         return null;
     }
 
+    private static List<string> Files(JsonObject obj) =>
+        [.. (obj["Files"] as JsonArray ?? []).Select(n => n?.GetValue<string>()).OfType<string>()];
+
+    private static JsonArray ToArray(IEnumerable<string> files)
+    {
+        var array = new JsonArray();
+        foreach (var file in files) array.Add((JsonNode)JsonValue.Create(file));
+        return array;
+    }
+
     /// <summary>Every folder with saved state, most recently used first.</summary>
     public IReadOnlyList<string> Folders() => [.. ReadEntries().Select(FolderOf).OfType<string>()];
 
     public void Save(string folder, WorkspaceState state)
     {
-        var files = new JsonArray();
-        foreach (var file in state.Files) files.Add((JsonNode)JsonValue.Create(file));
-        var entry = new JsonObject { ["Folder"] = folder, ["Files"] = files, ["Active"] = state.ActiveFile };
+        var entry = new JsonObject { ["Folder"] = folder, ["Files"] = ToArray(state.Files), ["Active"] = state.ActiveFile };
+        if (state.Second is { } second)
+            entry["Second"] = new JsonObject { ["Files"] = ToArray(second.Files), ["Active"] = second.ActiveFile, ["Focused"] = state.SecondFocused };
 
         var root = new JsonArray { (JsonNode)entry };
         foreach (var obj in ReadEntries().Where(o => FolderOf(o) is { } f && f != folder).Take(MaxFolders - 1))
