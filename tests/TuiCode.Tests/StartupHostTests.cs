@@ -145,6 +145,33 @@ public class StartupHostTests : StaticConfigurationTest
         Assert.Equal(127, behind.CursorRow);
     }
 
+    [Fact]
+    public async Task A_commit_message_opens_on_its_own_and_leaves_the_remembered_tabs_alone()
+    {
+        _fs.AddFile("/work/notes.md", new MockFileData("# notes\n"));
+        _fs.AddFile("/main/.git/worktrees/work/COMMIT_EDITMSG", new MockFileData("\n# Please enter the commit message\n"));
+        var store = new WorkspaceStateStore(_fs, "/state.json");
+        var remembered = new WorkspaceState([Full("/work/notes.md")], Full("/work/notes.md"));
+        store.Save(Full("/work"), remembered);
+        var target = StartupArguments.Resolve(["/main/.git/worktrees/work/COMMIT_EDITMSG"], _fs, "/work", NeverAsked);
+        using var workbench = BuildWorkbench(store);
+        using var host = BuildHost(workbench);
+        host.OpenWhenRunning(target);
+
+        await HostSteps.Run(host,
+            () => workbench.Editor.Group.ActiveTab?.File.Name == "COMMIT_EDITMSG",
+            () => workbench.OpenFile(_fs.FileInfo.New(Full("/work/src/a.cs"))),
+            () => workbench.Editor.Group.Tabs.Count == 2,
+            () => workbench.Editor.Group.CloseActive(),
+            () => workbench.Editor.Group.Tabs.Count == 1);
+
+        Assert.Equal(Full("/work"), workbench.Sidebar.Explorer.Root?.FullName);
+        Assert.False(workbench.Sidebar.IsShowingNoFolder);
+        Assert.Equal(Full("/main/.git/worktrees/work/COMMIT_EDITMSG"), Assert.Single(workbench.Editor.Group.Tabs).File.FullName);
+        Assert.Equal(remembered.Files, store.Load(Full("/work"))?.Files);
+        Assert.Equal(remembered.ActiveFile, store.Load(Full("/work"))?.ActiveFile);
+    }
+
     // Headless, the ANSI driver is a terminal that answers none of the questions TuiCode asks at startup (#450).
     [Fact]
     public async Task A_terminal_that_never_answers_still_gets_the_file_and_keys_and_the_features_that_asked_fall_back()

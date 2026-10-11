@@ -10,14 +10,14 @@ namespace TuiCode.Workbench.Git;
 /// </summary>
 internal sealed class CommittedBaselines : IDisposable
 {
-    private readonly EditorGroup _group;
+    private readonly EditorGroups _group;
     private readonly IGitCli _git;
     private readonly Action<Action> _post;
     private readonly HeadWatcher _head;
     private readonly Dictionary<EditorTab, (string Path, GitDirs? Repo, int Read)> _reads = [];
     private readonly List<Task> _pending = [];
 
-    public CommittedBaselines(EditorGroup group, IGitCli git, Action<Action> post, HeadWatcher head)
+    public CommittedBaselines(EditorGroups group, IGitCli git, Action<Action> post, HeadWatcher head)
     {
         _group = group;
         _git = git;

@@ -137,6 +137,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("Ctrl+PageDown", "Next tab"),
             new("Ctrl+PageUp", "Previous tab"),
             new("Ctrl+W", "Close tab"),
+            new("Ctrl+\\", "Move to other group"),
         ], help.Rows);
     }
 
