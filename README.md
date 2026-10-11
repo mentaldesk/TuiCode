@@ -2,6 +2,8 @@
 
 A minimalist terminal code editor inspired by VS Code.
 
+https://github.com/user-attachments/assets/d82fcaac-9485-4ab7-ab44-fed66f45650c
+
 ## Installing
 
 Linux, on any distro (x64 or arm64, no `sudo`):
