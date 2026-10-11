@@ -231,12 +231,11 @@ public class SidebarDragHostTests : StaticConfigurationTest
     private static Func<bool> BorderSettledAt(Workbench.Workbench workbench, int width) =>
         () => workbench.DrawnSidebarWidth == width && workbench.Sidebar.FrameToScreen().Width == width;
 
-    // Resizing the terminal takes effect on the next layout, and a driver may report a size of its
-    // own once more after startup, so it's re-applied until the workbench is laid out at it.
+    // Pinned, not set: the Windows console reports its own size now and then, which would undo it mid-test.
     private static Func<bool> Size(WorkbenchHost host, Workbench.Workbench workbench, int width) =>
         () =>
         {
-            host.App.Driver!.SetScreenSize(width, Rows);
+            HostSteps.PinScreenSize(host, width, Rows);
             return workbench.Viewport.Width == width;
         };
 

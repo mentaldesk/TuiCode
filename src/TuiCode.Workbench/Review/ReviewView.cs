@@ -363,12 +363,13 @@ public sealed class ReviewView : View
             _headerText = "Loading…";
             LayoutHeader();
         }
-        return LoadAsync(root.FullName, cts);
+        // Off the main thread when hosted, so a result never lands inside the tab switch that started the load.
+        var app = App;
+        return app is null ? LoadAsync(app, root.FullName, cts) : Task.Run(() => LoadAsync(app, root.FullName, cts));
     }
 
-    private async Task LoadAsync(string folder, CancellationTokenSource cts)
+    private async Task LoadAsync(IApplication? app, string folder, CancellationTokenSource cts)
     {
-        var app = App;
         try
         {
             var branch = await Task.Run(() => BranchReview.LoadAsync(_git, folder, cts.Token), cts.Token).ConfigureAwait(false);
