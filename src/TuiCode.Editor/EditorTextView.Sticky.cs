@@ -25,6 +25,8 @@ internal sealed partial class EditorTextView
     /// <summary>Runs before each draw, so the tab can bring <see cref="Sticky"/> up to date.</summary>
     public Action? RefreshingSticky { get; set; }
 
+    public Action? Drawing { get; set; }
+
     /// <summary>The lines pinned over the top rows at the last draw, outermost first.</summary>
     public IReadOnlyList<int> Pinned => _pinned;
 
