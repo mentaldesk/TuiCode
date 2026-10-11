@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Services;
 
@@ -44,7 +45,9 @@ internal static class KeybindingConflictDialog
     {
         var dialog = Create("Conflict", message);
 
-        var ok = new Button { Text = "OK", X = Pos.Center(), Y = Pos.AnchorEnd(2), IsDefault = true };
+        var ok = AppButton.Primary("OK");
+        ok.X = Pos.Center();
+        ok.Y = Pos.AnchorEnd(2);
 
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);

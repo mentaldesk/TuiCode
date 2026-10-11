@@ -50,6 +50,26 @@ public class CreateCommentHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Enter_in_the_comment_box_is_a_newline_and_Ctrl_Enter_adds_it()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await OpenDiff(host, workbench, commands);
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.CreateComment),
+            () => Dialog(workbench) is not null,
+            () => Type(host, "Rename"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Type(host, "this?"),
+            () => Assert.NotNull(Dialog(workbench)),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal([new DraftComment("src/a.txt", 1, "Rename\nthis?")], workbench.Editor.Group.ActiveDiffTab!.Drafts);
+    }
+
+    [Fact]
     public async Task The_comment_box_shows_it_has_focus_as_soon_as_the_dialog_opens()
     {
         using var workbench = BuildWorkbench();
@@ -313,7 +333,7 @@ public class CreateCommentHostTests : StaticConfigurationTest
         workbench.SubViews.OfType<SubmitReviewView>().SingleOrDefault();
 
     private static Button Button(Workbench.Workbench workbench, string text) =>
-        Dialog(workbench)!.SubViews.OfType<Button>().Single(button => button.Text == text);
+        Dialog(workbench)!.SubViews.OfType<Button>().Single(button => button.Text.Trim() == text);
 
     private static void Click(View view) =>
         view.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) });
