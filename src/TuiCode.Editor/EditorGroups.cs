@@ -17,6 +17,7 @@ public sealed class EditorGroups
     public event EventHandler<EditorTab>? BaselineReset;
     public event EventHandler<EditorTab>? GrammarChanged;
     public event EventHandler<(IFileInfo File, int Row, int Column)>? CursorMoved;
+    public event EventHandler<(EditorTab Tab, int Line)>? PinnedLineClicked;
 
     /// <summary>Raised when either group's active tab changes or the focus moves to the other group; carries the focused group's.</summary>
     public event EventHandler<EditorTab?>? ActiveTabChanged;
@@ -35,6 +36,7 @@ public sealed class EditorGroups
             group.BaselineReset += (_, tab) => BaselineReset?.Invoke(this, tab);
             group.GrammarChanged += (_, tab) => GrammarChanged?.Invoke(this, tab);
             group.CursorMoved += (_, e) => CursorMoved?.Invoke(this, e);
+            group.PinnedLineClicked += (_, e) => PinnedLineClicked?.Invoke(this, e);
             group.ActiveTabChanged += (_, _) =>
             {
                 // A tab opened into the second group lands after its TabsChanged, so the split shows up here.

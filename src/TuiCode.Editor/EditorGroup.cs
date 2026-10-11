@@ -29,6 +29,9 @@ public sealed class EditorGroup : PaneTabs
     /// <summary>Raised when the cursor moves in any tab, tagged with the owning file (#35).</summary>
     public event EventHandler<(IFileInfo File, int Row, int Column)>? CursorMoved;
 
+    /// <summary>Raised when a pinned definition is clicked, with the tab and its line.</summary>
+    public event EventHandler<(EditorTab Tab, int Line)>? PinnedLineClicked;
+
     /// <summary>The active editor tab; null while a diff tab is active, so editor commands leave it alone.</summary>
     public EditorTab? ActiveTab => Value as EditorTab;
 
@@ -153,11 +156,13 @@ public sealed class EditorGroup : PaneTabs
         EventHandler<CopyOutcome> copied = (_, outcome) => Copied?.Invoke(this, outcome);
         EventHandler<(int Row, int Column)> moved = (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         EventHandler grammar = (_, _) => GrammarChanged?.Invoke(this, tab);
+        EventHandler<int> pinned = (_, line) => PinnedLineClicked?.Invoke(this, (tab, line));
         tab.Saved += saved;
         tab.BaselineReset += baseline;
         tab.Copied += copied;
         tab.CursorMoved += moved;
         tab.GrammarChanged += grammar;
+        tab.PinnedLineClicked += pinned;
         _unwire[tab] = () =>
         {
             tab.Saved -= saved;
@@ -165,6 +170,7 @@ public sealed class EditorGroup : PaneTabs
             tab.Copied -= copied;
             tab.CursorMoved -= moved;
             tab.GrammarChanged -= grammar;
+            tab.PinnedLineClicked -= pinned;
         };
     }
 

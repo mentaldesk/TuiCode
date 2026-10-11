@@ -15,6 +15,7 @@ public sealed class EditorSettingsView : View
     private readonly OptionSelector<LineEnding> _lineEnding;
     private readonly CheckBox _insertFinalNewline;
     private readonly CheckBox _wordWrap;
+    private readonly CheckBox _stickyLines;
     private readonly IReadOnlyCollection<SyntaxLanguage> _languages;
     private readonly Dictionary<string, bool> _wrapByLanguage;
     private readonly TextField _languageFilter;
@@ -28,6 +29,7 @@ public sealed class EditorSettingsView : View
         LineEnding = _lineEnding.Value ?? LineEnding.Auto,
         InsertFinalNewline = _insertFinalNewline.Value == CheckState.Checked,
         WordWrap = _wordWrap.Value == CheckState.Checked,
+        StickyLines = _stickyLines.Value == CheckState.Checked,
         WrapByLanguage = new Dictionary<string, bool>(_wrapByLanguage, StringComparer.OrdinalIgnoreCase),
     };
 
@@ -71,18 +73,20 @@ public sealed class EditorSettingsView : View
 
         _wordWrap = new CheckBox { X = 0, Y = 8, Text = "Wrap long lines", Value = Check(settings.WordWrap) };
 
-        var wrapByLanguageLabel = new Label { X = 0, Y = 10, Text = "Wrap by language" };
-        _languageFilter = new TextField { X = 0, Y = 11, Width = Dim.Fill(), Height = 1 };
+        _stickyLines = new CheckBox { X = 0, Y = 10, Text = "Show sticky lines", Value = Check(settings.StickyLines) };
+
+        var wrapByLanguageLabel = new Label { X = 0, Y = 12, Text = "Wrap by language" };
+        _languageFilter = new TextField { X = 0, Y = 13, Width = Dim.Fill(), Height = 1 };
         _languageFilter.TextChanged += (_, _) => RebuildLanguages();
         _languageFilter.KeyDown += OnLanguageFilterKey;
         _languageFilter.MouseEvent += (_, _) => _languageFilter.SetFocus();
-        _languageList = new ListView { X = 0, Y = 12, Width = Dim.Fill(), Height = Dim.Fill(1) };
+        _languageList = new ListView { X = 0, Y = 14, Width = Dim.Fill(), Height = Dim.Fill(1) };
         _languageList.KeyDown += OnLanguageListKey;
         _languageList.MouseEvent += (_, _) => _languageList.SetFocus();
         var hint = new Label { X = 0, Y = Pos.AnchorEnd(1), Text = WrapByLanguageHint };
 
         Add(indentSizeLabel, _indentSize, _insertSpaces, lineEndingLabel, _lineEnding, _insertFinalNewline, _wordWrap,
-            wrapByLanguageLabel, _languageFilter, _languageList, hint);
+            _stickyLines, wrapByLanguageLabel, _languageFilter, _languageList, hint);
         KeyDown += OnKey;
         RebuildLanguages();
     }

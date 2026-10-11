@@ -128,6 +128,8 @@ public sealed class DefaultSettingsService : ISettingsService
             root["InsertFinalNewline"] = Editor.InsertFinalNewline;
         if (Editor.WordWrap != defaults.WordWrap)
             root["WordWrap"] = Editor.WordWrap;
+        if (Editor.StickyLines != defaults.StickyLines)
+            root["StickyLines"] = Editor.StickyLines;
         if (Editor.WrapByLanguage.Count > 0)
         {
             var wrapByLanguage = new JsonObject();
@@ -240,6 +242,7 @@ public sealed class DefaultSettingsService : ISettingsService
             LineEnding = ReadEnum(root, "LineEnding", defaults.LineEnding),
             InsertFinalNewline = Read(root, "InsertFinalNewline", defaults.InsertFinalNewline),
             WordWrap = Read(root, "WordWrap", defaults.WordWrap),
+            StickyLines = Read(root, "StickyLines", defaults.StickyLines),
             WrapByLanguage = ReadWrapByLanguage(root),
         };
         // A width above the spinner's maximum is legitimate on a wide terminal, so only the floor is validated.

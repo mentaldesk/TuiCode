@@ -22,6 +22,9 @@ public sealed record EditorSettings
     /// <summary>Whether a tab opens wrapped (#380); <c>Ctrl+T W</c> still flips each tab on its own.</summary>
     public bool WordWrap { get; init; }
 
+    /// <summary>Whether the class, method or heading you're inside stays pinned at the top of the editor (#474).</summary>
+    public bool StickyLines { get; init; } = true;
+
     /// <summary>Languages that wrap whatever <see cref="WordWrap"/> says, keyed by grammar id (#381).</summary>
     public static IReadOnlyDictionary<string, bool> DefaultWrapByLanguage { get; } =
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["markdown"] = true, ["plaintext"] = true };
@@ -44,11 +47,12 @@ public sealed record EditorSettings
         && LineEnding == other.LineEnding
         && InsertFinalNewline == other.InsertFinalNewline
         && WordWrap == other.WordWrap
+        && StickyLines == other.StickyLines
         && WrapByLanguage.Count == other.WrapByLanguage.Count
         && WrapByLanguage.All(w => other.WrapByLanguage.TryGetValue(w.Key, out var v) && v == w.Value);
 
     public override int GetHashCode() =>
-        HashCode.Combine(IndentSize, InsertSpaces, LineEnding, InsertFinalNewline, WordWrap, WrapByLanguage.Count);
+        HashCode.Combine(IndentSize, InsertSpaces, LineEnding, InsertFinalNewline, WordWrap, StickyLines, WrapByLanguage.Count);
 }
 
 public enum LineEnding
