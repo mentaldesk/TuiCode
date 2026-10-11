@@ -10,11 +10,13 @@ public sealed record StartupFile(IFileInfo File, FilePosition? Position = null);
 /// <param name="Files">The files to open as tabs, in the order given, the first one active (#266).</param>
 /// <param name="Error">A message to print to stderr instead of booting, or null.</param>
 /// <param name="Declined">A path wasn't there and the user said not to create it: exit quietly, don't boot.</param>
+/// <param name="RememberTabs">Whether the workspace's remembered tabs come back and what's open is remembered (#475).</param>
 public sealed record StartupTarget(
     IDirectoryInfo? Workspace,
     IReadOnlyList<StartupFile> Files,
     string? Error = null,
-    bool Declined = false);
+    bool Declined = false,
+    bool RememberTabs = true);
 
 /// <summary>Asked before <c>tuicode &lt;path&gt;</c> creates a path that isn't there (#263).</summary>
 public delegate bool ConfirmCreate(string fullPath, bool directory);
@@ -25,6 +27,7 @@ public delegate bool ConfirmCreate(string fullPath, bool directory);
 /// <c>Ctrl+N</c> uses (<see cref="FilePaths.IsDirectoryPath"/>): a trailing slash means a folder, anything
 /// else a file, and intermediate folders are created. The first path decides the workspace: a folder
 /// is it, and a file leaves the folder you ran from as it when it's under there, otherwise no folder at all (#451).
+/// A file git hands its editor, under a <c>.git</c> folder, opens on its own in the folder you ran from (#475).
 /// The rest just open as tabs, wherever they live; a folder among them opens nothing and doesn't re-root.
 /// Each file may carry a position (<see cref="PathPosition"/>), which neither a folder argument nor a path
 /// that had to be created does: the first has no cursor to place, and the second is created as typed,
@@ -44,6 +47,8 @@ public static class StartupArguments
 
     // The only flag whose value is a separate argument, and so could be mistaken for a path.
     private const string ValueFlag = "--driver";
+
+    private static readonly char[] Separators = ['/', '\\'];
 
     public static StartupTarget Resolve(
         IReadOnlyList<string> args,
@@ -73,8 +78,14 @@ public static class StartupArguments
             if (Create(fileSystem, request) is { } error)
                 return new StartupTarget(null, [], error);
 
+        if (IsInGitDir(fileSystem, requests[0]))
+            return new StartupTarget(workspace, Tabs(fileSystem, requests), RememberTabs: false);
         return new StartupTarget(Root(fileSystem, workspace, requests[0]), Tabs(fileSystem, requests));
     }
+
+    private static bool IsInGitDir(IFileSystem fileSystem, Request request) =>
+        !request.Directory && fileSystem.Path.GetDirectoryName(request.FullPath) is { } folder &&
+        folder.Split(Separators, StringSplitOptions.RemoveEmptyEntries).Contains(".git", StringComparer.Ordinal);
 
     private static List<string> Paths(IReadOnlyList<string> args)
     {

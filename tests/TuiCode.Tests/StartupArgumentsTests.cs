@@ -331,6 +331,43 @@ public class StartupArgumentsTests
         Assert.False(_fs.File.Exists("/work/second.md"));
     }
 
+    [Theory]
+    [InlineData("/work/.git/COMMIT_EDITMSG")]
+    [InlineData("/work/.git/rebase-merge/git-rebase-todo")]
+    [InlineData("/main/.git/worktrees/feature/COMMIT_EDITMSG")]
+    [InlineData("/work/vendor/lib/.git/TAG_EDITMSG")]
+    public void A_file_git_hands_its_editor_opens_on_its_own_in_the_current_directory(string path)
+    {
+        _fs.AddFile(path, new MockFileData(""));
+
+        var target = Resolve(path);
+
+        Assert.Equal(Full("/work"), target.Workspace!.FullName);
+        Assert.Equal(Full(path), Single(target).FullName);
+        Assert.False(target.RememberTabs);
+    }
+
+    [Theory]
+    [InlineData("/work/.github/workflows/ci.yml")]
+    [InlineData("/work/foo.git/COMMIT_EDITMSG")]
+    [InlineData("/work/src/a.cs")]
+    public void A_file_merely_named_like_git_remembers_tabs(string path)
+    {
+        _fs.AddFile(path, new MockFileData(""));
+
+        Assert.True(Resolve(path).RememberTabs);
+    }
+
+    [Fact]
+    public void A_file_after_a_double_dash_opens_at_its_line_as_LazyGit_hands_it_over()
+    {
+        var target = Resolve("--", "src/a.cs:3");
+
+        Assert.Equal(Full("/work/src/a.cs"), Single(target).FullName);
+        Assert.Equal(3, target.Files[0].Position?.Line);
+        Assert.True(target.RememberTabs);
+    }
+
     private static IEnumerable<string> Paths(StartupTarget target) =>
         target.Files.Select(file => file.File.FullName);
 
