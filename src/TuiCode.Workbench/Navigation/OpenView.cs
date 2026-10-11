@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using TuiCode.Icons;
 using TuiCode.Workbench.Services;
@@ -85,12 +86,9 @@ public sealed class OpenView : Window
 
         if (canOpenFolder)
         {
-            _openFolderButton = new Button
-            {
-                X = 1,
-                Y = Pos.AnchorEnd(2),
-                Text = "Open this folder",
-            };
+            _openFolderButton = AppButton.Secondary("Open this folder");
+            _openFolderButton.X = 1;
+            _openFolderButton.Y = Pos.AnchorEnd(2);
             _openFolderButton.Accepting += (_, _) => OpenCurrentFolder();
             Add(_openFolderButton);
         }

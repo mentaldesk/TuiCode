@@ -1,3 +1,4 @@
+using AppButton = MentalDesk.Tui.Dialogs.AppButton;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
@@ -72,9 +73,9 @@ public sealed class CommentView : Window
         var lines = written.Split('\n');
         _end = new System.Drawing.Point(lines[^1].Length, lines.Length - 1);
 
-        _confirm = Foot(confirm, 1, OnAdd);
-        var delete = deletable ? Foot("Delete", Pos.Right(_confirm) + 1, () => Deleted?.Invoke(this, EventArgs.Empty)) : null;
-        var cancel = Foot("Cancel", Pos.Right(delete ?? _confirm) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
+        _confirm = Foot(AppButton.Primary(confirm), 1, OnAdd);
+        var delete = deletable ? Foot(AppButton.Danger("Delete"), Pos.Right(_confirm) + 1, () => Deleted?.Invoke(this, EventArgs.Empty)) : null;
+        var cancel = Foot(AppButton.Secondary("Cancel"), Pos.Right(delete ?? _confirm) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
         _buttons = delete is null ? [_confirm, cancel] : [_confirm, delete, cancel];
 
         // Below the buttons, not beside them: the dialog grows for an alert rather than the body shrinking.
@@ -91,9 +92,10 @@ public sealed class CommentView : Window
         _scopeKeybindings.Bind("Ctrl+Enter", CommandIds.CommentConfirm);
     }
 
-    private static Button Foot(string text, Pos x, Action accepted)
+    private static Button Foot(Button button, Pos x, Action accepted)
     {
-        var button = new Button { X = x, Y = Pos.AnchorEnd(1), Text = text };
+        button.X = x;
+        button.Y = Pos.AnchorEnd(1);
         button.Accepting += (_, e) => { e.Handled = true; accepted(); };
         return button;
     }

@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Search;
@@ -45,7 +46,9 @@ public sealed class SidebarPart : FrameView
         SchemeName = "Sidebar";
 
         _explorerTab = WrapTab("Explorer", explorer);
-        OpenFolderButton = new Button { Text = "Open Folder", X = 1, Y = 3 };
+        OpenFolderButton = AppButton.Primary("Open Folder");
+        OpenFolderButton.X = 1;
+        OpenFolderButton.Y = 3;
         OpenFolderButton.Accepting += (_, e) =>
         {
             e.Handled = true;
