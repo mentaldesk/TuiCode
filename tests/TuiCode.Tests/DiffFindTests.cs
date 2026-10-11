@@ -21,7 +21,7 @@ public class DiffFindTests : IDisposable
     public DiffFindTests()
     {
         _scopes.Push(_workbenchScope);
-        _find = new FindController(_group, _scopes, _workbenchScope);
+        _find = new FindController(new EditorGroups(_group, new EditorGroup()), _scopes, _workbenchScope);
         _group.ActiveTabChanged += (_, _) => _find.OnActiveTabChanged();
     }
 

@@ -157,6 +157,14 @@ What follows is how TuiCode implements it today.
 - Visibility is `EditorGroup.GutterVisible` (on by default, applied to open and future tabs), toggled by `tg`. It isn't persisted: that waits for an editor section in Settings.
 - Gutter colours come from the token theme's VS Code `colors` (`editorLineNumber.foreground` / `activeForeground`, `editorGutter.addedBackground` / `modifiedBackground` / `deletedBackground`); TG schemes have no semantic roles for them. Without them (no highlighter, e.g. in tests) markers fall back to fixed green/blue/red and line numbers to the Editable attribute, faint except on the cursor row.
 
+## Editor groups (#460)
+
+- `EditorPart` holds two `EditorGroup`s, each in its own bordered `FrameView`, behind `EditorGroups` (TG-free bookkeeping in `TuiCode.Editor`). The second shows only while it holds a tab; whenever either group empties, everything ends up in the first (`EditorGroups.Settle`). A file is open in at most one group: `EditorGroups.Open` focuses it where it is, so open files through it (or `Workbench.OpenFile`), never `EditorGroup.OpenOrFocus`.
+- `EditorPart.Group` is the **focused** group, so every "active tab" command acts there. Anything that means *every* open tab — save all, quit, rename/delete, disk watching, baselines, language servers, global find — goes through `Editor.Groups`, which also re-raises both groups' events. Its `ActiveTabChanged` carries the focused group's tab, and fires when the focus moves between groups too.
+- Focus follows the keyboard: `WorkbenchHost.Reconcile` sets `Groups.Focused` to the group holding the newly focused view (a click, `F6`), except on the first iteration, where a restored focus on the second group moves the keys there instead. The focused group's frame gets the focus border.
+- Moving a tab (`EditorGroup.MoveTo`) unwires its events from the old group and wires them to the new, so nothing is raised twice. Closing a file closes its diffs in either group (`EditorGroup.EditorClosed`).
+- The second group persists in the workspace state as `Second` (`Files`, `Active`, `Focused`); an entry without it opens as one group.
+
 ## Diff tab (#61)
 
 - **Compare to saved** (`cts`, no default key) opens a read-only `DiffTab` in the editor group: the file on disk on the left, the live buffer on the right, laid out by `AlignedDiff` with `DiffTab.MaxEdits` (5,000) as the give-up limit. `DiffTab.ReadLines` splits the file with TG's own `Cell.StringToLinesOfCells`, so an unedited buffer compares equal.
@@ -439,6 +447,7 @@ What follows is how TuiCode implements it today.
 | Anywhere | `fs` / `ts` / a sidebar tab's shortcut | the sidebar's active tab: `Explorer`, `Find`, `Usages` or `Review` |
 | `Editor` | `Ctrl+G U` (`gu`) | `Usages` |
 | Anywhere | `fr` (`FocusReview`) | `Review` |
+| Anywhere | `F6` / `fo` (`FocusOtherGroup`) | the other editor group's active tab |
 | Anywhere | `Ctrl+F` / `Ctrl+H` (`ff` / `rf`) | `FindBar`, or `Find` with no tab open; unchanged on a document, and for `Ctrl+H` on a diff |
 | `Review` | `Enter` on a file | `Diff` |
 | Anywhere | opening a file, a diff, a document or a history jump | `Editor` or `Diff` |

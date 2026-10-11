@@ -10,7 +10,7 @@ public sealed class LanguageServers : IDisposable
     /// <summary>How long typing has to pause before the server hears about it.</summary>
     public static readonly TimeSpan ChangeDelay = TimeSpan.FromMilliseconds(250);
 
-    private readonly EditorGroup _group;
+    private readonly EditorGroups _group;
     private readonly ILanguageServerLauncher _launcher;
     private readonly Action<Action> _post;
     private readonly Action<TimeSpan, Action>? _schedule;
@@ -24,7 +24,7 @@ public sealed class LanguageServers : IDisposable
 
     /// <param name="post">Runs an action on the UI thread.</param>
     /// <param name="schedule">Runs an action on the UI thread after a delay; null sends every edit at once.</param>
-    public LanguageServers(EditorGroup group, ILanguageServerLauncher launcher, Action<Action> post, Action<TimeSpan, Action>? schedule = null)
+    public LanguageServers(EditorGroups group, ILanguageServerLauncher launcher, Action<Action> post, Action<TimeSpan, Action>? schedule = null)
     {
         _group = group;
         _launcher = launcher;
