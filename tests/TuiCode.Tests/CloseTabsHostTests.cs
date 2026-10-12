@@ -138,7 +138,7 @@ public class CloseTabsHostTests : StaticConfigurationTest
             {
                 var view = Confirm(workbench)!;
                 asked = view.SubViews.OfType<Label>().First().Text;
-                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text)];
+                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text.Trim())];
             });
 
         Assert.Equal(WorkbenchHost.UnsavedChanges(["a.txt"], Question), asked.ReplaceLineEndings("\n"));

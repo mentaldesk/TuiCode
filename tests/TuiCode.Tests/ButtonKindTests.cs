@@ -1,0 +1,196 @@
+using System.IO.Abstractions.TestingHelpers;
+using MentalDesk.Tui.Theming;
+using Terminal.Gui.ViewBase;
+using Terminal.Gui.Views;
+using TuiCode.Abstractions;
+using TuiCode.Editor;
+using TuiCode.Explorer;
+using TuiCode.Workbench.DocumentInfo;
+using TuiCode.Workbench.Files;
+using TuiCode.Workbench.Git;
+using TuiCode.Workbench.Navigation;
+using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Review;
+using TuiCode.Workbench.Services;
+using TuiCode.Workbench.Settings;
+
+namespace TuiCode.Tests;
+
+public class ButtonKindTests
+{
+    [Fact]
+    public void A_new_comment_offers_Add_and_Cancel()
+    {
+        Assert.Equal(
+            [("Add", SchemeNames.ButtonPrimary), ("Cancel", SchemeNames.ButtonSecondary)],
+            Kinds(new CommentView("src/a.txt", 1)));
+    }
+
+    [Fact]
+    public void A_draft_also_offers_Delete_as_a_danger()
+    {
+        Assert.Equal(
+            [("Add", SchemeNames.ButtonPrimary), ("Delete", SchemeNames.ButtonDanger), ("Cancel", SchemeNames.ButtonSecondary)],
+            Kinds(new CommentView("src/a.txt", 1, new DraftComment("src/a.txt", 1, "Rename this?"))));
+    }
+
+    [Fact]
+    public void A_reply_offers_Reply_and_Cancel()
+    {
+        var thread = new GitHubReviewThread("src/a.txt", 1, false, false, [new GitHubComment("octocat", default, "Hm.")]);
+
+        Assert.Equal(
+            [("Reply", SchemeNames.ButtonPrimary), ("Cancel", SchemeNames.ButtonSecondary)],
+            Kinds(new CommentView(thread)));
+    }
+
+    [Fact]
+    public void Submit_review_offers_a_primary_Submit_and_a_secondary_Cancel()
+    {
+        Assert.Equal(
+            [("Submit", SchemeNames.ButtonPrimary), ("Cancel", SchemeNames.ButtonSecondary)],
+            Kinds(new SubmitReviewView(187)));
+    }
+
+    [Fact]
+    public void Blame_on_a_committed_line_offers_a_primary_View_change_and_a_secondary_Close()
+    {
+        Assert.Equal(
+            [("View change", SchemeNames.ButtonPrimary), ("Close", SchemeNames.ButtonSecondary)],
+            Kinds(new BlameView("a.txt", 1, Blame("4a91c0e2b7d1f3e5a6c8b9d0e1f2a3b4c5d6e7f8"), DateTimeOffset.UnixEpoch)));
+    }
+
+    [Fact]
+    public void Blame_on_an_uncommitted_line_closes_with_a_primary_button()
+    {
+        Assert.Equal(
+            [("Close", SchemeNames.ButtonPrimary)],
+            Kinds(new BlameView("a.txt", 1, Blame(new string('0', 40)), DateTimeOffset.UnixEpoch)));
+    }
+
+    [Fact]
+    public void Document_info_closes_with_a_primary_button()
+    {
+        var view = new DocumentInfoView("a.txt", "Plain Text", new DocumentStats(1, 1, 1, 1), null);
+
+        Assert.Equal([("Close", SchemeNames.ButtonPrimary)], Kinds(view));
+    }
+
+    [Fact]
+    public void The_conflict_box_has_a_primary_OK_that_Enter_presses()
+    {
+        var host = new View { Width = 80, Height = 24, CanFocus = true };
+        host.BeginInit();
+        host.EndInit();
+        host.SetFocus();
+        var closed = 0;
+        KeybindingConflictDialog.Refuse(host, new InputScopeStack(), "Ctrl+Q can't be rebound.", () => closed++);
+
+        var ok = host.SubViews.OfType<Dialog>().Single().SubViews.OfType<Button>().Single();
+        Assert.Equal(("OK", SchemeNames.ButtonPrimary), Kind(ok));
+        Assert.True(ok.HasFocus);
+
+        host.NewKeyDownEvent(Key.Enter);
+
+        Assert.Equal(1, closed);
+    }
+
+    [Fact]
+    public void Unsaved_changes_offers_a_primary_Save_a_danger_Dont_save_and_a_secondary_Cancel()
+    {
+        var view = new ConfirmView("Unsaved changes", "Save?", new ConfirmChoice("Save", () => { }), new ConfirmChoice("Don't save", () => { }, Destructive: true));
+
+        Assert.Equal(
+            [("Save", SchemeNames.ButtonPrimary), ("Don't save", SchemeNames.ButtonDanger), ("Cancel", SchemeNames.ButtonSecondary)],
+            Kinds(view));
+    }
+
+    [Theory]
+    [InlineData(false, SchemeNames.ButtonPrimary)]
+    [InlineData(true, SchemeNames.ButtonDanger)]
+    public void Shortcut_in_use_draws_its_choice_by_kind_and_keeps_Cancel_the_default(bool destructive, string scheme)
+    {
+        var host = new View { Width = 80, Height = 24, CanFocus = true };
+        host.BeginInit();
+        host.EndInit();
+        host.SetFocus();
+        KeybindingConflictDialog.Confirm(host, new InputScopeStack(), "Ctrl+X is in use.", "Replace", destructive, _ => { });
+
+        var buttons = host.SubViews.OfType<Dialog>().Single().SubViews.OfType<Button>().ToList();
+
+        Assert.Equal([("Replace", scheme), ("Cancel", SchemeNames.ButtonSecondary)], buttons.Select(Kind));
+        Assert.Equal(["Cancel"], buttons.Where(b => b.IsDefault).Select(b => b.Text.Trim()));
+    }
+
+    [Fact]
+    public void Open_Folder_in_an_empty_explorer_is_primary()
+    {
+        var sidebar = new SidebarPart(new FileExplorerView());
+
+        Assert.Equal(("Open Folder", SchemeNames.ButtonPrimary), Kind(sidebar.OpenFolderButton));
+    }
+
+    [Fact]
+    public void The_Review_tabs_Overview_is_secondary()
+    {
+        Assert.Equal(("Overview", SchemeNames.ButtonSecondary), Kind(new ReviewView().Overview));
+    }
+
+    [Fact]
+    public void Open_this_folder_is_secondary()
+    {
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/work");
+
+        Assert.Equal([("Open this folder", SchemeNames.ButtonSecondary)], Kinds(new OpenView(fs.DirectoryInfo.New("/work"))));
+    }
+
+    [Fact]
+    public void Terminal_integration_actions_are_primary_except_Remove()
+    {
+        Assert.Equal(
+            [
+                ("Install", SchemeNames.ButtonPrimary),
+                ("Reinstall", SchemeNames.ButtonPrimary),
+                ("Update", SchemeNames.ButtonPrimary),
+                ("Remove", SchemeNames.ButtonSecondary),
+            ],
+            new[] { TerminalIntegrationAction.Install, TerminalIntegrationAction.Reinstall, TerminalIntegrationAction.Update, TerminalIntegrationAction.Remove }
+                .Select(a => Kind(TerminalIntegrationPickerView.ButtonFor(a))));
+    }
+
+    [Fact]
+    public void Terminal_integration_buttons_do_not_overlap()
+    {
+        var picker = new TerminalIntegrationPickerView(
+            [new Integration(TerminalIntegrationStatus.Installed)], new FakeEnvironment());
+        picker.Width = 80;
+        picker.Height = 20;
+        picker.BeginInit();
+        picker.EndInit();
+        picker.Layout();
+
+        var buttons = picker.SubViews.OfType<Button>().ToList();
+
+        Assert.Equal(["Reinstall", "Remove"], buttons.Select(b => b.Text.Trim()));
+        Assert.True(buttons[0].Frame.Right < buttons[1].Frame.X, $"{buttons[0].Frame} runs into {buttons[1].Frame}");
+    }
+
+    private static List<(string, string)> Kinds(View view) =>
+        [.. view.SubViews.OfType<Button>().Select(Kind)];
+
+    private static GitBlameLine Blame(string hash) => new(hash, "Nicky Baumann", DateTimeOffset.UnixEpoch, "Subject", "bravo");
+
+    private static (string, string) Kind(Button button) => (button.Text.Trim(), button.SchemeName!);
+
+    private sealed class Integration(TerminalIntegrationStatus status) : ITerminalIntegration
+    {
+        public string Id => "iterm2";
+        public string DisplayName => "iTerm2";
+        public string? ClipboardInstructions => null;
+        public bool IsAvailable() => true;
+        public TerminalIntegrationStatus GetStatus() => status;
+        public void Install() { }
+        public void Uninstall() { }
+    }
+}

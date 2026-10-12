@@ -61,11 +61,11 @@ public class SaveConflictHostTests : StaticConfigurationTest
             () =>
             {
                 var view = Confirm(workbench)!;
-                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text)];
+                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text.Trim())];
                 width = view.Frame.Width;
                 overflowing = [.. view.SubViews.OfType<Button>()
                     .Where(b => b.Frame.X < 0 || b.Frame.Right > view.Viewport.Width)
-                    .Select(b => b.Text)];
+                    .Select(b => b.Text.Trim())];
             });
 
         Assert.Equal(["Compare", "Overwrite", "Reload", "Cancel"], buttons);

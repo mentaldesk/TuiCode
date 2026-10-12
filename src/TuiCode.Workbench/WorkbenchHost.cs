@@ -1861,7 +1861,7 @@ public sealed class WorkbenchHost : IDisposable
         var view = new ConfirmView("Unsaved changes",
             $"Save changes to '{tab.File.Name}' before closing?\nYour changes will be lost if you don't save them.",
             new ConfirmChoice("Save", () => SaveAndClose(tab)),
-            new ConfirmChoice("Don't save", () => CloseEditor(tab)));
+            new ConfirmChoice("Don't save", () => CloseEditor(tab), Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }
@@ -1923,7 +1923,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var view = new ConfirmView("Unsaved changes", UnsavedChanges([.. dirty.Select(t => t.File.Name)], question),
             new ConfirmChoice("Save all", () => SaveAllThen(dirtyTabs, proceed)),
-            new ConfirmChoice("Don't save", proceed));
+            new ConfirmChoice("Don't save", proceed, Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }
@@ -1989,8 +1989,8 @@ public sealed class WorkbenchHost : IDisposable
             {
                 tab.Save();
                 afterOverwrite?.Invoke();
-            }),
-            new ConfirmChoice("Reload", () => _diskChanges.Reload(tab)));
+            }, Destructive: true),
+            new ConfirmChoice("Reload", () => _diskChanges.Reload(tab), Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }
@@ -2012,7 +2012,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var view = new ConfirmView("Reload from disk",
             $"Reload '{tab.File.Name}' from disk?\nYour unsaved changes will be lost.",
-            new ConfirmChoice("Reload", Reload));
+            new ConfirmChoice("Reload", Reload, Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
 
@@ -2052,7 +2052,7 @@ public sealed class WorkbenchHost : IDisposable
                 _workbench.StatusBar.SetMessage(ex.Message);
             }
             if (fromExplorer) FocusSidebar();
-        }));
+        }, Destructive: true));
         view.Cancelled += (_, _) =>
         {
             CloseConfirm(view);
@@ -2316,7 +2316,7 @@ public sealed class WorkbenchHost : IDisposable
                 if (diff.RevertAll() is not { } reverted) return;
                 _workbench.StatusBar.SetMessage(
                     $"Reverted {reverted:N0} change{(reverted == 1 ? string.Empty : "s")} in {diff.File.Name} — Ctrl+Z to undo");
-            }));
+            }, Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }

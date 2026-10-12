@@ -73,8 +73,25 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         foreach (var theme in BundledThemes.Names)
         {
             ThemeManager.Theme = theme;
-            foreach (var scheme in new[] { "Base", "Accent", "Dialog", "Menu", "Error", "Warning", "Sidebar", "StatusBar" })
+            foreach (var scheme in new[] { "Base", "Accent", "Dialog", "Menu", "Error", "Warning", "Sidebar", "StatusBar", "ButtonPrimary", "ButtonDanger", "ButtonSecondary" })
                 Assert.True(SchemeManager.TryGetScheme(scheme, out _), $"{theme} has no {scheme} scheme");
+        }
+    }
+
+    [Fact]
+    public void Each_kind_of_button_has_its_own_colours_and_shows_focus()
+    {
+        using var themes = LoadBundledThemes();
+        foreach (var theme in BundledThemes.Names)
+        {
+            ThemeManager.Theme = theme;
+            var buttons = new[] { "ButtonPrimary", "ButtonDanger", "ButtonSecondary" }
+                .Select(name => { SchemeManager.TryGetScheme(name, out var scheme); return scheme!; })
+                .ToList();
+
+            Assert.Equal(3, buttons.Select(b => b.Normal.Background).Distinct().Count());
+            Assert.All(buttons, b => Assert.NotEqual(b.Normal, b.Focus));
+            Assert.All(buttons, b => Assert.True(b.Focus.Style.HasFlag(Terminal.Gui.Drawing.TextStyle.Bold), $"{theme}: focus isn't bold"));
         }
     }
 

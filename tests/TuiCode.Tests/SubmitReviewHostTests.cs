@@ -132,13 +132,13 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task A_refusal_too_long_for_one_row_wraps_under_the_hints_rather_than_over_them()
+    public async Task A_refusal_too_long_for_one_row_wraps_under_the_buttons_rather_than_over_them()
     {
         _gitHub.ReviewError = "failed to create review: GraphQL: Can not approve your own pull request (addPullRequestReview)";
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var alert = System.Drawing.Rectangle.Empty;
-        var hint = System.Drawing.Rectangle.Empty;
+        var cancel = System.Drawing.Rectangle.Empty;
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
@@ -147,11 +147,11 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Dialog(workbench)!.Status == _gitHub.ReviewError,
             () => Alert(workbench).Frame.Height > 1,
-            () => { alert = Alert(workbench).Frame; hint = Hint(workbench, "Esc cancel").Frame; },
+            () => { alert = Alert(workbench).Frame; cancel = Button(workbench, "Cancel").Frame; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(alert.Height > 1, $"the refusal took {alert.Height} row(s), so it never wrapped");
-        Assert.Equal(hint.Y + 1, alert.Y);
+        Assert.Equal(cancel.Y + 1, alert.Y);
     }
 
     [Fact]
@@ -217,7 +217,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Clicking_the_submit_hint_posts_the_review()
+    public async Task Clicking_Submit_posts_the_review()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -226,14 +226,14 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.SubmitReview),
             () => Dialog(workbench) is not null,
             () => Type(host, "Looks good"),
-            () => Click(Hint(workbench, "Ctrl+Enter submit")),
+            () => Click(Button(workbench, "Submit")),
             () => Dialog(workbench) is null);
 
         Assert.Equal([(_git.Root, 187, GitHubReviewVerdict.Comment, "Looks good")], _gitHub.Reviews);
     }
 
     [Fact]
-    public async Task Clicking_the_cancel_hint_closes_the_dialog_without_submitting()
+    public async Task Clicking_Cancel_closes_the_dialog_without_submitting()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -242,7 +242,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.SubmitReview),
             () => Dialog(workbench) is not null,
             () => Type(host, "Never mind"),
-            () => Click(Hint(workbench, "Esc cancel")),
+            () => Click(Button(workbench, "Cancel")),
             () => Dialog(workbench) is null);
 
         Assert.Empty(_gitHub.Reviews);
@@ -285,8 +285,8 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     private static AlertView Alert(Workbench.Workbench workbench) =>
         Dialog(workbench)!.SubViews.OfType<AlertView>().Single();
 
-    private static Button Hint(Workbench.Workbench workbench, string text) =>
-        Dialog(workbench)!.SubViews.OfType<Button>().Single(button => button.Text == text);
+    private static Button Button(Workbench.Workbench workbench, string text) =>
+        Dialog(workbench)!.SubViews.OfType<Button>().Single(button => button.Text.Trim() == text);
 
     private static void Click(View view) =>
         view.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) });
