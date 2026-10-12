@@ -45,7 +45,19 @@ internal sealed partial class EditorTextView
 
     internal (int Line, int Row) WrappedRowAt(int screenRow) => _wrap.At(screenRow);
 
-    private int TopLine => SoftWrap ? _wrap.At(Viewport.Y).Line : Viewport.Y;
+    internal int TopLine => SoftWrap ? _wrap.At(Viewport.Y).Line : Viewport.Y;
+
+    internal void ScrollToLine(int line, int column)
+    {
+        line = Math.Clamp(line, 0, Math.Max(Lines - 1, 0));
+        if (SoftWrap)
+        {
+            RefreshWrap();
+            ScrollToRow(_wrap.FirstRow(line));
+            return;
+        }
+        ScrollTo(new Point(Math.Max(column, 0), Math.Min(line, Math.Max(Lines - Viewport.Height, 0))));
+    }
 
     // TG positions the view by file line; while wrapped the caret's screen row decides that, at the next draw.
     public override Rectangle Viewport

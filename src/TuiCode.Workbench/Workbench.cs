@@ -30,13 +30,15 @@ public sealed class Workbench : Window
     public int DrawnSidebarWidth { get; private set; } = SidebarSizing.Default;
 
     private readonly WorkspaceStateStore? _workspaceState;
+    private readonly FilePositionStore? _positions;
 
     // Null while switching folders or shutting down, so closing the old folder's tabs isn't saved as its state.
     private string? _workspaceFolder;
 
-    public Workbench(SidebarPart sidebar, EditorPart editor, StatusBarPart statusBar, WorkspaceStateStore? workspaceState = null)
+    public Workbench(SidebarPart sidebar, EditorPart editor, StatusBarPart statusBar, WorkspaceStateStore? workspaceState = null, FilePositionStore? positions = null)
     {
         _workspaceState = workspaceState;
+        _positions = positions;
         Sidebar = sidebar;
         Editor = editor;
         StatusBar = statusBar;
@@ -77,6 +79,12 @@ public sealed class Workbench : Window
         };
 
         editor.Groups.Copied += (_, outcome) => ShowCopy(outcome);
+
+        editor.Groups.EditorOpening += (_, tab) =>
+        {
+            if (_positions?.Load(tab.File.FullName) is { } position) tab.RestoreViewPosition(position);
+        };
+        editor.Groups.EditorClosing += (_, tab) => RememberPositions([tab]);
 
         editor.Groups.ActiveTabChanged += (_, tab) =>
         {
@@ -235,6 +243,7 @@ public sealed class Workbench : Window
     {
         _workspaceFolder = null;
         Languages?.OpenFolder(directory.FullName);
+        RememberPositions(Editor.Groups.Tabs);
         Editor.Groups.CloseAll();
         Sidebar.ShowNoFolder(false);
         Sidebar.Explorer.Open(directory);
@@ -317,9 +326,16 @@ public sealed class Workbench : Window
         static string? ActiveFile(EditorGroup group) => (group.ActiveTab ?? group.ActiveDiffTab?.Source)?.File.FullName;
     }
 
+    private void RememberPositions(IEnumerable<EditorTab> tabs) =>
+        _positions?.Save(tabs.Select(tab => (tab.File.FullName, tab.ViewPosition)));
+
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _workspaceFolder = null;
+        if (disposing)
+        {
+            _workspaceFolder = null;
+            RememberPositions(Editor.Groups.Tabs);
+        }
         base.Dispose(disposing);
     }
 

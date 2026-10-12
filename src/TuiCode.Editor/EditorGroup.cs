@@ -20,6 +20,12 @@ public sealed class EditorGroup : PaneTabs
 
     public event EventHandler<EditorTab>? BaselineReset;
 
+    /// <summary>Raised when a file's tab is created, before it's added or shown, so its place in the file can be put back (#502).</summary>
+    public event EventHandler<EditorTab>? EditorOpening;
+
+    /// <summary>Raised before a file's tab closes, while it can still say where its cursor is.</summary>
+    public event EventHandler<EditorTab>? EditorClosing;
+
     /// <summary>Raised as a file's tab closes, so a diff of it in another group can close too.</summary>
     public event EventHandler<EditorTab>? EditorClosed;
 
@@ -102,7 +108,13 @@ public sealed class EditorGroup : PaneTabs
     }
 
     public EditorTab OpenOrFocus(IFileInfo file) =>
-        Focus(file.FullName) ?? Track(new EditorTab(file, _syntax));
+        Focus(file.FullName) ?? Track(Opening(new EditorTab(file, _syntax)));
+
+    private EditorTab Opening(EditorTab tab)
+    {
+        EditorOpening?.Invoke(this, tab);
+        return tab;
+    }
 
     /// <summary>Opens a read-only Markdown document that isn't on disk (#185), like a PR's Overview.</summary>
     public DocumentTab OpenDocument(IFileInfo file, string content, string? title = null)
@@ -335,6 +347,7 @@ public sealed class EditorGroup : PaneTabs
 
     private void Close(View tab)
     {
+        if (tab is EditorTab closingEditor) EditorClosing?.Invoke(this, closingEditor);
         List<View> closing = tab is EditorTab editor ? [.. _diffs.Where(d => d.Source == editor), tab] : [tab];
         var strip = TabCollection.ToList();
         var before = strip.Take(strip.IndexOf(tab)).Count(t => !closing.Contains(t));

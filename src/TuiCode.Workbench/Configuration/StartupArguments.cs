@@ -48,8 +48,6 @@ public static class StartupArguments
     // The only flag whose value is a separate argument, and so could be mistaken for a path.
     private const string ValueFlag = "--driver";
 
-    private static readonly char[] Separators = ['/', '\\'];
-
     public static StartupTarget Resolve(
         IReadOnlyList<string> args,
         IFileSystem fileSystem,
@@ -78,14 +76,12 @@ public static class StartupArguments
             if (Create(fileSystem, request) is { } error)
                 return new StartupTarget(null, [], error);
 
-        if (IsInGitDir(fileSystem, requests[0]))
+        if (IsInGitDir(requests[0]))
             return new StartupTarget(workspace, Tabs(fileSystem, requests), RememberTabs: false);
         return new StartupTarget(Root(fileSystem, workspace, requests[0]), Tabs(fileSystem, requests));
     }
 
-    private static bool IsInGitDir(IFileSystem fileSystem, Request request) =>
-        !request.Directory && fileSystem.Path.GetDirectoryName(request.FullPath) is { } folder &&
-        folder.Split(Separators, StringSplitOptions.RemoveEmptyEntries).Contains(".git", StringComparer.Ordinal);
+    private static bool IsInGitDir(Request request) => !request.Directory && FilePaths.IsInGitDir(request.FullPath);
 
     private static List<string> Paths(IReadOnlyList<string> args)
     {

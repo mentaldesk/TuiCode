@@ -26,6 +26,10 @@ public static class FilePaths
         return TrimSeparators(to) + TrimSeparators(path)[TrimSeparators(from).Length..];
     }
 
+    /// <summary>Whether <paramref name="path"/> is inside a <c>.git</c> folder, where git keeps what it hands <c>$VISUAL</c>.</summary>
+    public static bool IsInGitDir(string path) =>
+        path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries).SkipLast(1).Contains(".git", StringComparer.Ordinal);
+
     private static string TrimSeparators(string path) => path.Length > 1 ? path.TrimEnd('/', '\\') : path;
 
     private static bool IsSeparator(char c) => c is '/' or '\\';
