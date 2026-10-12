@@ -3,7 +3,7 @@ using Point = System.Drawing.Point;
 namespace TuiCode.Editor;
 
 // Column select (#114): the extend commands sweep a rectangle of carets instead of one stream selection.
-internal sealed partial class EditorTextView
+internal sealed partial class CodeEditor
 {
     // These keep the box's column across rows too short to reach it; TG's own tracking drops it after one such row.
     private static readonly HashSet<Command> ColumnRowCommands =
@@ -38,7 +38,8 @@ internal sealed partial class EditorTextView
 
         // Move a lone caret from the active corner so TG decides where the movement lands.
         Load(new Caret(active), reveal: false);
-        InvokeCommands(binding.Commands, binding);
+        foreach (var command in binding.Commands)
+            InvokeCommand(command);
         var column = binding.Commands.All(ColumnRowCommands.Contains) ? active.X : CurrentColumn;
 
         SelectColumns(anchor, new Point(column, CurrentRow));
@@ -56,11 +57,11 @@ internal sealed partial class EditorTextView
         // From the active row, so its caret stays primary and the view follows it.
         for (var row = active.Y; ; row += step)
         {
-            var length = GetLine(row).Count;
+            var length = LineLength(row);
             var (start, end) = (Math.Min(anchor.X, length), Math.Min(active.X, length));
             carets.Add(start == end
                 ? new Caret(new Point(end, row))
-                : new Caret(new Point(end, row), new Point(start, row), Extending: true));
+                : new Caret(new Point(end, row), new Point(start, row)));
             if (row == anchor.Y) break;
         }
         SetCarets(carets);

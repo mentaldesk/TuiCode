@@ -4,7 +4,7 @@ using Attribute = Terminal.Gui.Drawing.Attribute;
 namespace TuiCode.Editor;
 
 // Sticky lines (#474); see "Sticky lines" in AGENTS.md.
-internal sealed partial class EditorTextView
+internal sealed partial class CodeEditor
 {
     private IReadOnlyList<int> _pinned = [];
     private (int Row, int Column, StickyLines Sticky)? _pinnedFor;
@@ -70,14 +70,14 @@ internal sealed partial class EditorTextView
             for (var row = 0; row < _pinned.Count; row++)
             {
                 var index = _pinned[row];
-                var line = GetLine(index);
+                var line = Graphemes(index);
                 if (!SoftWrap)
                 {
-                    DrawRow(line, index, row, right, FirstVisibleGlyph(line), line.Count);
+                    DrawRow(line, index, row, right, FirstVisibleGlyph(line), line.Length);
                     continue;
                 }
                 var starts = _wrap.Starts(index);
-                var col = DrawRow(line, index, row, right, (0, 0, 0), starts.Length > 1 ? starts[1] : line.Count);
+                var col = DrawRow(line, index, row, right, (0, 0, 0), starts.Length > 1 ? starts[1] : line.Length);
                 if (starts.Length <= 1) continue;
                 SetAttribute(_editable);
                 AddStr(Math.Min(col, right - 1), row, "…");

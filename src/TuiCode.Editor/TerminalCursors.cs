@@ -63,7 +63,7 @@ public sealed partial class TerminalCursors : IDisposable
 
     internal void Update()
     {
-        var positions = IsSupported && _app.Navigation?.GetFocused() is EditorTextView view
+        var positions = IsSupported && _app.Navigation?.GetFocused() is CodeEditor view
             ? view.SecondaryCaretsOnScreen().ToArray()
             : [];
         var shown = positions.Length == 0
