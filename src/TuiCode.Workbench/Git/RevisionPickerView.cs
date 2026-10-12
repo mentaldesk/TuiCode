@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Specialized;
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Git;
@@ -8,23 +10,24 @@ namespace TuiCode.Workbench.Git;
 /// <summary>
 /// Modal picker for Compare to revision (<c>ctr</c>): a filter over the file's branches, tags and
 /// recent commits. Enter picks the highlighted row, or the typed text when nothing matches.
-/// The list holds only <c>HEAD</c> until <see cref="Load"/>, so the host can fill it in off the UI thread.
+/// The list holds only <c>HEAD</c> until <see cref="Load"/>, so the host can fill it in off the UI thread;
+/// Enter still takes <c>HEAD</c> meanwhile.
 /// </summary>
 public sealed class RevisionPickerView : Window
 {
-    private const string LoadingHint = "Loading branches, tags and commits…";
-    private const string ReadyHint = "Type to filter · Up/Down/PgUp/PgDn · Enter compare · Esc cancel";
+    private const string Hint = "Type to filter · Up/Down/PgUp/PgDn · Enter compare · Esc cancel";
 
     private readonly TextField _filter;
     private readonly ListView _list;
+    private readonly LoadStateView _state;
     private readonly Label _error;
-    private readonly Label _hint;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
 
     private IReadOnlyList<RevisionEntry> _entries = RevisionList.Build([], []);
     private IReadOnlyList<RevisionEntry> _visible = [];
+    private Action? _retry;
 
     public IKeybindingService Scope => _scopeKeybindings;
 
@@ -46,10 +49,11 @@ public sealed class RevisionPickerView : Window
         _filter = new TextField { X = 1, Y = 0, Width = Dim.Fill(1) };
         _filter.TextChanged += (_, _) => ShowEntries();
 
-        _list = new ListView { X = 1, Y = 1, Width = Dim.Fill(1), Height = Dim.Fill(3) };
+        _list = new ListView { Width = Dim.Fill(), Height = Dim.Fill() };
+        _state = new LoadStateView(_list, "Loading branches, tags and commits…") { X = 1, Y = 1, Width = Dim.Fill(1), Height = Dim.Fill(3) };
         _error = new Label { X = 1, Y = Pos.AnchorEnd(2), Width = Dim.Fill(1), Text = "" };
-        _hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = LoadingHint };
-        Add(_filter, _list, _error, _hint);
+        var hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
+        Add(_filter, _state, _error, hint);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -61,16 +65,28 @@ public sealed class RevisionPickerView : Window
     internal string Error => _error.Text ?? "";
     internal IReadOnlyList<string> VisibleItems => _visible.Select(e => e.Text).ToList();
     internal int? SelectedItem => _list.SelectedItem;
-    internal bool Loaded { get; private set; }
+    internal bool Loaded => _state.State == LoadState.Loaded;
+    internal LoadStateView State => _state;
 
     public bool FocusFilter() => _filter.SetFocus();
+
+    public void ShowLoading()
+    {
+        _retry = null;
+        _state.ShowLoading();
+    }
 
     public void Load(IReadOnlyList<GitRef> refs, IReadOnlyList<GitCommit> commits)
     {
         _entries = RevisionList.Build(refs, commits);
-        _hint.Text = ReadyHint;
-        Loaded = true;
+        _state.ShowContent();
         ShowEntries();
+    }
+
+    public void ShowLoadFailed(string message, Action? retry)
+    {
+        _retry = retry;
+        _state.ShowLoadFailed(message, retry);
     }
 
     public void ShowError(string message) => _error.Text = message;
@@ -83,6 +99,7 @@ public sealed class RevisionPickerView : Window
         _scopeCommands.Register(CommandIds.RevisionPickerDown, () => MoveSelection(1));
         _scopeCommands.Register(CommandIds.RevisionPickerPageUp, () => MoveSelection(-PageHeight));
         _scopeCommands.Register(CommandIds.RevisionPickerPageDown, () => MoveSelection(PageHeight));
+        _scopeCommands.Register(CommandIds.RevisionPickerRetry, "Retry", () => _retry?.Invoke(), CommandScope.Global, CanRetry);
 
         _scopeKeybindings.Bind("Esc", CommandIds.RevisionPickerCancel);
         _scopeKeybindings.Bind("Enter", CommandIds.RevisionPickerConfirm);
@@ -90,7 +107,10 @@ public sealed class RevisionPickerView : Window
         _scopeKeybindings.Bind("CursorDown", CommandIds.RevisionPickerDown);
         _scopeKeybindings.Bind("PageUp", CommandIds.RevisionPickerPageUp);
         _scopeKeybindings.Bind("PageDown", CommandIds.RevisionPickerPageDown);
+        _scopeKeybindings.Bind("r", CommandIds.RevisionPickerRetry);
     }
+
+    private bool CanRetry() => _retry is not null && _state.State == LoadState.Failed;
 
     private void OnCancel()
     {

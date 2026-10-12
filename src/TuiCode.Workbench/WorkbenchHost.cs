@@ -2347,17 +2347,7 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var path = tab.File.FullName;
-        var root = Task.Run(() => _git.GetRepoRootAsync(path));
-        WhenDone(root, () =>
-        {
-            if (root.Result.Error is { } error)
-                _workbench.StatusBar.SetMessage(error);
-            else if (root.Result.Value is null)
-                _workbench.StatusBar.SetMessage($"{tab.File.Name} isn't in a git repository.");
-            else
-                OpenRevisionPicker(tab);
-        });
+        OpenRevisionPicker(tab);
     }
 
     private void GitBlame()
@@ -2557,14 +2547,24 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(view.Scope);
         view.FocusFilter();
 
-        var refs = Task.Run(() => _git.GetRefsAsync(path));
-        var history = Task.Run(() => _git.GetFileHistoryAsync(path));
-        WhenDone(Task.WhenAll(refs, history), () =>
+        void Load()
         {
-            if (!ReferenceEquals(_activeRevisionPicker, view)) return;
-            view.Load(refs.Result.Value ?? [], history.Result.Value ?? []);
-            if ((refs.Result.Error ?? history.Result.Error) is { } error) view.ShowError(error);
-        });
+            view.ShowLoading();
+            var root = Task.Run(() => _git.GetRepoRootAsync(path));
+            var refs = Task.Run(() => _git.GetRefsAsync(path));
+            var history = Task.Run(() => _git.GetFileHistoryAsync(path));
+            WhenDone(Task.WhenAll(root, refs, history), () =>
+            {
+                if (!ReferenceEquals(_activeRevisionPicker, view)) return;
+                if (root.Result.Value is null && root.Result.Error is null)
+                    view.ShowLoadFailed($"{tab.File.Name} isn't in a git repository", null);
+                else if ((root.Result.Error ?? refs.Result.Error ?? history.Result.Error) is { } error)
+                    view.ShowLoadFailed(error, Load);
+                else
+                    view.Load(refs.Result.Value ?? [], history.Result.Value ?? []);
+            });
+        }
+        Load();
     }
 
     // Scoped commands, not the view's own bindings: the tab header claims Left/Right first (#193).
@@ -2785,53 +2785,20 @@ public sealed class WorkbenchHost : IDisposable
             : GitResult<string>.Failure($"{name} isn't in {revision}");
     }
 
-    /// <summary>
-    /// Open pull request (<c>opr</c>): the repo's open PRs, listed before the picker opens so a missing
-    /// <c>gh</c> is one status-bar line rather than an empty dialog.
-    /// </summary>
+    /// <summary>Open pull request (<c>opr</c>): the picker opens at once and lists the repo's open PRs once gh has them (#525).</summary>
     private void OpenPullRequest()
     {
         if (_activePullRequestPicker is not null) return;
         if (_workbench.Sidebar.Explorer.Root is not { } root) return;
 
-        var folder = root.FullName;
-        _workbench.StatusBar.SetMessage("Loading pull requests…");
-        var repoRoot = Task.Run(() => _git.GetRepoRootAsync(folder));
-        WhenDone(repoRoot, () =>
-        {
-            if (repoRoot.Result.Error is { } error)
-            {
-                _workbench.StatusBar.SetMessage(error);
-                return;
-            }
-            if (repoRoot.Result.Value is not { } repo)
-            {
-                _workbench.StatusBar.SetMessage($"{folder} isn't in a git repository.");
-                return;
-            }
-            var listing = Task.Run(() => _gitHub.ListPullRequestsAsync(repo));
-            WhenDone(listing, () =>
-            {
-                if (listing.Result.Error is { } listError)
-                    _workbench.StatusBar.SetMessage(listError);
-                else if (listing.Result.Value.Count == 0)
-                    _workbench.StatusBar.SetMessage("No open pull requests.");
-                else
-                    OpenPullRequestPicker(root, repo, listing.Result.Value);
-            });
-        });
-    }
-
-    private void OpenPullRequestPicker(IDirectoryInfo root, string repoRoot, IReadOnlyList<GitHubPullRequestSummary> pullRequests)
-    {
-        if (_activePullRequestPicker is not null) return;
         var fileSystem = root.FileSystem;
-        var view = new PullRequestPickerView(pullRequests);
+        var view = new PullRequestPickerView();
+        string? repoRoot = null;
         var checkingOut = false;
         view.Cancelled += (_, _) => ClosePullRequestPicker(view);
         view.Submitted += (_, pullRequest) =>
         {
-            if (checkingOut) return;
+            if (checkingOut || repoRoot is null) return;
             checkingOut = true;
             view.ShowBusy(pullRequest.Number);
 
@@ -2855,6 +2822,40 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusFilter();
+
+        void Load()
+        {
+            view.ShowLoading();
+            var folder = root.FullName;
+            var lookup = Task.Run(() => _git.GetRepoRootAsync(folder));
+            WhenDone(lookup, () =>
+            {
+                if (!ReferenceEquals(_activePullRequestPicker, view)) return;
+                if (lookup.Result.Error is { } error)
+                {
+                    view.ShowLoadFailed(error, Load);
+                    return;
+                }
+                if (lookup.Result.Value is not { } repo)
+                {
+                    view.ShowLoadFailed($"{folder} isn't in a git repository", null);
+                    return;
+                }
+                var listing = Task.Run(() => _gitHub.ListPullRequestsAsync(repo));
+                WhenDone(listing, () =>
+                {
+                    if (!ReferenceEquals(_activePullRequestPicker, view)) return;
+                    if (listing.Result.Error is { } listError)
+                        view.ShowLoadFailed(listError, Load);
+                    else
+                    {
+                        repoRoot = repo;
+                        view.Load(listing.Result.Value);
+                    }
+                });
+            });
+        }
+        Load();
     }
 
     /// <summary>Open worktree (<c>ow</c>): the repo's other worktrees, listed before the picker opens.</summary>
@@ -2941,55 +2942,18 @@ public sealed class WorkbenchHost : IDisposable
             : GitResult<string>.Success(worktreePath);
     }
 
-    /// <summary>
-    /// Submit review (<c>sr</c>): the branch's PR is looked up before the dialog opens, so no PR and no
-    /// <c>gh</c> are both one status-bar line rather than a dialog with nothing to submit to.
-    /// </summary>
+    /// <summary>Submit review (<c>sr</c>): the dialog opens at once, and its form once gh has found the branch's PR (#525).</summary>
     private void SubmitReview()
     {
         if (_activeSubmitReview is not null) return;
         if (_workbench.Sidebar.Explorer.Root is not { } root) return;
 
-        var folder = root.FullName;
-        const string loading = "Loading pull request…";
-        _workbench.StatusBar.SetMessage(loading);
-        var repoRoot = Task.Run(() => _git.GetRepoRootAsync(folder));
-        WhenDone(repoRoot, () =>
-        {
-            if (repoRoot.Result.Error is { } error)
-            {
-                _workbench.StatusBar.SetMessage(error);
-                return;
-            }
-            if (repoRoot.Result.Value is not { } repo)
-            {
-                _workbench.StatusBar.SetMessage($"{folder} isn't in a git repository.");
-                return;
-            }
-            var found = Task.Run(() => _gitHub.GetPullRequestAsync(repo));
-            WhenDone(found, () =>
-            {
-                if (found.Result.Error is { } lookupError)
-                    _workbench.StatusBar.SetMessage(lookupError);
-                else if (found.Result.Value is not { } pullRequest)
-                    _workbench.StatusBar.SetMessage("No pull request for this branch.");
-                else
-                {
-                    _workbench.StatusBar.ClearMessage(loading);
-                    OpenDrafts(repo, pullRequest.Number);
-                    OpenSubmitReview(repo, pullRequest.Number);
-                }
-            });
-        });
-    }
-
-    private void OpenSubmitReview(string repoRoot, int number)
-    {
-        if (_activeSubmitReview is not null) return;
-        var view = new SubmitReviewView(number, Drafts.Count);
+        var view = new SubmitReviewView();
+        (string Root, int Number)? found = null;
         view.Cancelled += (_, _) => CloseSubmitReview(view);
         view.Submitted += (_, review) =>
         {
+            if (found is not var (repoRoot, number)) return;
             view.ShowBusy();
             var drafts = Drafts.All.ToArray();
             var submitting = Task.Run(() => _gitHub.SubmitReviewAsync(repoRoot, number, review.Verdict, review.Summary, drafts));
@@ -3012,6 +2976,43 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusSummary();
+
+        void Load()
+        {
+            view.ShowLoading();
+            var folder = root.FullName;
+            var lookup = Task.Run(() => _git.GetRepoRootAsync(folder));
+            WhenDone(lookup, () =>
+            {
+                if (!ReferenceEquals(_activeSubmitReview, view)) return;
+                if (lookup.Result.Error is { } error)
+                {
+                    view.ShowLoadFailed(error, Load);
+                    return;
+                }
+                if (lookup.Result.Value is not { } repo)
+                {
+                    view.ShowLoadFailed($"{folder} isn't in a git repository", null);
+                    return;
+                }
+                var pullRequest = Task.Run(() => _gitHub.GetPullRequestAsync(repo));
+                WhenDone(pullRequest, () =>
+                {
+                    if (!ReferenceEquals(_activeSubmitReview, view)) return;
+                    if (pullRequest.Result.Error is { } lookupError)
+                        view.ShowLoadFailed(lookupError, Load);
+                    else if (pullRequest.Result.Value is not { } pr)
+                        view.ShowNoPullRequest();
+                    else
+                    {
+                        found = (repo, pr.Number);
+                        OpenDrafts(repo, pr.Number);
+                        view.Load(pr.Number, Drafts.Count);
+                    }
+                });
+            });
+        }
+        Load();
     }
 
     private bool CanToggleViewed() => _focus.Region switch

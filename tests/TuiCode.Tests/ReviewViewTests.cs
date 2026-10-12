@@ -75,6 +75,23 @@ public class ReviewViewTests
     }
 
     [Fact]
+    public async Task A_refresh_that_fails_keeps_the_files_listed_and_reports_why()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.cs")];
+        using var view = Build();
+        string? reported = null;
+        view.RefreshFailed += (_, error) => reported = error;
+
+        await view.Refresh();
+        _git.Missing = true;
+        await view.Refresh();
+
+        Assert.Equal("git isn't installed or isn't on PATH", reported);
+        Assert.Equal("feature ← main  (no PR)", view.HeaderText);
+        Assert.Equal(["M a.cs"], Rows(view));
+    }
+
+    [Fact]
     public async Task A_detached_HEAD_is_named_HEAD()
     {
         _git.Branch = null;

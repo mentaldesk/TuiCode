@@ -128,6 +128,7 @@ public static class CommandIds
     public const string RevisionPickerDown = "revisionPicker.action.down";
     public const string RevisionPickerPageUp = "revisionPicker.action.pageUp";
     public const string RevisionPickerPageDown = "revisionPicker.action.pageDown";
+    public const string RevisionPickerRetry = "revisionPicker.action.retry";
 
     public const string PullRequestPickerConfirm = "pullRequestPicker.action.confirm";
     public const string PullRequestPickerCancel = "pullRequestPicker.action.cancel";
@@ -135,6 +136,7 @@ public static class CommandIds
     public const string PullRequestPickerDown = "pullRequestPicker.action.down";
     public const string PullRequestPickerPageUp = "pullRequestPicker.action.pageUp";
     public const string PullRequestPickerPageDown = "pullRequestPicker.action.pageDown";
+    public const string PullRequestPickerRetry = "pullRequestPicker.action.retry";
 
     public const string RecentFolderPickerConfirm = "recentFolderPicker.action.confirm";
     public const string RecentFolderPickerCancel = "recentFolderPicker.action.cancel";
@@ -152,6 +154,7 @@ public static class CommandIds
 
     public const string SubmitReviewConfirm = "submitReview.action.confirm";
     public const string SubmitReviewCancel = "submitReview.action.cancel";
+    public const string SubmitReviewRetry = "submitReview.action.retry";
 
     public const string CommentConfirm = "comment.action.confirm";
     public const string CommentCancel = "comment.action.cancel";

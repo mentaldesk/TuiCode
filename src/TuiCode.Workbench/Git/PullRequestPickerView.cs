@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Specialized;
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Git;
@@ -8,7 +10,7 @@ namespace TuiCode.Workbench.Git;
 /// <summary>
 /// Modal picker for Open pull request (<c>opr</c>): a filter over the repo's open PRs. Enter checks the
 /// highlighted one out in its own worktree, which the host reports back through <see cref="ShowError"/>
-/// when it can't. The list is handed in already loaded, so there's no waiting state but the checkout's.
+/// when it can't. It opens before the list is in, which the host hands over with <see cref="Load"/> (#525).
 /// </summary>
 public sealed class PullRequestPickerView : Window
 {
@@ -16,13 +18,15 @@ public sealed class PullRequestPickerView : Window
 
     private readonly TextField _filter;
     private readonly ListView _list;
+    private readonly LoadStateView _state;
     private readonly Label _status;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
 
-    private readonly IReadOnlyList<GitHubPullRequestSummary> _all;
+    private IReadOnlyList<GitHubPullRequestSummary> _all = [];
     private IReadOnlyList<GitHubPullRequestSummary> _visible = [];
+    private Action? _retry;
 
     public IKeybindingService Scope => _scopeKeybindings;
 
@@ -31,9 +35,8 @@ public sealed class PullRequestPickerView : Window
     /// <summary>The PR to check out; the host does the work and closes the picker once it's done.</summary>
     public event EventHandler<GitHubPullRequestSummary>? Submitted;
 
-    public PullRequestPickerView(IReadOnlyList<GitHubPullRequestSummary> pullRequests)
+    public PullRequestPickerView()
     {
-        _all = pullRequests;
         Title = "Open pull request";
         BorderStyle = LineStyle.Single;
         X = Pos.Center();
@@ -45,11 +48,12 @@ public sealed class PullRequestPickerView : Window
         _filter = new TextField { X = 1, Y = 0, Width = Dim.Fill(1) };
         _filter.TextChanged += (_, _) => ShowEntries();
 
-        _list = new ListView { X = 1, Y = 1, Width = Dim.Fill(1), Height = Dim.Fill(3) };
+        _list = new ListView { Width = Dim.Fill(), Height = Dim.Fill() };
+        _state = new LoadStateView(_list, "Loading pull requests…") { X = 1, Y = 1, Width = Dim.Fill(1), Height = Dim.Fill(3) };
         _status = new Label { X = 1, Y = Pos.AnchorEnd(3), Width = Dim.Fill(1), Text = "" };
         var legend = new Label { X = 1, Y = Pos.AnchorEnd(2), Width = Dim.Fill(1), Text = $"{PullRequestList.RequestedMarker} your review is requested" };
         var hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
-        Add(_filter, _list, _status, legend, hint);
+        Add(_filter, _state, _status, legend, hint);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -61,8 +65,30 @@ public sealed class PullRequestPickerView : Window
     internal string Status => _status.Text ?? "";
     internal IReadOnlyList<string> VisibleItems => [.. _visible.Select(pr => $"#{pr.Number}")];
     internal int? SelectedItem => _list.SelectedItem;
+    internal LoadStateView State => _state;
+    internal bool Loaded => _state.State == LoadState.Loaded;
 
     public bool FocusFilter() => _filter.SetFocus();
+
+    public void ShowLoading()
+    {
+        _retry = null;
+        _state.ShowLoading();
+    }
+
+    public void Load(IReadOnlyList<GitHubPullRequestSummary> pullRequests)
+    {
+        _all = pullRequests;
+        if (pullRequests.Count == 0) _state.ShowEmpty("No open pull requests");
+        else _state.ShowContent();
+        ShowEntries();
+    }
+
+    public void ShowLoadFailed(string message, Action? retry)
+    {
+        _retry = retry;
+        _state.ShowLoadFailed(message, retry);
+    }
 
     /// <summary>Shows why the checkout didn't happen; the picker stays open so another PR can be picked.</summary>
     public void ShowError(string message) => _status.Text = message;
@@ -78,6 +104,7 @@ public sealed class PullRequestPickerView : Window
         _scopeCommands.Register(CommandIds.PullRequestPickerDown, () => MoveSelection(1));
         _scopeCommands.Register(CommandIds.PullRequestPickerPageUp, () => MoveSelection(-PageHeight));
         _scopeCommands.Register(CommandIds.PullRequestPickerPageDown, () => MoveSelection(PageHeight));
+        _scopeCommands.Register(CommandIds.PullRequestPickerRetry, "Retry", () => _retry?.Invoke(), CommandScope.Global, CanRetry);
 
         _scopeKeybindings.Bind("Esc", CommandIds.PullRequestPickerCancel);
         _scopeKeybindings.Bind("Enter", CommandIds.PullRequestPickerConfirm);
@@ -85,7 +112,10 @@ public sealed class PullRequestPickerView : Window
         _scopeKeybindings.Bind("CursorDown", CommandIds.PullRequestPickerDown);
         _scopeKeybindings.Bind("PageUp", CommandIds.PullRequestPickerPageUp);
         _scopeKeybindings.Bind("PageDown", CommandIds.PullRequestPickerPageDown);
+        _scopeKeybindings.Bind("r", CommandIds.PullRequestPickerRetry);
     }
+
+    private bool CanRetry() => _retry is not null && _state.State == LoadState.Failed;
 
     private void OnCancel()
     {

@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Dialogs;
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Search;
@@ -66,7 +67,15 @@ public sealed class SidebarPart : FrameView
         // Titled after the Find globally / Replace globally commands that open it (fg / rg).
         _findTab = WrapTab("Find", Search);
         _usagesTab = WrapTab("Usages", Usages);
-        _reviewTab = WrapTab("Review", Review);
+        Review.Width = Dim.Fill();
+        Review.Height = Dim.Fill();
+        Review.LoadState = new LoadStateView(Review, "Loading changes…");
+        _reviewTab = WrapTab("Review", Review.LoadState);
+        // LoadStateView puts its reload spinner on the border's first row, which on a tab is above the line under the headers.
+        _reviewTab.Border.GetOrCreateView().SubViewAdded += (_, e) =>
+        {
+            if (e.SubView is SpinnerView spinner) spinner.Y = Math.Max(0, _reviewTab.Border.Thickness.Top - 1);
+        };
 
         _tabs = new PaneTabs
         {

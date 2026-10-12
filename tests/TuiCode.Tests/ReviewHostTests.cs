@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
@@ -203,6 +204,81 @@ public class ReviewHostTests : StaticConfigurationTest
         Assert.Equal("main ← feature", review.HeaderText);
         Assert.Equal("✓ 3  ● 1 checks", review.ChecksText);
         Assert.True(review.Files.Visible);
+    }
+
+    [Fact]
+    public async Task The_first_load_says_so_in_the_pane_rather_than_the_header()
+    {
+        var gate = new TaskCompletionSource();
+        _git.ChangesGate = gate.Task;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var review = workbench.Sidebar.Review;
+        var header = "unset";
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => review.LoadState!.State == LoadState.Loading,
+            () =>
+            {
+                header = review.HeaderText;
+                gate.SetResult();
+            },
+            () => review.LoadState!.State == LoadState.Loaded && review.ChangedFiles.Count == 3);
+
+        Assert.Equal("", header);
+        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task A_refresh_keeps_the_files_listed_while_it_reloads()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var review = workbench.Sidebar.Review;
+        var gate = new TaskCompletionSource();
+        var filesWhileReloading = 0;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => review.ChangedFiles.Count == 3,
+            () =>
+            {
+                _git.ChangesGate = gate.Task;
+                commands.TryExecute(CommandIds.FocusReview);
+            },
+            () => review.LoadState!.Reloading,
+            () =>
+            {
+                filesWhileReloading = review.ChangedFiles.Count;
+                Assert.Equal(LoadState.Loaded, review.LoadState!.State);
+                gate.SetResult();
+            },
+            () => !review.LoadState!.Reloading);
+
+        Assert.Equal(3, filesWhileReloading);
+        Assert.Equal(3, review.ChangedFiles.Count);
+    }
+
+    [Fact]
+    public async Task A_refresh_that_fails_keeps_the_files_and_says_so_on_the_status_bar()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var review = workbench.Sidebar.Review;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => review.ChangedFiles.Count == 3,
+            () =>
+            {
+                _git.Missing = true;
+                commands.TryExecute(CommandIds.FocusReview);
+            },
+            () => workbench.StatusBar.DisplayedText == "Couldn't refresh the review: git isn't installed or isn't on PATH");
+
+        Assert.Equal(3, review.ChangedFiles.Count);
+        Assert.False(review.LoadState!.Reloading);
     }
 
     private Workbench.Workbench BuildWorkbench()

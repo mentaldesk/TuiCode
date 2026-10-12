@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -41,7 +42,7 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.O),
             () => host.App.InjectKey(Key.P),
             () => host.App.InjectKey(Key.R),
-            () => Picker(workbench) is not null,
+            () => Picker(workbench) is { Loaded: true },
             () => { rows = Picker(workbench)!.VisibleItems; },
             () => host.App.InjectKey(Key.Esc));
 
@@ -59,7 +60,7 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench) is not null,
+            () => Picker(workbench) is { Loaded: true },
             () => Type(host, "octo"),
             () => Picker(workbench)!.VisibleItems is ["#129"],
             () => host.App.InjectKey(Key.Enter),
@@ -82,7 +83,7 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench) is not null,
+            () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench) is null);
 
@@ -101,7 +102,7 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench) is not null,
+            () => Picker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench)!.Status == "pr-132 already has local changes",
             () => host.App.InjectKey(Key.Esc));
@@ -110,31 +111,120 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Without_gh_opr_says_so_in_the_status_bar_and_opens_nothing()
+    public async Task The_picker_opens_while_gh_lists_the_pull_requests_and_keeps_what_was_typed()
+    {
+        var gate = new TaskCompletionSource();
+        _gitHub.HoldPullRequests = gate;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var stateWhileLoading = LoadState.Loaded;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.OpenPullRequest),
+            () => Picker(workbench) is not null,
+            () =>
+            {
+                stateWhileLoading = Picker(workbench)!.State.State;
+                Type(host, "octo");
+            },
+            () => Picker(workbench)!.Filter == "octo",
+            () => gate.SetResult(),
+            () => Picker(workbench) is { Loaded: true },
+            () => Assert.Equal(["#129"], Picker(workbench)!.VisibleItems),
+            () => host.App.InjectKey(Key.Esc),
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.Equal(LoadState.Loading, stateWhileLoading);
+        Assert.Null(Picker(workbench));
+        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task Without_gh_the_picker_says_so_and_R_tries_again()
     {
         _gitHub.Missing = true;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var failed = "";
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.OpenPullRequest),
+            () => Picker(workbench)?.State.State == LoadState.Failed,
+            () =>
+            {
+                failed = Picker(workbench)!.State.Says;
+                _gitHub.Missing = false;
+                host.App.InjectKey(Key.R);
+            },
+            () => Picker(workbench) is { Loaded: true },
+            () => Assert.Equal(["#132", "#129"], Picker(workbench)!.VisibleItems),
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.Equal("Pull requests need the GitHub CLI: run gh auth login", failed);
+        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task R_types_into_the_filter_once_the_list_is_in()
+    {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => workbench.StatusBar.DisplayedText == "Pull requests need the GitHub CLI: run gh auth login");
+            () => Picker(workbench) is { Loaded: true },
+            () => host.App.InjectKey(Key.R),
+            () => Picker(workbench)!.Filter == "r",
+            () => host.App.InjectKey(Key.Esc),
+            () => host.App.InjectKey(Key.Esc));
 
         Assert.Null(Picker(workbench));
     }
 
     [Fact]
-    public async Task A_repo_with_no_open_pull_requests_says_so_rather_than_opening_an_empty_picker()
+    public async Task A_repo_with_no_open_pull_requests_says_so_in_the_picker()
     {
         _gitHub.OpenPullRequests = [];
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
+        var says = "";
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => workbench.StatusBar.DisplayedText == "No open pull requests.");
+            () => Picker(workbench)?.State.State == LoadState.Empty,
+            () => { says = Picker(workbench)!.State.Says; },
+            () => host.App.InjectKey(Key.Esc));
 
-        Assert.Null(Picker(workbench));
+        Assert.Equal("No open pull requests", says);
+        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task Outside_a_git_repository_the_picker_says_so_and_offers_no_retry()
+    {
+        _git.Root = null;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var says = "";
+        var state = LoadState.Loading;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.OpenPullRequest),
+            () => Picker(workbench)?.State.State is LoadState.Empty,
+            () =>
+            {
+                says = Picker(workbench)!.State.Says;
+                host.App.InjectKey(Key.R);
+            },
+            () =>
+            {
+                state = Picker(workbench)!.State.State;
+                host.App.InjectKey(Key.Esc);
+                host.App.InjectKey(Key.Esc);
+            });
+
+        Assert.Equal($"{_fs.Path.GetFullPath("/work")} isn't in a git repository", says);
+        Assert.Equal(LoadState.Empty, state);
     }
 
     private static PullRequestPickerView? Picker(Workbench.Workbench workbench) =>
