@@ -143,9 +143,10 @@ public sealed class ActionView : Window
             .Where(c => (c.Scope == CommandScope.Global || c.Scope == scope) && commands.IsEnabled(c.Id))
             .Select(c => new ActionRow(
                 c.Id,
-                c.Label,
+                c.Title,
                 bindingsByCommand.TryGetValue(c.Id, out var seqs) ? string.Join(", ", seqs) : "",
-                CommandMnemonics.For(c.Id) ?? ""))
+                CommandMnemonics.For(c.Id) ?? "",
+                c.Label))
             .OrderBy(r => r.Label, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -163,6 +164,7 @@ public sealed class ActionView : Window
 
     private static bool Matches(ActionRow r, string needle) =>
         r.Label.Contains(needle, StringComparison.OrdinalIgnoreCase)
+        || r.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
         || r.Bindings.Contains(needle, StringComparison.OrdinalIgnoreCase)
         || r.CommandId.Contains(needle, StringComparison.OrdinalIgnoreCase)
         || r.Mnemonic.StartsWith(needle, StringComparison.OrdinalIgnoreCase);

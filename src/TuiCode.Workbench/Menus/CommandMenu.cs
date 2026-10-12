@@ -46,7 +46,7 @@ public sealed class CommandMenu
         [CommandIds.SelectPreviousOccurrence] = 'p', [CommandIds.SelectAllOccurrences] = 'o',
 
         [CommandIds.ShowExplorer] = 'e', [CommandIds.FindGlobally] = 'f', [CommandIds.FocusUsages] = 'u',
-        [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 't', [CommandIds.WidenSidebar] = 'w',
+        [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
         [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'h', [CommandIds.ToggleGutter] = 'g',
         [CommandIds.ToggleWordWrap] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
         [CommandIds.JoinGroups] = 'j',
@@ -60,7 +60,7 @@ public sealed class CommandMenu
         [CommandIds.RevertChange] = 'e', [CommandIds.RevertAllChanges] = 'a', [CommandIds.GitBlame] = 'b',
 
         [CommandIds.OpenPullRequest] = 'o', [CommandIds.PullRequestOverview] = 'p', [CommandIds.CreateComment] = 'c',
-        [CommandIds.ToggleViewed] = 't', [CommandIds.SubmitReview] = 's',
+        [CommandIds.ToggleViewed] = 'v', [CommandIds.SubmitReview] = 's',
 
         [CommandIds.ShowHelp] = 'g', [CommandIds.ShowActions] = 's', [CommandIds.ShowMnemonics] = 'm',
         [CommandIds.ShowDiagnostics] = 'd', [CommandIds.ShowLog] = 'l', [CommandIds.ShowAbout] = 'a',
@@ -204,7 +204,19 @@ public sealed class CommandMenu
 
     private void DimUnavailable()
     {
-        foreach (var (id, item) in _items) item.Dimmed = !_isAvailable(id);
+        var titles = _commands.Registered.ToDictionary(c => c.Id, c => c.Title, StringComparer.Ordinal);
+        foreach (var (id, item) in _items)
+        {
+            item.Dimmed = !_isAvailable(id);
+            var title = Title(id, titles.GetValueOrDefault(id));
+            if (item.Title != title) item.Title = title;
+        }
+    }
+
+    private static string Title(string id, string? registered)
+    {
+        var title = Titles.GetValueOrDefault(id) ?? registered ?? id;
+        return Letters.TryGetValue(id, out var letter) ? Underline(title, letter) : title;
     }
 
     private MenuBarItem Build((string Title, string[] Ids) entry)
@@ -225,10 +237,9 @@ public sealed class CommandMenu
 
     private CommandMenuItem Item(string id)
     {
-        var title = Titles.GetValueOrDefault(id) ?? _commands.Registered.FirstOrDefault(c => c.Id == id)?.Label ?? id;
         var item = new CommandMenuItem
         {
-            Title = Letters.TryGetValue(id, out var letter) ? Underline(title, letter) : title,
+            Title = Title(id, _commands.Registered.FirstOrDefault(c => c.Id == id)?.Title),
             // The workbench already dispatches the key; binding it here too would run the command twice.
             BindKeyToApplication = false,
             Action = () => _picked = id,

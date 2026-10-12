@@ -378,7 +378,7 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => !workbench.MenuBar.IsOpen()]);
 
         // The exceptions: the palette keeps the language server's commands to say why they can't run, the menu dims them until a server is ready (#454).
-        var offered = MenuIds().Where(id => id is not (CommandIds.GoToDefinition or CommandIds.FindUsages) && palette.Contains(commands.Registered.Single(c => c.Id == id).Label));
+        var offered = MenuIds().Where(id => id is not (CommandIds.GoToDefinition or CommandIds.FindUsages) && palette.Contains(commands.Registered.Single(c => c.Id == id).Title));
         Assert.Equal(offered.Order(), undimmed.Order());
         if (context == "pull request") Assert.Contains(CommandIds.SubmitReview, undimmed);
         if (context == "diff") Assert.Contains(CommandIds.RevertChange, undimmed);
@@ -544,13 +544,13 @@ public class MenuBarHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void View_opens_with_the_sidebar_panels_by_name_then_toggle_widen_and_narrow()
+    public void View_opens_with_the_sidebar_panels_by_name_then_hide_widen_and_narrow()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
         var view = Title(workbench, "View").PopoverMenu!.Root!.SubViews.ToList();
 
-        Assert.Equal(["Explorer", "Find", "Usages", "Review", "-", "Toggle sidebar", "Widen sidebar", "Narrow sidebar"],
+        Assert.Equal(["Explorer", "Find", "Usages", "Review", "-", "Hide sidebar", "Widen sidebar", "Narrow sidebar"],
             view.Take(8).Select(v => v is MenuItem item ? item.Title.Replace("_", "") : "-"));
     }
 
