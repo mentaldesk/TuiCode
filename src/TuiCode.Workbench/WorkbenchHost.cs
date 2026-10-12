@@ -858,7 +858,7 @@ public sealed class WorkbenchHost : IDisposable
         // No default key for ToggleSidebar — Ctrl+0 is eaten by the terminal's own zoom-reset
         // in many emulators (#81), so it was unreliable. Reach it via the `ts` mnemonic instead.
         keybindings.Bind("Esc", CommandIds.FocusEditorBody);
-        keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
+        // No default key for FocusEditorTabStrip: Windows keeps Ctrl+Esc for the Start menu (#520). Reach it via `ft`.
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
         keybindings.Bind("Ctrl+O", CommandIds.Open);
         keybindings.Bind("Ctrl+N", CommandIds.New);
