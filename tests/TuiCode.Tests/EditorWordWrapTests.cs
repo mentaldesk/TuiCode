@@ -81,7 +81,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.Select(new TextMatch(0, 28, 5));
         Render(tab);
 
-        var view = tab.TextView;
+        var view = tab.Code;
         Assert.Equal(view.GetAttributeForRole(VisualRole.Highlight), AttributeAt(view, 1, 5));
         Assert.Equal(view.GetAttributeForRole(VisualRole.Editable), AttributeAt(view, 1, 4));
         Assert.Equal(view.GetAttributeForRole(VisualRole.Active), AttributeAt(view, 2, 0));
@@ -100,8 +100,8 @@ public class EditorWordWrapTests : StaticConfigurationTest
         var screen = Render(tab);
 
         Assert.StartsWith("     // a comment", screen[1]);
-        Assert.Equal("#6A9955", AttributeAt(tab.TextView, 1, 0).Foreground.ToString());
-        Assert.Equal("#6A9955", AttributeAt(tab.TextView, 1, 11).Foreground.ToString());
+        Assert.Equal("#6A9955", AttributeAt(tab.Code, 1, 0).Foreground.ToString());
+        Assert.Equal("#6A9955", AttributeAt(tab.Code, 1, 11).Foreground.ToString());
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.MoveCursor(0, 16);
         Render(tab);
 
-        Assert.Equal(tab.TextView.ViewportToScreen(new Point(2, 1)), tab.TextView.Cursor.Position);
+        Assert.Equal(tab.Code.ViewportToScreen(new Point(2, 1)), tab.Code.Cursor.Position);
     }
 
     [Fact]
@@ -124,8 +124,8 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.MoveCursor(0, 14);
         Render(tab);
 
-        tab.TextView.NewKeyDownEvent(Key.X);
-        tab.TextView.NewKeyDownEvent(Key.Enter);
+        tab.Code.NewKeyDownEvent(Key.X);
+        tab.Code.NewKeyDownEvent(Key.Enter);
         var screen = Render(tab);
 
         Assert.Equal("one two three x", tab.Lines[0]);
@@ -139,9 +139,9 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.WordWrap = true;
         Render(tab);
 
-        tab.TextView.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonPressed, Position = new Point(5, 1) });
-        tab.TextView.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonReleased, Position = new Point(5, 1) });
-        tab.TextView.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new Point(5, 1) });
+        tab.Code.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonPressed, Position = new Point(5, 1) });
+        tab.Code.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonReleased, Position = new Point(5, 1) });
+        tab.Code.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new Point(5, 1) });
 
         Assert.Equal((0, 19), (tab.CursorRow, tab.CursorColumn));
     }
@@ -153,9 +153,9 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.WordWrap = true;
         Render(tab);
 
-        tab.TextView.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonPressed, Position = new Point(4, 0) });
-        tab.TextView.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonPressed | MouseFlags.PositionReport, Position = new Point(3, 2) });
-        tab.TextView.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonReleased, Position = new Point(3, 2) });
+        tab.Code.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonPressed, Position = new Point(4, 0) });
+        tab.Code.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonPressed | MouseFlags.PositionReport, Position = new Point(3, 2) });
+        tab.Code.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonReleased, Position = new Point(3, 2) });
 
         Assert.Equal("two three four five six sev", tab.SelectedText);
     }
@@ -170,7 +170,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.MoveCursor(4, 30);
         var screen = Render(tab);
 
-        Assert.Equal(14, tab.TextView.Viewport.Y + tab.TextView.Viewport.Height - 1);
+        Assert.Equal(14, tab.Code.Viewport.Y + tab.Code.Viewport.Height - 1);
         Assert.StartsWith("     seven ", screen[Height - 1]);
     }
 
@@ -184,22 +184,22 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.MoveCursor(8, 0);
         tab.RevealLines(8, 8);
 
-        Assert.Equal(24 - Reveal.Margin, tab.TextView.Viewport.Y);
+        Assert.Equal(24 - Reveal.Margin, tab.Code.Viewport.Y);
     }
 
     [Fact]
     public void The_horizontal_bar_hides_and_the_vertical_bar_counts_screen_rows()
     {
         using var tab = Tab(string.Join('\n', Enumerable.Repeat(Paragraph, 4)));
-        Assert.True(tab.TextView.HorizontalScrollBar.Visible);
+        Assert.True(tab.Code.HorizontalScrollBar.Visible);
 
         tab.WordWrap = true;
         Render(tab);
         tab.Layout();
 
-        Assert.False(tab.TextView.HorizontalScrollBar.Visible);
-        Assert.True(tab.TextView.VerticalScrollBar.Visible);
-        Assert.Equal(12, tab.TextView.VerticalScrollBar.ScrollableContentSize);
+        Assert.False(tab.Code.HorizontalScrollBar.Visible);
+        Assert.True(tab.Code.VerticalScrollBar.Visible);
+        Assert.Equal(12, tab.Code.VerticalScrollBar.ScrollableContentSize);
     }
 
     [Fact]
@@ -210,10 +210,10 @@ public class EditorWordWrapTests : StaticConfigurationTest
         Render(tab);
         tab.Layout();
 
-        tab.TextView.VerticalScrollBar.Value = 4;
+        tab.Code.VerticalScrollBar.Value = 4;
         var screen = Render(tab);
 
-        Assert.Equal(4, tab.TextView.Viewport.Y);
+        Assert.Equal(4, tab.Code.Viewport.Y);
         Assert.StartsWith("     four five six", screen[0]);
     }
 
@@ -224,9 +224,9 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.WordWrap = true;
         Render(tab);
 
-        tab.TextView.NewMouseEvent(new Mouse { Flags = MouseFlags.WheeledDown, Position = new Point(1, 1) });
+        tab.Code.NewMouseEvent(new Mouse { Flags = MouseFlags.WheeledDown, Position = new Point(1, 1) });
 
-        Assert.Equal(1, tab.TextView.Viewport.Y);
+        Assert.Equal(1, tab.Code.Viewport.Y);
     }
 
     [Fact]
@@ -264,13 +264,13 @@ public class EditorWordWrapTests : StaticConfigurationTest
         List<(int, int)> stops = [];
         for (var i = 0; i < 3; i++)
         {
-            tab.TextView.NewKeyDownEvent(Key.CursorDown);
+            tab.Code.NewKeyDownEvent(Key.CursorDown);
             stops.Add((tab.CursorRow, tab.CursorColumn));
         }
         Render(tab);
 
         Assert.Equal([(0, 16), (0, 30), (1, 2)], stops);
-        Assert.Equal(tab.TextView.ViewportToScreen(new Point(2, 3)), tab.TextView.Cursor.Position);
+        Assert.Equal(tab.Code.ViewportToScreen(new Point(2, 3)), tab.Code.Cursor.Position);
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         List<(int, int)> stops = [];
         for (var i = 0; i < 3; i++)
         {
-            tab.TextView.NewKeyDownEvent(Key.CursorUp);
+            tab.Code.NewKeyDownEvent(Key.CursorUp);
             stops.Add((tab.CursorRow, tab.CursorColumn));
         }
 
@@ -298,10 +298,10 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.WordWrap = true;
         tab.MoveCursor(0, 2);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorUp);
+        tab.Code.NewKeyDownEvent(Key.CursorUp);
         var top = (tab.CursorRow, tab.CursorColumn);
         tab.MoveCursor(0, 30);
-        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+        tab.Code.NewKeyDownEvent(Key.CursorDown);
 
         Assert.Equal((0, 2), top);
         Assert.Equal((0, 30), (tab.CursorRow, tab.CursorColumn));
@@ -314,10 +314,10 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.WordWrap = true;
         tab.MoveCursor(0, 22);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorDown);
-        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+        tab.Code.NewKeyDownEvent(Key.CursorDown);
+        tab.Code.NewKeyDownEvent(Key.CursorDown);
         var shortRow = (tab.CursorRow, tab.CursorColumn);
-        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+        tab.Code.NewKeyDownEvent(Key.CursorDown);
 
         Assert.Equal((1, 2), shortRow);
         Assert.Equal((2, 8), (tab.CursorRow, tab.CursorColumn));
@@ -330,10 +330,10 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.WordWrap = true;
         tab.MoveCursor(0, 4);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
+        tab.Code.NewKeyDownEvent(Key.CursorDown.WithShift);
         var down = tab.SelectedText;
-        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
-        tab.TextView.NewKeyDownEvent(Key.CursorUp.WithShift);
+        tab.Code.NewKeyDownEvent(Key.CursorDown.WithShift);
+        tab.Code.NewKeyDownEvent(Key.CursorUp.WithShift);
 
         Assert.Equal("two three four", down);
         Assert.Equal("two three four", tab.SelectedText);
@@ -347,11 +347,11 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.MoveCursor(0, 2);
         Render(tab);
 
-        tab.TextView.NewKeyDownEvent(Key.PageDown);
+        tab.Code.NewKeyDownEvent(Key.PageDown);
         var down = (tab.CursorRow, tab.CursorColumn);
         Render(tab);
-        var top = tab.TextView.Viewport.Y;
-        tab.TextView.NewKeyDownEvent(Key.PageUp);
+        var top = tab.Code.Viewport.Y;
+        tab.Code.NewKeyDownEvent(Key.PageUp);
 
         Assert.Equal((2, 2), down);
         Assert.Equal(Height, top);
@@ -366,7 +366,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.MoveCursor(0, 0);
         Render(tab);
 
-        tab.TextView.NewKeyDownEvent(Key.PageDown.WithShift);
+        tab.Code.NewKeyDownEvent(Key.PageDown.WithShift);
 
         Assert.Equal($"{Paragraph}\n{Paragraph}\n".ReplaceLineEndings(), tab.SelectedText.ReplaceLineEndings());
     }
@@ -377,7 +377,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         using var tab = Tab($"{Paragraph}\nend");
         tab.MoveCursor(0, 2);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorDown);
+        tab.Code.NewKeyDownEvent(Key.CursorDown);
 
         Assert.Equal((1, 2), (tab.CursorRow, tab.CursorColumn));
     }
@@ -405,12 +405,12 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.AddCursor(LineDirection.Down);
         var screen = Render(tab);
 
-        Assert.Equal([new Point(16, 0), new Point(16, 1)], tab.TextView.Carets.Select(c => c.Position));
-        var editable = tab.TextView.GetAttributeForRole(VisualRole.Editable);
+        Assert.Equal([new Point(16, 0), new Point(16, 1)], tab.Code.Carets.Select(c => c.Position));
+        var editable = tab.Code.GetAttributeForRole(VisualRole.Editable);
         foreach (var row in new[] { 1, 4 })
         {
             Assert.Equal("u", screen[row][7..8]);
-            Assert.Equal(new Attribute(editable.Background, editable.Foreground), AttributeAt(tab.TextView, row, 2));
+            Assert.Equal(new Attribute(editable.Background, editable.Foreground), AttributeAt(tab.Code, row, 2));
         }
     }
 
@@ -423,12 +423,12 @@ public class EditorWordWrapTests : StaticConfigurationTest
         Render(tab);
         Mouse AltClick() => new() { Flags = MouseFlags.LeftButtonClicked | MouseFlags.Alt, Position = new Point(5, 1) };
 
-        tab.TextView.NewMouseEvent(AltClick());
-        var added = tab.TextView.Carets.Select(c => c.Position).ToArray();
-        tab.TextView.NewMouseEvent(AltClick());
+        tab.Code.NewMouseEvent(AltClick());
+        var added = tab.Code.Carets.Select(c => c.Position).ToArray();
+        tab.Code.NewMouseEvent(AltClick());
 
         Assert.Equal([new Point(2, 0), new Point(19, 0)], added);
-        Assert.Equal([new Point(2, 0)], tab.TextView.Carets.Select(c => c.Position));
+        Assert.Equal([new Point(2, 0)], tab.Code.Carets.Select(c => c.Position));
     }
 
     [Fact]
@@ -439,11 +439,11 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.MoveCursor(0, 14);
         tab.AddCursor(LineDirection.Down);
 
-        tab.TextView.NewKeyDownEvent(Key.X);
-        tab.TextView.NewKeyDownEvent(Key.X);
+        tab.Code.NewKeyDownEvent(Key.X);
+        tab.Code.NewKeyDownEvent(Key.X);
         var typedLines = tab.Lines.ToArray();
         var typed = Render(tab);
-        tab.TextView.NewKeyDownEvent(Key.Backspace);
+        tab.Code.NewKeyDownEvent(Key.Backspace);
 
         Assert.Equal(["one two three xxfour five six seven", "one two three xxfour five six seven"], typedLines);
         Assert.Equal(["    six seven", "  2 one two three", "    six seven"],
@@ -459,15 +459,15 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.MoveCursor(0, 2);
         tab.AddCursor(LineDirection.Down);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorDown);
-        var once = tab.TextView.Carets.Select(c => c.Position).ToArray();
-        tab.TextView.NewKeyDownEvent(Key.CursorDown);
-        var twice = tab.TextView.Carets.Select(c => c.Position).ToArray();
-        tab.TextView.NewKeyDownEvent(Key.CursorUp);
+        tab.Code.NewKeyDownEvent(Key.CursorDown);
+        var once = tab.Code.Carets.Select(c => c.Position).ToArray();
+        tab.Code.NewKeyDownEvent(Key.CursorDown);
+        var twice = tab.Code.Carets.Select(c => c.Position).ToArray();
+        tab.Code.NewKeyDownEvent(Key.CursorUp);
 
         Assert.Equal([new Point(16, 0), new Point(16, 1)], once);
         Assert.Equal([new Point(30, 0), new Point(30, 1)], twice);
-        Assert.Equal([new Point(16, 0), new Point(16, 1)], tab.TextView.Carets.Select(c => c.Position));
+        Assert.Equal([new Point(16, 0), new Point(16, 1)], tab.Code.Carets.Select(c => c.Position));
     }
 
     [Fact]
@@ -478,11 +478,11 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.ColumnSelect = true;
         tab.MoveCursor(0, 4);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
-        tab.TextView.NewKeyDownEvent(Key.CursorRight.WithShift);
+        tab.Code.NewKeyDownEvent(Key.CursorDown.WithShift);
+        tab.Code.NewKeyDownEvent(Key.CursorRight.WithShift);
         Render(tab);
 
-        var view = tab.TextView;
+        var view = tab.Code;
         var selected = view.GetAttributeForRole(VisualRole.Active);
         Assert.Equal([(new Point(18, 0), new Point(19, 0)), (new Point(4, 0), new Point(5, 0))],
             view.Carets.Select(c => (c.Start, c.End)));
@@ -499,11 +499,11 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.ColumnSelect = true;
         tab.MoveCursor(0, 30);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
-        for (var i = 0; i < 2; i++) tab.TextView.NewKeyDownEvent(Key.CursorLeft.WithShift);
+        tab.Code.NewKeyDownEvent(Key.CursorDown.WithShift);
+        for (var i = 0; i < 2; i++) tab.Code.NewKeyDownEvent(Key.CursorLeft.WithShift);
 
         Assert.Equal([(new Point(0, 1), new Point(2, 1)), (new Point(28, 0), new Point(30, 0))],
-            tab.TextView.Carets.Select(c => (c.Start, c.End)));
+            tab.Code.Carets.Select(c => (c.Start, c.End)));
     }
 
     [Fact]
@@ -514,11 +514,11 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.ColumnSelect = true;
         tab.MoveCursor(0, 0);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorDown.WithShift);
-        tab.TextView.NewKeyDownEvent(Key.End.WithShift);
+        tab.Code.NewKeyDownEvent(Key.CursorDown.WithShift);
+        tab.Code.NewKeyDownEvent(Key.End.WithShift);
 
         Assert.Equal([(new Point(14, 0), new Point(27, 0)), (new Point(0, 0), new Point(13, 0))],
-            tab.TextView.Carets.Select(c => (c.Start, c.End)));
+            tab.Code.Carets.Select(c => (c.Start, c.End)));
     }
 
     [Fact]

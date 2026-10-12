@@ -69,7 +69,7 @@ public class EditorIndentLinesTests
         view.NewKeyDownEvent(Key.Tab);
 
         Assert.Equal(["    a", "    b", "c"], view.LineStrings);
-        Assert.Equal(new Caret(new Point(0, 2), new Point(0, 0), Extending: true), view.Carets[0] with { ColumnTrack = -1 });
+        Assert.Equal(new Caret(new Point(0, 2), new Point(0, 0)), view.Carets[0] with { ColumnTrack = -1 });
     }
 
     [Fact]
@@ -180,13 +180,13 @@ public class EditorIndentLinesTests
         Assert.Equal(["a b", "c d"], view.LineStrings);
     }
 
-    private static Caret Selected(Point anchor, Point position) => new(position, anchor, Extending: true);
+    private static Caret Selected(Point anchor, Point position) => new(position, anchor);
 
     private static Caret At(int row, int column) => new(new Point(column, row));
 
-    private static EditorTextView View(int indentSize, bool insertSpaces, params string[] lines)
+    private static CodeEditor View(int indentSize, bool insertSpaces, params string[] lines)
     {
-        var view = new EditorTextView
+        var view = new CodeEditor
         {
             Width = 80,
             Height = 10,
@@ -221,7 +221,7 @@ public class EditorIndentLinesHostTests : StaticConfigurationTest
             {
                 tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt"));
                 tab.FocusContent();
-                tab.TextView.SetCarets([new Caret(new Point(1, 1), new Point(0, 0), Extending: true)]);
+                tab.Code.SetCarets([new Caret(new Point(1, 1), new Point(0, 0))]);
             },
             () => host.App.InjectKey(Key.Tab),
             () => { indented = [.. tab!.Lines]; host.App.InjectKey(Key.Tab.WithShift); });
@@ -247,7 +247,7 @@ public class EditorIndentLinesHostTests : StaticConfigurationTest
             {
                 tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt"));
                 tab.FocusContent();
-                tab.TextView.SetCarets([new Caret(new Point(1, 1), new Point(0, 0), Extending: true)]);
+                tab.Code.SetCarets([new Caret(new Point(1, 1), new Point(0, 0))]);
             },
             () => host.App.InjectKey(Key.F7));
 

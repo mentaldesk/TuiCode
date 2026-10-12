@@ -126,7 +126,7 @@ public class SaveConflictTests
         _fs.File.WriteAllText(Path, "from the other branch\n");
 
         tab.Reload();
-        tab.SubViews.OfType<EditorTextView>().Single().Undo();
+        tab.SubViews.OfType<CodeEditor>().Single().Undo();
 
         Assert.Equal("from the other branch\n", tab.Content.ReplaceLineEndings("\n"));
     }

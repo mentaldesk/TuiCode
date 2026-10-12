@@ -103,7 +103,7 @@ public class EditorColumnSelectTests
         view.NewKeyDownEvent(Key.CursorRight.WithShift);
         view.NewKeyDownEvent(Key.CursorDown.WithShift);
 
-        Assert.Equal([new Caret(new Point(3, 1), new Point(2, 0), ColumnTrack: 3, Extending: true)], view.Carets);
+        Assert.Equal([new Caret(new Point(3, 1), new Point(2, 0), ColumnTrack: 3)], view.Carets);
     }
 
     [Fact]
@@ -122,13 +122,13 @@ public class EditorColumnSelectTests
         Assert.True(second.ColumnSelect);
     }
 
-    private static Caret Selected(int row, int start, int end) => new(new Point(end, row), new Point(start, row), Extending: true);
+    private static Caret Selected(int row, int start, int end) => new(new Point(end, row), new Point(start, row));
 
     private static Caret At(int row, int column) => new(new Point(column, row));
 
-    private static EditorTextView View(params string[] lines)
+    private static CodeEditor View(params string[] lines)
     {
-        var view = new EditorTextView { Width = 80, Height = 10, ColumnSelect = true, Text = string.Join("\n", lines) };
+        var view = new CodeEditor { Width = 80, Height = 10, ColumnSelect = true, Text = string.Join("\n", lines) };
         view.BeginInit();
         view.EndInit();
         view.Layout();

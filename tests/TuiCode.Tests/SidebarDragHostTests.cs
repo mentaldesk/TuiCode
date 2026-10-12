@@ -240,8 +240,8 @@ public class SidebarDragHostTests : StaticConfigurationTest
             return workbench.Viewport.Width == width;
         };
 
-    private static EditorTextView TextView(Workbench.Workbench workbench) =>
-        workbench.Editor.Group.ActiveTab!.SubViews.OfType<EditorTextView>().Single();
+    private static CodeEditor TextView(Workbench.Workbench workbench) =>
+        workbench.Editor.Group.ActiveTab!.SubViews.OfType<CodeEditor>().Single();
 
     private WorkbenchHost BuildHost(Workbench.Workbench workbench) => BuildHost(workbench, out _);
 

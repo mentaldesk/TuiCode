@@ -30,7 +30,7 @@ public class TerminalPasteHostTests : StaticConfigurationTest
 
         Assert.Equal(["    if (x)", "    {", "\tcall();", "        nested;", "    }", "end"], pasted);
         Assert.Equal(["    if (x)", "end"], Tab(workbench).Lines);
-        Assert.Equal([At(0, 10)], Tab(workbench).TextView.Carets);
+        Assert.Equal([At(0, 10)], Tab(workbench).Code.Carets);
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class TerminalPasteHostTests : StaticConfigurationTest
         string[] pasted = [];
 
         await HostSteps.Run(host,
-            () => Open(workbench, "one two three", new Caret(new Point(7, 0), new Point(4, 0), Extending: true)),
+            () => Open(workbench, "one two three", new Caret(new Point(7, 0), new Point(4, 0))),
             () => Editing(host, workbench),
             () => Paste(host, "2\n  2b"),
             () => { pasted = [.. Tab(workbench).Lines]; host.App.InjectKey(Key.Z.WithCtrl); });
@@ -69,7 +69,7 @@ public class TerminalPasteHostTests : StaticConfigurationTest
             {
                 undone = [.. Tab(workbench).Lines];
                 host.App.Clipboard!.SetClipboardData(text);
-                Tab(workbench).TextView.SetCarets([At(0, 1), At(1, 1)]);
+                Tab(workbench).Code.SetCarets([At(0, 1), At(1, 1)]);
                 host.App.InjectKey(Key.V.WithCtrl);
             });
 
@@ -140,7 +140,7 @@ public class TerminalPasteHostTests : StaticConfigurationTest
     private static void Paste(WorkbenchHost host, string text) => Assert.True(host.App.RaisePasteEvent(text));
 
     private static bool Editing(WorkbenchHost host, Workbench.Workbench workbench) =>
-        host.App.Navigation!.GetFocused() == Tab(workbench).TextView;
+        host.App.Navigation!.GetFocused() == Tab(workbench).Code;
 
     private static Caret At(int row, int column) => new(new Point(column, row));
 
@@ -152,7 +152,7 @@ public class TerminalPasteHostTests : StaticConfigurationTest
         fs.AddFile("/work/a.txt", new MockFileData(content));
         workbench.OpenFile(fs.FileInfo.New("/work/a.txt"));
         Tab(workbench).FocusContent();
-        Tab(workbench).TextView.SetCarets(carets);
+        Tab(workbench).Code.SetCarets(carets);
     }
 
     private static Workbench.Workbench Workbench() =>

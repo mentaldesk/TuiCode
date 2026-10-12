@@ -16,10 +16,10 @@ public class EditorScrollBarTests
     public void A_file_taller_than_the_tab_shows_the_vertical_bar()
     {
         using var tab = SizedTab(Lines(100));
-        var bar = tab.TextView.VerticalScrollBar;
+        var bar = tab.Code.VerticalScrollBar;
 
         Assert.True(bar.Visible);
-        Assert.Equal(tab.TextView.GetContentSize().Height, bar.ScrollableContentSize);
+        Assert.Equal(tab.Code.GetContentSize().Height, bar.ScrollableContentSize);
         Assert.Equal(0, bar.Value);
     }
 
@@ -29,8 +29,8 @@ public class EditorScrollBarTests
         using var tab = SizedTab(Lines(3));
         using var plain = SizedTab(Lines(3), bar: false);
 
-        Assert.False(tab.TextView.VerticalScrollBar.Visible);
-        Assert.Equal(plain.TextView.Viewport.Width, tab.TextView.Viewport.Width);
+        Assert.False(tab.Code.VerticalScrollBar.Visible);
+        Assert.Equal(plain.Code.Viewport.Width, tab.Code.Viewport.Width);
     }
 
     [Fact]
@@ -39,8 +39,8 @@ public class EditorScrollBarTests
         using var tab = SizedTab(Lines(100));
         using var plain = SizedTab(Lines(100), bar: false);
 
-        Assert.Equal(plain.TextView.Viewport.Width - 1, tab.TextView.Viewport.Width);
-        Assert.Equal(plain.TextView.Frame.X, tab.TextView.Frame.X);
+        Assert.Equal(plain.Code.Viewport.Width - 1, tab.Code.Viewport.Width);
+        Assert.Equal(plain.Code.Frame.X, tab.Code.Frame.X);
     }
 
     [Fact]
@@ -48,9 +48,9 @@ public class EditorScrollBarTests
     {
         using var tab = SizedTab(Lines(100));
 
-        tab.TextView.Viewport = tab.TextView.Viewport with { Y = 40 };
+        tab.Code.Viewport = tab.Code.Viewport with { Y = 40 };
 
-        Assert.Equal(40, tab.TextView.VerticalScrollBar.Value);
+        Assert.Equal(40, tab.Code.VerticalScrollBar.Value);
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class EditorScrollBarTests
     {
         using var tab = SizedTab(Lines(100));
 
-        tab.TextView.VerticalScrollBar.Value = 30;
+        tab.Code.VerticalScrollBar.Value = 30;
 
         Assert.Equal(30, tab.TopRow);
     }
@@ -70,12 +70,12 @@ public class EditorScrollBarTests
 
         tab.Height = 30;
         tab.Layout();
-        var hidden = !tab.TextView.VerticalScrollBar.Visible;
+        var hidden = !tab.Code.VerticalScrollBar.Visible;
         tab.Height = Height;
         tab.Layout();
 
         Assert.True(hidden);
-        Assert.True(tab.TextView.VerticalScrollBar.Visible);
+        Assert.True(tab.Code.VerticalScrollBar.Visible);
     }
 
     private static string Lines(int count) =>
@@ -86,7 +86,7 @@ public class EditorScrollBarTests
         var fs = new MockFileSystem();
         fs.AddFile("/work/file.txt", new MockFileData(content));
         var tab = new EditorTab(fs.FileInfo.New("/work/file.txt"));
-        if (!bar) tab.TextView.ViewportSettings &= ~ViewportSettingsFlags.HasVerticalScrollBar;
+        if (!bar) tab.Code.ViewportSettings &= ~ViewportSettingsFlags.HasVerticalScrollBar;
         tab.Width = Width;
         tab.Height = Height;
         tab.BeginInit();
@@ -134,13 +134,13 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             Size(host, 80, 30),
             () => { workbench.Editor.Open(fs.FileInfo.New("/work/a.txt")); },
-            () => { fitted = !Tab(workbench).TextView.VerticalScrollBar.Visible; },
+            () => { fitted = !Tab(workbench).Code.VerticalScrollBar.Visible; },
             Size(host, 80, 10),
             () => { },
             () => { screen = host.App.Driver!.ToString(); });
 
         Assert.True(fitted);
-        Assert.True(Tab(workbench).TextView.VerticalScrollBar.Visible);
+        Assert.True(Tab(workbench).Code.VerticalScrollBar.Visible);
         Assert.Contains("▼", screen);
     }
 
@@ -161,17 +161,17 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
             () =>
             {
                 var tab = Tab(workbench);
-                wideHidden = !tab.TextView.HorizontalScrollBar.Visible;
-                wide = $"screen {host.App.Screen}, viewport {tab.TextView.Viewport}, content {tab.TextView.GetContentSize()}";
+                wideHidden = !tab.Code.HorizontalScrollBar.Visible;
+                wide = $"screen {host.App.Screen}, viewport {tab.Code.Viewport}, content {tab.Code.GetContentSize()}";
             },
             Size(host, 80, 20),
             () => { },
             () =>
             {
                 var tab = Tab(workbench);
-                narrowShown = tab.TextView.HorizontalScrollBar.Visible;
-                narrow = $"screen {host.App.Screen}, viewport {tab.TextView.Viewport}, content {tab.TextView.GetContentSize()}";
-                narrowGutterLevel = GutterHeight(tab) == tab.TextView.Viewport.Height;
+                narrowShown = tab.Code.HorizontalScrollBar.Visible;
+                narrow = $"screen {host.App.Screen}, viewport {tab.Code.Viewport}, content {tab.Code.GetContentSize()}";
+                narrowGutterLevel = GutterHeight(tab) == tab.Code.Viewport.Height;
             },
             Size(host, 120, 20),
             () => { });
@@ -180,10 +180,10 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
         Assert.True(wideHidden, wide);
         Assert.True(narrowShown, narrow);
         Assert.True(narrowGutterLevel);
-        Assert.False(tab.TextView.HorizontalScrollBar.Visible);
-        Assert.Equal(tab.TextView.Frame.Height, tab.TextView.Viewport.Height);
-        Assert.Equal(tab.TextView.Viewport.Height, GutterHeight(tab));
-        Assert.Equal(tab.TextView.Viewport.Height, tab.TextView.VerticalScrollBar.Frame.Height);
+        Assert.False(tab.Code.HorizontalScrollBar.Visible);
+        Assert.Equal(tab.Code.Frame.Height, tab.Code.Viewport.Height);
+        Assert.Equal(tab.Code.Viewport.Height, GutterHeight(tab));
+        Assert.Equal(tab.Code.Viewport.Height, tab.Code.VerticalScrollBar.Frame.Height);
     }
 
     [Fact]
@@ -208,7 +208,7 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
             () => { screen = host.App.Driver!.ToString(); });
 
         Assert.Same(a, Tab(workbench));
-        Assert.True(a!.TextView.VerticalScrollBar.Visible);
+        Assert.True(a!.Code.VerticalScrollBar.Visible);
         Assert.Contains("▼", screen);
     }
 
@@ -246,7 +246,7 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
         Assert.Same(a, Tab(workbench));
         Assert.Equal(448, top);
         Assert.Equal(top, a!.TopRow);
-        Assert.Equal(top, a.TextView.VerticalScrollBar.Value);
+        Assert.Equal(top, a.Code.VerticalScrollBar.Value);
         Assert.InRange(a.CursorRow, a.TopRow, a.TopRow + a.VisibleRows - 1);
     }
 
@@ -310,7 +310,7 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
 
         Assert.Equal(448, top);
         Assert.Equal(top, Tab(workbench).TopRow);
-        Assert.Equal(top, Tab(workbench).TextView.VerticalScrollBar.Value);
+        Assert.Equal(top, Tab(workbench).Code.VerticalScrollBar.Value);
     }
 
     private static MockFileSystem LongFile()
@@ -326,7 +326,7 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
 
     private static EditorTab Tab(Workbench.Workbench workbench) => workbench.Editor.Group.ActiveTab!;
 
-    private static int GutterHeight(EditorTab tab) => tab.SubViews.First(v => v is not EditorTextView).Frame.Height;
+    private static int GutterHeight(EditorTab tab) => tab.SubViews.First(v => v is not CodeEditor).Frame.Height;
 
     private static Workbench.Workbench Workbench() =>
         new(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());

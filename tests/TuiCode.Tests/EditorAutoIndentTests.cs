@@ -95,7 +95,7 @@ public class EditorAutoIndentTests
     public void Enter_with_a_selection_replaces_it_then_keeps_the_indent()
     {
         var view = View("    foo bar");
-        view.SetCarets([new Caret(new Point(11, 0), new Point(7, 0), Extending: true)]);
+        view.SetCarets([new Caret(new Point(11, 0), new Point(7, 0))]);
 
         view.NewKeyDownEvent(Key.Enter);
 
@@ -157,11 +157,11 @@ public class EditorAutoIndentTests
     {
         using var tab = OpenTab("    foo\nbar");
         tab.MoveCursor(0, 7);
-        tab.TextView.NewKeyDownEvent(Key.Enter);
+        tab.Code.NewKeyDownEvent(Key.Enter);
 
         tab.MoveCursor(2, 0);
 
-        Assert.Equal(["    foo", "", "bar"], tab.TextView.LineStrings);
+        Assert.Equal(["    foo", "", "bar"], tab.Code.LineStrings);
     }
 
     [Fact]
@@ -275,12 +275,12 @@ public class EditorAutoIndentTests
         fs.AddFile("/work/file.txt", new MockFileData("    foo"));
         using var tab = new EditorTab(fs.FileInfo.New("/work/file.txt"));
         tab.MoveCursor(0, 7);
-        tab.TextView.NewKeyDownEvent(Key.Enter);
+        tab.Code.NewKeyDownEvent(Key.Enter);
 
         tab.Save();
 
         Assert.Equal("    foo\n    \n", fs.File.ReadAllText("/work/file.txt"));
-        Assert.Equal(["    foo", "    "], tab.TextView.LineStrings);
+        Assert.Equal(["    foo", "    "], tab.Code.LineStrings);
     }
 
     private static Caret At(int row, int column) => new(new Point(column, row));
@@ -292,9 +292,9 @@ public class EditorAutoIndentTests
         return new EditorTab(fs.FileInfo.New("/work/file.txt"));
     }
 
-    private static EditorTextView View(params string[] lines)
+    private static CodeEditor View(params string[] lines)
     {
-        var view = new EditorTextView { Width = 80, Height = 10, Text = string.Join("\n", lines) };
+        var view = new CodeEditor { Width = 80, Height = 10, Text = string.Join("\n", lines) };
         view.BeginInit();
         view.EndInit();
         view.Layout();

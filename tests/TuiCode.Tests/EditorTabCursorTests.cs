@@ -68,7 +68,7 @@ public class EditorTabCursorTests
         var moves = new List<(int Row, int Column)>();
         tab.CursorMoved += (_, position) => moves.Add(position);
 
-        tab.SubViews.OfType<EditorTextView>().Single().NewKeyDownEvent(Key.X);
+        tab.SubViews.OfType<CodeEditor>().Single().NewKeyDownEvent(Key.X);
 
         Assert.NotEmpty(moves);
         Assert.All(moves, move => Assert.Equal((0, 2), move));
@@ -78,7 +78,7 @@ public class EditorTabCursorTests
     public void MoveCursor_with_a_selection_at_several_cursors_leaves_one_cursor_and_nothing_selected()
     {
         using var tab = OpenTab("alpha\nbravo\ncharlie\n");
-        var text = tab.SubViews.OfType<EditorTextView>().Single();
+        var text = tab.SubViews.OfType<CodeEditor>().Single();
         tab.AddCursor(LineDirection.Down);
         text.NewKeyDownEvent(Key.CursorRight.WithShift);
         text.NewKeyDownEvent(Key.CursorRight.WithShift);

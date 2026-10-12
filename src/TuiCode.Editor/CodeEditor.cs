@@ -144,7 +144,11 @@ internal sealed partial class CodeEditor : TextEditor
         }
     }
 
-    public Point InsertionPoint => PointOf(CaretOffset);
+    public Point InsertionPoint
+    {
+        get => PointOf(CaretOffset);
+        set => CaretOffset = OffsetOf(value);
+    }
 
     public int CurrentRow => Document!.GetLineByOffset(CaretOffset).LineNumber - 1;
 

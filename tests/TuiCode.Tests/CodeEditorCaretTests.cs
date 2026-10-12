@@ -9,7 +9,7 @@ using Point = System.Drawing.Point;
 
 namespace TuiCode.Tests;
 
-public class EditorTextViewCaretTests
+public class CodeEditorCaretTests
 {
     [Fact]
     public void Typing_inserts_at_every_caret()
@@ -147,7 +147,7 @@ public class EditorTextViewCaretTests
     public void Undo_restores_text_typed_over_a_multi_line_selection_and_the_selection()
     {
         var view = View("one", "two", "three");
-        var selection = new Caret(new Point(2, 2), new Point(1, 0), Extending: true);
+        var selection = new Caret(new Point(2, 2), new Point(1, 0));
         view.SetCarets([selection]);
 
         view.NewKeyDownEvent(Key.X);
@@ -164,7 +164,7 @@ public class EditorTextViewCaretTests
         var view = View("a", "b", "c");
         view.SetCarets([At(0, 0), At(1, 0), At(2, 0)]);
         var edits = 0;
-        view.ContentsChanged += (_, _) => edits++;
+        view.Edited += (_, _) => edits++;
 
         view.NewKeyDownEvent(Key.X);
 
@@ -353,17 +353,17 @@ public class EditorTextViewCaretTests
     }
 
     [Theory]
-    [InlineData(nameof(EditorTextView.SelectNextOccurrence))]
-    [InlineData(nameof(EditorTextView.SelectPreviousOccurrence))]
-    [InlineData(nameof(EditorTextView.SelectAllOccurrences))]
+    [InlineData(nameof(CodeEditor.SelectNextOccurrence))]
+    [InlineData(nameof(CodeEditor.SelectPreviousOccurrence))]
+    [InlineData(nameof(CodeEditor.SelectAllOccurrences))]
     public void An_arrow_key_clears_occurrence_selections(string command)
     {
         var view = View("foo foo");
         view.InsertionPoint = new Point(1, 0);
         Action select = command switch
         {
-            nameof(EditorTextView.SelectNextOccurrence) => view.SelectNextOccurrence,
-            nameof(EditorTextView.SelectPreviousOccurrence) => view.SelectPreviousOccurrence,
+            nameof(CodeEditor.SelectNextOccurrence) => view.SelectNextOccurrence,
+            nameof(CodeEditor.SelectPreviousOccurrence) => view.SelectPreviousOccurrence,
             _ => view.SelectAllOccurrences,
         };
 
@@ -374,16 +374,16 @@ public class EditorTextViewCaretTests
         Assert.All(view.Carets, caret => Assert.Null(caret.Anchor));
     }
 
-    private static Caret Selected(int row, int start, int end) => new(new Point(end, row), new Point(start, row), Extending: true);
+    private static Caret Selected(int row, int start, int end) => new(new Point(end, row), new Point(start, row));
 
     private static Caret At(int row, int column) => new(new Point(column, row));
 
     private static Mouse AltClick(int column, int row) =>
         new() { Flags = MouseFlags.LeftButtonClicked | MouseFlags.Alt, Position = new Point(column, row) };
 
-    private static EditorTextView View(params string[] lines)
+    private static CodeEditor View(params string[] lines)
     {
-        var view = new EditorTextView { Width = 80, Height = 10, Text = string.Join("\n", lines) };
+        var view = new CodeEditor { Width = 80, Height = 10, Text = string.Join("\n", lines) };
         view.BeginInit();
         view.EndInit();
         view.Layout();
@@ -392,11 +392,11 @@ public class EditorTextViewCaretTests
 }
 
 // Uses a TG Application for its clipboard and driver — serialised (#77).
-public class EditorTextViewCaretAppTests : StaticConfigurationTest
+public class CodeEditorCaretAppTests : StaticConfigurationTest
 {
     private readonly IApplication _app = Application.Create().Init(DriverRegistry.Names.ANSI);
 
-    public EditorTextViewCaretAppTests() => _app.Driver!.SetScreenSize(40, 10);
+    public CodeEditorCaretAppTests() => _app.Driver!.SetScreenSize(40, 10);
 
     public override void Dispose()
     {
@@ -696,11 +696,11 @@ public class EditorTextViewCaretAppTests : StaticConfigurationTest
 
     private static Caret At(int row, int column) => new(new Point(column, row));
 
-    private static Caret Selecting(int row, int from, int to) => new(new Point(to, row), new Point(from, row), Extending: true);
+    private static Caret Selecting(int row, int from, int to) => new(new Point(to, row), new Point(from, row));
 
-    private EditorTextView View(params string[] lines)
+    private CodeEditor View(params string[] lines)
     {
-        var view = new EditorTextView
+        var view = new CodeEditor
         {
             App = _app, Width = 40, Height = 10, Text = string.Join("\n", lines),
             ClipboardFallback = ClipboardTools.For(false, false, false, new ClipboardProgram { Answer = _ => new ToolRun.NotFound() }),

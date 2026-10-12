@@ -81,7 +81,7 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             () =>
             {
                 workbench.OpenFile(_fs.FileInfo.New("/work/a.txt"));
-                workbench.Editor.Group.ActiveTab!.TextView.ClipboardFallback =
+                workbench.Editor.Group.ActiveTab!.Code.ClipboardFallback =
                     ClipboardTools.For(false, false, false, new ClipboardProgram { Answer = _ => new ToolRun.NotFound() });
             },
             () => workbench.Editor.Group.ActiveTab!.ContentHasFocus,

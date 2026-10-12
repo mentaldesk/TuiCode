@@ -8,7 +8,7 @@ using TuiCode.Workbench.Services;
 
 namespace TuiCode.Tests;
 
-public class EditorTextViewLineEditTests
+public class CodeEditorLineEditTests
 {
     [Fact]
     public void MoveLines_up_swaps_the_cursor_line_with_the_one_above()
@@ -39,7 +39,7 @@ public class EditorTextViewLineEditTests
     {
         var view = View("one", "two");
         var edits = 0;
-        view.ContentsChanged += (_, _) => edits++;
+        view.Edited += (_, _) => edits++;
 
         view.MoveLines(LineDirection.Up);
         view.InsertionPoint = new Point(0, 1);
@@ -145,7 +145,7 @@ public class EditorTextViewLineEditTests
         view.DuplicateLines(LineDirection.Down);
 
         Assert.Equal(["one", "two", "one", "two", "three"], view.LineStrings);
-        Assert.Equal((2, 1), (view.SelectionStartRow, view.SelectionStartColumn));
+        Assert.Equal((2, 1), (view.SelectionAnchor.Y, view.SelectionAnchor.X));
         Assert.Equal(new Point(2, 3), view.InsertionPoint);
     }
 
@@ -174,7 +174,7 @@ public class EditorTextViewLineEditTests
     {
         var view = View("one", "two");
         var edits = 0;
-        view.ContentsChanged += (_, _) => edits++;
+        view.Edited += (_, _) => edits++;
 
         view.MoveLines(LineDirection.Down);
         view.DuplicateLines(LineDirection.Up);
@@ -182,11 +182,9 @@ public class EditorTextViewLineEditTests
         Assert.Equal(2, edits);
     }
 
-    private static void Select(EditorTextView view, (int Row, int Column) anchor, (int Row, int Column) cursor)
+    private static void Select(CodeEditor view, (int Row, int Column) anchor, (int Row, int Column) cursor)
     {
-        view.InsertionPoint = new Point(cursor.Column, cursor.Row);
-        view.SelectionStartRow = anchor.Row;
-        view.SelectionStartColumn = anchor.Column;
+        view.SetCarets([new Caret(new Point(cursor.Column, cursor.Row), new Point(anchor.Column, anchor.Row))]);
     }
 
     [Fact]
@@ -234,9 +232,9 @@ public class EditorTextViewLineEditTests
         Assert.Equal(new Point(2, 3), view.InsertionPoint);
     }
 
-    private static EditorTextView View(params string[] lines)
+    private static CodeEditor View(params string[] lines)
     {
-        var view = new EditorTextView { Width = 80, Height = 10, Text = string.Join("\n", lines) };
+        var view = new CodeEditor { Width = 80, Height = 10, Text = string.Join("\n", lines) };
         view.BeginInit();
         view.EndInit();
         view.Layout();

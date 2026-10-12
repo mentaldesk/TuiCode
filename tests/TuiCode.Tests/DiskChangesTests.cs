@@ -263,7 +263,7 @@ public class DiskChangesTests : IDisposable
         tab.Replace(new TextMatch(0, 0, 5), "ALPHA");
 
         Delete(tab);
-        tab.SubViews.OfType<EditorTextView>().Single().Undo();
+        tab.SubViews.OfType<CodeEditor>().Single().Undo();
 
         Assert.Equal("alpha\n", Text(tab));
     }
@@ -455,7 +455,7 @@ public class DiskChangesTests : IDisposable
         tab.Save();
 
         Change(tab, "from the other branch\n");
-        tab.SubViews.OfType<EditorTextView>().Single().Undo();
+        tab.SubViews.OfType<CodeEditor>().Single().Undo();
 
         Assert.Equal("from the other branch\n", Text(tab));
     }

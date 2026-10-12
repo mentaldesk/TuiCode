@@ -305,7 +305,7 @@ public class EditorGroupsHostTests : StaticConfigurationTest
             () => HostSteps.PinScreenSize(host, 120, 30),
             () => groups.IsSplit && workbench.Editor.Frames[1].Frame.Width > 0);
 
-        Assert.Equal(0, groups.Second.ActiveTab!.TextView.Viewport.X);
+        Assert.Equal(0, groups.Second.ActiveTab!.Code.Viewport.X);
     }
 
     [Fact]

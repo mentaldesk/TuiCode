@@ -125,13 +125,13 @@ public class CopyStatusHostTests : StaticConfigurationTest
         fs.AddFile(Path, new MockFileData($"x\n{new string('y', 1000)}\nz"));
         host.App.Driver!.Clipboard = clipboard;
         workbench.OpenFile(fs.FileInfo.New(Path));
-        var view = workbench.Editor.Group.ActiveTab!.TextView;
+        var view = workbench.Editor.Group.ActiveTab!.Code;
         view.ClipboardFallback = ClipboardTools.For(false, false, false, program ?? new ClipboardProgram());
-        view.SetCarets([new Caret(new Point(0, 2), new Point(0, 0), Extending: true)]);
+        view.SetCarets([new Caret(new Point(0, 2), new Point(0, 0))]);
     }
 
     private static Action Copy(Workbench.Workbench workbench) =>
-        () => workbench.Editor.Group.ActiveTab!.TextView.InvokeCommand(Command.Copy);
+        () => workbench.Editor.Group.ActiveTab!.Code.InvokeCommand(Command.Copy);
 
     private static Workbench.Workbench Workbench() =>
         new(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());
