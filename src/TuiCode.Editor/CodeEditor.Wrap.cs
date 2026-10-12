@@ -79,7 +79,8 @@ internal sealed partial class CodeEditor
 
     protected override bool OnContentSizeChanging(ValueChangingEventArgs<Size?> args)
     {
-        if (SoftWrap) args.NewValue = new Size(Viewport.Width, _wrap.Rows);
+        // Narrower than the view, so the horizontal bar hides even once the vertical one takes a column.
+        if (SoftWrap) args.NewValue = new Size(1, _wrap.Rows);
         return base.OnContentSizeChanging(args);
     }
 
@@ -113,7 +114,7 @@ internal sealed partial class CodeEditor
         var top = _wrap.At(Viewport.Y);
         if (!_wrap.Update(_lines, Graphemes, WrapWidth, TabWidth)) return;
 
-        SetContentSize(new Size(Viewport.Width, _wrap.Rows));
+        SetContentSize(new Size(1, _wrap.Rows));
         if (resized) ScrollToRow(_wrap.FirstRow(top.Line) + Math.Min(top.Row, _wrap.Starts(Math.Min(top.Line, Lines - 1)).Length - 1));
     }
 

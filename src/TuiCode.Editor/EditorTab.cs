@@ -385,7 +385,7 @@ public sealed class EditorTab : FrameView
     /// The buffer's lines as the editor models them (terminators excluded). Columns in a
     /// <see cref="TextMatch"/> computed against these line up with <see cref="Select"/> / <see cref="Replace"/>.
     /// </summary>
-    public IReadOnlyList<string> Lines => _text.LineStrings;
+    public IReadOnlyList<string> Lines => [.. _text.LineStrings];
 
     /// <summary>Like <see cref="Lines"/> but cheap to re-read; later reads update the returned list in place.</summary>
     internal IReadOnlyList<string> SnapshotLines => _text.LineStrings;

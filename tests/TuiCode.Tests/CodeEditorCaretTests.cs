@@ -639,7 +639,7 @@ public class CodeEditorCaretAppTests : StaticConfigurationTest
         view.Draw();
 
         Assert.Equal("d", _app.Driver!.Contents![1, 3].Grapheme);
-        Assert.Equal(TextView.DefaultCursorStyle, view.Cursor.Style);
+        Assert.Equal(TextField.DefaultCursorStyle, view.Cursor.Style);
     }
 
     [Fact]
@@ -652,7 +652,7 @@ public class CodeEditorCaretAppTests : StaticConfigurationTest
         view.RemoveSecondaryCarets();
         Render(view);
 
-        Assert.Equal(TextView.DefaultCursorStyle, view.Cursor.Style);
+        Assert.Equal(TextField.DefaultCursorStyle, view.Cursor.Style);
         Assert.Equal("a", _app.Driver!.Contents![0, 0].Grapheme);
     }
 

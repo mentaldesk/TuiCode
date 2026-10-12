@@ -242,7 +242,7 @@ internal sealed partial class CodeEditor
         var from = PrimaryCaret;
         var track = from.ColumnTrack >= 0 ? from.ColumnTrack : from.Position.X;
         var row = Math.Clamp(from.Position.Y + rows, 0, Lines - 1);
-        var to = new Point(Math.Min(track, LineLength(row)), row);
+        var to = from.Position.Y + rows > Lines - 1 ? new Point(LineLength(row), row) : new Point(Math.Min(track, LineLength(row)), row);
         Load(new Caret(to, extend ? from.Anchor ?? from.Position : null, track), reveal: false);
     }
 
@@ -322,11 +322,29 @@ internal sealed partial class CodeEditor
         return true;
     }
 
-    // The terminal's own paste arrives here as a bracketed paste, through Command.Paste rather than a key.
-    protected override bool OnPaste(string text)
+    private IApplication? _pasteSource;
+
+    // Editor reads a bracketed paste from the clipboard rather than the terminal, so it's taken before Editor sees it.
+    protected override void OnHasFocusChanged(bool newHasFocus, View? previousFocusedView, View? focusedView)
     {
-        PasteAtCarets(text);
-        return true;
+        base.OnHasFocusChanged(newHasFocus, previousFocusedView, focusedView);
+        if (!newHasFocus || App is not { } app || app == _pasteSource) return;
+        if (_pasteSource is not null) _pasteSource.Paste -= OnTerminalPaste;
+        _pasteSource = app;
+        app.Paste += OnTerminalPaste;
+    }
+
+    private void OnTerminalPaste(object? sender, PasteEventArgs e)
+    {
+        if (e.Handled || App?.Navigation?.GetFocused() != this) return;
+        PasteAtCarets(e.Text.ReplaceLineEndings("\n"));
+        e.Handled = true;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _pasteSource is not null) _pasteSource.Paste -= OnTerminalPaste;
+        base.Dispose(disposing);
     }
 
     private void PasteAtCarets(string? text)
@@ -472,7 +490,7 @@ internal sealed partial class CodeEditor
     private void DrawCarets()
     {
         var paint = HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
-        var style = paint ? CursorStyle.Hidden : OverwriteMode ? CursorStyle.SteadyBlock : CursorStyle.Default;
+        var style = paint ? CursorStyle.Hidden : OverwriteMode ? CursorStyle.SteadyBlock : TextField.DefaultCursorStyle;
         if (Cursor.Style != style) Cursor = Cursor with { Style = style };
         if (!paint) return;
 

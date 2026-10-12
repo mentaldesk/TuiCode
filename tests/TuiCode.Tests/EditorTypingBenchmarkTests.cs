@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Terminal.Gui.Views;
 using TuiCode.Editor;
 
 namespace TuiCode.Tests;
@@ -39,7 +38,7 @@ public class EditorTypingBenchmarkTests : StaticConfigurationTest
         tab.BeginInit();
         tab.EndInit();
         tab.Layout();
-        var view = tab.SubViews.OfType<TextView>().Single();
+        var view = tab.Code;
         var row = onWidestLine ? widestRow : lines / 2 + 1;
         view.InsertionPoint = new System.Drawing.Point(onWidestLine ? 140 : 10, row);
         tab.Layout();

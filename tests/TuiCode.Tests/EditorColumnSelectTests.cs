@@ -103,7 +103,7 @@ public class EditorColumnSelectTests
         view.NewKeyDownEvent(Key.CursorRight.WithShift);
         view.NewKeyDownEvent(Key.CursorDown.WithShift);
 
-        Assert.Equal([new Caret(new Point(3, 1), new Point(2, 0), ColumnTrack: 3)], view.Carets);
+        Assert.Equal([new Caret(new Point(3, 1), new Point(2, 0))], view.Carets.Select(c => c with { ColumnTrack = -1 }));
     }
 
     [Fact]

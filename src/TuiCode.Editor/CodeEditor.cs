@@ -35,6 +35,12 @@ internal sealed partial class CodeEditor : TextEditor
         [Command.ToggleOverwrite] = Bind.All(Key.InsertChar),
     };
 
+    private static readonly HashSet<Command> PlainMoves =
+    [
+        Command.Left, Command.Right, Command.Up, Command.Down, Command.LeftStart, Command.RightEnd,
+        Command.WordLeft, Command.WordRight, Command.PageUp, Command.PageDown, Command.Start, Command.End,
+    ];
+
     private static readonly Command[] KillCommands =
         [Command.CutToEndOfLine, Command.CutToStartOfLine, Command.KillWordLeft, Command.KillWordRight];
 
@@ -70,6 +76,7 @@ internal sealed partial class CodeEditor : TextEditor
             PasteAtCarets(App?.Clipboard?.GetClipboardData());
             return true;
         });
+        AddCommand(Command.CutToEndOfLine, CutToEndOfLine);
         AddCommand(Command.DeleteAll, () =>
         {
             SelectAll();
@@ -297,7 +304,7 @@ internal sealed partial class CodeEditor : TextEditor
         if (!binding.Commands.Any(EditCommands.Contains))
         {
             foreach (var command in binding.Commands)
-                InvokeCommand(command);
+                Move(PastLastLine(command));
             ReportMove(before);
             return true;
         }
@@ -306,6 +313,14 @@ internal sealed partial class CodeEditor : TextEditor
         ReportMove(before);
         return true;
     }
+
+    // Down from the last line goes to its end, as TextView's did.
+    private Command PastLastLine(Command command) => CurrentRow < Lines - 1 ? command : command switch
+    {
+        Command.Down or Command.PageDown => Command.RightEnd,
+        Command.DownExtend or Command.PageDownExtend => Command.RightEndExtend,
+        _ => command,
+    };
 
     private void ReportMove(Point before)
     {
@@ -326,8 +341,34 @@ internal sealed partial class CodeEditor : TextEditor
             NewLineKeepingIndent();
             return;
         }
+        // At the start of a line these join it to the one above, as TextView's did.
+        if (commands is [Command.KillWordLeft or Command.CutToStartOfLine] && CurrentColumn == 0)
+        {
+            InvokeCommand(Command.DeleteCharLeft);
+            return;
+        }
         foreach (var command in commands)
-            InvokeCommand(command);
+            Move(command);
+    }
+
+    // A plain move drops the selection and moves from the caret, as TextView's did.
+    private void Move(Command command)
+    {
+        if (HasSelection && PlainMoves.Contains(command)) ClearSelection();
+        InvokeCommand(command);
+    }
+
+    // Editor's deletes nothing when the clipboard refuses the text.
+    private bool? CutToEndOfLine()
+    {
+        if (ReadOnly) return true;
+        var line = Document!.GetLineByOffset(CaretOffset);
+        var end = line.Offset + line.Length;
+        var (start, length) = CaretOffset < end ? (CaretOffset, end - CaretOffset) : (end, line.DelimiterLength);
+        if (length == 0) return true;
+        App?.Clipboard?.TrySetClipboardData(Document.GetText(start, length));
+        Document.Remove(start, length);
+        return true;
     }
 
     protected override bool OnDrawingContent(DrawContext? context)
@@ -414,7 +455,7 @@ internal sealed partial class CodeEditor : TextEditor
             if (_drawingPinned)
                 SetAttribute(_cellAttribute);
             else if (InSelection(idxCol, idxRow))
-                SetAttribute(_selected with { Style = _cellAttribute.Style });
+                SetAttribute(_selected);
             else
                 SetAttribute(IsHighlighted(idxCol, idxRow) ? _highlight : _cellAttribute);
 
@@ -529,7 +570,7 @@ internal sealed partial class CodeEditor : TextEditor
     // Editor places the cursor only in its own draw, which this replaces.
     private void PlaceCursor()
     {
-        if (!HasFocus || !Enabled || ViewportPosition(new Caret(InsertionPoint)) is not { } point)
+        if (!CanFocus || !Enabled || ReadOnly || ViewportPosition(new Caret(InsertionPoint)) is not { } point)
         {
             Cursor = Cursor with { Position = null };
             return;

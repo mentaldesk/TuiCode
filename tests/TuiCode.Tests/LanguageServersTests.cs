@@ -25,7 +25,7 @@ public class LanguageServersTests
     }
 
     [Fact]
-    public async Task A_language_with_a_chosen_server_starts_it_and_a_language_without_one_starts_none()
+    public Task A_language_with_a_chosen_server_starts_it_and_a_language_without_one_starts_none() => OneThread.Run(async () =>
     {
         using var group = new EditorGroup(Syntax);
         using var languages = Languages(group);
@@ -37,7 +37,7 @@ public class LanguageServersTests
         Assert.Equal("gopls", _fake.Launches.Single().Command);
         Assert.Equal("Go", languages.ServerFor(go)!.Spec.Name);
         Assert.Null(languages.ServerFor(Open(group, "/work/README.md")));
-    }
+    });
 
     [Fact]
     public void Choosing_no_server_for_CSharp_starts_none()
@@ -53,7 +53,7 @@ public class LanguageServersTests
     }
 
     [Fact]
-    public async Task Changing_a_languages_server_restarts_only_that_one_with_its_open_files()
+    public Task Changing_a_languages_server_restarts_only_that_one_with_its_open_files() => OneThread.Run(async () =>
     {
         using var group = new EditorGroup(Syntax);
         using var languages = Languages(group);
@@ -70,7 +70,7 @@ public class LanguageServersTests
         Assert.False(csharp.Exited.IsCompleted);
         Assert.Equal(["csharp-ls", "gopls", "/opt/gopls"], _fake.Launches.Select(l => l.Command));
         await Until(() => _fake.Received("textDocument/didOpen").Count() == 3);
-    }
+    });
 
     [Fact]
     public void Saving_the_same_servers_again_restarts_nothing()
@@ -85,7 +85,7 @@ public class LanguageServersTests
     }
 
     [Fact]
-    public async Task A_file_whose_grammar_was_changed_uses_that_languages_server()
+    public Task A_file_whose_grammar_was_changed_uses_that_languages_server() => OneThread.Run(async () =>
     {
         using var group = new EditorGroup(Syntax);
         using var languages = Languages(group);
@@ -97,13 +97,13 @@ public class LanguageServersTests
 
         await Until(() => _fake.Documents.ContainsKey(Full("/work/notes.txt")));
         Assert.Equal("gopls", _fake.Launches.Single().Command);
-    }
+    });
 
     private static Dictionary<string, LanguageServerSetting> Chosen(params (string Id, LanguageServerSetting Setting)[] chosen) =>
         chosen.ToDictionary(c => c.Id, c => c.Setting, StringComparer.OrdinalIgnoreCase);
 
     [Fact]
-    public async Task The_first_CSharp_file_starts_one_server_in_the_folder_for_every_CSharp_file()
+    public Task The_first_CSharp_file_starts_one_server_in_the_folder_for_every_CSharp_file() => OneThread.Run(async () =>
     {
         using var group = new EditorGroup(Syntax);
         using var languages = Languages(group);
@@ -119,7 +119,7 @@ public class LanguageServersTests
         Assert.Equal("class Widget { }", _fake.Documents[Full("/work/Widget.cs")]);
         Assert.Same(languages.ServerFor(widget), languages.Running.Single());
         Assert.Null(languages.ServerFor(group.Tabs.Single(t => t.File.Name == "README.md")));
-    }
+    });
 
     [Fact]
     public void Without_a_folder_the_server_starts_in_the_files_own()
@@ -133,7 +133,7 @@ public class LanguageServersTests
     }
 
     [Fact]
-    public async Task Edits_reach_the_server_once_typing_pauses_or_a_request_needs_them()
+    public Task Edits_reach_the_server_once_typing_pauses_or_a_request_needs_them() => OneThread.Run(async () =>
     {
         using var group = new EditorGroup(Syntax);
         using var languages = Languages(group);
@@ -150,10 +150,10 @@ public class LanguageServersTests
         languages.Flush();
         await Until(() => _fake.Documents[Full("/work/Widget.cs")] == "class Widget { int C; }");
         Assert.Equal(2, _fake.Received("textDocument/didChange").Count());
-    }
+    });
 
     [Fact]
-    public async Task Closing_a_tab_or_taking_its_grammar_away_closes_the_document()
+    public Task Closing_a_tab_or_taking_its_grammar_away_closes_the_document() => OneThread.Run(async () =>
     {
         using var group = new EditorGroup(Syntax);
         using var languages = Languages(group);
@@ -166,10 +166,10 @@ public class LanguageServersTests
 
         await Until(() => _fake.Documents.IsEmpty);
         Assert.Null(languages.ServerFor(gadget));
-    }
+    });
 
     [Fact]
-    public async Task Opening_another_folder_stops_the_server_and_the_next_file_starts_one_there()
+    public Task Opening_another_folder_stops_the_server_and_the_next_file_starts_one_there() => OneThread.Run(async () =>
     {
         using var group = new EditorGroup(Syntax);
         using var languages = Languages(group);
@@ -185,10 +185,10 @@ public class LanguageServersTests
         await first.Exited.WaitAsync(Timeout);
         Assert.Contains("shutdown", _fake.Methods);
         Assert.Equal([Full("/work"), Full("/other")], _fake.Launches.Select(l => l.Directory));
-    }
+    });
 
     [Fact]
-    public async Task A_server_that_crashed_isnt_restarted_by_the_next_file()
+    public Task A_server_that_crashed_isnt_restarted_by_the_next_file() => OneThread.Run(async () =>
     {
         using var group = new EditorGroup(Syntax);
         using var languages = Languages(group);
@@ -201,10 +201,10 @@ public class LanguageServersTests
 
         Assert.Single(_fake.Launches);
         Assert.Equal(LanguageServerState.Stopped, languages.ServerFor(gadget)!.State);
-    }
+    });
 
     [Fact]
-    public async Task Disposing_stops_every_server()
+    public Task Disposing_stops_every_server() => OneThread.Run(async () =>
     {
         using var group = new EditorGroup(Syntax);
         var languages = Languages(group);
@@ -215,7 +215,7 @@ public class LanguageServersTests
 
         Assert.True(_fake.Current.Exited.IsCompleted);
         Assert.Equal(["textDocument/didClose", "shutdown", "exit"], _fake.Methods.TakeLast(3));
-    }
+    });
 
     private LanguageServers Languages(EditorGroup group) =>
         new(new EditorGroups(group, new EditorGroup()), _fake, action => action(), (_, action) => _scheduled.Add(action)) { QuietLoad = TimeSpan.FromMinutes(1), StopTimeout = Timeout };
