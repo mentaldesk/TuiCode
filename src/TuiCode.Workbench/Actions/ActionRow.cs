@@ -4,7 +4,8 @@ using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Actions;
 
-internal sealed record ActionRow(string CommandId, string Label, string Bindings, string Mnemonic)
+/// <param name="Name">The command's two-way name, which the filter matches as well as its title (#526).</param>
+internal sealed record ActionRow(string CommandId, string Label, string Bindings, string Mnemonic, string Name)
 {
     private const int Gap = 2;
     private const int KeysWidth = 18;

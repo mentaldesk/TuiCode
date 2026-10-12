@@ -2,6 +2,8 @@ using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using Terminal.Gui.Views;
+using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
@@ -93,6 +95,60 @@ public class ViewedFilesHostTests : StaticConfigurationTest
 
         Assert.Equal("tv", CommandMnemonics.For(CommandIds.ToggleViewed));
         Assert.Contains(WorkbenchHost.MnemonicsInScope(commands, CommandScope.Review), e => e.CommandId == CommandIds.ToggleViewed);
+    }
+
+    [Fact]
+    public async Task Tv_is_named_for_what_it_will_do_to_the_selected_file_or_folder()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var review = workbench.Sidebar.Review;
+        string Title() => commands.Registered.Single(c => c.Id == CommandIds.ToggleViewed).Title;
+        string? onFolder = null;
+
+        await InReviewList(host, workbench, commands);
+        var onFile = Title();
+        await OnFolder(host, review, "src");
+        await HostSteps.Run(host,
+            () => { onFolder = Title(); },
+            () => Assert.True(commands.TryExecute(CommandIds.ToggleViewed)),
+            () => review.ViewedText == "Viewed 2 of 2");
+
+        Assert.Equal("Mark viewed", onFile);
+        Assert.Equal("Mark viewed", onFolder);
+        Assert.Equal("Mark not viewed", Title());
+        Assert.Equal("Mark viewed or not", commands.Registered.Single(c => c.Id == CommandIds.ToggleViewed).Label);
+    }
+
+    [Fact]
+    public async Task The_Review_menu_and_the_palette_name_tv_for_the_selected_file()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string? before = null;
+        IReadOnlyList<string> marked = [];
+
+        await InReviewList(host, workbench, commands);
+        await HostSteps.Run(host,
+            () => { host.Menu.ShowAvailable(); before = MenuTitle(host); },
+            () => Assert.True(commands.TryExecute(CommandIds.ToggleViewed)),
+            () => workbench.Sidebar.Review.ViewedText == "Viewed 2 of 2",
+            () => { host.Menu.ShowAvailable(); marked = Palette(commands, "mark"); });
+
+        Assert.Equal("Mark _viewed", before);
+        Assert.Equal("Mark not _viewed", MenuTitle(host));
+        Assert.Contains("Mark not viewed", marked);
+        Assert.Contains("Mark not viewed", Palette(commands, "toggle"));
+    }
+
+    private static string MenuTitle(WorkbenchHost host) =>
+        host.Menu.Items.Single(i => i.Id == CommandIds.ToggleViewed).Item.Title;
+
+    private static IReadOnlyList<string> Palette(CommandService commands, string query)
+    {
+        using var view = new ActionView(commands, new KeybindingService(commands), CommandScope.Review, _ => { });
+        view.SubViews.OfType<TextField>().Single().Text = query;
+        return view.Labels;
     }
 
     [Fact]

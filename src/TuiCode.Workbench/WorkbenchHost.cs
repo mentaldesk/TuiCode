@@ -547,7 +547,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.JoinGroups, "Join groups", JoinGroups, CommandScope.Global,
             () => _workbench.Editor.Groups.IsSplit);
 
-        _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
+        _commands.Register(CommandIds.ToggleSidebar, "Show or hide sidebar", ToggleSidebar, CommandScope.Global, null,
+            () => _workbench.IsSidebarVisible ? "Hide sidebar" : "Show sidebar");
         _commands.Register(CommandIds.WidenSidebar, "Widen sidebar", () => NudgeSidebar(SidebarSizing.Step));
         _commands.Register(CommandIds.NarrowSidebar, "Narrow sidebar", () => NudgeSidebar(-SidebarSizing.Step));
         _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
@@ -562,9 +563,12 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => OpenFind(replace: true));
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
-        _commands.Register(CommandIds.ToggleGutter, "Toggle gutter", ToggleGutter, CommandScope.Global, EditorOpen);
-        _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect, CommandScope.Editor);
-        _commands.Register(CommandIds.ToggleWordWrap, "Toggle word wrap", ToggleWordWrap, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.ToggleGutter, "Show or hide gutter", ToggleGutter, CommandScope.Global, EditorOpen,
+            () => _workbench.Editor.Groups.GutterVisible ? "Hide gutter" : "Show gutter");
+        _commands.Register(CommandIds.ToggleColumnSelect, "Column select on or off", ToggleColumnSelect, CommandScope.Editor, null,
+            () => _workbench.Editor.Groups.ColumnSelect ? "Turn off column select" : "Turn on column select");
+        _commands.Register(CommandIds.ToggleWordWrap, "Word wrap on or off", ToggleWordWrap, CommandScope.Editor, FileOpen,
+            () => _workbench.Editor.Group.ActiveTab?.WordWrap == true ? "Turn off word wrap" : "Turn on word wrap");
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", () => AskBeforeSwitchingFolder(OpenFileOrFolder));
         // No default key (#357).
@@ -580,7 +584,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment, CommandScope.Diff, Reviewing);
         // Global so that it reaches both the Review tab and a review diff (#398); disabled everywhere else, so Space still types.
-        _commands.Register(CommandIds.ToggleViewed, "Toggle viewed", ToggleViewed, CommandScope.Global, CanToggleViewed);
+        _commands.Register(CommandIds.ToggleViewed, "Mark viewed or not", ToggleViewed, CommandScope.Global, CanToggleViewed,
+            () => ViewedTargetIsViewed() ? "Mark not viewed" : "Mark viewed");
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
@@ -3028,6 +3033,14 @@ public sealed class WorkbenchHost : IDisposable
         && review.MergeBase == spot.Key
             ? spot
             : null;
+
+    private bool ViewedTargetIsViewed()
+    {
+        if (_workbench.Sidebar.Review is not { Review: { Viewed: not null } review } tab) return false;
+        if (_focus.Region == FocusRegion.Diff) return ViewedSpot() is { } spot && review.IsViewed(spot.Path);
+        if (tab.SelectedFolder is { } folder) return review.FilesUnder(folder).All(review.IsViewed);
+        return tab.SelectedFile is { } file && review.IsViewed(file.Path);
+    }
 
     /// <summary>
     /// Toggle viewed (<c>tv</c>, #396): GitHub's Viewed mark on the file selected in the Review tab, or on the

@@ -1,6 +1,10 @@
 namespace TuiCode.Abstractions;
 
-public sealed record CommandDescriptor(string Id, string Label, CommandScope Scope = CommandScope.Global);
+public sealed record CommandDescriptor(string Id, string Label, CommandScope Scope = CommandScope.Global)
+{
+    /// <summary>What choosing it will do now, as the menu and palette name it (#526); <see cref="Label"/> unless it varies.</summary>
+    public string Title { get; init; } = Label;
+}
 
 public interface ICommandService
 {
@@ -11,8 +15,10 @@ public interface ICommandService
     /// Register a command with a human-readable label used by the keybindings picker
     /// and the help dialog. Replaces any prior registration of the same id. Its keybindings only fire in
     /// <paramref name="scope"/>; while <paramref name="isEnabled"/> says no, its keys fall through to Global.
+    /// <paramref name="title"/> names it for the menu and palette by what it will do now, e.g. Hide or Show.
     /// </summary>
-    void Register(string commandId, string label, Action handler, CommandScope scope = CommandScope.Global, Func<bool>? isEnabled = null);
+    void Register(string commandId, string label, Action handler, CommandScope scope = CommandScope.Global, Func<bool>? isEnabled = null,
+        Func<string>? title = null);
 
     bool TryExecute(string commandId);
     bool IsRegistered(string commandId);

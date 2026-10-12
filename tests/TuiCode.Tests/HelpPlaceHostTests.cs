@@ -115,6 +115,16 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task The_editor_column_names_column_select_and_word_wrap_both_ways()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));
+        var help = await HelpFrom(() => Built.OpenFile(_fs.FileInfo.New("/work/a.txt")), "Editor");
+
+        Assert.Contains(help.Rows, row => row.Description == "Column select on or off");
+        Assert.Contains(help.Rows, row => row.Description == "Word wrap on or off");
+    }
+
+    [Fact]
     public async Task The_editor_column_lists_clear_selection_while_there_is_one()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));
