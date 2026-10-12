@@ -37,4 +37,16 @@ public class FilePathsTests
     {
         Assert.Equal(expected, FilePaths.IsDirectoryPath(path));
     }
+
+    [Theory]
+    [InlineData("/repo/.git/COMMIT_EDITMSG", true)]
+    [InlineData("/repo/.git/worktrees/a/COMMIT_EDITMSG", true)]
+    [InlineData(@"C:\repo\.git\rebase-merge\git-rebase-todo", true)]
+    [InlineData("/repo/.gitignore", false)]
+    [InlineData("/repo/.git", false)]
+    [InlineData("/repo/src/a.cs", false)]
+    public void IsInGitDir_is_true_only_for_files_under_a_git_folder(string path, bool expected)
+    {
+        Assert.Equal(expected, FilePaths.IsInGitDir(path));
+    }
 }

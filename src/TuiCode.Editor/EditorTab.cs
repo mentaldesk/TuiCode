@@ -26,6 +26,8 @@ public sealed class EditorTab : FrameView
     private (bool Vertical, bool Horizontal) _barsLaidOut;
     private (int Edits, SyntaxLanguage? Grammar, SymbolScan? Scan)? _stickyScan;
     private SymbolScan? _stickyFrom;
+    // Scrolling waits for the first draw: TG doesn't size the content to the text until then.
+    private ViewPosition? _pendingView;
 
     public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
@@ -136,6 +138,7 @@ public sealed class EditorTab : FrameView
         // Point is (X=column, Y=row). Re-expose in (row, column) order to match the rest of the editor API.
         _textView.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
         _textView.RefreshingSticky = RefreshSticky;
+        _textView.Drawing = ScrollToPendingView;
         _textView.PinnedLineClicked += (_, line) => PinnedLineClicked?.Invoke(this, line);
         _textView.UnwrappedCursorPositionChanged += (_, point) =>
         {
@@ -326,10 +329,30 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public void MoveCursor(int row, int col)
     {
+        _pendingView = null;
         row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
         col = Math.Clamp(col, 0, _textView.GetLine(row).Count);
         _textView.MoveCaret(new System.Drawing.Point(col, row));
         if (WordWrap) _textView.SetNeedsDraw();
+    }
+
+    /// <summary>The cursor and the scroll, to come back to when the file is next opened (#502).</summary>
+    public ViewPosition ViewPosition => _pendingView ?? new(CursorRow, CursorColumn, _textView.TopLine, WordWrap ? 0 : _textView.Viewport.X);
+
+    /// <summary>Puts the cursor and the scroll back where <paramref name="position"/> had them, clamped to the file as it is now.</summary>
+    public void RestoreViewPosition(ViewPosition position)
+    {
+        MoveCursor(position.Line, position.Column);
+        _pendingView = position with { Line = CursorRow, Column = CursorColumn };
+        _textView.SetNeedsDraw();
+    }
+
+    private void ScrollToPendingView()
+    {
+        if (_pendingView is not { } view || _textView.Viewport.Height <= 0) return;
+        _pendingView = null;
+        _textView.ScrollToLine(view.TopLine, view.LeftColumn);
+        if (CursorRow < _textView.TopLine || CursorRow >= _textView.TopLine + _textView.Viewport.Height) RevealLines(CursorRow, CursorRow);
     }
 
     /// <summary>The cursor's column in UTF-16 chars, as language servers count them.</summary>
@@ -355,6 +378,7 @@ public sealed class EditorTab : FrameView
     /// </summary>
     public void RevealLines(int first, int last)
     {
+        _pendingView = null;
         if (WordWrap)
         {
             _textView.RevealWrappedLines(first, last);
@@ -534,6 +558,7 @@ public sealed class EditorTab : FrameView
     {
         var start = ToCellColumn(match.Row, match.Column);
         var end = ToCellColumn(match.Row, match.End);
+        _pendingView = null;
         _textView.RemoveSecondaryCarets();
         _textView.Select(new System.Drawing.Point(start, match.Row), new System.Drawing.Point(end, match.Row));
     }
@@ -771,6 +796,7 @@ internal sealed partial class EditorTextView : TextView
     // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
     protected override bool OnDrawingContent(DrawContext? context)
     {
+        Drawing?.Invoke();
         RefreshingSticky?.Invoke();
         if (SoftWrap) FollowCaret();
         PinForCaret();
