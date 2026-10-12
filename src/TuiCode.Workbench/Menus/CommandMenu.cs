@@ -26,6 +26,46 @@ public sealed class CommandMenu
         [CommandIds.FocusReview] = "Review",
     };
 
+    /// <summary>Each item's letter, unique within its menu, which runs it while the menu is open (#516).</summary>
+    public static readonly IReadOnlyDictionary<string, char> Letters = new Dictionary<string, char>
+    {
+        [CommandIds.New] = 'n', [CommandIds.Open] = 'o', [CommandIds.OpenRecentFolder] = 'r', [CommandIds.OpenWorktree] = 'w',
+        [CommandIds.OpenFilePath] = 'f', [CommandIds.SaveActiveEditor] = 's', [CommandIds.SaveAll] = 'a',
+        [CommandIds.ReloadFromDisk] = 'l', [CommandIds.CloseActiveEditor] = 'c', [CommandIds.RenameFile] = 'm',
+        [CommandIds.CutFile] = 't', [CommandIds.PasteFile] = 'p', [CommandIds.DeleteFile] = 'd',
+        [CommandIds.ShowDocumentInfo] = 'i', [CommandIds.OpenSettings] = 'g', [CommandIds.SuspendToShell] = 'h',
+        [CommandIds.Quit] = 'q',
+
+        [CommandIds.MoveLinesUp] = 'm', [CommandIds.MoveLinesDown] = 'd', [CommandIds.DuplicateLinesUp] = 'u',
+        [CommandIds.DuplicateLinesDown] = 'l', [CommandIds.IndentLines] = 'i', [CommandIds.OutdentLines] = 'o',
+        [CommandIds.ToggleLineComment] = 't', [CommandIds.FindInFile] = 'f', [CommandIds.ReplaceInFile] = 'r',
+        [CommandIds.ReplaceGlobally] = 'g', [CommandIds.ChangeGrammar] = 'c',
+
+        [CommandIds.AddCursorAbove] = 'a', [CommandIds.AddCursorBelow] = 'b', [CommandIds.RemoveSecondaryCursors] = 'r',
+        [CommandIds.ClearSelection] = 'c', [CommandIds.ToggleColumnSelect] = 't', [CommandIds.SelectNextOccurrence] = 's',
+        [CommandIds.SelectPreviousOccurrence] = 'p', [CommandIds.SelectAllOccurrences] = 'o',
+
+        [CommandIds.ShowExplorer] = 'e', [CommandIds.FindGlobally] = 'f', [CommandIds.FocusUsages] = 'u',
+        [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 't', [CommandIds.WidenSidebar] = 'w',
+        [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'h', [CommandIds.ToggleGutter] = 'g',
+        [CommandIds.ToggleWordWrap] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
+        [CommandIds.JoinGroups] = 'j',
+
+        [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToDefinition] = 'd',
+        [CommandIds.FindUsages] = 'f', [CommandIds.FollowLink] = 'l', [CommandIds.NavigateBack] = 'p',
+        [CommandIds.NavigateForward] = 'n', [CommandIds.NextEditor] = 't', [CommandIds.PreviousEditor] = 'r',
+
+        [CommandIds.CompareToSaved] = 'c', [CommandIds.CompareToRevision] = 'r', [CommandIds.CompareToOtherFile] = 'o',
+        [CommandIds.NextChange] = 'n', [CommandIds.PreviousChange] = 'p', [CommandIds.GoToChangeLine] = 'g',
+        [CommandIds.RevertChange] = 'e', [CommandIds.RevertAllChanges] = 'a', [CommandIds.GitBlame] = 'b',
+
+        [CommandIds.OpenPullRequest] = 'o', [CommandIds.PullRequestOverview] = 'p', [CommandIds.CreateComment] = 'c',
+        [CommandIds.ToggleViewed] = 't', [CommandIds.SubmitReview] = 's',
+
+        [CommandIds.ShowHelp] = 'g', [CommandIds.ShowActions] = 's', [CommandIds.ShowMnemonics] = 'm',
+        [CommandIds.ShowDiagnostics] = 'd', [CommandIds.ShowLog] = 'l', [CommandIds.ShowAbout] = 'a',
+    };
+
     public static readonly (string Title, string[] Ids)[] Layout =
     [
         ("_File",
@@ -185,15 +225,25 @@ public sealed class CommandMenu
 
     private CommandMenuItem Item(string id)
     {
+        var title = Titles.GetValueOrDefault(id) ?? _commands.Registered.FirstOrDefault(c => c.Id == id)?.Label ?? id;
         var item = new CommandMenuItem
         {
-            Title = Titles.GetValueOrDefault(id) ?? _commands.Registered.FirstOrDefault(c => c.Id == id)?.Label ?? id,
+            Title = Letters.TryGetValue(id, out var letter) ? Underline(title, letter) : title,
             // The workbench already dispatches the key; binding it here too would run the command twice.
             BindKeyToApplication = false,
             Action = () => _picked = id,
         };
         _items.Add((id, item));
         return item;
+    }
+
+    // Where the letter starts a word, else where it first appears.
+    private static string Underline(string title, char letter)
+    {
+        var at = Enumerable.Range(0, title.Length).Where(i => char.ToLowerInvariant(title[i]) == letter).ToList();
+        if (at.Count == 0) return title;
+        var start = at.FirstOrDefault(i => i == 0 || !char.IsLetterOrDigit(title[i - 1]), at[0]);
+        return title.Insert(start, "_");
     }
 
     // Moving between menus closes one before opening the next, and TG is still moving focus as a menu
