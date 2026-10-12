@@ -27,6 +27,12 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
     /// <summary>Answers initialize with this error.</summary>
     public string? InitializeError { get; set; }
 
+    /// <summary>Holds the answer to initialize until it's set.</summary>
+    public ManualResetEventSlim? HoldInitialize { get; set; }
+
+    /// <summary>Reports loading, start to finish, before it has answered initialize.</summary>
+    public bool LoadsWhileInitializing { get; set; }
+
     /// <summary>Holds every references request until it's set.</summary>
     public ManualResetEventSlim? HoldReferences { get; set; }
 
@@ -68,6 +74,15 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
     private JsonNode? Answer(InProcessServer server, string method, JsonNode? parameters)
     {
         _received.Enqueue((method, parameters?.DeepClone()));
+        if (method == "initialize")
+        {
+            HoldInitialize?.Wait(TimeSpan.FromSeconds(30));
+            if (LoadsWhileInitializing)
+            {
+                Progress(server, "begin");
+                Progress(server, "end");
+            }
+        }
         return method switch
         {
             "initialize" when InitializeError is { } error => throw new JsonRpcException(-32603, error),
@@ -81,7 +96,6 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 
     private void OnNotification(InProcessServer server, string method, JsonNode? parameters)
     {
-        _received.Enqueue((method, parameters?.DeepClone()));
         var document = parameters?["textDocument"];
         switch (method)
         {
@@ -102,6 +116,8 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                 server.Exit();
                 break;
         }
+        // Recorded once handled, so a test that has seen it can rely on what it did.
+        _received.Enqueue((method, parameters?.DeepClone()));
     }
 
     private JsonArray Definitions(JsonNode parameters)
