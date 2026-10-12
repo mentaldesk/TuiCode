@@ -131,6 +131,12 @@ public class ButtonKindTests
     }
 
     [Fact]
+    public void The_Review_tabs_Overview_is_secondary()
+    {
+        Assert.Equal(("Overview", SchemeNames.ButtonSecondary), Kind(new ReviewView().Overview));
+    }
+
+    [Fact]
     public void Open_this_folder_is_secondary()
     {
         var fs = new MockFileSystem();

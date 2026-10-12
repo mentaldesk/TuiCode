@@ -7,6 +7,7 @@ using TuiCode.Icons;
 using TuiCode.Syntax;
 using TuiCode.Workbench.Git;
 using Attribute = Terminal.Gui.Drawing.Attribute;
+using AppButton = MentalDesk.Tui.Dialogs.AppButton;
 
 namespace TuiCode.Workbench.Review;
 
@@ -97,6 +98,8 @@ public sealed class ReviewView : View
 
     public bool HasOverview => _overview.Visible;
 
+    internal Button Overview => _overview;
+
     internal Label Hint => _hint;
 
     /// <summary>The changed files in the order the tab lists them (#181).</summary>
@@ -128,7 +131,8 @@ public sealed class ReviewView : View
             e.Result = attribute with { Style = attribute.Style | TextStyle.Faint };
             e.Handled = true;
         };
-        _overview = new Button { X = 0, Y = 0, Height = 1, Text = "Overview", Visible = false, ShadowStyle = ShadowStyles.None };
+        _overview = AppButton.Secondary("Overview");
+        _overview.Visible = false;
         _overview.Accepting += (_, e) =>
         {
             e.Handled = true;
