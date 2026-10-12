@@ -7,6 +7,7 @@ using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench.DocumentInfo;
 using TuiCode.Workbench.Files;
+using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
@@ -41,6 +42,30 @@ public class ButtonKindTests
         Assert.Equal(
             [("Reply", SchemeNames.ButtonPrimary), ("Cancel", SchemeNames.ButtonSecondary)],
             Kinds(new CommentView(thread)));
+    }
+
+    [Fact]
+    public void Submit_review_offers_a_primary_Submit_and_a_secondary_Cancel()
+    {
+        Assert.Equal(
+            [("Submit", SchemeNames.ButtonPrimary), ("Cancel", SchemeNames.ButtonSecondary)],
+            Kinds(new SubmitReviewView(187)));
+    }
+
+    [Fact]
+    public void Blame_on_a_committed_line_offers_a_primary_View_change_and_a_secondary_Close()
+    {
+        Assert.Equal(
+            [("View change", SchemeNames.ButtonPrimary), ("Close", SchemeNames.ButtonSecondary)],
+            Kinds(new BlameView("a.txt", 1, Blame("4a91c0e2b7d1f3e5a6c8b9d0e1f2a3b4c5d6e7f8"), DateTimeOffset.UnixEpoch)));
+    }
+
+    [Fact]
+    public void Blame_on_an_uncommitted_line_closes_with_a_primary_button()
+    {
+        Assert.Equal(
+            [("Close", SchemeNames.ButtonPrimary)],
+            Kinds(new BlameView("a.txt", 1, Blame(new string('0', 40)), DateTimeOffset.UnixEpoch)));
     }
 
     [Fact]
@@ -147,6 +172,8 @@ public class ButtonKindTests
 
     private static List<(string, string)> Kinds(View view) =>
         [.. view.SubViews.OfType<Button>().Select(Kind)];
+
+    private static GitBlameLine Blame(string hash) => new(hash, "Nicky Baumann", DateTimeOffset.UnixEpoch, "Subject", "bravo");
 
     private static (string, string) Kind(Button button) => (button.Text.Trim(), button.SchemeName!);
 
