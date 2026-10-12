@@ -15,7 +15,7 @@ public class KeybindingConflictDialogTests
         _host.BeginInit();
         _host.EndInit();
         _host.SetFocus();
-        KeybindingConflictDialog.Confirm(_host, new InputScopeStack(), "Ctrl+X is in use.", "Bind", _choices.Add);
+        KeybindingConflictDialog.Confirm(_host, new InputScopeStack(), "Ctrl+X is in use.", "Bind", destructive: false, _choices.Add);
     }
 
     [Fact]
@@ -24,7 +24,7 @@ public class KeybindingConflictDialogTests
         var buttons = _host.SubViews.OfType<Dialog>().Single().SubViews.OfType<Button>().ToList();
 
         var @default = Assert.Single(buttons, b => b.IsDefault);
-        Assert.Equal("Cancel", @default.Text);
+        Assert.Equal("Cancel", @default.Text.Trim());
         Assert.True(@default.HasFocus);
     }
 
@@ -39,7 +39,7 @@ public class KeybindingConflictDialogTests
     [Fact]
     public void Confirm_calls_back_true_on_Enter_after_focusing_the_confirm_button()
     {
-        _host.SubViews.OfType<Dialog>().Single().SubViews.OfType<Button>().Single(b => b.Text == "Bind").SetFocus();
+        _host.SubViews.OfType<Dialog>().Single().SubViews.OfType<Button>().Single(b => b.Text.Trim() == "Bind").SetFocus();
 
         _host.NewKeyDownEvent(Key.Enter);
 

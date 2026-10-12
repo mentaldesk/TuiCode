@@ -125,7 +125,7 @@ public class ReloadFromDiskHostTests : StaticConfigurationTest
             () => OpenWithAnExternalChange(workbench, dirty: true),
             () => _commands.TryExecute(CommandIds.ReloadFromDisk),
             () => Confirm(workbench) is not null,
-            () => { buttons = [.. Confirm(workbench)!.SubViews.OfType<Button>().Select(b => b.Text)]; },
+            () => { buttons = [.. Confirm(workbench)!.SubViews.OfType<Button>().Select(b => b.Text.Trim())]; },
             Reach(host, workbench, "Reload"),
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is null);

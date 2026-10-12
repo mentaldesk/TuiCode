@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Settings;
@@ -84,16 +85,22 @@ public sealed class TerminalIntegrationPickerView : View
             return;
 
         row++;
-        int col = 0;
+        Pos col = 0;
         foreach (var action in state.Actions)
         {
             var captured = action;
-            var button = new Button { X = col, Y = row, Text = $"[ {captured.Label()} ]" };
+            var button = ButtonFor(captured);
+            button.X = col;
+            button.Y = row;
             button.Accepting += (_, _) => Invoke(state.Detected, captured);
             Add(button);
-            col += button.Text.Length + 4;
+            col = Pos.Right(button) + 2;
         }
     }
+
+    internal static Button ButtonFor(TerminalIntegrationAction action) => action == TerminalIntegrationAction.Remove
+        ? AppButton.Secondary(action.Label())
+        : AppButton.Primary(action.Label());
 
     private void Invoke(ITerminalIntegration integration, TerminalIntegrationAction action)
     {
