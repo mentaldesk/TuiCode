@@ -187,6 +187,9 @@ public sealed class Workbench : Window
     /// <summary>A file has been opened in the editor; the host moves the keys into it through the focus service (#228).</summary>
     public event EventHandler? FileOpened;
 
+    /// <summary>A folder's saved tabs are back, and <see cref="EditorGroups.Focused"/> is the group that was focused.</summary>
+    public event EventHandler? TabsRestored;
+
     /// <summary>Open a file in the editor. Shared by the explorer and the Open dialog.</summary>
     public void OpenFile(IFileInfo file)
     {
@@ -291,6 +294,7 @@ public sealed class Workbench : Window
         if (first is not null) groups.Holding(first)?.Focus(first.File.FullName);
         if (second is not null) groups.Holding(second)?.Focus(second.File.FullName);
         groups.Focused = state.SecondFocused && groups.IsSplit ? groups.Second : groups.First;
+        TabsRestored?.Invoke(this, EventArgs.Empty);
 
         EditorTab? Restore(EditorGroup group, IReadOnlyList<string> files, string? activeFile)
         {

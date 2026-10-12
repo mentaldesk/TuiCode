@@ -249,6 +249,7 @@ public sealed class WorkbenchHost : IDisposable
         // Opening a file is a move into the Editor region, so the service makes it: the tab it opens may
         // still be carrying a stale HasFocus, which its own SetFocus would no-op on (#228).
         _workbench.FileOpened += (_, _) => MoveFocus(FocusRegion.Editor);
+        _workbench.TabsRestored += (_, _) => _restoringFocus = true;
         _workbench.Sidebar.OpenFolderRequested += (_, _) => _commands.TryExecute(CommandIds.Open);
     }
 
@@ -307,6 +308,7 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     private View? _lastFocused;
+    private bool _restoringFocus = true;
 
     // A click or Terminal.Gui's own navigation can take the keys into the other group; the commands follow them there.
     private void Reconcile()
@@ -314,13 +316,14 @@ public sealed class WorkbenchHost : IDisposable
         var focused = FocusedView();
         if (!ReferenceEquals(focused, _lastFocused))
         {
-            var starting = _lastFocused is null;
+            var restoring = _restoringFocus;
+            _restoringFocus = false;
             _lastFocused = focused;
             var groups = _workbench.Editor.Groups;
             if (_workbench.Editor.GroupOf(focused) is { } group && !ReferenceEquals(group, groups.Focused))
             {
-                // Terminal.Gui's first focus is wherever it lands; a restored focus on the second group wins over it.
-                if (starting) Take(groups.Focused.Value, groups.Focused.FocusActive);
+                // Terminal.Gui puts the keys in the first group as restored tabs arrive; the group saved as focused wins.
+                if (restoring) Take(groups.Focused.Value, groups.Focused.FocusActive);
                 else groups.Focused = group;
             }
         }

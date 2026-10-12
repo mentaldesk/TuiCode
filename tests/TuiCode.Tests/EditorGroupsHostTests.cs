@@ -4,6 +4,7 @@ using Terminal.Gui.Input;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
@@ -270,6 +271,43 @@ public class EditorGroupsHostTests : StaticConfigurationTest
         Assert.Same(groups.Second, reopened.Editor.Group);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Starting_in_a_split_folder_gives_the_keys_to_the_group_saved_as_focused(bool secondFocused)
+    {
+        SaveSplit(secondFocused);
+        using var workbench = BuildWorkbench(open: false);
+        using var host = BuildHost(workbench);
+        host.OpenWhenRunning(new StartupTarget(_fs.DirectoryInfo.New("/work"), []));
+        var groups = workbench.Editor.Groups;
+        var focused = secondFocused ? groups.Second : groups.First;
+
+        await HostSteps.Run(host,
+            () => HostSteps.PinScreenSize(host, 120, 30),
+            () => groups.IsSplit && focused.ActiveTab?.ContentHasFocus == true,
+            () => host.App.InjectKey(new Key('X')),
+            () => focused.ActiveTab!.Content.StartsWith('X'));
+
+        Assert.Same(focused, workbench.Editor.Group);
+    }
+
+    [Fact]
+    public async Task Starting_in_a_split_folder_shows_the_second_groups_file_from_its_first_column()
+    {
+        SaveSplit(secondFocused: false);
+        using var workbench = BuildWorkbench(open: false);
+        using var host = BuildHost(workbench);
+        host.OpenWhenRunning(new StartupTarget(_fs.DirectoryInfo.New("/work"), []));
+        var groups = workbench.Editor.Groups;
+
+        await HostSteps.Run(host,
+            () => HostSteps.PinScreenSize(host, 120, 30),
+            () => groups.IsSplit && workbench.Editor.Frames[1].Frame.Width > 0);
+
+        Assert.Equal(0, groups.Second.ActiveTab!.TextView.Viewport.X);
+    }
+
     [Fact]
     public void A_folder_saved_before_groups_opens_as_one()
     {
@@ -300,12 +338,19 @@ public class EditorGroupsHostTests : StaticConfigurationTest
 
     private string Full(string path) => _fs.Path.GetFullPath(path);
 
-    private Workbench.Workbench BuildWorkbench()
+    private Workbench.Workbench BuildWorkbench(bool open = true)
     {
         var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart(), _store);
-        workbench.OpenFolder(_fs.DirectoryInfo.New("/work"));
+        if (open) workbench.OpenFolder(_fs.DirectoryInfo.New("/work"));
         return workbench;
     }
+
+    private void SaveSplit(bool secondFocused) =>
+        _store.Save(Full("/work"), new WorkspaceState([Full("/work/a.txt")], Full("/work/a.txt"))
+        {
+            Second = new WorkspaceGroup([Full("/work/b.txt")], Full("/work/b.txt")),
+            SecondFocused = secondFocused,
+        });
 
     private WorkbenchHost BuildHost(Workbench.Workbench workbench) =>
         new(workbench, _commands, _keybindings, new InputScopeStack(),
