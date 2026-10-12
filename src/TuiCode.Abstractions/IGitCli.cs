@@ -10,6 +10,12 @@ public interface IGitCli
     /// <summary>The root of the repo containing <paramref name="path"/>, or null when it isn't in one.</summary>
     Task<GitResult<string?>> GetRepoRootAsync(string path, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The files under <paramref name="folder"/>, relative to it with <c>/</c> separators: tracked and untracked, less
+    /// what git ignores unless <paramref name="includeIgnored"/>. Null outside a repo.
+    /// </summary>
+    Task<GitResult<IReadOnlyList<string>?>> ListFilesAsync(string folder, bool includeIgnored, CancellationToken cancellationToken = default);
+
     /// <summary>The file's content at <paramref name="revision"/>, or null when the file isn't in that revision.</summary>
     Task<GitResult<string?>> ShowFileAsync(string filePath, string revision, CancellationToken cancellationToken = default);
 

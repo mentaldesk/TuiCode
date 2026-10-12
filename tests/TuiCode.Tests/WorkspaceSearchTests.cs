@@ -39,6 +39,85 @@ public class WorkspaceSearchTests
     }
 
     [Fact]
+    public void Search_without_a_git_file_list_says_it_is_not_a_repo()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("needle"));
+
+        var result = WorkspaceSearch.Search(fs.DirectoryInfo.New("/work"), "needle", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.NotARepo);
+    }
+
+    [Fact]
+    public void Search_with_a_git_file_list_searches_only_the_listed_files()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/.idea/workspace.xml", new MockFileData("needle"));
+        fs.AddFile("/work/src/app.cs", new MockFileData("needle"));
+        fs.AddFile("/work/bin/kept.txt", new MockFileData("needle"));
+
+        var result = WorkspaceSearch.Search(fs.DirectoryInfo.New("/work"), "needle", gitFiles: ["src/app.cs", "bin/kept.txt"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.NotARepo);
+        Assert.Equal(["kept.txt", "app.cs"], result.Files.Select(f => f.File.Name));
+    }
+
+    [Fact]
+    public void Search_with_a_git_file_list_skips_listed_files_gone_from_disk_and_nested_repos()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("needle"));
+        fs.AddFile("/work/nested/b.txt", new MockFileData("needle"));
+
+        var result = WorkspaceSearch.Search(fs.DirectoryInfo.New("/work"), "needle", gitFiles: ["a.txt", "deleted.txt", "nested/"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["a.txt"], result.Files.Select(f => f.File.Name));
+    }
+
+    [Fact]
+    public void Listed_files_come_in_the_order_the_folder_walk_gives()
+    {
+        var fs = new MockFileSystem();
+        string[] paths = ["z.txt", "b/y.txt", "a.txt", "b/c/x.txt", "a/w.txt", "b/a.txt"];
+        foreach (var path in paths) fs.AddFile($"/work/{path}", new MockFileData("x"));
+        var root = fs.DirectoryInfo.New("/work");
+
+        var listed = WorkspaceSearch.Listed(root, paths, TestContext.Current.CancellationToken);
+        var walked = WorkspaceSearch.EnumerateFiles(root, TestContext.Current.CancellationToken);
+
+        Assert.Equal(walked.Select(f => f.FullName), listed.Select(f => f.FullName));
+    }
+
+    [Fact]
+    public void Search_applies_match_case_and_whole_word()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.cs", new MockFileData("Id id Hidden x.Id"));
+        var root = fs.DirectoryInfo.New("/work");
+
+        var result = WorkspaceSearch.Search(root, "Id", new MatchOptions(MatchCase: true, WholeWord: true),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal([0, 15], result.Files.Single().Matches.Select(m => m.Match.Column));
+    }
+
+    [Fact]
+    public void ReplaceAll_honours_match_case_and_whole_word()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.cs", new MockFileData("Id id Hidden x.Id"));
+
+        var (_, occurrences) = WorkspaceSearch.ReplaceAll([fs.FileInfo.New("/work/a.cs")], "Id", "Key",
+            new MatchOptions(MatchCase: true, WholeWord: true));
+
+        Assert.Equal(2, occurrences);
+        Assert.Equal("Key id Hidden x.Key", fs.File.ReadAllText("/work/a.cs"));
+    }
+
+    [Fact]
     public void Search_skips_binary_files()
     {
         var fs = new MockFileSystem();
@@ -56,7 +135,7 @@ public class WorkspaceSearchTests
         fs.AddFile("/work/a.txt", new MockFileData("on disk"));
         var buffers = new Dictionary<string, string> { [fs.Path.GetFullPath("/work/a.txt")] = "unsaved needle" };
 
-        var result = WorkspaceSearch.Search(fs.DirectoryInfo.New("/work"), "needle", buffers, cancellationToken: TestContext.Current.CancellationToken);
+        var result = WorkspaceSearch.Search(fs.DirectoryInfo.New("/work"), "needle", openBuffers: buffers, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Single(result.Files);
     }
@@ -108,7 +187,7 @@ public class WorkspaceSearchTests
         var buffers = new FakeOpenBuffers(fs.Path.GetFullPath("/work/open.txt"));
 
         var (files, occurrences) = WorkspaceSearch.ReplaceAll(
-            [fs.FileInfo.New("/work/open.txt"), fs.FileInfo.New("/work/closed.txt")], "foo", "bar", buffers);
+            [fs.FileInfo.New("/work/open.txt"), fs.FileInfo.New("/work/closed.txt")], "foo", "bar", openBuffers: buffers);
 
         Assert.Equal((2, 2), (files, occurrences));
         Assert.Equal("foo", fs.File.ReadAllText("/work/open.txt"));
@@ -149,7 +228,7 @@ public class WorkspaceSearchTests
 
         public IReadOnlyDictionary<string, string> Snapshot() => new Dictionary<string, string>();
 
-        public int? ReplaceAll(string fullPath, string query, string replacement)
+        public int? ReplaceAll(string fullPath, string query, string replacement, MatchOptions options)
         {
             if (fullPath != openPath) return null;
             Replaced = (query, replacement);

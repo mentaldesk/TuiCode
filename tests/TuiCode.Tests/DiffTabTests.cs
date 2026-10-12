@@ -1065,7 +1065,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal("Find bar", help!.Place!.Title);
-        Assert.Equal(["Enter", "Shift+Enter", "Esc"], help.Place.Rows.Select(row => row.Key));
+        Assert.Equal(["Enter", "Shift+Enter", "Alt+C", "Alt+W", "Esc"], help.Place.Rows.Select(row => row.Key));
         Assert.DoesNotContain("Enter", status);
     }
 

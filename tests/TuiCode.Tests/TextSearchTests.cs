@@ -28,6 +28,70 @@ public class TextSearchTests
     }
 
     [Fact]
+    public void FindAll_with_match_case_only_matches_the_same_case()
+    {
+        var matches = TextSearch.FindAll(["Id id ID"], "id", new MatchOptions(MatchCase: true));
+
+        Assert.Equal([new TextMatch(0, 3, 2)], matches);
+    }
+
+    [Theory]
+    [InlineData("Id", 0)]
+    [InlineData("x Id", 2)]
+    [InlineData(".Id", 1)]
+    [InlineData("Id(", 0)]
+    [InlineData("Id;", 0)]
+    [InlineData("a-Id-b", 2)]
+    public void FindAll_with_whole_word_matches_a_word_beside_punctuation_or_the_line_ends(string line, int column)
+    {
+        Assert.Equal([new TextMatch(0, column, 2)], TextSearch.FindAll([line], "Id", new MatchOptions(WholeWord: true)));
+    }
+
+    [Theory]
+    [InlineData("Hidden")]
+    [InlineData("Guid")]
+    [InlineData("Ids")]
+    [InlineData("_Id")]
+    [InlineData("Id_")]
+    [InlineData("Id2")]
+    [InlineData("éId")]
+    [InlineData("Idé")]
+    [InlineData("日Id")]
+    public void FindAll_with_whole_word_skips_matches_inside_a_word(string line)
+    {
+        Assert.Empty(TextSearch.FindAll([line], "Id", new MatchOptions(WholeWord: true)));
+    }
+
+    [Fact]
+    public void FindAll_with_whole_word_takes_a_query_that_starts_with_punctuation_as_bounded_there()
+    {
+        Assert.Equal([new TextMatch(0, 1, 3)], TextSearch.FindAll(["x.Id"], ".Id", new MatchOptions(WholeWord: true)));
+    }
+
+    [Fact]
+    public void FindAll_with_whole_word_keeps_looking_after_a_match_inside_a_word()
+    {
+        Assert.Equal([new TextMatch(0, 4, 2)], TextSearch.FindAll(["aaa aa"], "aa", new MatchOptions(WholeWord: true)));
+    }
+
+    [Fact]
+    public void FindAll_with_both_options_combines_them()
+    {
+        var matches = TextSearch.FindAll(["Id id Hidden ID x.Id"], "Id", new MatchOptions(MatchCase: true, WholeWord: true));
+
+        Assert.Equal([new TextMatch(0, 0, 2), new TextMatch(0, 18, 2)], matches);
+    }
+
+    [Fact]
+    public void ReplaceAll_with_options_replaces_only_matches_that_respect_them()
+    {
+        var result = TextSearch.ReplaceAll("Id id\nHidden.Id", "Id", "Key", new MatchOptions(MatchCase: true, WholeWord: true), out var count);
+
+        Assert.Equal(2, count);
+        Assert.Equal("Key id\nHidden.Key", result);
+    }
+
+    [Fact]
     public void SplitLines_handles_every_line_terminator()
     {
         Assert.Equal(["a", "b", "c", "d"], TextSearch.SplitLines("a\r\nb\nc\rd"));
@@ -72,7 +136,7 @@ public class TextSearchTests
     [Fact]
     public void ReplaceAll_replaces_every_match_and_preserves_line_endings()
     {
-        var result = TextSearch.ReplaceAll("Foo\r\nfoo\nbar", "foo", "baz", out var count);
+        var result = TextSearch.ReplaceAll("Foo\r\nfoo\nbar", "foo", "baz", default, out var count);
 
         Assert.Equal("baz\r\nbaz\nbar", result);
         Assert.Equal(2, count);
@@ -81,7 +145,7 @@ public class TextSearchTests
     [Fact]
     public void ReplaceAll_with_a_replacement_containing_the_query_does_not_loop()
     {
-        var result = TextSearch.ReplaceAll("a-a", "a", "aa", out var count);
+        var result = TextSearch.ReplaceAll("a-a", "a", "aa", default, out var count);
 
         Assert.Equal("aa-aa", result);
         Assert.Equal(2, count);

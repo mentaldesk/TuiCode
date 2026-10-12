@@ -82,7 +82,7 @@ public class FindControllerTests : IDisposable
         Open("/work/a.txt", "foo");
         _find.Open(replace: false);
 
-        var help = _find.Help();
+        var help = _find.Help([]);
 
         Assert.Equal("Find bar", help.Title);
         Assert.Equal(
@@ -106,7 +106,7 @@ public class FindControllerTests : IDisposable
             new("Ctrl+Enter", "Replace all"),
             new("Tab", "Replace field"),
             new("Esc", "Close"),
-        ], _find.Help().Rows);
+        ], _find.Help([]).Rows);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class FindControllerTests : IDisposable
             new("Ctrl+Enter", "Replace all"),
             new("Tab", "Find field"),
             new("Esc", "Close"),
-        ], _find.Help().Rows);
+        ], _find.Help([]).Rows);
     }
 
     [Fact]
@@ -167,6 +167,42 @@ public class FindControllerTests : IDisposable
         Assert.Equal(["dog", "condog dog", ""], tab.Lines);
         Assert.Empty(_find.Matches);
         Assert.True(tab.IsDirty);
+    }
+
+    [Fact]
+    public void Toggling_an_option_searches_again_and_the_count_highlights_and_steps_agree()
+    {
+        var tab = Open("/work/a.txt", "Id id\nHidden Id\n");
+        _find.Open(replace: false);
+        _find.Bar.Query = "id";
+        Assert.Equal(4, _find.Matches.Count);
+
+        _find.Bar.ToggleMatchCase();
+        Assert.Equal([new TextMatch(0, 3, 2), new TextMatch(1, 1, 2)], _find.Matches);
+        Assert.Equal("1 of 2", _find.Bar.Status);
+
+        _find.Bar.ToggleWholeWord();
+        Assert.Equal([new TextMatch(0, 3, 2)], _find.Matches);
+        _find.Next();
+        Assert.Equal((0, 5), (tab.CursorRow, tab.CursorColumn));
+        Assert.Equal("1 of 1", _find.Bar.Status);
+    }
+
+    [Fact]
+    public void Replace_and_ReplaceAll_change_only_matches_that_respect_the_options()
+    {
+        var tab = Open("/work/a.txt", "Id id Hidden.Id\n");
+        _find.Open(replace: true);
+        _find.Bar.ToggleMatchCase();
+        _find.Bar.ToggleWholeWord();
+        _find.Bar.Query = "Id";
+        _find.Bar.Replacement = "Key";
+
+        _find.ReplaceOne();
+        Assert.Equal("Key id Hidden.Id", tab.Lines[0]);
+
+        _find.ReplaceAll();
+        Assert.Equal("Key id Hidden.Key", tab.Lines[0]);
     }
 
     [Fact]

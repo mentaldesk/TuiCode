@@ -26,6 +26,21 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
             : GitResult<string?>.Failure(ErrorMessage(run));
     }
 
+    public async Task<GitResult<IReadOnlyList<string>?>> ListFilesAsync(string folder, bool includeIgnored, CancellationToken cancellationToken = default)
+    {
+        string[] arguments = includeIgnored
+            ? ["ls-files", "-z", "--cached", "--others"]
+            : ["ls-files", "-z", "--cached", "--others", "--exclude-standard"];
+        var run = await RunAsync(folder, arguments, cancellationToken);
+        if (run.Failure is { } failure)
+            return GitResult<IReadOnlyList<string>?>.Failure(failure);
+        if (run.ExitCode == 0)
+            return GitResult<IReadOnlyList<string>?>.Success(run.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries));
+        return run.Error.Contains("not a git repository", StringComparison.Ordinal)
+            ? GitResult<IReadOnlyList<string>?>.Success(null)
+            : GitResult<IReadOnlyList<string>?>.Failure(ErrorMessage(run));
+    }
+
     public async Task<GitResult<string?>> ShowFileAsync(string filePath, string revision, CancellationToken cancellationToken = default)
     {
         if (!IsSafeRevision(revision))

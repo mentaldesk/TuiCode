@@ -9,12 +9,12 @@ internal sealed class EditorBuffers(EditorGroups group) : IOpenBuffers
     public IReadOnlyDictionary<string, string> Snapshot() =>
         group.Tabs.ToDictionary(t => t.File.FullName, t => string.Join('\n', t.Lines), StringComparer.Ordinal);
 
-    public int? ReplaceAll(string fullPath, string query, string replacement)
+    public int? ReplaceAll(string fullPath, string query, string replacement, MatchOptions options)
     {
         if (group.Tabs.FirstOrDefault(t => string.Equals(t.File.FullName, fullPath, StringComparison.Ordinal)) is not { } tab)
             return null;
 
-        var matches = TextSearch.FindAll(tab.Lines, query);
+        var matches = TextSearch.FindAll(tab.Lines, query, options);
         // Back to front so earlier coordinates stay valid.
         for (var i = matches.Count - 1; i >= 0; i--)
             tab.Replace(matches[i], replacement);

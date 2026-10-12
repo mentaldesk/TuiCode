@@ -16,12 +16,18 @@ public sealed class SearchView : View
     private readonly TextField _query;
     private readonly Label _replaceLabel;
     private readonly TextField _replacement;
+    private readonly CheckBox _matchCase;
+    private readonly CheckBox _wholeWord;
+    private readonly CheckBox _ignoredFiles;
     private readonly Label _status;
     private readonly TreeView<SearchNode> _results;
     private CancellationTokenSource? _searchCts;
-    private (string Query, string Replacement, int Matches)? _pendingReplace;
-    // The query Result was computed for — lags Query while a background search is in flight.
-    private string _resultQuery = string.Empty;
+    private (Request Request, string Replacement, int Matches)? _pendingReplace;
+    // What Result was computed for — lags the inputs while a background search is in flight.
+    private Request _resultFor = new(string.Empty, default, false);
+    private bool _gitFailed;
+
+    private readonly record struct Request(string Query, MatchOptions Options, bool IncludeIgnored);
 
     public event EventHandler<(IFileInfo File, TextMatch Match)>? MatchActivated;
 
@@ -31,11 +37,21 @@ public sealed class SearchView : View
     public Func<IDirectoryInfo?>? RootProvider { get; set; }
     public IOpenBuffers? OpenBuffers { get; set; }
 
+    /// <summary>Lists the files git doesn't ignore; without it, or outside a repo, a fixed list of folders is skipped instead.</summary>
+    public IGitCli? Git { get; set; }
+
+    public Func<IDirectoryInfo, bool> InRepository { get; set; } = _ => false;
+
     public WorkspaceSearchResult Result { get; private set; } = WorkspaceSearchResult.Empty;
     public bool ReplaceVisible => _replacement.Visible;
     public bool InputsHaveFocus => _query.HasFocus || _replacement.HasFocus;
     public bool ReplacementHasFocus => _replacement.HasFocus;
     public string StatusText => _status.Text;
+
+    public MatchOptions Options => new(IsChecked(_matchCase), IsChecked(_wholeWord));
+    public bool IncludeIgnored => IsChecked(_ignoredFiles);
+
+    public bool IgnoredFilesAvailable => !_gitFailed && Git is not null && RootProvider?.Invoke() is { } root && InRepository(root);
 
     public string Query
     {
@@ -59,17 +75,22 @@ public sealed class SearchView : View
         _query = new TextField { X = LabelWidth, Y = 0, Width = Dim.Fill() };
         _replaceLabel = new Label { X = 0, Y = 1, Text = "Replace", Visible = false };
         _replacement = new TextField { X = LabelWidth, Y = 1, Width = Dim.Fill(), Visible = false };
-        _status = new Label { X = 0, Y = 1, Width = Dim.Fill(), Text = string.Empty };
+        // Not focusable, so Tab still goes straight between the two fields; Alt+C, Alt+W and a click toggle them.
+        _matchCase = new CheckBox { X = LabelWidth, Y = 1, Text = "Case", CanFocus = false };
+        _wholeWord = new CheckBox { X = Pos.Right(_matchCase) + 2, Y = 1, Text = "Word", CanFocus = false };
+        _ignoredFiles = new CheckBox { X = LabelWidth, Y = 2, Text = "Ignored files", CanFocus = false };
+        _status = new Label { X = 0, Y = 3, Width = Dim.Fill(), Height = Dim.Auto(DimAutoStyle.Text), Text = string.Empty };
+        _status.TextFormatter.WordWrap = true;
         _results = new TreeView<SearchNode>
         {
             X = 0,
-            Y = 2,
+            Y = Pos.Bottom(_status),
             Width = Dim.Fill(),
             Height = Dim.Fill(),
             TreeBuilder = new DelegateTreeBuilder<SearchNode>(n => n.Children, n => n.Children.Count > 0),
         };
 
-        Add(queryLabel, _query, _replaceLabel, _replacement, _status, _results);
+        Add(queryLabel, _query, _replaceLabel, _replacement, _matchCase, _wholeWord, _ignoredFiles, _status, _results);
 
         if (icons is not null)
         {
@@ -88,6 +109,8 @@ public sealed class SearchView : View
 
         _query.TextChanged += (_, _) => { _pendingReplace = null; RunSearch(); };
         _replacement.TextChanged += (_, _) => _pendingReplace = null;
+        foreach (var option in new[] { _matchCase, _wholeWord, _ignoredFiles })
+            option.ValueChanged += (_, _) => { _pendingReplace = null; RunSearch(); };
         _results.Activated += (_, _) => ActivateSelected();
         // Same TG quirk as the explorer: Enter maps to Command.Activate but doesn't raise Activated.
         _results.KeyDown += (_, key) =>
@@ -97,6 +120,19 @@ public sealed class SearchView : View
             key.Handled = true;
         };
     }
+
+    public void ToggleMatchCase() => Toggle(_matchCase);
+    public void ToggleWholeWord() => Toggle(_wholeWord);
+
+    public void ToggleIgnoredFiles()
+    {
+        if (IgnoredFilesAvailable) Toggle(_ignoredFiles);
+    }
+
+    private static void Toggle(CheckBox option) =>
+        option.Value = IsChecked(option) ? CheckState.UnChecked : CheckState.Checked;
+
+    private static bool IsChecked(CheckBox option) => option.Value == CheckState.Checked;
 
     public bool FocusQuery()
     {
@@ -132,8 +168,11 @@ public sealed class SearchView : View
     {
         _replaceLabel.Visible = visible;
         _replacement.Visible = visible;
-        _status.Y = visible ? 2 : 1;
-        _results.Y = visible ? 3 : 2;
+        var options = visible ? 2 : 1;
+        _matchCase.Y = options;
+        _wholeWord.Y = options;
+        _ignoredFiles.Y = options + 1;
+        _status.Y = options + 2;
         SetNeedsLayout();
     }
 
@@ -143,33 +182,41 @@ public sealed class SearchView : View
         _searchCts?.Cancel();
         _searchCts = null;
 
-        var query = Query;
+        var search = new Request(Query, Options, IncludeIgnored);
         var root = RootProvider?.Invoke();
-        if (query.Length == 0 || root is null)
+        if (search.Query.Length == 0 || root is null)
         {
-            Apply(root, query, WorkspaceSearchResult.Empty, root is null && query.Length > 0 ? "No folder open" : string.Empty);
+            Apply(root, search, WorkspaceSearchResult.Empty, root is null && search.Query.Length > 0 ? "No folder open" : string.Empty);
             return;
         }
 
         // Snapshot open buffers here, on the UI thread — TextView isn't safe to read from the worker.
         var buffers = OpenBuffers?.Snapshot();
+        var git = InRepository(root) ? Git : null;
         if (App is not { } app)
         {
-            Apply(root, query, WorkspaceSearch.Search(root, query, buffers));
+            Apply(root, search, Task.Run(() => FindAsync(root, search, buffers, git, CancellationToken.None)).GetAwaiter().GetResult());
             return;
         }
 
         var cts = _searchCts = new CancellationTokenSource();
         _status.Text = "Finding…";
-        Task.Run(() => WorkspaceSearch.Search(root, query, buffers, cancellationToken: cts.Token), cts.Token)
+        Task.Run(() => FindAsync(root, search, buffers, git, cts.Token), cts.Token)
             .ContinueWith(t =>
             {
                 if (!t.IsCompletedSuccessfully) return;
                 app.Invoke(() =>
                 {
-                    if (ReferenceEquals(_searchCts, cts)) Apply(root, query, t.Result);
+                    if (ReferenceEquals(_searchCts, cts)) Apply(root, search, t.Result);
                 });
             }, TaskScheduler.Default);
+    }
+
+    private static async Task<WorkspaceSearchResult> FindAsync(
+        IDirectoryInfo root, Request search, IReadOnlyDictionary<string, string>? buffers, IGitCli? git, CancellationToken cancellationToken)
+    {
+        var files = git is null ? null : (await git.ListFilesAsync(root.FullName, search.IncludeIgnored, cancellationToken)).Value;
+        return WorkspaceSearch.Search(root, search.Query, search.Options, buffers, files, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -179,30 +226,32 @@ public sealed class SearchView : View
     /// </summary>
     public void RequestReplaceAll()
     {
-        var query = Query;
+        var search = new Request(Query, Options, IncludeIgnored);
         var replacement = Replacement;
         var count = Result.MatchCount;
-        // Never replace against results from an older query that a background search hasn't caught up on.
-        if (query.Length == 0 || count == 0 || _resultQuery != query) return;
+        // Never replace against results from an older search that a background search hasn't caught up on.
+        if (search.Query.Length == 0 || count == 0 || _resultFor != search) return;
 
-        if (_pendingReplace != (query, replacement, count))
+        if (_pendingReplace != (search, replacement, count))
         {
-            _pendingReplace = (query, replacement, count);
+            _pendingReplace = (search, replacement, count);
             _status.Text = $"Replace {count}? Ctrl+Enter again";
             Message?.Invoke(this, $"Replace {count} matches in {Result.Files.Count} files with '{replacement}'? Press Ctrl+Enter again to confirm.");
             return;
         }
 
         _pendingReplace = null;
-        var (files, occurrences) = WorkspaceSearch.ReplaceAll(Result.Files.Select(f => f.File), query, replacement, OpenBuffers);
+        var (files, occurrences) = WorkspaceSearch.ReplaceAll(Result.Files.Select(f => f.File), search.Query, replacement, search.Options, OpenBuffers);
         RunSearch();
         Message?.Invoke(this, $"Replaced {occurrences} occurrences in {files} files");
     }
 
-    private void Apply(IDirectoryInfo? root, string query, WorkspaceSearchResult result, string? status = null)
+    private void Apply(IDirectoryInfo? root, Request search, WorkspaceSearchResult result, string? status = null)
     {
         Result = result;
-        _resultQuery = query;
+        _resultFor = search;
+        if (root is not null && search.Query.Length > 0 && InRepository(root)) _gitFailed = result.NotARepo;
+        _ignoredFiles.Enabled = IgnoredFilesAvailable;
         _results.ClearObjects();
         if (root is not null && result.Files.Count > 0)
         {
@@ -215,7 +264,7 @@ public sealed class SearchView : View
             { Files.Count: 0 } => "No results",
             { Truncated: true } => $"{result.MatchCount}+ in {result.Files.Count} files",
             _ => $"{result.MatchCount} in {result.Files.Count} files",
-        };
+        } + (result.NotARepo ? " (not a git repo)" : string.Empty);
         SetNeedsDraw();
     }
 
