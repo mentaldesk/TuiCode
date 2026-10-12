@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
@@ -384,15 +385,89 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         Assert.Equal(["HEAD"], rowsBeforeLoad);
     }
 
+    [Fact]
+    public async Task While_the_list_loads_it_says_so_and_the_hint_row_keeps_its_keys()
+    {
+        var gate = new TaskCompletionSource();
+        _git.RefsGate = gate.Task;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var state = LoadState.Loaded;
+        var hint = "";
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench) is not null,
+            () =>
+            {
+                state = Picker(workbench)!.State.State;
+                hint = Picker(workbench)!.SubViews.OfType<Terminal.Gui.Views.Label>().Last().Text;
+                gate.SetResult();
+            },
+            () => Picker(workbench) is { Loaded: true },
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.Equal(LoadState.Loading, state);
+        Assert.Equal("Type to filter · Up/Down/PgUp/PgDn · Enter compare · Esc cancel", hint);
+        Assert.DoesNotContain("Loading", workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task Without_git_the_picker_says_so_and_R_tries_again()
+    {
+        _git.Missing = true;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var says = "";
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench)?.State.State == LoadState.Failed,
+            () =>
+            {
+                says = Picker(workbench)!.State.Says;
+                _git.Missing = false;
+                host.App.InjectKey(Key.R);
+            },
+            () => Picker(workbench) is { Loaded: true },
+            () => Assert.Equal(5, Picker(workbench)!.VisibleItems.Count),
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.Equal("git isn't installed or isn't on PATH", says);
+        Assert.NotEqual(says, workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task Outside_a_git_repository_the_picker_says_so_and_offers_no_retry()
+    {
+        _git.Root = null;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var says = "";
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => commands.TryExecute(CommandIds.CompareToRevision),
+            () => Picker(workbench)?.State.State == LoadState.Empty,
+            () =>
+            {
+                says = Picker(workbench)!.State.Says;
+                host.App.InjectKey(Key.R);
+            },
+            () => Assert.Equal(LoadState.Empty, Picker(workbench)!.State.State),
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.Equal("a.txt isn't in a git repository", says);
+        Assert.Empty(workbench.Editor.Group.DiffTabs);
+    }
+
     [Theory]
     [InlineData("none", "No file is open.")]
     [InlineData("untitled", "a.txt has never been saved.")]
-    [InlineData("no repo", "a.txt isn't in a git repository.")]
-    [InlineData("no git", "git isn't installed or isn't on PATH")]
     public async Task Ctr_with_nothing_to_compare_says_why_and_opens_no_picker(string state, string message)
     {
-        if (state == "no repo") _git.Root = null;
-        if (state == "no git") _git.Missing = true;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
 

@@ -71,6 +71,7 @@ public sealed class Workbench : Window
         sidebar.Search.Message += (_, message) => statusBar.SetMessage(message);
 
         sidebar.Review.RootProvider = () => sidebar.Explorer.Root;
+        sidebar.Review.RefreshFailed += (_, error) => statusBar.SetMessage($"Couldn't refresh the review: {error}");
 
         editor.FileSaved += (_, file) =>
         {

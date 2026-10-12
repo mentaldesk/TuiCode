@@ -78,8 +78,14 @@ internal sealed class FakeGitCli : IGitCli
     public Task<GitResult<string?>> GetMergeBaseAsync(string path, string first, string second, CancellationToken cancellationToken = default) =>
         Task.FromResult(GitResult<string?>.Success(MergeBases.GetValueOrDefault(second) ?? MergeBase));
 
-    public Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default) =>
-        Task.FromResult(GitResult<IReadOnlyList<GitChange>>.Success(ChangesByRevision.GetValueOrDefault(revision) ?? Changes));
+    /// <summary>Holds <see cref="GetChangedFilesAsync"/> until it completes, as a slow git does.</summary>
+    public Task ChangesGate { get; set; } = Task.CompletedTask;
+
+    public async Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default)
+    {
+        await ChangesGate;
+        return GitResult<IReadOnlyList<GitChange>>.Success(ChangesByRevision.GetValueOrDefault(revision) ?? Changes);
+    }
 
     public IReadOnlyDictionary<string, GitLineCount> LineCounts { get; set; } = new Dictionary<string, GitLineCount>();
 

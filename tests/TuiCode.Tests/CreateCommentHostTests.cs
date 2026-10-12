@@ -278,7 +278,7 @@ public class CreateCommentHostTests : StaticConfigurationTest
         await Draft(host, workbench, commands, "Rename this?");
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Submit(workbench) is not null,
+            () => Submit(workbench) is { Loaded: true },
             () => Assert.Equal("1 draft comment will be posted with it.", Submit(workbench)!.DraftsText),
             () => Type(host, "Nearly there"),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
@@ -300,7 +300,7 @@ public class CreateCommentHostTests : StaticConfigurationTest
         await Draft(host, workbench, commands, "Rename this?");
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Submit(workbench) is not null,
+            () => Submit(workbench) is { Loaded: true },
             () => Type(host, "Nearly there"),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Submit(workbench)!.Status == _gitHub.ReviewError,

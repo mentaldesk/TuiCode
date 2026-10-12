@@ -35,12 +35,16 @@ internal sealed class FakeGitHubCli : IGitHubCli
             : GitHubResult<GitHubPullRequest?>.Success(PullRequest);
     }
 
-    public Task<GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>> ListPullRequestsAsync(string repoRoot, CancellationToken cancellationToken = default)
+    /// <summary>Set to hold the PR list until the test lets it finish, as a slow <c>gh</c> does (#525).</summary>
+    public TaskCompletionSource? HoldPullRequests { get; set; }
+
+    public async Task<GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>> ListPullRequestsAsync(string repoRoot, CancellationToken cancellationToken = default)
     {
-        if (Missing) return Task.FromResult(GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.NoCli());
-        return Task.FromResult(Error is { } error
+        if (HoldPullRequests is { } held) await held.Task.ConfigureAwait(false);
+        if (Missing) return GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.NoCli();
+        return Error is { } error
             ? GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Failure(error)
-            : GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Success(OpenPullRequests));
+            : GitHubResult<IReadOnlyList<GitHubPullRequestSummary>>.Success(OpenPullRequests);
     }
 
     public Task<GitHubResult<GitHubConversation>> GetConversationAsync(string repoRoot, int number, CancellationToken cancellationToken = default)

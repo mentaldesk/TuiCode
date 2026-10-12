@@ -49,7 +49,7 @@ public class ButtonKindTests
     {
         Assert.Equal(
             [("Submit", SchemeNames.ButtonPrimary), ("Cancel", SchemeNames.ButtonSecondary)],
-            Kinds(new SubmitReviewView(187)));
+            Kinds(new SubmitReviewView()));
     }
 
     [Fact]

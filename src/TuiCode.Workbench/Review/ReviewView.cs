@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Terminal.Gui.Configuration;
 using Terminal.Gui.Text;
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Icons;
 using TuiCode.Syntax;
@@ -53,6 +54,12 @@ public sealed class ReviewView : View
 
     /// <summary>Raised after every redraw of the pane, for the workbench to settle focus (#228).</summary>
     public event EventHandler? Refreshed;
+
+    /// <summary>Raised when a refresh fails while files are listed; they stay listed (#525).</summary>
+    public event EventHandler<string>? RefreshFailed;
+
+    /// <summary>What the pane says while it loads, once its owner has put it in one (#525).</summary>
+    public LoadStateView? LoadState { get; set; }
 
     public Func<IDirectoryInfo?>? RootProvider { get; set; }
 
@@ -357,16 +364,13 @@ public sealed class ReviewView : View
         if (RootProvider?.Invoke() is not { } root)
         {
             Show(GitResult<BranchReview?>.Success(null), "No folder open");
+            LoadState?.ShowContent();
             return Task.CompletedTask;
         }
 
         LocalViewed ??= LocalViewedFiles.ForUser(root.FileSystem);
         var cts = _loading = new CancellationTokenSource();
-        if (Review is null && _headerText.Length == 0)
-        {
-            _headerText = "Loading…";
-            LayoutHeader();
-        }
+        LoadState?.ShowLoading();
         return LoadAsync(root.FullName, cts);
     }
 
@@ -376,7 +380,7 @@ public sealed class ReviewView : View
         try
         {
             var branch = await Task.Run(() => BranchReview.LoadAsync(_git, folder, cts.Token), cts.Token).ConfigureAwait(false);
-            Apply(app, cts, () => Show(branch));
+            Apply(app, cts, () => ShowBranch(branch));
             if (branch.Value is not { } review) return;
 
             // After the list, so counting every line never holds it up (#393).
@@ -480,6 +484,15 @@ public sealed class ReviewView : View
         // Rebuilding the tree can drop Terminal.Gui's focus, so the workbench settles it: a refresh that
         // arrives while the keys are elsewhere must not pull them back here (#228).
         Refreshed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ShowBranch(GitResult<BranchReview?> result)
+    {
+        LoadState?.ShowContent();
+        if (result.Error is { } error && Review is { Changes.Count: > 0 })
+            RefreshFailed?.Invoke(this, error);
+        else
+            Show(result);
     }
 
     private void ShowPullRequest(GitHubResult<BranchReview?> result)
