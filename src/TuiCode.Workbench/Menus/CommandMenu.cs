@@ -31,8 +31,8 @@ public sealed class CommandMenu
     {
         [CommandIds.New] = 'n', [CommandIds.Open] = 'o', [CommandIds.OpenRecentFolder] = 'r', [CommandIds.OpenWorktree] = 'w',
         [CommandIds.OpenFilePath] = 'f', [CommandIds.SaveActiveEditor] = 's', [CommandIds.SaveAll] = 'a',
-        [CommandIds.ReloadFromDisk] = 'l', [CommandIds.CloseActiveEditor] = 'c', [CommandIds.RenameFile] = 'm',
-        [CommandIds.CutFile] = 't', [CommandIds.PasteFile] = 'p', [CommandIds.DeleteFile] = 'd',
+        [CommandIds.ReloadFromDisk] = 'l', [CommandIds.CloseActiveEditor] = 'c', [CommandIds.CloseOtherTabs] = 'e', [CommandIds.CloseAllTabs] = 'b',
+        [CommandIds.RenameFile] = 'm', [CommandIds.CutFile] = 't', [CommandIds.PasteFile] = 'p', [CommandIds.DeleteFile] = 'd',
         [CommandIds.ShowDocumentInfo] = 'i', [CommandIds.OpenSettings] = 'g', [CommandIds.SuspendToShell] = 'h',
         [CommandIds.Quit] = 'q',
 
@@ -70,7 +70,7 @@ public sealed class CommandMenu
     [
         ("_File",
         [
-            CommandIds.New, CommandIds.Open, CommandIds.OpenRecentFolder, CommandIds.OpenWorktree, CommandIds.OpenFilePath, CommandIds.SaveActiveEditor, CommandIds.SaveAll, CommandIds.ReloadFromDisk, CommandIds.CloseActiveEditor,
+            CommandIds.New, CommandIds.Open, CommandIds.OpenRecentFolder, CommandIds.OpenWorktree, CommandIds.OpenFilePath, CommandIds.SaveActiveEditor, CommandIds.SaveAll, CommandIds.ReloadFromDisk, CommandIds.CloseActiveEditor, CommandIds.CloseOtherTabs, CommandIds.CloseAllTabs,
             Separator,
             CommandIds.RenameFile, CommandIds.CutFile, CommandIds.PasteFile, CommandIds.DeleteFile,
             Separator,

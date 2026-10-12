@@ -321,6 +321,17 @@ public sealed class EditorGroup : PaneTabs
     /// <summary>Closes a diff tab, leaving the file's own tab open.</summary>
     public void CloseDiff(DiffTab diff) => Close(diff);
 
+    /// <summary>Every tab but the active one and, when that's a diff, its file's tab.</summary>
+    public IReadOnlyList<View> Others =>
+        Value is not { } active ? [] : [.. TabCollection.Where(t => t != active && t != (active as DiffTab)?.Source)];
+
+    /// <summary>Closes <paramref name="tabs"/>, discarding unsaved changes.</summary>
+    public void Close(IReadOnlyList<View> tabs)
+    {
+        foreach (var tab in tabs.Where(t => TabCollection.Contains(t)))
+            Close(tab);
+    }
+
     public IEnumerable<EditorTab> TabsUnder(string path) =>
         _byPath.Values.Where(t => FilePaths.IsSameOrUnder(t.File.FullName, path));
 

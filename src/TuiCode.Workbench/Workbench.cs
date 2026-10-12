@@ -260,6 +260,21 @@ public sealed class Workbench : Window
         SaveWorkspaceState();
     }
 
+    /// <summary>Closes the focused group's tabs but its active one, unsaved changes and all.</summary>
+    public void CloseOtherTabs()
+    {
+        Editor.Group.Close(Editor.Group.Others);
+        SaveWorkspaceState();
+    }
+
+    /// <summary>Closes every tab in both groups, unsaved changes and all.</summary>
+    public void CloseAllTabs()
+    {
+        foreach (var group in Editor.Groups.All.Reverse())
+            group.Close([.. group.TabCollection]);
+        SaveWorkspaceState();
+    }
+
     /// <summary>Permanently delete <paramref name="item"/> and close its tabs, unsaved changes and all.</summary>
     public void Delete(IFileSystemInfo item)
     {

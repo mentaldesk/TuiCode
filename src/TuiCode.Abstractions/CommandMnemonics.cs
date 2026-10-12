@@ -62,6 +62,8 @@ public static class CommandMnemonics
             [CommandIds.CreateComment] = "cc",
             [CommandIds.ToggleViewed] = "tv",
             [CommandIds.CloseActiveEditor] = "cf",
+            [CommandIds.CloseOtherTabs] = "cot",
+            [CommandIds.CloseAllTabs] = "cat",
             [CommandIds.ChangeGrammar] = "cg",
             [CommandIds.CompareToSaved] = "cts",
             [CommandIds.NextChange] = "nc",
