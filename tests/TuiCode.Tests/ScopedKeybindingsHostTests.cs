@@ -344,7 +344,7 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
 
         string[] expected =
         [
-            CommandIds.CloseActiveEditor,
+            CommandIds.CloseActiveEditor, CommandIds.CloseAllTabs, CommandIds.CloseOtherTabs,
             CommandIds.FindGlobally, CommandIds.FindInFile, CommandIds.FocusEditorBody,
             CommandIds.FocusEditorTabStrip, CommandIds.FocusOtherGroup, CommandIds.FocusReview, CommandIds.FocusSidebar, CommandIds.FocusUsages,
             CommandIds.JoinGroups, CommandIds.MoveToOtherGroup, CommandIds.NarrowSidebar,

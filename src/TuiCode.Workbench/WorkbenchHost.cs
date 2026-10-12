@@ -534,6 +534,10 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.SaveAll, "Save all", SaveAll);
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", CloseActiveEditor, CommandScope.Global,
             () => Group.Value is not null);
+        _commands.Register(CommandIds.CloseOtherTabs, "Close other tabs", CloseOtherTabs, CommandScope.Global,
+            () => Group.Value is not null);
+        _commands.Register(CommandIds.CloseAllTabs, "Close all tabs", CloseAllTabs, CommandScope.Global,
+            () => Group.Value is not null);
         _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
         _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => _workbench.Editor.PreviousTab());
         _commands.Register(CommandIds.MoveToOtherGroup, "Move to other group", MoveToOtherGroup, CommandScope.Global,
@@ -734,6 +738,8 @@ public sealed class WorkbenchHost : IDisposable
         .. HelpRowOf(CommandIds.NextEditor, "Next tab"),
         .. HelpRowOf(CommandIds.PreviousEditor, "Previous tab"),
         .. HelpRowOf(CommandIds.CloseActiveEditor, "Close tab"),
+        .. HelpRowOf(CommandIds.CloseOtherTabs, "Close other tabs"),
+        .. HelpRowOf(CommandIds.CloseAllTabs, "Close all tabs"),
         .. GroupHelp(),
     ]);
 
@@ -1898,10 +1904,17 @@ public sealed class WorkbenchHost : IDisposable
     private void AskBeforeSwitchingFolder(Action open) =>
         AskToSaveDirtyTabs("Save them before opening another folder?", open);
 
-    private void AskToSaveDirtyTabs(string question, Action proceed)
+    private void CloseOtherTabs() =>
+        AskToSave(() => [.. Group.Others.OfType<EditorTab>().Where(t => t.IsDirty)], "Save them before closing?", _workbench.CloseOtherTabs);
+
+    private void CloseAllTabs() => AskToSave(DirtyTabs, "Save them before closing?", _workbench.CloseAllTabs);
+
+    private void AskToSaveDirtyTabs(string question, Action proceed) => AskToSave(DirtyTabs, question, proceed);
+
+    private void AskToSave(Func<List<EditorTab>> dirtyTabs, string question, Action proceed)
     {
         if (_activeConfirm is not null) return;
-        var dirty = DirtyTabs();
+        var dirty = dirtyTabs();
         if (dirty.Count == 0)
         {
             proceed();
@@ -1909,7 +1922,7 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         var view = new ConfirmView("Unsaved changes", UnsavedChanges([.. dirty.Select(t => t.File.Name)], question),
-            new ConfirmChoice("Save all", () => SaveAllThen(proceed)),
+            new ConfirmChoice("Save all", () => SaveAllThen(dirtyTabs, proceed)),
             new ConfirmChoice("Don't save", proceed, Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
@@ -1926,10 +1939,10 @@ public sealed class WorkbenchHost : IDisposable
             question);
     }
 
-    private void SaveAllThen(Action proceed)
+    private void SaveAllThen(Func<List<EditorTab>> dirtyTabs, Action proceed)
     {
         EditorTab? conflict = null;
-        foreach (var tab in DirtyTabs())
+        foreach (var tab in dirtyTabs())
         {
             if (tab.DiskNow == DiskState.Changed)
             {
@@ -1947,14 +1960,14 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         if (conflict is not null)
-            ConfirmOverwrite(conflict, () => ProceedIfAllSaved(proceed));
+            ConfirmOverwrite(conflict, () => ProceedIfAllSaved(dirtyTabs, proceed));
         else
-            ProceedIfAllSaved(proceed);
+            ProceedIfAllSaved(dirtyTabs, proceed);
     }
 
-    private void ProceedIfAllSaved(Action proceed)
+    private static void ProceedIfAllSaved(Func<List<EditorTab>> dirtyTabs, Action proceed)
     {
-        if (DirtyTabs().Count == 0) proceed();
+        if (dirtyTabs().Count == 0) proceed();
     }
 
     private List<EditorTab> DirtyTabs() => [.. _workbench.Editor.Groups.Tabs.Where(t => t.IsDirty)];

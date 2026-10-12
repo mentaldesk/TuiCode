@@ -85,7 +85,7 @@ public class MenuBarHostTests : StaticConfigurationTest
         Assert.Equal(
         [
             "_New file or folder", "_Open file or folder", "Open _recent folder", "Open _worktree", "Open _file path",
-            "_Save active editor", "Save _all", "Re_load from disk", "_Close active editor",
+            "_Save active editor", "Save _all", "Re_load from disk", "_Close active editor", "Clos_e other tabs", "Close all ta_bs",
             "_Move or rename file or folder", "Cu_t file or folder", "_Paste file or folder", "_Delete file or folder",
             "Show document _info", "Open settin_gs", "Suspend to s_hell", "_Quit",
         ], file.Select(i => i.Title));
