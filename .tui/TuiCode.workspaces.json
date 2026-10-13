@@ -1,17 +1,5 @@
 [
   {
-    "Folder": "/Users/jamescrosswell/code/TuiCode/find-options",
-    "Files": [
-      "/Users/jamescrosswell/code/TuiCode/find-options/src/TuiCode.Search/TextSearch.cs"
-    ],
-    "Active": "/Users/jamescrosswell/code/TuiCode/find-options/src/TuiCode.Search/TextSearch.cs"
-  },
-  {
-    "Folder": "/tmp/tuirec/find-options/norepo",
-    "Files": [],
-    "Active": null
-  },
-  {
     "Folder": "/Users/jamescrosswell/code/TuiCode/tabstrip-no-default-key",
     "Files": [
       "/Users/jamescrosswell/code/TuiCode/tabstrip-no-default-key/AGENTS.md"

@@ -18,8 +18,8 @@ public sealed class FindBarView : View
     private readonly TextField _query;
     private readonly Label _replaceLabel;
     private readonly TextField _replacement;
-    private readonly CheckBox _matchCase;
-    private readonly CheckBox _wholeWord;
+    private readonly FindOption _matchCase;
+    private readonly FindOption _wholeWord;
     private readonly Label _status;
 
     public event EventHandler? QueryChanged;
@@ -34,9 +34,8 @@ public sealed class FindBarView : View
 
         _queryLabel = new Label { X = 1, Y = 0, Text = "Find" };
         _query = new TextField { X = LabelWidth, Y = 0, Width = Dim.Fill(OptionsWidth + SideWidth) };
-        // Not focusable, so Tab still goes straight between the two fields; Alt+C, Alt+W and a click toggle them.
-        _matchCase = new CheckBox { X = Pos.AnchorEnd(OptionsWidth + SideWidth - 1), Y = 0, Text = "Case", CanFocus = false };
-        _wholeWord = new CheckBox { X = Pos.Right(_matchCase) + 2, Y = 0, Text = "Word", CanFocus = false };
+        _matchCase = new FindOption("_Case") { X = Pos.AnchorEnd(OptionsWidth + SideWidth - 1), Y = 0 };
+        _wholeWord = new FindOption("_Word") { X = Pos.Right(_matchCase) + 2, Y = 0 };
         _status = new Label { X = Pos.AnchorEnd(SideWidth), Y = 0, Width = SideWidth, Text = string.Empty };
         _replaceLabel = new Label { X = 1, Y = 1, Text = "Replace", Visible = false };
         _replacement = new TextField { X = LabelWidth, Y = 1, Width = Dim.Fill(OptionsWidth + SideWidth), Visible = false };

@@ -16,9 +16,9 @@ public sealed class SearchView : View
     private readonly TextField _query;
     private readonly Label _replaceLabel;
     private readonly TextField _replacement;
-    private readonly CheckBox _matchCase;
-    private readonly CheckBox _wholeWord;
-    private readonly CheckBox _ignoredFiles;
+    private readonly FindOption _matchCase;
+    private readonly FindOption _wholeWord;
+    private readonly FindOption _ignoredFiles;
     private readonly Label _status;
     private readonly TreeView<SearchNode> _results;
     private CancellationTokenSource? _searchCts;
@@ -75,10 +75,9 @@ public sealed class SearchView : View
         _query = new TextField { X = LabelWidth, Y = 0, Width = Dim.Fill() };
         _replaceLabel = new Label { X = 0, Y = 1, Text = "Replace", Visible = false };
         _replacement = new TextField { X = LabelWidth, Y = 1, Width = Dim.Fill(), Visible = false };
-        // Not focusable, so Tab still goes straight between the two fields; Alt+C, Alt+W and a click toggle them.
-        _matchCase = new CheckBox { X = LabelWidth, Y = 1, Text = "Case", CanFocus = false };
-        _wholeWord = new CheckBox { X = Pos.Right(_matchCase) + 2, Y = 1, Text = "Word", CanFocus = false };
-        _ignoredFiles = new CheckBox { X = LabelWidth, Y = 2, Text = "Ignored files", CanFocus = false };
+        _matchCase = new FindOption("_Case") { X = LabelWidth, Y = 1 };
+        _wholeWord = new FindOption("_Word") { X = Pos.Right(_matchCase) + 2, Y = 1 };
+        _ignoredFiles = new FindOption("Ignored files") { X = LabelWidth, Y = 2 };
         _status = new Label { X = 0, Y = 3, Width = Dim.Fill(), Height = Dim.Auto(DimAutoStyle.Text), Text = string.Empty };
         _status.TextFormatter.WordWrap = true;
         _results = new TreeView<SearchNode>

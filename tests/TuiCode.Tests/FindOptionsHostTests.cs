@@ -96,6 +96,29 @@ public class FindOptionsHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Typing_c_and_w_in_either_find_box_types_them_rather_than_toggling()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var search = workbench.Sidebar.Search;
+        FindBarView? bar = null;
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.cs")),
+            () => { workbench.Editor.Group.ActiveTab!.FocusContent(); host.App.InjectKey(Key.F.WithCtrl); },
+            () => (bar = workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()) is { HasFocus: true },
+            () => { foreach (var c in "cwCW") host.App.InjectKey(new Key(c)); },
+            () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+            () => search.InputsHaveFocus,
+            () => { foreach (var c in "cwCW") host.App.InjectKey(new Key(c)); });
+
+        Assert.Equal("cwCW", bar!.Query);
+        Assert.Equal(default, bar.Options);
+        Assert.Equal("cwCW", search.Query);
+        Assert.Equal(default, search.Options);
+    }
+
+    [Fact]
     public async Task Away_from_the_find_boxes_Alt_C_and_Alt_W_toggle_nothing()
     {
         using var workbench = BuildWorkbench();
