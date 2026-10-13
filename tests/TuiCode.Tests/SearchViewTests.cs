@@ -23,7 +23,7 @@ public class SearchViewTests
 
         view.Query = "needle";
 
-        Assert.Equal("1 in 1 files (not a git repo)", view.StatusText);
+        Assert.Equal("1 in 1 file (not a git repo)", view.StatusText);
         Assert.False(view.IgnoredFilesAvailable);
         view.ToggleIgnoredFiles();
         Assert.False(view.IncludeIgnored);
@@ -38,7 +38,7 @@ public class SearchViewTests
         view.Query = "needle";
 
         Assert.True(view.IgnoredFilesAvailable);
-        Assert.Equal("1 in 1 files", view.StatusText);
+        Assert.Equal("1 in 1 file", view.StatusText);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class SearchViewTests
 
         view.Query = "needle";
 
-        Assert.Equal("1 in 1 files (not a git repo)", view.StatusText);
+        Assert.Equal("1 in 1 file (not a git repo)", view.StatusText);
         Assert.False(view.IgnoredFilesAvailable);
     }
 
@@ -150,6 +150,48 @@ public class SearchViewTests
         Assert.Equal("bar", fs.File.ReadAllText("/work/a.txt"));
         Assert.Equal("bar bar", fs.File.ReadAllText("/work/b.txt"));
         Assert.Equal(0, view.Result.MatchCount);
+    }
+
+    [Theory]
+    [InlineData("needle needle", "2 in 1 file")]
+    [InlineData("needle", "1 in 1 file")]
+    public void Matches_in_one_file_count_it_as_one_file(string content, string expected)
+    {
+        var (view, _) = Build(new FakeGitCli { ListedFiles = _ => ["a.txt"] }, ("/work/a.txt", content));
+
+        view.Query = "needle";
+
+        Assert.Equal(expected, view.StatusText);
+    }
+
+    [Fact]
+    public void A_search_cut_short_in_one_file_counts_it_as_one_file()
+    {
+        var (view, _) = Build(new FakeGitCli { ListedFiles = _ => ["a.txt"] }, ("/work/a.txt", new string('x', WorkspaceSearch.DefaultMaxMatches + 1)));
+
+        view.Query = "x";
+
+        Assert.Equal($"{WorkspaceSearch.DefaultMaxMatches}+ in 1 file", view.StatusText);
+    }
+
+    [Theory]
+    [InlineData(new[] { "foo" },
+        "Replace 1 match in 1 file with 'bar'? Press Ctrl+Enter again to confirm.", "Replaced 1 occurrence in 1 file")]
+    [InlineData(new[] { "foo", "foo foo" },
+        "Replace 3 matches in 2 files with 'bar'? Press Ctrl+Enter again to confirm.", "Replaced 3 occurrences in 2 files")]
+    public void ReplaceAll_messages_count_matches_and_files(string[] contents, string confirm, string replaced)
+    {
+        var (view, _) = Build(new FakeGitCli { ListedFiles = _ => [.. contents.Select((_, i) => $"{i}.txt")] },
+            [.. contents.Select((content, i) => ($"/work/{i}.txt", content))]);
+        var messages = new List<string>();
+        view.Message += (_, message) => messages.Add(message);
+        view.Query = "foo";
+        view.Replacement = "bar";
+
+        view.RequestReplaceAll();
+        view.RequestReplaceAll();
+
+        Assert.Equal([confirm, replaced], messages);
     }
 
     [Fact]

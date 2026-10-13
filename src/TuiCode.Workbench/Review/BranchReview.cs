@@ -67,7 +67,7 @@ public sealed record BranchReview(
         {
             if (Threads.Count == 0) return string.Empty;
             var unresolved = Threads.Count(t => !t.Resolved);
-            var threads = Threads.Count == 1 ? "1 thread" : $"{Threads.Count} threads";
+            var threads = $"{Threads.Count} {Plural.Of(Threads.Count, "thread")}";
             return unresolved == 0 ? threads : $"{threads}, {unresolved} unresolved";
         }
     }
@@ -78,7 +78,7 @@ public sealed record BranchReview(
         get
         {
             if (Changes.Count == 0) return string.Empty;
-            var files = Changes.Count == 1 ? "1 file" : $"{Changes.Count} files";
+            var files = $"{Changes.Count} {Plural.Of(Changes.Count, "file")}";
             if (LineCounts.Count == 0) return files;
             return $"{files}  +{LineCounts.Values.Sum(c => c.Added)} −{LineCounts.Values.Sum(c => c.Deleted)}";
         }

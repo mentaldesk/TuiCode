@@ -76,6 +76,21 @@ public class FindControllerTests : IDisposable
         Assert.Equal("No results", _find.Bar.Status);
     }
 
+    [Theory]
+    [InlineData("foo\nfoo\n", "1 result")]
+    [InlineData("foo\nfoo\nfoo\n", "2 results")]
+    public void Editing_away_the_current_match_counts_the_rest(string content, string expected)
+    {
+        var tab = Open("/work/a.txt", content);
+        _find.Open(replace: false);
+        _find.Bar.Query = "foo";
+
+        tab.TextView.InsertText("x");
+
+        Assert.Equal(-1, _find.CurrentIndex);
+        Assert.Equal(expected, _find.Bar.Status);
+    }
+
     [Fact]
     public void Help_in_the_find_field_lists_next_previous_and_close()
     {

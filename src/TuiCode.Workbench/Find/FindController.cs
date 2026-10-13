@@ -226,7 +226,7 @@ internal sealed class FindController : IDisposable
         _bar.Status = _bar.Query.Length == 0 ? string.Empty
             : _matches.Count == 0 ? "No results"
             : _current >= 0 ? $"{_current + 1} of {_matches.Count}"
-            : $"{_matches.Count} results";
+            : $"{_matches.Count} {Plural.Of(_matches.Count, "result")}";
     }
 
     // Our own replacements fire ContentChanged per edit; recompute once afterwards instead.

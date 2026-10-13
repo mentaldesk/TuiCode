@@ -56,7 +56,7 @@ public static class UsageTree
     }
 
     public static string Count(IReadOnlyList<UsageFileNode> files) =>
-        $"{files.Sum(f => f.Count)} in {files.Count} {(files.Count == 1 ? "file" : "files")}";
+        $"{files.Sum(f => f.Count)} in {files.Count} {Plural.Of(files.Count, "file")}";
 
     private static string DisplayPath(string path, string? root) =>
         root is not null && FilePaths.IsSameOrUnder(path, root) ? System.IO.Path.GetRelativePath(root, path) : path;

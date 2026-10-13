@@ -312,8 +312,7 @@ public sealed class DiffTab : FrameView
     public string ChangeStatus => (Diff.ChangeBlocks.Count, CurrentChange) switch
     {
         (0, _) => "No changes",
-        (1, 0) => "1 change",
-        (var count, 0) => $"{count} changes",
+        (var count, 0) => $"{count} {Plural.Of(count, "change")}",
         var (count, current) => $"Change {current} of {count}",
     };
 
