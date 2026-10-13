@@ -12,6 +12,9 @@ public sealed record WorkspaceState(IReadOnlyList<string> Files, string? ActiveF
     public WorkspaceGroup? Second { get; init; }
 
     public bool SecondFocused { get; init; }
+
+    /// <summary>Whether the History panel was on (#534).</summary>
+    public bool History { get; init; }
 }
 
 public sealed record WorkspaceGroup(IReadOnlyList<string> Files, string? ActiveFile);
@@ -53,6 +56,7 @@ public sealed class WorkspaceStateStore
                 {
                     Second = second is null ? null : new WorkspaceGroup(Files(second), second["Active"]?.GetValue<string>()),
                     SecondFocused = second?["Focused"]?.GetValue<bool>() ?? false,
+                    History = obj["History"]?.GetValue<bool>() ?? false,
                 };
             }
             catch (InvalidOperationException)
@@ -81,6 +85,8 @@ public sealed class WorkspaceStateStore
         var entry = new JsonObject { ["Folder"] = folder, ["Files"] = ToArray(state.Files), ["Active"] = state.ActiveFile };
         if (state.Second is { } second)
             entry["Second"] = new JsonObject { ["Files"] = ToArray(second.Files), ["Active"] = second.ActiveFile, ["Focused"] = state.SecondFocused };
+        if (state.History)
+            entry["History"] = true;
 
         var root = new JsonArray { (JsonNode)entry };
         foreach (var obj in ReadEntries().Where(o => FolderOf(o) is { } f && f != folder).Take(MaxFolders - 1))

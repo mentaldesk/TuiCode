@@ -172,6 +172,9 @@ public sealed class DiffTab : FrameView
     /// <summary>Which file of a review this diff shows (#181); null when it was opened any other way.</summary>
     public ReviewSpot? Review { get; set; }
 
+    /// <summary>Which commit of a file's history this diff shows (#534); null when it was opened any other way.</summary>
+    public HistorySpot? History { get; set; }
+
     /// <summary>The version on the left; for a deleted file (#182) it's what restoring it brings back (#247).</summary>
     public IReadOnlyList<string> LeftLines => _left;
 
@@ -312,8 +315,7 @@ public sealed class DiffTab : FrameView
     public string ChangeStatus => (Diff.ChangeBlocks.Count, CurrentChange) switch
     {
         (0, _) => "No changes",
-        (1, 0) => "1 change",
-        (var count, 0) => $"{count} changes",
+        (var count, 0) => $"{count} {Plural.Of(count, "change")}",
         var (count, current) => $"Change {current} of {count}",
     };
 

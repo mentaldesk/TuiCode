@@ -18,6 +18,7 @@ using TuiCode.Workbench.Focus;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Grammars;
 using TuiCode.Workbench.Help;
+using TuiCode.Workbench.History;
 using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Logging;
 using TuiCode.Workbench.Menus;
@@ -78,6 +79,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly FocusService _focus;
     private readonly DiskChanges _diskChanges;
     private readonly CommittedBaselines _baselines;
+    private readonly FileHistoryPanel _fileHistory;
     private readonly FolderWatcher _folderWatcher;
     private readonly CursorLocationHistory _history = new();
     // Set while we drive the cursor ourselves (Back/Forward, Go-to-line) so those moves
@@ -210,6 +212,14 @@ public sealed class WorkbenchHost : IDisposable
             new DiskWatcher(fileSystem, ScheduleFlush, _logger));
         _baselines = new CommittedBaselines(
             _workbench.Editor.Groups, _git, action => _app.Invoke(action), new HeadWatcher(fileSystem, ScheduleFlush, _logger));
+        _fileHistory = new FileHistoryPanel(_workbench, _git, action => _app.Invoke(action));
+        _fileHistory.NothingToShow += (_, reason) => _workbench.StatusBar.SetMessage(reason);
+        _fileHistory.ShownOnRequest += (_, _) => MoveFocus(FocusRegion.History);
+        _workbench.HistoryShowingChanged += (_, _) =>
+        {
+            if (!_workbench.IsHistoryShowing && _focus.Region == FocusRegion.History) FocusEditorBody();
+        };
+        _workbench.History.CommitActivated += (_, commit) => OpenHistoryCommit(commit);
 
         if (languageServers is not null)
         {
@@ -274,10 +284,13 @@ public sealed class WorkbenchHost : IDisposable
         var editor = _workbench.Editor;
         var sidebarBorder = new FocusBorder(sidebar);
         var groupBorders = editor.Frames.Select(frame => new FocusBorder(frame)).ToList();
+        var historyBorder = new FocusBorder(_workbench.History);
 
         _focus.Register(FocusRegion.Find, () => Take(sidebar.Search, sidebar.Search.FocusQuery), focused => Owns(sidebar.Search, focused));
         _focus.Register(FocusRegion.Review, () => Take(sidebar.Review, sidebar.Review.FocusList), focused => Owns(sidebar.Review, focused));
         _focus.Register(FocusRegion.Usages, () => Take(sidebar.Usages, sidebar.Usages.FocusResults), focused => Owns(sidebar.Usages, focused));
+        _focus.Register(FocusRegion.History, () => _workbench.IsHistoryShowing && Take(_workbench.History, _workbench.History.FocusList),
+            focused => Owns(_workbench.History, focused));
         _focus.Register(FocusRegion.Explorer,
             () => sidebar.IsShowingNoFolder ? Take(sidebar.OpenFolderButton) : Take(sidebar.Explorer),
             focused => Owns(sidebar.Explorer, focused) || Owns(sidebar.OpenFolderButton, focused));
@@ -294,9 +307,11 @@ public sealed class WorkbenchHost : IDisposable
         void ShowBorders()
         {
             var inSidebar = _focus.Region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review;
+            var inHistory = _focus.Region == FocusRegion.History;
             sidebarBorder.Show(inSidebar);
+            historyBorder.Show(inHistory);
             for (var i = 0; i < groupBorders.Count; i++)
-                groupBorders[i].Show(!inSidebar && ReferenceEquals(editor.Groups.All[i], editor.Group));
+                groupBorders[i].Show(!inSidebar && !inHistory && ReferenceEquals(editor.Groups.All[i], editor.Group));
         }
 
         _focus.RegionChanged += (_, region) =>
@@ -654,6 +669,8 @@ public sealed class WorkbenchHost : IDisposable
             CommandScope.Editor, () => GitRepository.Contains(Group.ActiveTab?.File.Directory));
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.GitBlame, "Git blame", GitBlame, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.ToggleFileHistory, "Show or hide file history", () => _fileHistory.Toggle(), CommandScope.Global, null,
+            () => _workbench.IsHistoryOn ? "Hide file history" : "Show file history");
         // No default key (#272).
         _commands.Register(CommandIds.ReloadFromDisk, "Reload from disk", ReloadFromDisk, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)), CommandScope.Editor);
@@ -733,6 +750,7 @@ public sealed class WorkbenchHost : IDisposable
             FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, GroupHelp()),
             FocusRegion.Review => ReviewHelp(),
             FocusRegion.Usages => new HelpColumn("Usages", UsagesKeys),
+            FocusRegion.History => new HelpColumn("History", HistoryKeys),
             FocusRegion.Tabs => TabsHelp(),
             _ => null,
         };
@@ -790,6 +808,9 @@ public sealed class WorkbenchHost : IDisposable
     ];
 
     private static readonly HelpRow[] FindResultKeys = [new("Enter", "Open result")];
+
+    private static readonly HelpRow[] HistoryKeys =
+        [new("Enter", "Open the commit's change"), new("↑ ↓", "Choose a commit"), new("Type", "Filter the commits"), new("Esc", "Back to the editor")];
 
     private static readonly HelpRow[] UsagesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
 
@@ -908,6 +929,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("Ctrl+G B", CommandIds.GitBlame);
+        keybindings.Bind("Ctrl+G H", CommandIds.ToggleFileHistory);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
         keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
@@ -1879,7 +1901,7 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         if (saved > 0)
-            _workbench.StatusBar.SetMessage(saved == 1 ? "Saved 1 file" : $"Saved {saved} files");
+            _workbench.StatusBar.SetMessage($"Saved {saved} {Plural.Of(saved, "file")}");
         else if (conflict is null)
             _workbench.StatusBar.SetMessage("No unsaved changes");
         if (conflict is not null) ConfirmOverwrite(conflict);
@@ -2323,7 +2345,7 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
         var undo = lines > LargeRevert ? " — Ctrl+Z to undo" : string.Empty;
-        _workbench.StatusBar.SetMessage($"Reverted {lines:N0} line{(lines == 1 ? string.Empty : "s")} from {diff.LeftLabel}{undo}");
+        _workbench.StatusBar.SetMessage($"Reverted {Plural.Count(lines, "line")} from {diff.LeftLabel}{undo}");
     }
 
     /// <summary>
@@ -2347,12 +2369,12 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         var view = new ConfirmView("Revert all changes",
-            $"Revert all {changes:N0} change{(changes == 1 ? string.Empty : "s")} in {diff.File.Name}?",
+            $"Revert all {Plural.Count(changes, "change")} in {diff.File.Name}?",
             new ConfirmChoice("Revert", () =>
             {
                 if (diff.RevertAll() is not { } reverted) return;
                 _workbench.StatusBar.SetMessage(
-                    $"Reverted {reverted:N0} change{(reverted == 1 ? string.Empty : "s")} in {diff.File.Name} — Ctrl+Z to undo");
+                    $"Reverted {Plural.Count(reverted, "change")} in {diff.File.Name} — Ctrl+Z to undo");
             }, Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
@@ -2612,7 +2634,88 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
         if (direction > 0 ? diff.NextChange() : diff.PreviousChange()) return;
-        StepReview(diff, direction);
+        if (diff.History is not null) StepHistory(diff, direction);
+        else StepReview(diff, direction);
+    }
+
+    /// <summary><c>Enter</c> in the History panel (#534): the commit's change to the file, with the keys on it.</summary>
+    private void OpenHistoryCommit(GitFileCommit commit)
+    {
+        var view = _workbench.History;
+        if (view.FilePath is not { } path || _fileHistory.RepoRoot is not { } root) return;
+        var index = view.Commits.ToList().IndexOf(commit);
+        if (index < 0) return;
+        ShowHistoryDiff(new HistorySpot(path, root, view.Commits, index), skipUnchanged: false, _ => MoveFocus(FocusRegion.Diff));
+    }
+
+    /// <summary>
+    /// Past a history diff's last (or first) change, moves on to the next older (or newer) commit, skipping any
+    /// that left the text alone, and closes the diff it leaves. The panel's selection follows.
+    /// </summary>
+    private void StepHistory(DiffTab from, int direction)
+    {
+        var spot = from.History!;
+        var view = _workbench.History;
+        // The panel may have finished loading the history since this diff opened.
+        var commits = view.FilePath == spot.Path && view.Commits.Count > spot.Commits.Count ? view.Commits : spot.Commits;
+        Step(spot.Index + direction);
+
+        void Step(int index)
+        {
+            if (index < 0 || index >= commits.Count)
+            {
+                _workbench.StatusBar.SetMessage(direction > 0 ? "Oldest commit in the history" : "Newest commit in the history");
+                return;
+            }
+
+            var at = index;
+            ShowHistoryDiff(spot with { Commits = commits, Index = at }, skipUnchanged: true, diff =>
+            {
+                if (diff is null)
+                {
+                    Step(at + direction);
+                    return;
+                }
+                if (direction > 0) diff.FirstChange();
+                else diff.LastChange();
+                if (!ReferenceEquals(diff, from)) _workbench.Editor.Group.CloseDiff(from);
+                MoveFocus(FocusRegion.Diff);
+            });
+        }
+    }
+
+    /// <summary>
+    /// Opens the commit's change to the file: its parent's version against its own, read by the paths the file had
+    /// in each. With <paramref name="skipUnchanged"/>, a commit that left the text alone opens nothing and hands null on.
+    /// </summary>
+    private void ShowHistoryDiff(HistorySpot spot, bool skipUnchanged, Action<DiffTab?> then)
+    {
+        var commit = spot.Commit;
+        var after = Task.Run(() => _git.ShowRepoFileAsync(spot.RepoRoot, commit.Path, commit.Hash));
+        var before = commit.ParentPath is { } parentPath
+            ? Task.Run(() => _git.ShowRepoFileAsync(spot.RepoRoot, parentPath, $"{commit.Hash}^"))
+            : Task.FromResult(GitResult<string?>.Success(null));
+        WhenDone(Task.WhenAll(after, before), () =>
+        {
+            if ((after.Result.Error ?? before.Result.Error) is { } error)
+            {
+                _workbench.StatusBar.SetMessage(error);
+                return;
+            }
+            var left = before.Result.Value is { } old ? DiffTab.SplitLines(old) : [];
+            var right = after.Result.Value is { } text ? DiffTab.SplitLines(text) : [];
+            if (skipUnchanged && left.SequenceEqual(right, StringComparer.Ordinal))
+            {
+                then(null);
+                return;
+            }
+            var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
+            var diff = _workbench.Editor.Group.CompareRevisions(
+                fileSystem.FileInfo.New(spot.Path), $"{commit.ShortHash}^", left, commit.ShortHash, right);
+            diff.History = spot;
+            if (_workbench.History.FilePath == spot.Path) _workbench.History.Select(commit);
+            then(diff);
+        });
     }
 
     /// <summary>

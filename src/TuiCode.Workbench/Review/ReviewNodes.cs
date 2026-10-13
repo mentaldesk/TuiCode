@@ -109,7 +109,7 @@ public sealed class ReviewOutdatedNode : ReviewNode
 
     public IReadOnlyList<GitHubReviewThread> Threads { get; }
 
-    public override string ToString() => Threads.Count == 1 ? "! 1 outdated thread" : $"! {Threads.Count} outdated threads";
+    public override string ToString() => $"! {Threads.Count} outdated {Plural.Of(Threads.Count, "thread")}";
 }
 
 /// <summary>One outdated thread, so <c>cc</c> can reply to it from the Review tab (#189).</summary>

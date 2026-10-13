@@ -8,6 +8,8 @@ public sealed class KeybindingService : IKeybindingService
     private readonly Dictionary<CommandScope, ChordNode> _roots = new();
     // Where the chord in flight has got to, in the scope it started in; null when idle.
     private ChordNode? _current;
+    // Global's chord on the same keys as a scoped one in flight, for a next key the scope doesn't have (#534).
+    private ChordNode? _global;
     private readonly List<Key> _chordSoFar = new();
 
     public KeybindingService(ICommandService commands)
@@ -162,14 +164,18 @@ public sealed class KeybindingService : IKeybindingService
             return KeyHandlingResult.Consumed;
         }
 
-        return Descend(key, next);
+        var global = scope == CommandScope.Global ? null : Root(CommandScope.Global).Children.GetValueOrDefault(key);
+        return Descend(key, next, global);
     }
 
-    // A later key of the chord in flight, which always finishes in the scope it started in.
+    // A later key of the chord in flight, which finishes in the scope it started in, or in Global's chord on the same keys.
     private KeyHandlingResult Continue(Key key)
     {
         // Esc cancels an in-flight chord, and a stray key abandons it; both are consumed silently, as in VS Code.
-        if (IsEscape(key) || !_current!.Children.TryGetValue(key, out var next))
+        var next = _current!.Children.GetValueOrDefault(key);
+        var global = _global?.Children.GetValueOrDefault(key);
+        if (next is null) (next, global) = (global, null);
+        if (IsEscape(key) || next is null)
         {
             ResetChord();
             return KeyHandlingResult.Consumed;
@@ -184,13 +190,14 @@ public sealed class KeybindingService : IKeybindingService
             return KeyHandlingResult.Consumed;
         }
 
-        return Descend(key, next);
+        return Descend(key, next, global);
     }
 
-    private KeyHandlingResult Descend(Key key, ChordNode next)
+    private KeyHandlingResult Descend(Key key, ChordNode next, ChordNode? global)
     {
         _chordSoFar.Add(key);
         _current = next;
+        _global = global;
         SetChordDisplay(KeyChord.Display(_chordSoFar));
         return KeyHandlingResult.ChordInProgress;
     }
@@ -224,6 +231,7 @@ public sealed class KeybindingService : IKeybindingService
     private void ResetChord()
     {
         _current = null;
+        _global = null;
         _chordSoFar.Clear();
         SetChordDisplay(null);
     }

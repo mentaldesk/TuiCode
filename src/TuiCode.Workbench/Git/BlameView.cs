@@ -98,19 +98,19 @@ public sealed class BlameView : Window
     internal static string Ago(TimeSpan elapsed)
     {
         var seconds = (long)Math.Max(0, elapsed.TotalSeconds);
-        if (seconds < 90) return Plural(seconds, "second");
+        if (seconds < 90) return Ago(seconds, "second");
         var minutes = (seconds + 30) / 60;
-        if (minutes < 90) return Plural(minutes, "minute");
+        if (minutes < 90) return Ago(minutes, "minute");
         var hours = (minutes + 30) / 60;
-        if (hours < 36) return Plural(hours, "hour");
+        if (hours < 36) return Ago(hours, "hour");
         var days = (hours + 12) / 24;
-        if (days < 14) return Plural(days, "day");
-        if (days < 70) return Plural((days + 3) / 7, "week");
-        if (days < 365) return Plural((days + 15) / 30, "month");
-        return Plural((days + 183) / 365, "year");
+        if (days < 14) return Ago(days, "day");
+        if (days < 70) return Ago((days + 3) / 7, "week");
+        if (days < 365) return Ago((days + 15) / 30, "month");
+        return Ago((days + 183) / 365, "year");
     }
 
-    private static string Plural(long count, string unit) => count == 1 ? $"1 {unit} ago" : $"{count} {unit}s ago";
+    private static string Ago(long count, string unit) => $"{count} {Plural.Of(count, unit)} ago";
 
     private static Button Foot(Button button, int y, Action accepted)
     {
