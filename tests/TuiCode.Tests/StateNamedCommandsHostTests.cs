@@ -29,6 +29,7 @@ public class StateNamedCommandsHostTests : StaticConfigurationTest
         { CommandIds.ToggleGutter, "Hide gutter", "Show gutter" },
         { CommandIds.ToggleWordWrap, "Turn off word wrap", "Turn on word wrap" },
         { CommandIds.ToggleColumnSelect, "Turn off column select", "Turn on column select" },
+        { CommandIds.ToggleFileHistory, "Hide file history", "Show file history" },
     };
 
     [Theory]
@@ -116,6 +117,7 @@ public class StateNamedCommandsHostTests : StaticConfigurationTest
         CommandIds.ToggleSidebar => workbench.IsSidebarVisible,
         CommandIds.ToggleGutter => workbench.Editor.Groups.GutterVisible,
         CommandIds.ToggleWordWrap => workbench.Editor.Group.ActiveTab!.WordWrap,
+        CommandIds.ToggleFileHistory => workbench.IsHistoryOn,
         _ => workbench.Editor.Groups.ColumnSelect,
     };
 

@@ -66,6 +66,23 @@ internal sealed class FakeGitCli : IGitCli
     public Task<GitResult<IReadOnlyList<GitCommit>>> GetFileHistoryAsync(string filePath, CancellationToken cancellationToken = default) =>
         Task.FromResult(GitResult<IReadOnlyList<GitCommit>>.Success(Commits));
 
+    /// <summary>Each file's history by full path; a path with no entry is untracked. Null <see cref="Root"/> means no repo.</summary>
+    public Dictionary<string, IReadOnlyList<GitFileCommit>> FileCommits { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Holds <see cref="GetFileCommitsAsync"/> for limits above the first page until it completes.</summary>
+    public Task FullHistoryGate { get; set; } = Task.CompletedTask;
+
+    public List<(string Path, int Limit)> FileCommitReads { get; } = [];
+
+    public async Task<GitResult<IReadOnlyList<GitFileCommit>?>> GetFileCommitsAsync(string filePath, int limit, CancellationToken cancellationToken = default)
+    {
+        lock (FileCommitReads) FileCommitReads.Add((filePath, limit));
+        if (limit > Workbench.History.FileHistory.FirstPage) await FullHistoryGate;
+        if (Missing) return GitResult<IReadOnlyList<GitFileCommit>?>.Failure(NoGit);
+        if (Root is null) return GitResult<IReadOnlyList<GitFileCommit>?>.Success(null);
+        return GitResult<IReadOnlyList<GitFileCommit>?>.Success([.. FileCommits.GetValueOrDefault(filePath, []).Take(limit)]);
+    }
+
     public Task<GitResult<bool>> ResolvesAsync(string path, string revision, CancellationToken cancellationToken = default) =>
         Task.FromResult(GitResult<bool>.Success(Resolvable.Contains(revision)));
 

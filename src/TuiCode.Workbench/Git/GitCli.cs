@@ -12,6 +12,9 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
     /// <summary>Writing out a worktree copies a whole checkout, so it gets far longer than a query.</summary>
     private static readonly TimeSpan CheckoutTimeout = TimeSpan.FromMinutes(2);
 
+    /// <summary>Following a file across renames walks the whole history, which takes a big repo longer than a query.</summary>
+    private static readonly TimeSpan FollowTimeout = TimeSpan.FromSeconds(30);
+
     private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromSeconds(5);
 
     public async Task<GitResult<string?>> GetRepoRootAsync(string path, CancellationToken cancellationToken = default)
@@ -80,6 +83,59 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return run.Failure is null && run.ExitCode == 0
             ? GitResult<IReadOnlyList<GitCommit>>.Success(ParseLog(run.Output))
             : GitResult<IReadOnlyList<GitCommit>>.Failure(ErrorMessage(run));
+    }
+
+    public async Task<GitResult<IReadOnlyList<GitFileCommit>?>> GetFileCommitsAsync(string filePath, int limit, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(DirectoryOf(filePath),
+            ["-c", "i18n.logOutputEncoding=UTF-8", "-c", "core.quotePath=false", "log", "--follow", $"-n{limit}", "--no-show-signature",
+             "--format=%x1e%H%x1f%an%x1f%aI%x1f%s", "--name-status", "--", $"./{fileSystem.Path.GetFileName(filePath)}"],
+            cancellationToken, FollowTimeout);
+        if (run.Failure is { } failure)
+            return GitResult<IReadOnlyList<GitFileCommit>?>.Failure(failure);
+        if (run.ExitCode == 0)
+            return GitResult<IReadOnlyList<GitFileCommit>?>.Success(ParseFileCommits(run.Output));
+        return run.Error.Contains("not a git repository", StringComparison.Ordinal)
+            ? GitResult<IReadOnlyList<GitFileCommit>?>.Success(null)
+            : GitResult<IReadOnlyList<GitFileCommit>?>.Failure(ErrorMessage(run));
+    }
+
+    /// <summary>
+    /// Reads <c>log --follow --name-status</c>: each commit's header after a record separator, then the file's status
+    /// line. A merge has no status line, so it keeps the path of the commit before it.
+    /// </summary>
+    internal static IReadOnlyList<GitFileCommit> ParseFileCommits(string output)
+    {
+        var commits = new List<GitFileCommit>();
+        string? path = null;
+        var pending = new List<int>();
+        foreach (var record in output.Split('\x1e', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var lines = record.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+            var fields = lines[0].Split('\x1f', 4);
+            if (fields.Length < 4
+                || !DateTimeOffset.TryParse(fields[2], CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+                continue;
+
+            var commit = new GitFileCommit(fields[0], fields[1], date, fields[3], path ?? "", path);
+            if (lines.Skip(1).FirstOrDefault(l => l.Length > 0) is { } status && status.Split('\t') is [var code, var first, .. var rest])
+            {
+                commit = code[0] switch
+                {
+                    'R' or 'C' when rest is [var to, ..] => commit with { Path = to, ParentPath = first, RenameOnly = code == "R100" },
+                    'A' => commit with { Path = first, ParentPath = null },
+                    _ => commit with { Path = first, ParentPath = first },
+                };
+                foreach (var i in pending)
+                    commits[i] = commits[i] with { Path = commit.Path, ParentPath = commit.Path };
+                pending.Clear();
+                path = commit.ParentPath ?? commit.Path;
+            }
+            else if (path is null)
+                pending.Add(commits.Count);
+            commits.Add(commit);
+        }
+        return commits;
     }
 
     public async Task<GitResult<bool>> ResolvesAsync(string path, string revision, CancellationToken cancellationToken = default)

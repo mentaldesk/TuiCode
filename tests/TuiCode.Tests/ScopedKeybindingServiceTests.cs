@@ -71,6 +71,23 @@ public class ScopedKeybindingServiceTests
     }
 
     [Fact]
+    public void A_scoped_chord_without_the_next_key_finishes_in_Globals_chord_on_the_same_keys()
+    {
+        Register("blame", CommandScope.Editor);
+        Register("history");
+        _keys.Bind("Ctrl+G B", "blame");
+        _keys.Bind("Ctrl+G H", "history");
+        _focus = CommandScope.Editor;
+
+        Assert.Equal(KeyHandlingResult.ChordInProgress, _keys.Handle(Key.G.WithCtrl));
+        Assert.Equal(KeyHandlingResult.Consumed, _keys.Handle(Key.H));
+        _keys.Handle(Key.G.WithCtrl);
+        _keys.Handle(Key.B);
+
+        Assert.Equal(["history", "blame"], _fired);
+    }
+
+    [Fact]
     public void A_chord_started_in_Global_finishes_in_Global_even_if_the_focused_scope_binds_its_second_key()
     {
         Register("goToLine");

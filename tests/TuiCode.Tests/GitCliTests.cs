@@ -261,6 +261,63 @@ public class GitCliTests
     }
 
     [Fact]
+    public async Task Lists_a_files_commits_newest_first_across_a_rename()
+    {
+        using var repo = new TempRepo(init: true);
+        const string text = "a file long enough for git to spot the rename\n";
+        repo.Commit("old.cs", text, "Add old");
+        repo.Commit("other.cs", "x\n", "Unrelated");
+        repo.Commit("old.cs", text + "two\n", "Edit old");
+        repo.Git("mv", "old.cs", "new.cs");
+        repo.Git("-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "Move it");
+        repo.Commit("new.cs", text + "two\nthree\n", "Edit new");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var commits = (await git.GetFileCommitsAsync(repo.File("new.cs"), 200, ct)).Value!;
+
+        Assert.Equal(["Edit new", "Move it", "Edit old", "Add old"], commits.Select(c => c.Subject));
+        Assert.Equal(
+            [("new.cs", "new.cs", false), ("new.cs", "old.cs", true), ("old.cs", "old.cs", false), ("old.cs", null, false)],
+            commits.Select(c => (c.Path, c.ParentPath, c.RenameOnly)));
+        Assert.All(commits, c => Assert.Equal("Test", c.Author));
+        Assert.Equal(40, commits[0].Hash.Length);
+        Assert.Equal(["Edit new", "Move it"], (await git.GetFileCommitsAsync(repo.File("new.cs"), 2, ct)).Value!.Select(c => c.Subject));
+    }
+
+    [Fact]
+    public async Task A_file_with_no_commits_has_an_empty_history_and_one_outside_a_repo_none()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "a\n", "Add a");
+        repo.Write("untracked.cs", "u\n");
+        using var outside = new TempRepo(init: false);
+        outside.Write("loose.cs", "l\n");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.Empty((await git.GetFileCommitsAsync(repo.File("untracked.cs"), 200, ct)).Value!);
+        var loose = await git.GetFileCommitsAsync(outside.File("loose.cs"), 200, ct);
+        Assert.True(loose.Succeeded);
+        Assert.Null(loose.Value);
+    }
+
+    [Fact]
+    public void ParseFileCommits_gives_a_merge_the_path_of_the_commit_next_to_it()
+    {
+        const string output =
+            "\u001e1111111111111111111111111111111111111111\u001fAda\u001f2026-10-01T10:00:00+13:00\u001fMerge branch\n\n" +
+            "\u001e2222222222222222222222222222222222222222\u001fBo\u001f2026-09-30T10:00:00+13:00\u001fEdit\n\nM\tsrc/a.cs\n" +
+            "\u001e3333333333333333333333333333333333333333\u001fBo\u001f2026-09-29T10:00:00+13:00\u001fAdd\n\nA\tsrc/a.cs\n";
+
+        var commits = GitCli.ParseFileCommits(output);
+
+        Assert.Equal([("src/a.cs", "src/a.cs"), ("src/a.cs", "src/a.cs"), ("src/a.cs", null)], commits.Select(c => (c.Path, c.ParentPath)));
+        Assert.Equal("1111111", commits[0].ShortHash);
+        Assert.Equal(new DateTimeOffset(2026, 10, 1, 10, 0, 0, TimeSpan.FromHours(13)), commits[0].Date);
+    }
+
+    [Fact]
     public async Task Lists_a_branch_changes_against_its_merge_base_with_the_default_branch()
     {
         using var repo = new TempRepo(init: true);

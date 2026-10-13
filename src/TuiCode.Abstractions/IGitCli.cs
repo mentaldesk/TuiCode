@@ -25,6 +25,12 @@ public interface IGitCli
     /// <summary>The newest commits that touched <paramref name="filePath"/>, newest first.</summary>
     Task<GitResult<IReadOnlyList<GitCommit>>> GetFileHistoryAsync(string filePath, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Up to <paramref name="limit"/> commits that changed <paramref name="filePath"/>, newest first, following it
+    /// across renames (#534); null when it isn't in a repo.
+    /// </summary>
+    Task<GitResult<IReadOnlyList<GitFileCommit>?>> GetFileCommitsAsync(string filePath, int limit, CancellationToken cancellationToken = default);
+
     /// <summary>Whether <paramref name="revision"/> resolves to a commit in the repo containing <paramref name="path"/>.</summary>
     Task<GitResult<bool>> ResolvesAsync(string path, string revision, CancellationToken cancellationToken = default);
 
@@ -90,6 +96,17 @@ public sealed record GitWorktree(string Path, string? Branch, string Head = "")
 }
 
 public sealed record GitCommit(string ShortHash, string Subject, DateTimeOffset Date);
+
+/// <summary>
+/// A commit in one file's history. <see cref="Path"/> is the file's repo-relative path in the commit;
+/// <see cref="ParentPath"/> is its path in the first parent, or null when the commit created it.
+/// <see cref="RenameOnly"/> means the commit moved the file without changing its text.
+/// </summary>
+public sealed record GitFileCommit(
+    string Hash, string Author, DateTimeOffset Date, string Subject, string Path, string? ParentPath, bool RenameOnly = false)
+{
+    public string ShortHash => Hash[..Math.Min(7, Hash.Length)];
+}
 
 /// <summary>
 /// A line as <c>git blame</c> reports it. <see cref="Hash"/> is all zeros for a line no commit has yet. <see cref="Path"/>

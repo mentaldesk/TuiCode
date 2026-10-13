@@ -93,6 +93,7 @@ public static class CommandMnemonics
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
             [CommandIds.GitBlame] = "gb",
+            [CommandIds.ToggleFileHistory] = "gh",
             [CommandIds.ShowExplorer] = "se",
             [CommandIds.MoveLinesUp] = "mu",
             [CommandIds.MoveLinesDown] = "md",
