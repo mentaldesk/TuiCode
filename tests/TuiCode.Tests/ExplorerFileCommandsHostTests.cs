@@ -13,6 +13,12 @@ namespace TuiCode.Tests;
 public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 {
     private readonly MockFileSystem _fs = new();
+    private readonly FakeTrash _trash;
+
+    public ExplorerFileCommandsHostTests()
+    {
+        _trash = new FakeTrash(_fs);
+    }
 
     public static TheoryData<Key> DeleteKeys => [Key.Delete, Key.D.WithCtrl];
 
@@ -32,14 +38,14 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Esc); },
             () => Confirm(workbench) is null);
 
-        Assert.Contains("Permanently delete 'a.txt'?", asked);
-        Assert.Contains("irreversible", asked);
+        Assert.Equal("Delete 'a.txt'?\nYou can restore it from the Trash.", asked);
         Assert.True(_fs.File.Exists("/work/a.txt"));
+        Assert.Empty(_trash.Moved);
         Assert.True(workbench.Sidebar.Explorer.HasFocus, "Focus should return to the explorer after cancelling");
     }
 
     [Fact]
-    public async Task Confirming_delete_removes_the_file_and_closes_its_tab_despite_unsaved_changes()
+    public async Task Confirming_delete_moves_the_file_to_the_Trash_and_closes_its_tab_despite_unsaved_changes()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("a"));
         _fs.AddFile("/work/b.txt", new MockFileData("b"));
@@ -70,10 +76,161 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 
         Assert.Contains("1 open file has unsaved changes", asked);
         Assert.True(enterOnCancelKeptFile, "Enter on the focused Cancel button deleted the file");
+        Assert.Equal([_fs.Path.GetFullPath("/work/a.txt")], _trash.Moved);
         Assert.False(_fs.File.Exists("/work/a.txt"));
         Assert.Equal([_fs.Path.GetFullPath("/work/b.txt")], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
         Assert.Equal("b.txt", workbench.Sidebar.Explorer.SelectedObject?.Name);
+        Assert.Equal("🗑 Moved 'a.txt' to the Trash", workbench.StatusBar.DisplayedText);
+        Assert.True(workbench.Sidebar.Explorer.HasFocus, "Focus should return to the explorer after deleting");
+    }
+
+    [Fact]
+    public async Task Delete_on_a_folder_asks_about_its_contents_and_names_the_Recycle_Bin_on_Windows()
+    {
+        _fs.AddFile("/work/fixtures/one.json", new MockFileData("{}"));
+        _fs.AddFile("/work/fixtures/two.json", new MockFileData("{}"));
+        var trash = new FakeTrash(_fs) { Name = "Recycle Bin" };
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, trash: trash);
+        var asked = "";
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                workbench.OpenFile(_fs.FileInfo.New("/work/fixtures/one.json"));
+                workbench.Editor.Group.ActiveTab!.Content = "edited";
+            },
+            () => SelectInExplorer(workbench, "fixtures"),
+            () => host.App.InjectKey(Key.Delete),
+            () => Confirm(workbench) is not null,
+            () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Tab); },
+            () => Confirm(workbench)!.FocusedChoice == "Delete",
+            () => host.App.InjectKey(Key.Enter),
+            () => Confirm(workbench) is null);
+
+        Assert.Equal(
+            "Delete 'fixtures' and its contents?\n1 open file has unsaved changes, which will be lost.\nYou can restore it from the Recycle Bin.",
+            asked);
+        Assert.Equal([_fs.Path.GetFullPath("/work/fixtures")], trash.Moved);
+        Assert.Empty(workbench.Editor.Group.Tabs);
+        Assert.Equal("🗑 Moved 'fixtures' to the Recycle Bin", workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task When_the_Trash_refuses_a_second_prompt_says_why_and_Cancel_there_keeps_the_file()
+    {
+        _fs.AddFile("/work/build.log", new MockFileData("log"));
+        _trash.Refusal = new IOException("/work has no Trash folder.");
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var asked = "";
+        var title = "";
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "build.log"),
+            () => host.App.InjectKey(Key.Delete),
+            () => Confirm(workbench) is not null,
+            () => host.App.InjectKey(Key.Tab),
+            () => Confirm(workbench)!.FocusedChoice == "Delete",
+            () => host.App.InjectKey(Key.Enter),
+            () => Confirm(workbench) is { } second && Message(second).StartsWith("Couldn't", StringComparison.Ordinal),
+            () =>
+            {
+                asked = Message(Confirm(workbench)!);
+                title = Confirm(workbench)!.Title;
+                // Cancel has focus, so a bare Enter must not delete.
+                host.App.InjectKey(Key.Enter);
+            },
+            () => Confirm(workbench) is null);
+
+        Assert.Equal(
+            "Couldn't move 'build.log' to the Trash:\n/work has no Trash folder.\nDelete it permanently instead? This can't be undone.",
+            asked);
+        Assert.Equal("Delete", title);
+        Assert.True(_fs.File.Exists("/work/build.log"));
+        Assert.True(workbench.Sidebar.Explorer.HasFocus, "Focus should return to the explorer after cancelling");
+    }
+
+    [Fact]
+    public async Task When_the_Trash_refuses_Delete_permanently_in_the_second_prompt_deletes_for_good()
+    {
+        _fs.AddFile("/work/build.log", new MockFileData("log"));
+        _fs.AddFile("/work/b.txt", new MockFileData("b"));
+        _trash.Refusal = new UnauthorizedAccessException("Access to the path is denied.");
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "build.log"),
+            () => host.App.InjectKey(Key.Delete),
+            () => Confirm(workbench) is not null,
+            () => host.App.InjectKey(Key.Tab),
+            () => Confirm(workbench)!.FocusedChoice == "Delete",
+            () => host.App.InjectKey(Key.Enter),
+            () => Confirm(workbench) is { } second && Message(second).StartsWith("Couldn't", StringComparison.Ordinal),
+            () => host.App.InjectKey(Key.Tab),
+            () => Confirm(workbench)!.FocusedChoice == "Delete permanently",
+            () => host.App.InjectKey(Key.Enter),
+            () => Confirm(workbench) is null);
+
+        Assert.False(_fs.File.Exists("/work/build.log"));
         Assert.StartsWith("Deleted: ", workbench.StatusBar.DisplayedText);
+        Assert.True(workbench.Sidebar.Explorer.HasFocus, "Focus should return to the explorer after deleting");
+    }
+
+    [Fact]
+    public async Task Shift_Delete_asks_to_delete_permanently_and_never_uses_the_Trash()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("a"));
+        _fs.AddFile("/work/b.txt", new MockFileData("b"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var asked = "";
+        var title = "";
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "a.txt"),
+            () => host.App.InjectKey(Key.Delete.WithShift),
+            () => Confirm(workbench) is not null,
+            () =>
+            {
+                asked = Message(Confirm(workbench)!);
+                title = Confirm(workbench)!.Title;
+                host.App.InjectKey(Key.Tab);
+            },
+            () => Confirm(workbench)!.FocusedChoice == "Delete",
+            () => host.App.InjectKey(Key.Enter),
+            () => Confirm(workbench) is null);
+
+        Assert.Equal("Permanently delete 'a.txt'?\nThis action is irreversible!", asked);
+        Assert.Equal("Delete permanently", title);
+        Assert.False(_fs.File.Exists("/work/a.txt"));
+        Assert.Empty(_trash.Moved);
+        Assert.StartsWith("Deleted: ", workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task The_dp_mnemonic_deletes_permanently_from_the_explorer()
+    {
+        _fs.AddDirectory("/work/src/lib");
+        _fs.AddFile("/work/b.txt", new MockFileData("b"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var asked = "";
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "src"),
+            () => host.App.InjectKey(Key.Space.WithCtrl),
+            () => host.App.InjectKey(Key.D),
+            () => host.App.InjectKey(Key.P),
+            () => Confirm(workbench) is not null,
+            () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Esc); },
+            () => Confirm(workbench) is null);
+
+        Assert.StartsWith("Permanently delete 'src' and its contents?", asked);
+        Assert.True(_fs.Directory.Exists("/work/src/lib"));
     }
 
     [Fact]
@@ -376,7 +533,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => Confirm(workbench) is null);
 
         Assert.Null(workbench.Sidebar.Explorer.PendingCut);
-        Assert.StartsWith("Deleted: ", workbench.StatusBar.DisplayedText);
+        Assert.Equal("🗑 Moved 'src' to the Trash", workbench.StatusBar.DisplayedText);
     }
 
     [Fact]
@@ -498,12 +655,12 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
         return workbench;
     }
 
-    private static WorkbenchHost BuildHost(Workbench.Workbench workbench) => BuildHost(workbench, out _);
+    private WorkbenchHost BuildHost(Workbench.Workbench workbench) => BuildHost(workbench, out _);
 
-    private static WorkbenchHost BuildHost(Workbench.Workbench workbench, out CommandService commands)
+    private WorkbenchHost BuildHost(Workbench.Workbench workbench, out CommandService commands)
     {
         commands = new CommandService();
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
-            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, trash: _trash);
     }
 }
