@@ -163,15 +163,13 @@ public sealed class Workbench : Window
             return;
         }
         var (lines, characters, throughTerminal) = (CopyOutcome.Copied)outcome;
-        var message = $"Copied {Count(lines, "line")}  •  {Count(characters, "character")}{(throughTerminal ? " through the terminal" : "")}";
+        var message = $"Copied {Plural.Count(lines, "line")}  •  {Plural.Count(characters, "character")}{(throughTerminal ? " through the terminal" : "")}";
         StatusBar.SetMessage(message);
         App?.AddTimeout(CopyMessageDuration, () =>
         {
             if (StatusBar.Message == message) ShowActiveFile(Editor.Group.ActiveTab);
             return false;
         });
-
-        static string Count(int n, string noun) => $"{n:N0} {noun}{(n == 1 ? "" : "s")}";
     }
 
     /// <summary>Show the active tab's cursor position and selection; the host calls this every main-loop iteration.</summary>

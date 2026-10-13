@@ -235,14 +235,14 @@ public sealed class SearchView : View
         {
             _pendingReplace = (search, replacement, count);
             _status.Text = $"Replace {count}? Ctrl+Enter again";
-            Message?.Invoke(this, $"Replace {count} matches in {Result.Files.Count} files with '{replacement}'? Press Ctrl+Enter again to confirm.");
+            Message?.Invoke(this, $"Replace {count} {Plural.Of(count, "match")} in {Result.Files.Count} {Plural.Of(Result.Files.Count, "file")} with '{replacement}'? Press Ctrl+Enter again to confirm.");
             return;
         }
 
         _pendingReplace = null;
         var (files, occurrences) = WorkspaceSearch.ReplaceAll(Result.Files.Select(f => f.File), search.Query, replacement, search.Options, OpenBuffers);
         RunSearch();
-        Message?.Invoke(this, $"Replaced {occurrences} occurrences in {files} files");
+        Message?.Invoke(this, $"Replaced {occurrences} {Plural.Of(occurrences, "occurrence")} in {files} {Plural.Of(files, "file")}");
     }
 
     private void Apply(IDirectoryInfo? root, Request search, WorkspaceSearchResult result, string? status = null)
@@ -261,8 +261,8 @@ public sealed class SearchView : View
         _status.Text = status ?? result switch
         {
             { Files.Count: 0 } => "No results",
-            { Truncated: true } => $"{result.MatchCount}+ in {result.Files.Count} files",
-            _ => $"{result.MatchCount} in {result.Files.Count} files",
+            { Truncated: true } => $"{result.MatchCount}+ in {result.Files.Count} {Plural.Of(result.Files.Count, "file")}",
+            _ => $"{result.MatchCount} in {result.Files.Count} {Plural.Of(result.Files.Count, "file")}",
         } + (result.NotARepo ? " (not a git repo)" : string.Empty);
         SetNeedsDraw();
     }

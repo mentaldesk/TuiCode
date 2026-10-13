@@ -1879,7 +1879,7 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         if (saved > 0)
-            _workbench.StatusBar.SetMessage(saved == 1 ? "Saved 1 file" : $"Saved {saved} files");
+            _workbench.StatusBar.SetMessage($"Saved {saved} {Plural.Of(saved, "file")}");
         else if (conflict is null)
             _workbench.StatusBar.SetMessage("No unsaved changes");
         if (conflict is not null) ConfirmOverwrite(conflict);
@@ -2323,7 +2323,7 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
         var undo = lines > LargeRevert ? " — Ctrl+Z to undo" : string.Empty;
-        _workbench.StatusBar.SetMessage($"Reverted {lines:N0} line{(lines == 1 ? string.Empty : "s")} from {diff.LeftLabel}{undo}");
+        _workbench.StatusBar.SetMessage($"Reverted {Plural.Count(lines, "line")} from {diff.LeftLabel}{undo}");
     }
 
     /// <summary>
@@ -2347,12 +2347,12 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         var view = new ConfirmView("Revert all changes",
-            $"Revert all {changes:N0} change{(changes == 1 ? string.Empty : "s")} in {diff.File.Name}?",
+            $"Revert all {Plural.Count(changes, "change")} in {diff.File.Name}?",
             new ConfirmChoice("Revert", () =>
             {
                 if (diff.RevertAll() is not { } reverted) return;
                 _workbench.StatusBar.SetMessage(
-                    $"Reverted {reverted:N0} change{(reverted == 1 ? string.Empty : "s")} in {diff.File.Name} — Ctrl+Z to undo");
+                    $"Reverted {Plural.Count(reverted, "change")} in {diff.File.Name} — Ctrl+Z to undo");
             }, Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
