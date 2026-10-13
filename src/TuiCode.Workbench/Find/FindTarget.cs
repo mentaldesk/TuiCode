@@ -20,7 +20,7 @@ internal abstract class FindTarget
     public abstract event EventHandler? ContentChanged;
 
     /// <summary>Every match in reading order.</summary>
-    public abstract IReadOnlyList<TextMatch> FindAll(string query);
+    public abstract IReadOnlyList<TextMatch> FindAll(string query, MatchOptions options);
 
     public abstract void SetHighlights(IReadOnlyList<TextMatch> matches);
     public abstract void Select(TextMatch match);
@@ -49,7 +49,7 @@ internal abstract class FindTarget
             remove => tab.ContentChanged -= value;
         }
 
-        public override IReadOnlyList<TextMatch> FindAll(string query) => TextSearch.FindAll(tab.Lines, query);
+        public override IReadOnlyList<TextMatch> FindAll(string query, MatchOptions options) => TextSearch.FindAll(tab.Lines, query, options);
         public override void SetHighlights(IReadOnlyList<TextMatch> matches) => tab.SetHighlights(matches);
         public override void Select(TextMatch match) => tab.Select(match);
         public override void ClearSelection() => tab.ClearSelection();
@@ -75,22 +75,22 @@ internal abstract class FindTarget
             remove => diff.Refreshed -= value;
         }
 
-        public override IReadOnlyList<TextMatch> FindAll(string query)
+        public override IReadOnlyList<TextMatch> FindAll(string query, MatchOptions options)
         {
             var matches = new List<TextMatch>();
             if (query.Length == 0) return matches;
             var rows = diff.Diff.Rows;
             for (var i = 0; i < rows.Count; i++)
             {
-                if (rows[i].Left is { } left) Add(matches, i * 2, diff.LeftLines[left], query);
-                if (rows[i].Right is { } right) Add(matches, i * 2 + 1, diff.RightLines[right], query);
+                if (rows[i].Left is { } left) Add(matches, i * 2, diff.LeftLines[left], query, options);
+                if (rows[i].Right is { } right) Add(matches, i * 2 + 1, diff.RightLines[right], query, options);
             }
             return matches;
         }
 
-        private static void Add(List<TextMatch> matches, int row, string line, string query)
+        private static void Add(List<TextMatch> matches, int row, string line, string query, MatchOptions options)
         {
-            foreach (var match in TextSearch.FindAll([line], query))
+            foreach (var match in TextSearch.FindAll([line], query, options))
                 matches.Add(match with { Row = row });
         }
 

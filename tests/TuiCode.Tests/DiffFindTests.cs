@@ -54,6 +54,20 @@ public class DiffFindTests : IDisposable
     }
 
     [Fact]
+    public void Match_case_and_whole_word_apply_to_both_sides()
+    {
+        var diff = Diff("Id\nHidden", "id\nx.Id");
+
+        _find.Open(replace: false);
+        _find.Bar.ToggleMatchCase();
+        _find.Bar.ToggleWholeWord();
+        _find.Bar.Query = "Id";
+
+        Assert.Equal([new TextMatch(0, 0, 2), new TextMatch(3, 2, 2)], _find.Matches);
+        Assert.Equal(new DiffMatch(0, DiffSide.Left, 0, 2), diff.CurrentMatch);
+    }
+
+    [Fact]
     public void A_row_on_one_side_only_is_matched_on_that_side_and_its_gap_is_not()
     {
         var diff = Diff("find\nkeep", "keep\nfind");
@@ -109,7 +123,7 @@ public class DiffFindTests : IDisposable
             new("Enter", "Next match"),
             new("Shift+Enter", "Previous match"),
             new("Esc", "Close"),
-        ], _find.Help().Rows);
+        ], _find.Help([]).Rows);
     }
 
     [Fact]

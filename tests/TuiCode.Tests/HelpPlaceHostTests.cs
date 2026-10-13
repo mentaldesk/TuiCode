@@ -73,6 +73,8 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("Enter, ↓", "Focus find results"),
             new("Tab, Shift+Tab", "Switch find field"),
             new("Ctrl+Enter", "Replace all globally"),
+            new("Alt+C", "Match case on or off"),
+            new("Alt+W", "Match whole word on or off"),
         ], help.Rows);
     }
 

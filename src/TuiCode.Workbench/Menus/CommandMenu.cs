@@ -39,7 +39,8 @@ public sealed class CommandMenu
         [CommandIds.MoveLinesUp] = 'm', [CommandIds.MoveLinesDown] = 'd', [CommandIds.DuplicateLinesUp] = 'u',
         [CommandIds.DuplicateLinesDown] = 'l', [CommandIds.IndentLines] = 'i', [CommandIds.OutdentLines] = 'o',
         [CommandIds.ToggleLineComment] = 't', [CommandIds.FindInFile] = 'f', [CommandIds.ReplaceInFile] = 'r',
-        [CommandIds.ReplaceGlobally] = 'g', [CommandIds.ChangeGrammar] = 'c',
+        [CommandIds.ReplaceGlobally] = 'g', [CommandIds.ToggleMatchCase] = 's', [CommandIds.ToggleWholeWord] = 'w',
+        [CommandIds.ToggleIgnoredFiles] = 'n', [CommandIds.ChangeGrammar] = 'c',
 
         [CommandIds.AddCursorAbove] = 'a', [CommandIds.AddCursorBelow] = 'b', [CommandIds.RemoveSecondaryCursors] = 'r',
         [CommandIds.ClearSelection] = 'c', [CommandIds.ToggleColumnSelect] = 't', [CommandIds.SelectNextOccurrence] = 's',
@@ -86,6 +87,7 @@ public sealed class CommandMenu
             CommandIds.IndentLines, CommandIds.OutdentLines, CommandIds.ToggleLineComment,
             Separator,
             CommandIds.FindInFile, CommandIds.ReplaceInFile, CommandIds.ReplaceGlobally,
+            CommandIds.ToggleMatchCase, CommandIds.ToggleWholeWord, CommandIds.ToggleIgnoredFiles,
             Separator,
             CommandIds.ChangeGrammar,
         ]),

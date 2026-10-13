@@ -6,6 +6,7 @@ using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Icons;
+using TuiCode.Search;
 using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Configuration;
@@ -173,8 +174,12 @@ public sealed class WorkbenchHost : IDisposable
         _log = log;
         _icons = icons;
         _git = git ?? new GitCli(new FileSystem());
+        _workbench.Sidebar.Search.Git = _git;
+        _workbench.Sidebar.Search.InRepository = GitRepository.Contains;
         _gitHub = gitHub ?? new GitHubCli();
         _focus = new FocusService(FocusedView);
+        _find = new FindController(_workbench.Editor.Groups, _scopes, _keybindings);
+        _find.Closed += (_, _) => FocusEditorBody();
 
         RegisterDefaultCommands();
         _menu = new CommandMenu(_workbench.MenuBar, _commands, _keybindings, () => !_workbench.HasDialog,
@@ -192,8 +197,6 @@ public sealed class WorkbenchHost : IDisposable
         // Workbench scope is the bottom of the input stack; never popped. The find bar layers above it while it's open.
         _keybindings.FocusedScope = FocusedScope;
         _scopes.Push(_keybindings);
-        _find = new FindController(_workbench.Editor.Groups, _scopes, _keybindings);
-        _find.Closed += (_, _) => FocusEditorBody();
 
         ApplyIconStyle();
         if (_icons is not null) _icons.Changed += (_, _) => ApplyIconStyle();
@@ -603,6 +606,19 @@ public sealed class WorkbenchHost : IDisposable
             CommandScope.Find, () => search.InputsHaveFocus);
         _commands.Register(CommandIds.SearchReplaceAll, "Replace all globally",
             () => { if (search.ReplaceVisible) search.RequestReplaceAll(); }, CommandScope.Find, () => search.InputsHaveFocus);
+        // Global, gated on a find box having the keys: the find bar's keys are in the Editor scope, the pane's in Find.
+        bool InFindBox() => _focus.Region is FocusRegion.FindBar or FocusRegion.Find;
+        bool InFindPane() => _focus.Region is FocusRegion.Find;
+        MatchOptions FindBoxOptions() => InFindPane() ? search.Options : _find.Bar.Options;
+        _commands.Register(CommandIds.ToggleMatchCase, "Match case on or off",
+            () => { if (InFindPane()) search.ToggleMatchCase(); else _find.Bar.ToggleMatchCase(); }, CommandScope.Global, InFindBox,
+            () => FindBoxOptions().MatchCase ? "Stop matching case" : "Match case");
+        _commands.Register(CommandIds.ToggleWholeWord, "Match whole word on or off",
+            () => { if (InFindPane()) search.ToggleWholeWord(); else _find.Bar.ToggleWholeWord(); }, CommandScope.Global, InFindBox,
+            () => FindBoxOptions().WholeWord ? "Stop matching whole word" : "Match whole word");
+        _commands.Register(CommandIds.ToggleIgnoredFiles, "Ignored files on or off", search.ToggleIgnoredFiles, CommandScope.Global,
+            () => InFindPane() && search.IgnoredFilesAvailable,
+            () => search.IncludeIgnored ? "Skip ignored files" : "Include ignored files");
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowMenu, "Show menu", () => _menu.Open());
@@ -710,10 +726,10 @@ public sealed class WorkbenchHost : IDisposable
         Reconcile();
         return _focus.Region switch
         {
-            FocusRegion.FindBar => _find.Help(),
+            FocusRegion.FindBar => _find.Help(FindOptionKeys()),
             FocusRegion.Diff => DiffHelp(),
             FocusRegion.Explorer => ScopeHelp("Explorer", CommandScope.Explorer, ExplorerKeys),
-            FocusRegion.Find => ScopeHelp("Find", CommandScope.Find, _workbench.Sidebar.Search.InputsHaveFocus ? [] : FindResultKeys),
+            FocusRegion.Find => FindPaneHelp(),
             FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, GroupHelp()),
             FocusRegion.Review => ReviewHelp(),
             FocusRegion.Usages => new HelpColumn("Usages", UsagesKeys),
@@ -758,6 +774,20 @@ public sealed class WorkbenchHost : IDisposable
         _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
 
     private static readonly HelpRow[] ExplorerKeys = [new("Enter", "Open"), new("→ ←", "Expand or collapse")];
+
+    private HelpColumn FindPaneHelp()
+    {
+        if (!_workbench.Sidebar.Search.InputsHaveFocus) return ScopeHelp("Find", CommandScope.Find, FindResultKeys);
+        var help = ScopeHelp("Find", CommandScope.Find, []);
+        return help with { Rows = [.. help.Rows, .. FindOptionKeys()] };
+    }
+
+    private HelpRow[] FindOptionKeys() =>
+    [
+        .. HelpRowOf(CommandIds.ToggleMatchCase, "Match case on or off"),
+        .. HelpRowOf(CommandIds.ToggleWholeWord, "Match whole word on or off"),
+        .. HelpRowOf(CommandIds.ToggleIgnoredFiles, "Ignored files on or off"),
+    ];
 
     private static readonly HelpRow[] FindResultKeys = [new("Enter", "Open result")];
 
@@ -927,6 +957,8 @@ public sealed class WorkbenchHost : IDisposable
 
         keybindings.Bind("Enter", CommandIds.SearchFocusResults);
         keybindings.Bind("CursorDown", CommandIds.SearchFocusResults);
+        keybindings.Bind("Alt+C", CommandIds.ToggleMatchCase);
+        keybindings.Bind("Alt+W", CommandIds.ToggleWholeWord);
         keybindings.Bind("Tab", CommandIds.SearchSwitchField);
         keybindings.Bind("Shift+Tab", CommandIds.SearchSwitchField);
         keybindings.Bind("Ctrl+Enter", CommandIds.SearchReplaceAll);
