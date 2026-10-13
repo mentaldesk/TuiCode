@@ -52,6 +52,7 @@ public static class CommandIds
     public const string CompareToOtherFile = "workbench.action.compareToOtherFile";
     public const string ReloadFromDisk = "workbench.action.reloadFromDisk";
     public const string GitBlame = "workbench.action.gitBlame";
+    public const string ToggleFileHistory = "workbench.action.toggleFileHistory";
 
     public const string NextChange = "diff.action.nextChange";
     public const string PreviousChange = "diff.action.previousChange";

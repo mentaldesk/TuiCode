@@ -2,6 +2,7 @@ using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Find;
+using TuiCode.Workbench.History;
 using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
@@ -17,9 +18,19 @@ public sealed class Workbench : Window
     public EditorPart Editor { get; }
     public StatusBarPart StatusBar { get; }
     public MenuBar MenuBar { get; } = new();
+    public HistoryView History { get; } = new();
 
-    /// <summary>A dialog is open over the workbench: every view the host adds beside the four parts is one.</summary>
-    public bool HasDialog => SubViews.Any(view => view != MenuBar && view != Sidebar && view != Editor && view != StatusBar);
+    /// <summary>A dialog is open over the workbench: every view the host adds beside the five parts is one.</summary>
+    public bool HasDialog => SubViews.Any(view => view != MenuBar && view != Sidebar && view != Editor && view != History && view != StatusBar);
+
+    /// <summary>The user has the History panel on (#534); it shows only while the active tab has history.</summary>
+    public bool IsHistoryOn { get; private set; }
+
+    public bool IsHistoryShowing { get; private set; }
+
+    public event EventHandler? HistoryOnChanged;
+
+    public event EventHandler? HistoryShowingChanged;
 
     public bool IsSidebarVisible { get; private set; } = true;
 
@@ -56,12 +67,18 @@ public sealed class Workbench : Window
         editor.Width = Dim.Fill();
         editor.Height = Dim.Fill(1);
 
+        History.X = Pos.Right(sidebar);
+        History.Y = Pos.Bottom(editor);
+        History.Width = Dim.Fill();
+        History.Height = 0;
+        History.Visible = false;
+
         statusBar.X = 0;
         statusBar.Y = Pos.AnchorEnd(1);
         statusBar.Width = Dim.Fill();
         statusBar.Height = 1;
 
-        Add(MenuBar, sidebar, editor, statusBar);
+        Add(MenuBar, sidebar, editor, History, statusBar);
 
         sidebar.Explorer.FileActivated += (_, file) => OpenFile(file);
 
@@ -179,7 +196,7 @@ public sealed class Workbench : Window
         StatusBar.SetPosition(tab is null ? null : (tab.CursorRow, tab.CursorColumn));
         StatusBar.SetSelection(tab?.CaretCount ?? 1, tab?.CountSelection()?.Characters);
         StatusBar.SetDiffStatus(Editor.Group.ActiveDiffTab is { IsFocused: true } diff
-            ? string.Join("  •  ", new[] { BranchReview.SpotLabel(diff.Review, Sidebar.Review.Review), diff.LineCounts, diff.ChangeStatus }.Where(part => !string.IsNullOrEmpty(part)))
+            ? string.Join("  •  ", new[] { BranchReview.SpotLabel(diff.Review, Sidebar.Review.Review), diff.History?.Label, diff.LineCounts, diff.ChangeStatus }.Where(part => !string.IsNullOrEmpty(part)))
             : null);
     }
 
@@ -244,6 +261,7 @@ public sealed class Workbench : Window
     public void OpenFolder(IDirectoryInfo directory, bool rememberTabs = true)
     {
         _workspaceFolder = null;
+        SetHistoryOn(false);
         Languages?.OpenFolder(directory.FullName);
         RememberPositions(Editor.Groups.Tabs);
         Editor.Groups.CloseAll();
@@ -309,6 +327,7 @@ public sealed class Workbench : Window
         if (second is not null) groups.Holding(second)?.Focus(second.File.FullName);
         groups.Focused = state.SecondFocused && groups.IsSplit ? groups.Second : groups.First;
         TabsRestored?.Invoke(this, EventArgs.Empty);
+        SetHistoryOn(state.History);
 
         EditorTab? Restore(EditorGroup group, IReadOnlyList<string> files, string? activeFile)
         {
@@ -338,6 +357,7 @@ public sealed class Workbench : Window
         {
             Second = groups.IsSplit ? new WorkspaceGroup(Files(groups.Second), ActiveFile(groups.Second)) : null,
             SecondFocused = groups.IsSplit && ReferenceEquals(groups.Focused, groups.Second),
+            History = IsHistoryOn,
         });
 
         static List<string> Files(EditorGroup group) => [.. group.Tabs.Select(t => t.File.FullName)];
@@ -385,6 +405,35 @@ public sealed class Workbench : Window
     {
         base.OnSubViewsLaidOut(args);
         ApplyDrawnSidebarWidth();
+        ApplyHistoryHeight();
+    }
+
+    public void SetHistoryOn(bool on)
+    {
+        if (IsHistoryOn == on) return;
+        IsHistoryOn = on;
+        HistoryOnChanged?.Invoke(this, EventArgs.Empty);
+        SaveWorkspaceState();
+    }
+
+    /// <summary>Unfolds the History panel under the editor, or gives its rows back to the editor.</summary>
+    public void ShowHistory(bool showing)
+    {
+        if (IsHistoryShowing == showing) return;
+        IsHistoryShowing = showing;
+        History.Visible = showing;
+        ApplyHistoryHeight();
+        HistoryShowingChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ApplyHistoryHeight()
+    {
+        // Less the menu bar and the status bar.
+        var height = IsHistoryShowing ? FileHistory.PanelHeight(Viewport.Height - 2) : 0;
+        if (History.Height is DimAbsolute { Size: var size } && size == height) return;
+        History.Height = height;
+        Editor.Height = Dim.Fill(1 + height);
+        SetNeedsLayout();
     }
 
     private void ApplyDrawnSidebarWidth()
@@ -403,6 +452,7 @@ public sealed class Workbench : Window
         IsSidebarVisible = visible;
         Sidebar.Visible = visible;
         Editor.X = visible ? Pos.Right(Sidebar) : 0;
+        History.X = Editor.X;
         SetNeedsLayout();
         RefreshReviewIfShowing();
     }

@@ -21,6 +21,17 @@ public class WorkspaceStateStoreTests
     }
 
     [Fact]
+    public void Load_returns_whether_the_History_panel_was_on()
+    {
+        var store = new WorkspaceStateStore(new MockFileSystem(), StatePath);
+        store.Save("/a", new WorkspaceState([], null) { History = true });
+        store.Save("/b", new WorkspaceState([], null));
+
+        Assert.True(store.Load("/a")!.History);
+        Assert.False(store.Load("/b")!.History);
+    }
+
+    [Fact]
     public void Folders_lists_every_saved_folder_most_recently_used_first()
     {
         var store = new WorkspaceStateStore(new MockFileSystem(), StatePath);
