@@ -354,6 +354,8 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             CommandIds.ShowAbout, CommandIds.ShowActions, CommandIds.ShowDiagnostics, CommandIds.ShowLog,
             CommandIds.ShowExplorer, CommandIds.ShowHelp, CommandIds.ShowMenu, CommandIds.ShowMnemonics,
             CommandIds.SubmitReview, CommandIds.SuspendToShell, CommandIds.ToggleFileHistory, CommandIds.ToggleGutter, CommandIds.ToggleSidebar, CommandIds.ToggleViewed, CommandIds.WidenSidebar,
+            // Gated on a find box having the keys: the bar's keys are in Editor, the pane's in Find.
+            CommandIds.ToggleMatchCase, CommandIds.ToggleWholeWord, CommandIds.ToggleIgnoredFiles,
             .. Enumerable.Range(1, 9).Select(CommandIds.FocusEditorByIndex),
         ];
 

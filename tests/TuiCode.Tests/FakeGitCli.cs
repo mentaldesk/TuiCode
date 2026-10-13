@@ -29,6 +29,12 @@ internal sealed class FakeGitCli : IGitCli
     /// <summary>Content by <c>revision:repoPath</c>.</summary>
     public Dictionary<string, string> RepoFiles { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>What <see cref="ListFilesAsync"/> lists, by whether ignored files are asked for; null is "not a repo".</summary>
+    public Func<bool, IReadOnlyList<string>?> ListedFiles { get; set; } = _ => null;
+
+    public Task<GitResult<IReadOnlyList<string>?>> ListFilesAsync(string folder, bool includeIgnored, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Missing ? GitResult<IReadOnlyList<string>?>.Failure(NoGit) : GitResult<IReadOnlyList<string>?>.Success(ListedFiles(includeIgnored)));
+
     public Task<GitResult<string?>> GetRepoRootAsync(string path, CancellationToken cancellationToken = default) =>
         Task.FromResult(Missing ? GitResult<string?>.Failure(NoGit) : GitResult<string?>.Success(Root));
 

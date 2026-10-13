@@ -1,33 +1,31 @@
+using System.Globalization;
+using System.Text;
+
 namespace TuiCode.Search;
+
+/// <summary>How a find box matches its query (#527).</summary>
+public readonly record struct MatchOptions(bool MatchCase = false, bool WholeWord = false);
 
 /// <summary>
 /// Pure, TG-free text matching shared by in-editor find (#33) and workspace search. Matching is
-/// plain-text, case-insensitive and non-overlapping (VS Code's defaults); case/whole-word/regex
-/// options are a follow-up. Queries are single-line, so a match never spans a line break.
+/// plain-text and non-overlapping, with <see cref="MatchOptions"/> for case and whole words.
+/// Queries are single-line, so a match never spans a line break.
 /// </summary>
 public static class TextSearch
 {
-    private const StringComparison Comparison = StringComparison.OrdinalIgnoreCase;
 
     /// <summary>Split on any line terminator (<c>\r\n</c>, <c>\n</c>, <c>\r</c>); terminators are dropped.</summary>
     public static IReadOnlyList<string> SplitLines(string text) =>
         text.Split(["\r\n", "\n", "\r"], StringSplitOptions.None);
 
-    public static IReadOnlyList<TextMatch> FindAll(IReadOnlyList<string> lines, string query)
+    public static IReadOnlyList<TextMatch> FindAll(IReadOnlyList<string> lines, string query, MatchOptions options = default)
     {
         var matches = new List<TextMatch>();
         if (string.IsNullOrEmpty(query)) return matches;
 
         for (var row = 0; row < lines.Count; row++)
-        {
-            var line = lines[row];
-            var i = line.IndexOf(query, Comparison);
-            while (i >= 0)
-            {
-                matches.Add(new TextMatch(row, i, query.Length));
-                i = line.IndexOf(query, i + query.Length, Comparison);
-            }
-        }
+            foreach (var column in IndexesOf(lines[row], query, options))
+                matches.Add(new TextMatch(row, column, query.Length));
         return matches;
     }
 
@@ -65,25 +63,66 @@ public static class TextSearch
     /// Replace every match of <paramref name="query"/> in raw <paramref name="text"/>, leaving everything
     /// else — line endings included — byte-for-byte untouched.
     /// </summary>
-    public static string ReplaceAll(string text, string query, string replacement, out int count)
+    public static string ReplaceAll(string text, string query, string replacement, MatchOptions options, out int count)
     {
         count = 0;
         if (string.IsNullOrEmpty(query)) return text;
 
-        var sb = new System.Text.StringBuilder(text.Length);
+        var sb = new StringBuilder(text.Length);
         var last = 0;
-        var i = text.IndexOf(query, Comparison);
-        while (i >= 0)
+        foreach (var i in IndexesOf(text, query, options))
         {
             sb.Append(text, last, i - last).Append(replacement);
             last = i + query.Length;
             count++;
-            i = text.IndexOf(query, last, Comparison);
         }
         if (count == 0) return text;
         sb.Append(text, last, text.Length - last);
         return sb.ToString();
     }
+
+    private static IEnumerable<int> IndexesOf(string text, string query, MatchOptions options)
+    {
+        var comparison = options.MatchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var i = text.IndexOf(query, comparison);
+        while (i >= 0)
+        {
+            if (!options.WholeWord || IsWholeWord(text, i, query.Length))
+            {
+                yield return i;
+                i = text.IndexOf(query, i + query.Length, comparison);
+            }
+            else i = text.IndexOf(query, i + 1, comparison);
+        }
+    }
+
+    // As in VS Code, a match that starts or ends with punctuation is bounded on that side already: `.Id` finds `x.Id`.
+    private static bool IsWholeWord(string text, int start, int length)
+    {
+        var end = start + length;
+        var match = text.AsSpan(start, length);
+        var startsWord = start == 0 || !IsWord(Last(text.AsSpan(0, start))) || !IsWord(First(match));
+        var endsWord = end == text.Length || !IsWord(First(text.AsSpan(end))) || !IsWord(Last(match));
+        return startsWord && endsWord;
+    }
+
+    private static Rune First(ReadOnlySpan<char> text)
+    {
+        Rune.DecodeFromUtf16(text, out var rune, out _);
+        return rune;
+    }
+
+    private static Rune Last(ReadOnlySpan<char> text)
+    {
+        Rune.DecodeLastFromUtf16(text, out var rune, out _);
+        return rune;
+    }
+
+    private static bool IsWord(Rune rune) =>
+        rune.Value == '_' || Rune.GetUnicodeCategory(rune) is
+            UnicodeCategory.UppercaseLetter or UnicodeCategory.LowercaseLetter or UnicodeCategory.TitlecaseLetter
+            or UnicodeCategory.ModifierLetter or UnicodeCategory.OtherLetter or UnicodeCategory.DecimalDigitNumber
+            or UnicodeCategory.LetterNumber or UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark;
 
     private static int Compare(TextMatch m, int row, int column) =>
         m.Row != row ? m.Row.CompareTo(row) : m.Column.CompareTo(column);

@@ -119,6 +119,9 @@ public static class CommandIds
     public const string SearchFocusResults = "search.action.focusResults";
     public const string SearchSwitchField = "search.action.switchField";
     public const string SearchReplaceAll = "search.action.replaceAll";
+    public const string ToggleMatchCase = "find.action.toggleMatchCase";
+    public const string ToggleWholeWord = "find.action.toggleWholeWord";
+    public const string ToggleIgnoredFiles = "search.action.toggleIgnoredFiles";
 
     public const string OpenConfirm = "open.action.confirm";
     public const string OpenCancel = "open.action.cancel";

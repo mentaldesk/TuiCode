@@ -65,6 +65,7 @@ public class GitCliTests
         Assert.False((await git.FindWorktreeAsync("/repo", "main", ct)).Succeeded);
         Assert.False((await git.GetWorktreesAsync("/repo", ct)).Succeeded);
         Assert.False((await git.BlameAsync("/repo/a.cs", 1, cancellationToken: ct)).Succeeded);
+        Assert.False((await git.ListFilesAsync("/repo", includeIgnored: false, ct)).Succeeded);
     }
 
     [Fact]
@@ -210,6 +211,43 @@ public class GitCliTests
         var untracked = await git.ShowCheckedOutFileAsync(repo.File("src/new.cs"), ct);
         Assert.True(untracked.Succeeded);
         Assert.Null(untracked.Value);
+    }
+
+    [Fact]
+    public async Task ListFilesAsync_lists_tracked_and_untracked_files_less_what_git_ignores()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit(".gitignore", ".idea/\nbin/\n", "Ignore");
+        repo.Commit("src/a.cs", "a\n", "First");
+        repo.Write("src/new.cs", "new\n");
+        repo.Write(".idea/workspace.xml", "x\n");
+        repo.Write("bin/out.dll", "x\n");
+        repo.Write("src/.gitignore", "*.log\n");
+        repo.Write("src/debug.log", "x\n");
+        repo.Write("local.txt", "x\n");
+        repo.Write(".git/info/exclude", "local.txt\n");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var skipped = await git.ListFilesAsync(repo.Path, includeIgnored: false, ct);
+        var all = await git.ListFilesAsync(repo.Path, includeIgnored: true, ct);
+        var below = await git.ListFilesAsync(repo.File("src"), includeIgnored: false, ct);
+
+        Assert.Equal([".gitignore", "src/.gitignore", "src/a.cs", "src/new.cs"], skipped.Value!.Order(StringComparer.Ordinal));
+        Assert.Equal([".gitignore", ".idea/workspace.xml", "bin/out.dll", "local.txt", "src/.gitignore", "src/a.cs", "src/debug.log", "src/new.cs"],
+            all.Value!.Order(StringComparer.Ordinal));
+        Assert.Equal([".gitignore", "a.cs", "new.cs"], below.Value!.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task ListFilesAsync_outside_a_repo_lists_nothing()
+    {
+        using var dir = new TempRepo(init: false);
+
+        var listed = await new GitCli(new FileSystem()).ListFilesAsync(dir.Path, includeIgnored: false, TestContext.Current.CancellationToken);
+
+        Assert.True(listed.Succeeded);
+        Assert.Null(listed.Value);
     }
 
     [Fact]

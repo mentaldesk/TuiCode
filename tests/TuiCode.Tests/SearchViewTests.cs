@@ -13,7 +13,100 @@ public class SearchViewTests
         view.Query = "needle";
 
         Assert.Equal(3, view.Result.MatchCount);
-        Assert.Equal("3 in 2 files", view.StatusText);
+        Assert.Equal("3 in 2 files (not a git repo)", view.StatusText);
+    }
+
+    [Fact]
+    public void Outside_a_git_repo_the_fixed_skip_list_applies_and_ignored_files_is_disabled()
+    {
+        var (view, _) = Build(("/work/a.txt", "needle"), ("/work/bin/b.txt", "needle"));
+
+        view.Query = "needle";
+
+        Assert.Equal("1 in 1 files (not a git repo)", view.StatusText);
+        Assert.False(view.IgnoredFilesAvailable);
+        view.ToggleIgnoredFiles();
+        Assert.False(view.IncludeIgnored);
+    }
+
+    [Fact]
+    public void In_a_git_repo_only_the_files_git_lists_are_searched()
+    {
+        var git = new FakeGitCli { ListedFiles = ignored => ignored ? ["a.txt", ".idea/b.txt"] : ["a.txt"] };
+        var (view, _) = Build(git, ("/work/a.txt", "needle"), ("/work/.idea/b.txt", "needle"));
+
+        view.Query = "needle";
+
+        Assert.True(view.IgnoredFilesAvailable);
+        Assert.Equal("1 in 1 files", view.StatusText);
+    }
+
+    [Fact]
+    public void Ticking_ignored_files_searches_them_again()
+    {
+        var git = new FakeGitCli { ListedFiles = ignored => ignored ? ["a.txt", ".idea/b.txt"] : ["a.txt"] };
+        var (view, _) = Build(git, ("/work/a.txt", "needle"), ("/work/.idea/b.txt", "needle"));
+        view.Query = "needle";
+
+        view.ToggleIgnoredFiles();
+
+        Assert.True(view.IncludeIgnored);
+        Assert.Equal("2 in 2 files", view.StatusText);
+    }
+
+    [Fact]
+    public void Without_git_installed_the_fixed_skip_list_applies_and_ignored_files_is_disabled()
+    {
+        var (view, _) = Build(new FakeGitCli { Missing = true }, ("/work/a.txt", "needle"), ("/work/obj/b.txt", "needle"));
+
+        view.Query = "needle";
+
+        Assert.Equal("1 in 1 files (not a git repo)", view.StatusText);
+        Assert.False(view.IgnoredFilesAvailable);
+    }
+
+    [Fact]
+    public void Toggling_match_case_or_whole_word_searches_again()
+    {
+        var (view, _) = Build(("/work/a.cs", "Id id Hidden"));
+        view.Query = "id";
+        Assert.Equal(3, view.Result.MatchCount);
+
+        view.ToggleMatchCase();
+        Assert.Equal(2, view.Result.MatchCount);
+
+        view.ToggleWholeWord();
+        Assert.Equal(1, view.Result.MatchCount);
+        Assert.Equal(new MatchOptions(MatchCase: true, WholeWord: true), view.Options);
+    }
+
+    [Fact]
+    public void ReplaceAll_honours_match_case_and_whole_word()
+    {
+        var (view, fs) = Build(("/work/a.cs", "Id id Hidden.Id"));
+        view.Query = "Id";
+        view.Replacement = "Key";
+        view.ToggleMatchCase();
+        view.ToggleWholeWord();
+
+        view.RequestReplaceAll();
+        view.RequestReplaceAll();
+
+        Assert.Equal("Key id Hidden.Key", fs.File.ReadAllText("/work/a.cs"));
+    }
+
+    [Fact]
+    public void Toggling_an_option_disarms_a_pending_replace_all()
+    {
+        var (view, fs) = Build(("/work/a.cs", "Id id"));
+        view.Query = "Id";
+        view.Replacement = "Key";
+        view.RequestReplaceAll();
+
+        view.ToggleMatchCase();
+        view.RequestReplaceAll();
+
+        Assert.Equal("Id id", fs.File.ReadAllText("/work/a.cs"));
     }
 
     [Fact]
@@ -84,13 +177,15 @@ public class SearchViewTests
         Assert.True(view.ReplaceVisible);
     }
 
-    private static (SearchView View, MockFileSystem Fs) Build(params (string Path, string Content)[] files)
+    private static (SearchView View, MockFileSystem Fs) Build(params (string Path, string Content)[] files) => Build(null, files);
+
+    private static (SearchView View, MockFileSystem Fs) Build(FakeGitCli? git, params (string Path, string Content)[] files)
     {
         var fs = new MockFileSystem();
         foreach (var (path, content) in files)
             fs.AddFile(path, new MockFileData(content));
         fs.AddDirectory("/work");
         var root = fs.DirectoryInfo.New("/work");
-        return (new SearchView { RootProvider = () => root }, fs);
+        return (new SearchView { RootProvider = () => root, Git = git, InRepository = _ => git is not null }, fs);
     }
 }
