@@ -29,6 +29,12 @@ internal sealed class FakeGitCli : IGitCli
     /// <summary>Content by <c>revision:repoPath</c>.</summary>
     public Dictionary<string, string> RepoFiles { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>What <see cref="ListFilesAsync"/> lists, by whether ignored files are asked for; null is "not a repo".</summary>
+    public Func<bool, IReadOnlyList<string>?> ListedFiles { get; set; } = _ => null;
+
+    public Task<GitResult<IReadOnlyList<string>?>> ListFilesAsync(string folder, bool includeIgnored, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Missing ? GitResult<IReadOnlyList<string>?>.Failure(NoGit) : GitResult<IReadOnlyList<string>?>.Success(ListedFiles(includeIgnored)));
+
     public Task<GitResult<string?>> GetRepoRootAsync(string path, CancellationToken cancellationToken = default) =>
         Task.FromResult(Missing ? GitResult<string?>.Failure(NoGit) : GitResult<string?>.Success(Root));
 
@@ -78,8 +84,14 @@ internal sealed class FakeGitCli : IGitCli
     public Task<GitResult<string?>> GetMergeBaseAsync(string path, string first, string second, CancellationToken cancellationToken = default) =>
         Task.FromResult(GitResult<string?>.Success(MergeBases.GetValueOrDefault(second) ?? MergeBase));
 
-    public Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default) =>
-        Task.FromResult(GitResult<IReadOnlyList<GitChange>>.Success(ChangesByRevision.GetValueOrDefault(revision) ?? Changes));
+    /// <summary>Holds <see cref="GetChangedFilesAsync"/> until it completes, as a slow git does.</summary>
+    public Task ChangesGate { get; set; } = Task.CompletedTask;
+
+    public async Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default)
+    {
+        await ChangesGate;
+        return GitResult<IReadOnlyList<GitChange>>.Success(ChangesByRevision.GetValueOrDefault(revision) ?? Changes);
+    }
 
     public IReadOnlyDictionary<string, GitLineCount> LineCounts { get; set; } = new Dictionary<string, GitLineCount>();
 

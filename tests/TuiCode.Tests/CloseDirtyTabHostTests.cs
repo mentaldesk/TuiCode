@@ -38,7 +38,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             {
                 var view = Confirm(workbench)!;
                 (title, asked, focused) = (view.Title, Message(view), view.FocusedChoice!);
-                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text)];
+                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text.Trim())];
             });
 
         Assert.Equal("Unsaved changes", title);

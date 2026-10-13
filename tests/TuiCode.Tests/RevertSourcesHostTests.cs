@@ -107,7 +107,7 @@ public class RevertSourcesHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
         [
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => PullRequestPicker(workbench) is not null,
+            () => PullRequestPicker(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Enter),
             () => PullRequestPicker(workbench) is null,
             .. OpenReviewDiff(host, commands, workbench),

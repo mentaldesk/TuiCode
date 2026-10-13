@@ -2,11 +2,13 @@ using System.Globalization;
 using System.Text;
 using Terminal.Gui.Configuration;
 using Terminal.Gui.Text;
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Icons;
 using TuiCode.Syntax;
 using TuiCode.Workbench.Git;
 using Attribute = Terminal.Gui.Drawing.Attribute;
+using AppButton = MentalDesk.Tui.Dialogs.AppButton;
 
 namespace TuiCode.Workbench.Review;
 
@@ -53,6 +55,12 @@ public sealed class ReviewView : View
     /// <summary>Raised after every redraw of the pane, for the workbench to settle focus (#228).</summary>
     public event EventHandler? Refreshed;
 
+    /// <summary>Raised when a refresh fails while files are listed; they stay listed (#525).</summary>
+    public event EventHandler<string>? RefreshFailed;
+
+    /// <summary>What the pane says while it loads, once its owner has put it in one (#525).</summary>
+    public LoadStateView? LoadState { get; set; }
+
     public Func<IDirectoryInfo?>? RootProvider { get; set; }
 
     public BranchReview? Review { get; private set; }
@@ -97,6 +105,8 @@ public sealed class ReviewView : View
 
     public bool HasOverview => _overview.Visible;
 
+    internal Button Overview => _overview;
+
     internal Label Hint => _hint;
 
     /// <summary>The changed files in the order the tab lists them (#181).</summary>
@@ -128,7 +138,8 @@ public sealed class ReviewView : View
             e.Result = attribute with { Style = attribute.Style | TextStyle.Faint };
             e.Handled = true;
         };
-        _overview = new Button { X = 0, Y = 0, Height = 1, Text = "Overview", Visible = false, ShadowStyle = ShadowStyles.None };
+        _overview = AppButton.Secondary("Overview");
+        _overview.Visible = false;
         _overview.Accepting += (_, e) =>
         {
             e.Handled = true;
@@ -353,26 +364,24 @@ public sealed class ReviewView : View
         if (RootProvider?.Invoke() is not { } root)
         {
             Show(GitResult<BranchReview?>.Success(null), "No folder open");
+            LoadState?.ShowContent();
             return Task.CompletedTask;
         }
 
         LocalViewed ??= LocalViewedFiles.ForUser(root.FileSystem);
         var cts = _loading = new CancellationTokenSource();
-        if (Review is null && _headerText.Length == 0)
-        {
-            _headerText = "Loading…";
-            LayoutHeader();
-        }
-        return LoadAsync(root.FullName, cts);
+        LoadState?.ShowLoading();
+        // Off the main thread when hosted, so a result never lands inside the tab switch that started the load.
+        var app = App;
+        return app is null ? LoadAsync(app, root.FullName, cts) : Task.Run(() => LoadAsync(app, root.FullName, cts));
     }
 
-    private async Task LoadAsync(string folder, CancellationTokenSource cts)
+    private async Task LoadAsync(IApplication? app, string folder, CancellationTokenSource cts)
     {
-        var app = App;
         try
         {
             var branch = await Task.Run(() => BranchReview.LoadAsync(_git, folder, cts.Token), cts.Token).ConfigureAwait(false);
-            Apply(app, cts, () => Show(branch));
+            Apply(app, cts, () => ShowBranch(branch));
             if (branch.Value is not { } review) return;
 
             // After the list, so counting every line never holds it up (#393).
@@ -476,6 +485,15 @@ public sealed class ReviewView : View
         // Rebuilding the tree can drop Terminal.Gui's focus, so the workbench settles it: a refresh that
         // arrives while the keys are elsewhere must not pull them back here (#228).
         Refreshed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ShowBranch(GitResult<BranchReview?> result)
+    {
+        LoadState?.ShowContent();
+        if (result.Error is { } error && Review is { Changes.Count: > 0 })
+            RefreshFailed?.Invoke(this, error);
+        else
+            Show(result);
     }
 
     private void ShowPullRequest(GitHubResult<BranchReview?> result)

@@ -7,6 +7,7 @@ using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Actions;
+using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
@@ -56,6 +57,108 @@ public class MenuBarHostTests : StaticConfigurationTest
             menus.Select(m => m.Title.Replace("_", "")));
         Assert.Equal(menus.Count, menus.Select(m => m.HotKey).Distinct().Count());
         Assert.All(menus, m => Assert.Equal(m.Title[1], (char)m.HotKey.KeyCode));
+    }
+
+    [Fact]
+    public void Every_item_has_a_letter_no_other_item_in_its_menu_shares()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        foreach (var menu in workbench.MenuBar.SubViews.OfType<MenuBarItem>())
+        {
+            var items = menu.PopoverMenu!.Root!.SubViews.OfType<CommandMenuItem>().ToList();
+            Assert.All(items, item => Assert.Single(item.Title, '_'));
+            Assert.All(items, item => Assert.Equal(char.ToUpperInvariant(item.Title[item.Title.IndexOf('_') + 1]), (char)item.HotKey.KeyCode));
+            Assert.Equal(items.Count, items.Select(i => i.HotKey).Distinct().Count());
+        }
+        Assert.All(MenuIds(), id => Assert.True(CommandMenu.Letters.ContainsKey(id), $"{id} has no menu letter"));
+    }
+
+    [Fact]
+    public void The_File_menus_letters_match_the_pitch()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var file = Title(workbench, "File").PopoverMenu!.Root!.SubViews.OfType<CommandMenuItem>();
+
+        Assert.Equal(
+        [
+            "_New file or folder", "_Open file or folder", "Open _recent folder", "Open _worktree", "Open _file path",
+            "_Save active editor", "Save _all", "Re_load from disk", "_Close active editor", "Clos_e other tabs", "Close all ta_bs",
+            "_Move or rename file or folder", "Cu_t file or folder", "_Paste file or folder", "_Delete file or folder",
+            "Show document _info", "Open settin_gs", "Suspend to s_hell", "_Quit",
+        ], file.Select(i => i.Title));
+    }
+
+    [Fact]
+    public async Task A_letter_in_the_open_menu_runs_its_item()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        string? closedWith = null;
+        host.Menu.Closed += (_, picked) => closedWith = picked;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                workbench.Sidebar.Explorer.SetFocus();
+                workbench.Sidebar.Explorer.SelectedObject = workbench.Sidebar.Explorer.GetChildren(workbench.Sidebar.Explorer.Root!).Single(c => c.Name == "a.txt");
+            },
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => host.App.InjectKey(Key.F.WithAlt),
+            () => workbench.MenuBar.IsOpen(),
+            () => host.App.InjectKey(Key.D),
+            () => workbench.SubViews.OfType<ConfirmView>().Any());
+
+        Assert.False(workbench.MenuBar.IsOpen());
+        Assert.Equal(CommandIds.DeleteFile, closedWith);
+        Assert.Contains("Permanently delete 'a.txt'?", workbench.SubViews.OfType<ConfirmView>().Single().SubViews.OfType<Label>().First().Text);
+    }
+
+    [Fact]
+    public async Task A_dimmed_items_letter_does_nothing()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var calls = 0;
+        host.Menu.Closed += (_, _) => calls++;
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.E.WithAlt),
+            () => workbench.MenuBar.IsOpen() && Item(host, CommandIds.MoveLinesDown).Dimmed,
+            () => host.App.InjectKey(Key.D),
+            () => { },
+            () => Assert.True(workbench.MenuBar.IsOpen()),
+            () => host.App.InjectKey(Key.Esc),
+            () => !workbench.MenuBar.IsOpen());
+
+        Assert.Equal(1, calls);
+        Assert.Equal("_Move line up", Item(host, CommandIds.MoveLinesUp).Title);
+        Assert.Equal("Move line _down", Item(host, CommandIds.MoveLinesDown).Title);
+    }
+
+    [Fact]
+    public async Task With_every_menu_shut_a_letter_is_just_typing()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out _);
+        var opened = 0;
+        host.Menu.Opened += (_, _) => opened++;
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => { foreach (var c in "dqnm") host.App.InjectKey(new Key(c)); },
+            () => workbench.Editor.Group.ActiveTab!.Content.StartsWith("dqnm"),
+            () => workbench.Sidebar.Explorer.SetFocus(),
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => { foreach (var c in "dqnm") host.App.InjectKey(new Key(c)); },
+            () => { });
+
+        Assert.Equal(0, opened);
+        Assert.False(workbench.HasDialog);
+        Assert.True(_fs.File.Exists("/work/a.txt"));
     }
 
     [Fact]
@@ -275,7 +378,7 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => !workbench.MenuBar.IsOpen()]);
 
         // The exceptions: the palette keeps the language server's commands to say why they can't run, the menu dims them until a server is ready (#454).
-        var offered = MenuIds().Where(id => id is not (CommandIds.GoToDefinition or CommandIds.FindUsages) && palette.Contains(commands.Registered.Single(c => c.Id == id).Label));
+        var offered = MenuIds().Where(id => id is not (CommandIds.GoToDefinition or CommandIds.FindUsages) && palette.Contains(commands.Registered.Single(c => c.Id == id).Title));
         Assert.Equal(offered.Order(), undimmed.Order());
         if (context == "pull request") Assert.Contains(CommandIds.SubmitReview, undimmed);
         if (context == "diff") Assert.Contains(CommandIds.RevertChange, undimmed);
@@ -330,7 +433,7 @@ public class MenuBarHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
-        Attribute dimmed = default, disabled = default, live = default;
+        Attribute dimmed = default, disabled = default, live = default, letter = default;
 
         await HostSteps.Run(host,
             () => host.App.InjectKey(Key.E.WithAlt),
@@ -339,6 +442,7 @@ public class MenuBarHostTests : StaticConfigurationTest
             {
                 var item = Item(host, CommandIds.MoveLinesDown);
                 dimmed = item.GetAttributeForRole(VisualRole.Normal);
+                letter = item.GetAttributeForRole(VisualRole.HotNormal);
                 disabled = item.GetScheme().GetAttributeForRole(VisualRole.Disabled, null);
                 live = Item(host, CommandIds.FindInFile).GetAttributeForRole(VisualRole.Normal);
                 host.App.InjectKey(Key.Esc);
@@ -347,6 +451,8 @@ public class MenuBarHostTests : StaticConfigurationTest
 
         Assert.Equal(disabled, dimmed);
         Assert.NotEqual(live, dimmed);
+        Assert.Equal(disabled.Foreground, letter.Foreground);
+        Assert.True(letter.Style.HasFlag(TextStyle.Underline));
     }
 
     [Fact]
@@ -433,17 +539,19 @@ public class MenuBarHostTests : StaticConfigurationTest
 
         Assert.Equal("F7", KeyShown(host, CommandIds.MoveLinesDown));
         Assert.Equal("", KeyShown(host, CommandIds.GoToLine));
+        Assert.Equal("Move line _down", Item(host, CommandIds.MoveLinesDown).Title);
+        Assert.Equal(Key.D, Item(host, CommandIds.MoveLinesDown).HotKey);
     }
 
     [Fact]
-    public void View_opens_with_the_sidebar_panels_by_name_then_toggle_widen_and_narrow()
+    public void View_opens_with_the_sidebar_panels_by_name_then_hide_widen_and_narrow()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
         var view = Title(workbench, "View").PopoverMenu!.Root!.SubViews.ToList();
 
-        Assert.Equal(["Explorer", "Find", "Usages", "Review", "-", "Toggle sidebar", "Widen sidebar", "Narrow sidebar"],
-            view.Take(8).Select(v => v is MenuItem item ? item.Title : "-"));
+        Assert.Equal(["Explorer", "Find", "Usages", "Review", "-", "Hide sidebar", "Widen sidebar", "Narrow sidebar"],
+            view.Take(8).Select(v => v is MenuItem item ? item.Title.Replace("_", "") : "-"));
     }
 
     [Fact]
@@ -455,7 +563,7 @@ public class MenuBarHostTests : StaticConfigurationTest
         var quit = file.IndexOf(Item(host, CommandIds.Quit));
 
         Assert.Same(Item(host, CommandIds.SuspendToShell), file[quit - 1]);
-        Assert.Equal("Suspend to shell", Item(host, CommandIds.SuspendToShell).Title);
+        Assert.Equal("Suspend to s_hell", Item(host, CommandIds.SuspendToShell).Title);
         Assert.Equal("", KeyShown(host, CommandIds.SuspendToShell));
         Assert.IsType<Line>(file[quit - 2]);
         Assert.Same(Item(host, CommandIds.OpenSettings), file[quit - 3]);
@@ -516,7 +624,7 @@ public class MenuBarHostTests : StaticConfigurationTest
 
     private static string? Focused(Workbench.Workbench workbench) =>
         workbench.MenuBar.SubViews.OfType<MenuBarItem>().FirstOrDefault(m => m.PopoverMenuOpen)?.PopoverMenu?.Root?.Focused is MenuItem item
-            ? item.Title
+            ? item.Title.Replace("_", "")
             : null;
 
     private static string[] Titles(Workbench.Workbench workbench) =>

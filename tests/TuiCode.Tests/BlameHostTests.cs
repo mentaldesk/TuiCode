@@ -99,7 +99,7 @@ public class BlameHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Clicking_the_hint_closes_the_dialog()
+    public async Task Clicking_Close_closes_the_dialog()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
@@ -108,7 +108,7 @@ public class BlameHostTests : StaticConfigurationTest
             () => OpenFile(workbench, row: 1),
             () => commands.TryExecute(CommandIds.GitBlame),
             () => Dialog(workbench) is not null,
-            () => { Dialog(workbench)!.SubViews.OfType<Button>().Single(b => b.Text == "Esc close")
+            () => { Dialog(workbench)!.SubViews.OfType<Button>().Single(b => b.Text.Trim() == "Close")
                 .NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) }); },
             () => Dialog(workbench) is null);
 
@@ -188,11 +188,11 @@ public class BlameHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Clicking_the_Enter_hint_opens_the_change_too()
+    public async Task Clicking_View_change_opens_the_change_too()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        string[]? hints = null;
+        string[]? buttonTexts = null;
         (int Left, int Right) margins = default;
 
         await HostSteps.Run(host,
@@ -203,14 +203,14 @@ public class BlameHostTests : StaticConfigurationTest
             {
                 var dialog = Dialog(workbench)!;
                 var buttons = dialog.SubViews.OfType<Button>().OrderBy(b => b.Frame.X).ToList();
-                hints = [.. buttons.Select(b => b.Text)];
+                buttonTexts = [.. buttons.Select(b => b.Text.Trim())];
                 margins = (buttons[0].Frame.X, dialog.Viewport.Width - buttons[^1].Frame.Right);
-                buttons.Single(b => b.Text.StartsWith("Enter", StringComparison.Ordinal))
+                buttons.Single(b => b.Text.Trim() == "View change")
                     .NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) });
             },
             () => workbench.Editor.Group.ActiveDiffTab is not null);
 
-        Assert.Equal(["Enter view change", "Esc close"], hints);
+        Assert.Equal(["View change", "Close"], buttonTexts);
         Assert.InRange(margins.Left - margins.Right, -1, 1);
         Assert.Null(Dialog(workbench));
     }
@@ -257,13 +257,13 @@ public class BlameHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task On_an_uncommitted_line_there_is_no_Enter_hint_and_Enter_does_nothing()
+    public async Task On_an_uncommitted_line_there_is_no_View_change_and_Enter_does_nothing()
     {
         _git.Blame = Committed with { Hash = new string('0', 40), Previous = null };
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         BlameView? shown = null;
-        string[]? hints = null;
+        string[]? buttonTexts = null;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench, row: 1),
@@ -274,11 +274,11 @@ public class BlameHostTests : StaticConfigurationTest
             () =>
             {
                 Assert.Same(shown, Dialog(workbench));
-                hints = [.. shown!.SubViews.OfType<Button>().Select(b => b.Text)];
+                buttonTexts = [.. shown!.SubViews.OfType<Button>().Select(b => b.Text.Trim())];
                 host.App.InjectKey(Key.Esc);
             });
 
-        Assert.Equal(["Esc close"], hints);
+        Assert.Equal(["Close"], buttonTexts);
         Assert.Empty(workbench.Editor.Group.DiffTabs);
         Assert.Equal(0, _git.ShowCount);
     }

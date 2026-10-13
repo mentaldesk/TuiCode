@@ -1,4 +1,5 @@
 using System.Globalization;
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Services;
@@ -48,7 +49,9 @@ public sealed class DocumentInfoView : Window
             x += columnWidth + Gap;
         }
 
-        var close = new Button { Text = "Close", X = Pos.Center(), Y = Pos.AnchorEnd(1), IsDefault = true };
+        var close = AppButton.Primary("Close");
+        close.X = Pos.Center();
+        close.Y = Pos.AnchorEnd(1);
         close.Accepting += (_, e) => { e.Handled = true; Closed?.Invoke(this, EventArgs.Empty); };
         Add(close);
 

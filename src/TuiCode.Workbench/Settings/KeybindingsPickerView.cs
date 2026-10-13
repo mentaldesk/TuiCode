@@ -242,7 +242,7 @@ public sealed class KeybindingsPickerView : View
         var message = clash.Message(id => _commandLabels.GetValueOrDefault(id, id));
         if (clash.IsWarning)
         {
-            KeybindingConflictDialog.Confirm(host, _scopes, message, "Bind", bind =>
+            KeybindingConflictDialog.Confirm(host, _scopes, message, "Bind", destructive: false, bind =>
             {
                 _list.SetFocus();
                 if (bind) AddBinding(candidate);
@@ -250,7 +250,7 @@ public sealed class KeybindingsPickerView : View
         }
         else if (clash.Kind is KeybindingConflict.ExactMatch)
         {
-            KeybindingConflictDialog.Confirm(host, _scopes, message, "Replace", replace =>
+            KeybindingConflictDialog.Confirm(host, _scopes, message, "Replace", destructive: true, replace =>
             {
                 _list.SetFocus();
                 if (!replace) return;

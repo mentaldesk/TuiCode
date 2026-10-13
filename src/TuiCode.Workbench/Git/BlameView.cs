@@ -1,5 +1,5 @@
 using System.Globalization;
-using System.Text;
+using AppButton = MentalDesk.Tui.Dialogs.AppButton;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
@@ -18,10 +18,10 @@ public sealed class BlameView : Window
 
     public IKeybindingService Scope => _scopeKeybindings;
 
-    /// <summary>Esc or the hint: the host closes the dialog and gives the keys back.</summary>
+    /// <summary>Esc or Close: the host closes the dialog and gives the keys back.</summary>
     public event EventHandler? Closed;
 
-    /// <summary>Enter or its hint on a committed line: the host opens the change that introduced it (#331).</summary>
+    /// <summary>Enter or View change on a committed line: the host opens the change that introduced it (#331).</summary>
     public event EventHandler? OpenChange;
 
     /// <summary>Focus moved elsewhere, a click in the editor say: the host closes the dialog and leaves the keys there.</summary>
@@ -58,12 +58,9 @@ public sealed class BlameView : Window
 
         if (blame.IsCommitted)
         {
-            var open = Hint("Enter view change", y);
-            open.Accepting += (_, e) => { e.Handled = true; OpenChange?.Invoke(this, EventArgs.Empty); };
-            Add(open, new Label { X = Pos.Align(Alignment.Center), Y = y, Text = "·" });
+            Add(Foot(AppButton.Primary("View change"), y, () => OpenChange?.Invoke(this, EventArgs.Empty)));
         }
-        var close = Hint("Esc close", y);
-        close.Accepting += (_, e) => { e.Handled = true; Closed?.Invoke(this, EventArgs.Empty); };
+        var close = Foot(blame.IsCommitted ? AppButton.Secondary("Close") : AppButton.Primary("Close"), y, () => Closed?.Invoke(this, EventArgs.Empty));
 
         _alert = new AlertView(DialogWidth - 2) { X = 0, Y = y + 1 };
         if (!blame.IsCommitted) _alert.Show(NotCommitted, AlertSeverity.Info);
@@ -74,7 +71,7 @@ public sealed class BlameView : Window
         _scopeKeybindings = new KeybindingService(_scopeCommands);
         _scopeCommands.Register(CommandIds.BlameClose, () => Closed?.Invoke(this, EventArgs.Empty));
         _scopeKeybindings.Bind("Esc", CommandIds.BlameClose);
-        // Bound either way, so Enter on an uncommitted line doesn't press the focused Esc hint.
+        // Bound either way, so Enter on an uncommitted line doesn't press the focused Close.
         _scopeCommands.Register(CommandIds.BlameOpenChange, () =>
         {
             if (blame.IsCommitted) OpenChange?.Invoke(this, EventArgs.Empty);
@@ -115,16 +112,13 @@ public sealed class BlameView : Window
 
     private static string Plural(long count, string unit) => count == 1 ? $"1 {unit} ago" : $"{count} {unit}s ago";
 
-    private static Button Hint(string text, int y) => new()
+    private static Button Foot(Button button, int y, Action accepted)
     {
-        Text = text,
-        X = Pos.Align(Alignment.Center),
-        Y = y,
-        NoDecorations = true,
-        NoPadding = true,
-        ShadowStyle = ShadowStyles.None,
-        HotKeySpecifier = (Rune)0xffff,
-    };
+        button.X = Pos.Align(Alignment.Center);
+        button.Y = y;
+        button.Accepting += (_, e) => { e.Handled = true; accepted(); };
+        return button;
+    }
 
     private static Label Row(string text, ref int y) => new() { X = 1, Y = y++, Width = Dim.Fill(1), Height = 1, Text = text };
 

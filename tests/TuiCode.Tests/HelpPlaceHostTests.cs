@@ -73,6 +73,8 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("Enter, ↓", "Focus find results"),
             new("Tab, Shift+Tab", "Switch find field"),
             new("Ctrl+Enter", "Replace all globally"),
+            new("Alt+C", "Match case on or off"),
+            new("Alt+W", "Match whole word on or off"),
         ], help.Rows);
     }
 
@@ -112,6 +114,16 @@ public class HelpPlaceHostTests : StaticConfigurationTest
         Assert.DoesNotContain(help.Rows, row => row.Description is "Clear selection" or "Remove secondary cursors");
         Assert.DoesNotContain(help.Rows, row => row.Description == "Go to symbol in file");
         Assert.DoesNotContain(help.Rows, row => row.Description == "Save active editor");
+    }
+
+    [Fact]
+    public async Task The_editor_column_names_column_select_and_word_wrap_both_ways()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));
+        var help = await HelpFrom(() => Built.OpenFile(_fs.FileInfo.New("/work/a.txt")), "Editor");
+
+        Assert.Contains(help.Rows, row => row.Description == "Column select on or off");
+        Assert.Contains(help.Rows, row => row.Description == "Word wrap on or off");
     }
 
     [Fact]

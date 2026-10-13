@@ -344,7 +344,7 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
 
         string[] expected =
         [
-            CommandIds.CloseActiveEditor,
+            CommandIds.CloseActiveEditor, CommandIds.CloseAllTabs, CommandIds.CloseOtherTabs,
             CommandIds.FindGlobally, CommandIds.FindInFile, CommandIds.FocusEditorBody,
             CommandIds.FocusEditorTabStrip, CommandIds.FocusOtherGroup, CommandIds.FocusReview, CommandIds.FocusSidebar, CommandIds.FocusUsages,
             CommandIds.JoinGroups, CommandIds.MoveToOtherGroup, CommandIds.NarrowSidebar,
@@ -354,6 +354,8 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             CommandIds.ShowAbout, CommandIds.ShowActions, CommandIds.ShowDiagnostics, CommandIds.ShowLog,
             CommandIds.ShowExplorer, CommandIds.ShowHelp, CommandIds.ShowMenu, CommandIds.ShowMnemonics,
             CommandIds.SubmitReview, CommandIds.SuspendToShell, CommandIds.ToggleGutter, CommandIds.ToggleSidebar, CommandIds.ToggleViewed, CommandIds.WidenSidebar,
+            // Gated on a find box having the keys: the bar's keys are in Editor, the pane's in Find.
+            CommandIds.ToggleMatchCase, CommandIds.ToggleWholeWord, CommandIds.ToggleIgnoredFiles,
             .. Enumerable.Range(1, 9).Select(CommandIds.FocusEditorByIndex),
         ];
 
@@ -381,9 +383,9 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             && r.CommandId is not (CommandIds.RemoveSecondaryCursors or CommandIds.ClearSelection)).ToArray();
 
         Assert.Equal(
-            ["Add cursor above", "Add cursor below", "Duplicate line down", "Duplicate line up", "Indent lines", "Move line down",
-                "Move line up", "Outdent lines", "Select all occurrences", "Select next occurrence", "Select previous occurrence",
-                "Toggle column select", "Toggle line comment", "Toggle word wrap"],
+            ["Add cursor above", "Add cursor below", "Column select on or off", "Duplicate line down", "Duplicate line up", "Indent lines",
+                "Move line down", "Move line up", "Outdent lines", "Select all occurrences", "Select next occurrence",
+                "Select previous occurrence", "Toggle line comment", "Word wrap on or off"],
             rescoped.Select(r => r.Label));
         Assert.All(rescoped, r => Assert.Equal(CommandScope.Editor, r.Scope));
     }

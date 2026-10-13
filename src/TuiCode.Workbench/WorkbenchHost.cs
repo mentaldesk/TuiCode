@@ -6,6 +6,7 @@ using Terminal.Gui.Time;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Icons;
+using TuiCode.Search;
 using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Configuration;
@@ -173,8 +174,12 @@ public sealed class WorkbenchHost : IDisposable
         _log = log;
         _icons = icons;
         _git = git ?? new GitCli(new FileSystem());
+        _workbench.Sidebar.Search.Git = _git;
+        _workbench.Sidebar.Search.InRepository = GitRepository.Contains;
         _gitHub = gitHub ?? new GitHubCli();
         _focus = new FocusService(FocusedView);
+        _find = new FindController(_workbench.Editor.Groups, _scopes, _keybindings);
+        _find.Closed += (_, _) => FocusEditorBody();
 
         RegisterDefaultCommands();
         _menu = new CommandMenu(_workbench.MenuBar, _commands, _keybindings, () => !_workbench.HasDialog,
@@ -192,8 +197,6 @@ public sealed class WorkbenchHost : IDisposable
         // Workbench scope is the bottom of the input stack; never popped. The find bar layers above it while it's open.
         _keybindings.FocusedScope = FocusedScope;
         _scopes.Push(_keybindings);
-        _find = new FindController(_workbench.Editor.Groups, _scopes, _keybindings);
-        _find.Closed += (_, _) => FocusEditorBody();
 
         ApplyIconStyle();
         if (_icons is not null) _icons.Changed += (_, _) => ApplyIconStyle();
@@ -534,6 +537,10 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.SaveAll, "Save all", SaveAll);
         _commands.Register(CommandIds.CloseActiveEditor, "Close active editor", CloseActiveEditor, CommandScope.Global,
             () => Group.Value is not null);
+        _commands.Register(CommandIds.CloseOtherTabs, "Close other tabs", CloseOtherTabs, CommandScope.Global,
+            () => Group.Value is not null);
+        _commands.Register(CommandIds.CloseAllTabs, "Close all tabs", CloseAllTabs, CommandScope.Global,
+            () => Group.Value is not null);
         _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
         _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => _workbench.Editor.PreviousTab());
         _commands.Register(CommandIds.MoveToOtherGroup, "Move to other group", MoveToOtherGroup, CommandScope.Global,
@@ -543,7 +550,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.JoinGroups, "Join groups", JoinGroups, CommandScope.Global,
             () => _workbench.Editor.Groups.IsSplit);
 
-        _commands.Register(CommandIds.ToggleSidebar, "Toggle sidebar", ToggleSidebar);
+        _commands.Register(CommandIds.ToggleSidebar, "Show or hide sidebar", ToggleSidebar, CommandScope.Global, null,
+            () => _workbench.IsSidebarVisible ? "Hide sidebar" : "Show sidebar");
         _commands.Register(CommandIds.WidenSidebar, "Widen sidebar", () => NudgeSidebar(SidebarSizing.Step));
         _commands.Register(CommandIds.NarrowSidebar, "Narrow sidebar", () => NudgeSidebar(-SidebarSizing.Step));
         _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
@@ -558,9 +566,12 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => OpenFind(replace: true));
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
-        _commands.Register(CommandIds.ToggleGutter, "Toggle gutter", ToggleGutter, CommandScope.Global, EditorOpen);
-        _commands.Register(CommandIds.ToggleColumnSelect, "Toggle column select", ToggleColumnSelect, CommandScope.Editor);
-        _commands.Register(CommandIds.ToggleWordWrap, "Toggle word wrap", ToggleWordWrap, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.ToggleGutter, "Show or hide gutter", ToggleGutter, CommandScope.Global, EditorOpen,
+            () => _workbench.Editor.Groups.GutterVisible ? "Hide gutter" : "Show gutter");
+        _commands.Register(CommandIds.ToggleColumnSelect, "Column select on or off", ToggleColumnSelect, CommandScope.Editor, null,
+            () => _workbench.Editor.Groups.ColumnSelect ? "Turn off column select" : "Turn on column select");
+        _commands.Register(CommandIds.ToggleWordWrap, "Word wrap on or off", ToggleWordWrap, CommandScope.Editor, FileOpen,
+            () => _workbench.Editor.Group.ActiveTab?.WordWrap == true ? "Turn off word wrap" : "Turn on word wrap");
         _commands.Register(CommandIds.OpenSettings, "Open settings", OpenSettings);
         _commands.Register(CommandIds.Open, "Open file or folder", () => AskBeforeSwitchingFolder(OpenFileOrFolder));
         // No default key (#357).
@@ -576,7 +587,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.SubmitReview, "Submit review", SubmitReview, CommandScope.Global, Reviewing);
         _commands.Register(CommandIds.CreateComment, "Create comment", CreateComment, CommandScope.Diff, Reviewing);
         // Global so that it reaches both the Review tab and a review diff (#398); disabled everywhere else, so Space still types.
-        _commands.Register(CommandIds.ToggleViewed, "Toggle viewed", ToggleViewed, CommandScope.Global, CanToggleViewed);
+        _commands.Register(CommandIds.ToggleViewed, "Mark viewed or not", ToggleViewed, CommandScope.Global, CanToggleViewed,
+            () => ViewedTargetIsViewed() ? "Mark not viewed" : "Mark viewed");
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
@@ -594,6 +606,19 @@ public sealed class WorkbenchHost : IDisposable
             CommandScope.Find, () => search.InputsHaveFocus);
         _commands.Register(CommandIds.SearchReplaceAll, "Replace all globally",
             () => { if (search.ReplaceVisible) search.RequestReplaceAll(); }, CommandScope.Find, () => search.InputsHaveFocus);
+        // Global, gated on a find box having the keys: the find bar's keys are in the Editor scope, the pane's in Find.
+        bool InFindBox() => _focus.Region is FocusRegion.FindBar or FocusRegion.Find;
+        bool InFindPane() => _focus.Region is FocusRegion.Find;
+        MatchOptions FindBoxOptions() => InFindPane() ? search.Options : _find.Bar.Options;
+        _commands.Register(CommandIds.ToggleMatchCase, "Match case on or off",
+            () => { if (InFindPane()) search.ToggleMatchCase(); else _find.Bar.ToggleMatchCase(); }, CommandScope.Global, InFindBox,
+            () => FindBoxOptions().MatchCase ? "Stop matching case" : "Match case");
+        _commands.Register(CommandIds.ToggleWholeWord, "Match whole word on or off",
+            () => { if (InFindPane()) search.ToggleWholeWord(); else _find.Bar.ToggleWholeWord(); }, CommandScope.Global, InFindBox,
+            () => FindBoxOptions().WholeWord ? "Stop matching whole word" : "Match whole word");
+        _commands.Register(CommandIds.ToggleIgnoredFiles, "Ignored files on or off", search.ToggleIgnoredFiles, CommandScope.Global,
+            () => InFindPane() && search.IgnoredFilesAvailable,
+            () => search.IncludeIgnored ? "Skip ignored files" : "Include ignored files");
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowMenu, "Show menu", () => _menu.Open());
@@ -701,10 +726,10 @@ public sealed class WorkbenchHost : IDisposable
         Reconcile();
         return _focus.Region switch
         {
-            FocusRegion.FindBar => _find.Help(),
+            FocusRegion.FindBar => _find.Help(FindOptionKeys()),
             FocusRegion.Diff => DiffHelp(),
             FocusRegion.Explorer => ScopeHelp("Explorer", CommandScope.Explorer, ExplorerKeys),
-            FocusRegion.Find => ScopeHelp("Find", CommandScope.Find, _workbench.Sidebar.Search.InputsHaveFocus ? [] : FindResultKeys),
+            FocusRegion.Find => FindPaneHelp(),
             FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, GroupHelp()),
             FocusRegion.Review => ReviewHelp(),
             FocusRegion.Usages => new HelpColumn("Usages", UsagesKeys),
@@ -734,6 +759,8 @@ public sealed class WorkbenchHost : IDisposable
         .. HelpRowOf(CommandIds.NextEditor, "Next tab"),
         .. HelpRowOf(CommandIds.PreviousEditor, "Previous tab"),
         .. HelpRowOf(CommandIds.CloseActiveEditor, "Close tab"),
+        .. HelpRowOf(CommandIds.CloseOtherTabs, "Close other tabs"),
+        .. HelpRowOf(CommandIds.CloseAllTabs, "Close all tabs"),
         .. GroupHelp(),
     ]);
 
@@ -747,6 +774,20 @@ public sealed class WorkbenchHost : IDisposable
         _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
 
     private static readonly HelpRow[] ExplorerKeys = [new("Enter", "Open"), new("→ ←", "Expand or collapse")];
+
+    private HelpColumn FindPaneHelp()
+    {
+        if (!_workbench.Sidebar.Search.InputsHaveFocus) return ScopeHelp("Find", CommandScope.Find, FindResultKeys);
+        var help = ScopeHelp("Find", CommandScope.Find, []);
+        return help with { Rows = [.. help.Rows, .. FindOptionKeys()] };
+    }
+
+    private HelpRow[] FindOptionKeys() =>
+    [
+        .. HelpRowOf(CommandIds.ToggleMatchCase, "Match case on or off"),
+        .. HelpRowOf(CommandIds.ToggleWholeWord, "Match whole word on or off"),
+        .. HelpRowOf(CommandIds.ToggleIgnoredFiles, "Ignored files on or off"),
+    ];
 
     private static readonly HelpRow[] FindResultKeys = [new("Enter", "Open result")];
 
@@ -852,7 +893,7 @@ public sealed class WorkbenchHost : IDisposable
         // No default key for ToggleSidebar — Ctrl+0 is eaten by the terminal's own zoom-reset
         // in many emulators (#81), so it was unreliable. Reach it via the `ts` mnemonic instead.
         keybindings.Bind("Esc", CommandIds.FocusEditorBody);
-        keybindings.Bind("Ctrl+Esc", CommandIds.FocusEditorTabStrip);
+        // No default key for FocusEditorTabStrip: Windows keeps Ctrl+Esc for the Start menu (#520). Reach it via `ft`.
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
         keybindings.Bind("Ctrl+O", CommandIds.Open);
         keybindings.Bind("Ctrl+N", CommandIds.New);
@@ -916,6 +957,8 @@ public sealed class WorkbenchHost : IDisposable
 
         keybindings.Bind("Enter", CommandIds.SearchFocusResults);
         keybindings.Bind("CursorDown", CommandIds.SearchFocusResults);
+        keybindings.Bind("Alt+C", CommandIds.ToggleMatchCase);
+        keybindings.Bind("Alt+W", CommandIds.ToggleWholeWord);
         keybindings.Bind("Tab", CommandIds.SearchSwitchField);
         keybindings.Bind("Shift+Tab", CommandIds.SearchSwitchField);
         keybindings.Bind("Ctrl+Enter", CommandIds.SearchReplaceAll);
@@ -1855,7 +1898,7 @@ public sealed class WorkbenchHost : IDisposable
         var view = new ConfirmView("Unsaved changes",
             $"Save changes to '{tab.File.Name}' before closing?\nYour changes will be lost if you don't save them.",
             new ConfirmChoice("Save", () => SaveAndClose(tab)),
-            new ConfirmChoice("Don't save", () => CloseEditor(tab)));
+            new ConfirmChoice("Don't save", () => CloseEditor(tab), Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }
@@ -1898,10 +1941,17 @@ public sealed class WorkbenchHost : IDisposable
     private void AskBeforeSwitchingFolder(Action open) =>
         AskToSaveDirtyTabs("Save them before opening another folder?", open);
 
-    private void AskToSaveDirtyTabs(string question, Action proceed)
+    private void CloseOtherTabs() =>
+        AskToSave(() => [.. Group.Others.OfType<EditorTab>().Where(t => t.IsDirty)], "Save them before closing?", _workbench.CloseOtherTabs);
+
+    private void CloseAllTabs() => AskToSave(DirtyTabs, "Save them before closing?", _workbench.CloseAllTabs);
+
+    private void AskToSaveDirtyTabs(string question, Action proceed) => AskToSave(DirtyTabs, question, proceed);
+
+    private void AskToSave(Func<List<EditorTab>> dirtyTabs, string question, Action proceed)
     {
         if (_activeConfirm is not null) return;
-        var dirty = DirtyTabs();
+        var dirty = dirtyTabs();
         if (dirty.Count == 0)
         {
             proceed();
@@ -1909,8 +1959,8 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         var view = new ConfirmView("Unsaved changes", UnsavedChanges([.. dirty.Select(t => t.File.Name)], question),
-            new ConfirmChoice("Save all", () => SaveAllThen(proceed)),
-            new ConfirmChoice("Don't save", proceed));
+            new ConfirmChoice("Save all", () => SaveAllThen(dirtyTabs, proceed)),
+            new ConfirmChoice("Don't save", proceed, Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }
@@ -1926,10 +1976,10 @@ public sealed class WorkbenchHost : IDisposable
             question);
     }
 
-    private void SaveAllThen(Action proceed)
+    private void SaveAllThen(Func<List<EditorTab>> dirtyTabs, Action proceed)
     {
         EditorTab? conflict = null;
-        foreach (var tab in DirtyTabs())
+        foreach (var tab in dirtyTabs())
         {
             if (tab.DiskNow == DiskState.Changed)
             {
@@ -1947,14 +1997,14 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         if (conflict is not null)
-            ConfirmOverwrite(conflict, () => ProceedIfAllSaved(proceed));
+            ConfirmOverwrite(conflict, () => ProceedIfAllSaved(dirtyTabs, proceed));
         else
-            ProceedIfAllSaved(proceed);
+            ProceedIfAllSaved(dirtyTabs, proceed);
     }
 
-    private void ProceedIfAllSaved(Action proceed)
+    private static void ProceedIfAllSaved(Func<List<EditorTab>> dirtyTabs, Action proceed)
     {
-        if (DirtyTabs().Count == 0) proceed();
+        if (dirtyTabs().Count == 0) proceed();
     }
 
     private List<EditorTab> DirtyTabs() => [.. _workbench.Editor.Groups.Tabs.Where(t => t.IsDirty)];
@@ -1976,8 +2026,8 @@ public sealed class WorkbenchHost : IDisposable
             {
                 tab.Save();
                 afterOverwrite?.Invoke();
-            }),
-            new ConfirmChoice("Reload", () => _diskChanges.Reload(tab)));
+            }, Destructive: true),
+            new ConfirmChoice("Reload", () => _diskChanges.Reload(tab), Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }
@@ -1999,7 +2049,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var view = new ConfirmView("Reload from disk",
             $"Reload '{tab.File.Name}' from disk?\nYour unsaved changes will be lost.",
-            new ConfirmChoice("Reload", Reload));
+            new ConfirmChoice("Reload", Reload, Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
 
@@ -2039,7 +2089,7 @@ public sealed class WorkbenchHost : IDisposable
                 _workbench.StatusBar.SetMessage(ex.Message);
             }
             if (fromExplorer) FocusSidebar();
-        }));
+        }, Destructive: true));
         view.Cancelled += (_, _) =>
         {
             CloseConfirm(view);
@@ -2303,7 +2353,7 @@ public sealed class WorkbenchHost : IDisposable
                 if (diff.RevertAll() is not { } reverted) return;
                 _workbench.StatusBar.SetMessage(
                     $"Reverted {reverted:N0} change{(reverted == 1 ? string.Empty : "s")} in {diff.File.Name} — Ctrl+Z to undo");
-            }));
+            }, Destructive: true));
         view.Cancelled += (_, _) => CloseConfirm(view);
         ShowConfirm(view);
     }
@@ -2334,17 +2384,7 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var path = tab.File.FullName;
-        var root = Task.Run(() => _git.GetRepoRootAsync(path));
-        WhenDone(root, () =>
-        {
-            if (root.Result.Error is { } error)
-                _workbench.StatusBar.SetMessage(error);
-            else if (root.Result.Value is null)
-                _workbench.StatusBar.SetMessage($"{tab.File.Name} isn't in a git repository.");
-            else
-                OpenRevisionPicker(tab);
-        });
+        OpenRevisionPicker(tab);
     }
 
     private void GitBlame()
@@ -2544,14 +2584,24 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(view.Scope);
         view.FocusFilter();
 
-        var refs = Task.Run(() => _git.GetRefsAsync(path));
-        var history = Task.Run(() => _git.GetFileHistoryAsync(path));
-        WhenDone(Task.WhenAll(refs, history), () =>
+        void Load()
         {
-            if (!ReferenceEquals(_activeRevisionPicker, view)) return;
-            view.Load(refs.Result.Value ?? [], history.Result.Value ?? []);
-            if ((refs.Result.Error ?? history.Result.Error) is { } error) view.ShowError(error);
-        });
+            view.ShowLoading();
+            var root = Task.Run(() => _git.GetRepoRootAsync(path));
+            var refs = Task.Run(() => _git.GetRefsAsync(path));
+            var history = Task.Run(() => _git.GetFileHistoryAsync(path));
+            WhenDone(Task.WhenAll(root, refs, history), () =>
+            {
+                if (!ReferenceEquals(_activeRevisionPicker, view)) return;
+                if (root.Result.Value is null && root.Result.Error is null)
+                    view.ShowLoadFailed($"{tab.File.Name} isn't in a git repository", null);
+                else if ((root.Result.Error ?? refs.Result.Error ?? history.Result.Error) is { } error)
+                    view.ShowLoadFailed(error, Load);
+                else
+                    view.Load(refs.Result.Value ?? [], history.Result.Value ?? []);
+            });
+        }
+        Load();
     }
 
     // Scoped commands, not the view's own bindings: the tab header claims Left/Right first (#193).
@@ -2772,53 +2822,20 @@ public sealed class WorkbenchHost : IDisposable
             : GitResult<string>.Failure($"{name} isn't in {revision}");
     }
 
-    /// <summary>
-    /// Open pull request (<c>opr</c>): the repo's open PRs, listed before the picker opens so a missing
-    /// <c>gh</c> is one status-bar line rather than an empty dialog.
-    /// </summary>
+    /// <summary>Open pull request (<c>opr</c>): the picker opens at once and lists the repo's open PRs once gh has them (#525).</summary>
     private void OpenPullRequest()
     {
         if (_activePullRequestPicker is not null) return;
         if (_workbench.Sidebar.Explorer.Root is not { } root) return;
 
-        var folder = root.FullName;
-        _workbench.StatusBar.SetMessage("Loading pull requests…");
-        var repoRoot = Task.Run(() => _git.GetRepoRootAsync(folder));
-        WhenDone(repoRoot, () =>
-        {
-            if (repoRoot.Result.Error is { } error)
-            {
-                _workbench.StatusBar.SetMessage(error);
-                return;
-            }
-            if (repoRoot.Result.Value is not { } repo)
-            {
-                _workbench.StatusBar.SetMessage($"{folder} isn't in a git repository.");
-                return;
-            }
-            var listing = Task.Run(() => _gitHub.ListPullRequestsAsync(repo));
-            WhenDone(listing, () =>
-            {
-                if (listing.Result.Error is { } listError)
-                    _workbench.StatusBar.SetMessage(listError);
-                else if (listing.Result.Value.Count == 0)
-                    _workbench.StatusBar.SetMessage("No open pull requests.");
-                else
-                    OpenPullRequestPicker(root, repo, listing.Result.Value);
-            });
-        });
-    }
-
-    private void OpenPullRequestPicker(IDirectoryInfo root, string repoRoot, IReadOnlyList<GitHubPullRequestSummary> pullRequests)
-    {
-        if (_activePullRequestPicker is not null) return;
         var fileSystem = root.FileSystem;
-        var view = new PullRequestPickerView(pullRequests);
+        var view = new PullRequestPickerView();
+        string? repoRoot = null;
         var checkingOut = false;
         view.Cancelled += (_, _) => ClosePullRequestPicker(view);
         view.Submitted += (_, pullRequest) =>
         {
-            if (checkingOut) return;
+            if (checkingOut || repoRoot is null) return;
             checkingOut = true;
             view.ShowBusy(pullRequest.Number);
 
@@ -2842,6 +2859,40 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusFilter();
+
+        void Load()
+        {
+            view.ShowLoading();
+            var folder = root.FullName;
+            var lookup = Task.Run(() => _git.GetRepoRootAsync(folder));
+            WhenDone(lookup, () =>
+            {
+                if (!ReferenceEquals(_activePullRequestPicker, view)) return;
+                if (lookup.Result.Error is { } error)
+                {
+                    view.ShowLoadFailed(error, Load);
+                    return;
+                }
+                if (lookup.Result.Value is not { } repo)
+                {
+                    view.ShowLoadFailed($"{folder} isn't in a git repository", null);
+                    return;
+                }
+                var listing = Task.Run(() => _gitHub.ListPullRequestsAsync(repo));
+                WhenDone(listing, () =>
+                {
+                    if (!ReferenceEquals(_activePullRequestPicker, view)) return;
+                    if (listing.Result.Error is { } listError)
+                        view.ShowLoadFailed(listError, Load);
+                    else
+                    {
+                        repoRoot = repo;
+                        view.Load(listing.Result.Value);
+                    }
+                });
+            });
+        }
+        Load();
     }
 
     /// <summary>Open worktree (<c>ow</c>): the repo's other worktrees, listed before the picker opens.</summary>
@@ -2928,55 +2979,18 @@ public sealed class WorkbenchHost : IDisposable
             : GitResult<string>.Success(worktreePath);
     }
 
-    /// <summary>
-    /// Submit review (<c>sr</c>): the branch's PR is looked up before the dialog opens, so no PR and no
-    /// <c>gh</c> are both one status-bar line rather than a dialog with nothing to submit to.
-    /// </summary>
+    /// <summary>Submit review (<c>sr</c>): the dialog opens at once, and its form once gh has found the branch's PR (#525).</summary>
     private void SubmitReview()
     {
         if (_activeSubmitReview is not null) return;
         if (_workbench.Sidebar.Explorer.Root is not { } root) return;
 
-        var folder = root.FullName;
-        const string loading = "Loading pull request…";
-        _workbench.StatusBar.SetMessage(loading);
-        var repoRoot = Task.Run(() => _git.GetRepoRootAsync(folder));
-        WhenDone(repoRoot, () =>
-        {
-            if (repoRoot.Result.Error is { } error)
-            {
-                _workbench.StatusBar.SetMessage(error);
-                return;
-            }
-            if (repoRoot.Result.Value is not { } repo)
-            {
-                _workbench.StatusBar.SetMessage($"{folder} isn't in a git repository.");
-                return;
-            }
-            var found = Task.Run(() => _gitHub.GetPullRequestAsync(repo));
-            WhenDone(found, () =>
-            {
-                if (found.Result.Error is { } lookupError)
-                    _workbench.StatusBar.SetMessage(lookupError);
-                else if (found.Result.Value is not { } pullRequest)
-                    _workbench.StatusBar.SetMessage("No pull request for this branch.");
-                else
-                {
-                    _workbench.StatusBar.ClearMessage(loading);
-                    OpenDrafts(repo, pullRequest.Number);
-                    OpenSubmitReview(repo, pullRequest.Number);
-                }
-            });
-        });
-    }
-
-    private void OpenSubmitReview(string repoRoot, int number)
-    {
-        if (_activeSubmitReview is not null) return;
-        var view = new SubmitReviewView(number, Drafts.Count);
+        var view = new SubmitReviewView();
+        (string Root, int Number)? found = null;
         view.Cancelled += (_, _) => CloseSubmitReview(view);
         view.Submitted += (_, review) =>
         {
+            if (found is not var (repoRoot, number)) return;
             view.ShowBusy();
             var drafts = Drafts.All.ToArray();
             var submitting = Task.Run(() => _gitHub.SubmitReviewAsync(repoRoot, number, review.Verdict, review.Summary, drafts));
@@ -2999,6 +3013,43 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusSummary();
+
+        void Load()
+        {
+            view.ShowLoading();
+            var folder = root.FullName;
+            var lookup = Task.Run(() => _git.GetRepoRootAsync(folder));
+            WhenDone(lookup, () =>
+            {
+                if (!ReferenceEquals(_activeSubmitReview, view)) return;
+                if (lookup.Result.Error is { } error)
+                {
+                    view.ShowLoadFailed(error, Load);
+                    return;
+                }
+                if (lookup.Result.Value is not { } repo)
+                {
+                    view.ShowLoadFailed($"{folder} isn't in a git repository", null);
+                    return;
+                }
+                var pullRequest = Task.Run(() => _gitHub.GetPullRequestAsync(repo));
+                WhenDone(pullRequest, () =>
+                {
+                    if (!ReferenceEquals(_activeSubmitReview, view)) return;
+                    if (pullRequest.Result.Error is { } lookupError)
+                        view.ShowLoadFailed(lookupError, Load);
+                    else if (pullRequest.Result.Value is not { } pr)
+                        view.ShowNoPullRequest();
+                    else
+                    {
+                        found = (repo, pr.Number);
+                        OpenDrafts(repo, pr.Number);
+                        view.Load(pr.Number, Drafts.Count);
+                    }
+                });
+            });
+        }
+        Load();
     }
 
     private bool CanToggleViewed() => _focus.Region switch
@@ -3015,6 +3066,14 @@ public sealed class WorkbenchHost : IDisposable
         && review.MergeBase == spot.Key
             ? spot
             : null;
+
+    private bool ViewedTargetIsViewed()
+    {
+        if (_workbench.Sidebar.Review is not { Review: { Viewed: not null } review } tab) return false;
+        if (_focus.Region == FocusRegion.Diff) return ViewedSpot() is { } spot && review.IsViewed(spot.Path);
+        if (tab.SelectedFolder is { } folder) return review.FilesUnder(folder).All(review.IsViewed);
+        return tab.SelectedFile is { } file && review.IsViewed(file.Path);
+    }
 
     /// <summary>
     /// Toggle viewed (<c>tv</c>, #396): GitHub's Viewed mark on the file selected in the Review tab, or on the

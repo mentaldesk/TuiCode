@@ -71,6 +71,7 @@ public sealed class Workbench : Window
         sidebar.Search.Message += (_, message) => statusBar.SetMessage(message);
 
         sidebar.Review.RootProvider = () => sidebar.Explorer.Root;
+        sidebar.Review.RefreshFailed += (_, error) => statusBar.SetMessage($"Couldn't refresh the review: {error}");
 
         editor.FileSaved += (_, file) =>
         {
@@ -257,6 +258,21 @@ public sealed class Workbench : Window
         if (!rememberTabs) return;
         RestoreOpenFiles(directory);
         _workspaceFolder = directory.FullName;
+        SaveWorkspaceState();
+    }
+
+    /// <summary>Closes the focused group's tabs but its active one, unsaved changes and all.</summary>
+    public void CloseOtherTabs()
+    {
+        Editor.Group.Close(Editor.Group.Others);
+        SaveWorkspaceState();
+    }
+
+    /// <summary>Closes every tab in both groups, unsaved changes and all.</summary>
+    public void CloseAllTabs()
+    {
+        foreach (var group in Editor.Groups.All.Reverse())
+            group.Close([.. group.TabCollection]);
         SaveWorkspaceState();
     }
 

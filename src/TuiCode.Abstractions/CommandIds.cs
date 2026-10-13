@@ -7,6 +7,8 @@ public static class CommandIds
     public const string SaveActiveEditor = "workbench.action.saveActiveEditor";
     public const string SaveAll = "workbench.action.files.saveAll";
     public const string CloseActiveEditor = "workbench.action.closeActiveEditor";
+    public const string CloseOtherTabs = "workbench.action.closeOtherEditors";
+    public const string CloseAllTabs = "workbench.action.closeAllEditors";
     public const string NextEditor = "workbench.action.nextEditor";
     public const string PreviousEditor = "workbench.action.previousEditor";
     public const string MoveToOtherGroup = "workbench.action.moveEditorToOtherGroup";
@@ -116,6 +118,9 @@ public static class CommandIds
     public const string SearchFocusResults = "search.action.focusResults";
     public const string SearchSwitchField = "search.action.switchField";
     public const string SearchReplaceAll = "search.action.replaceAll";
+    public const string ToggleMatchCase = "find.action.toggleMatchCase";
+    public const string ToggleWholeWord = "find.action.toggleWholeWord";
+    public const string ToggleIgnoredFiles = "search.action.toggleIgnoredFiles";
 
     public const string OpenConfirm = "open.action.confirm";
     public const string OpenCancel = "open.action.cancel";
@@ -126,6 +131,7 @@ public static class CommandIds
     public const string RevisionPickerDown = "revisionPicker.action.down";
     public const string RevisionPickerPageUp = "revisionPicker.action.pageUp";
     public const string RevisionPickerPageDown = "revisionPicker.action.pageDown";
+    public const string RevisionPickerRetry = "revisionPicker.action.retry";
 
     public const string PullRequestPickerConfirm = "pullRequestPicker.action.confirm";
     public const string PullRequestPickerCancel = "pullRequestPicker.action.cancel";
@@ -133,6 +139,7 @@ public static class CommandIds
     public const string PullRequestPickerDown = "pullRequestPicker.action.down";
     public const string PullRequestPickerPageUp = "pullRequestPicker.action.pageUp";
     public const string PullRequestPickerPageDown = "pullRequestPicker.action.pageDown";
+    public const string PullRequestPickerRetry = "pullRequestPicker.action.retry";
 
     public const string RecentFolderPickerConfirm = "recentFolderPicker.action.confirm";
     public const string RecentFolderPickerCancel = "recentFolderPicker.action.cancel";
@@ -150,6 +157,7 @@ public static class CommandIds
 
     public const string SubmitReviewConfirm = "submitReview.action.confirm";
     public const string SubmitReviewCancel = "submitReview.action.cancel";
+    public const string SubmitReviewRetry = "submitReview.action.retry";
 
     public const string CommentConfirm = "comment.action.confirm";
     public const string CommentCancel = "comment.action.cancel";

@@ -800,6 +800,46 @@ public class FocusHostTests : StaticConfigurationTest
         Assert.Equal(("b.txt", "b.txt"), (afterAltTab, afterAltShiftTab));
     }
 
+    // Windows keeps Ctrl+Esc for the Start menu (#520).
+    [Fact]
+    public async Task The_tab_strip_has_no_default_key_and_Ctrl_Esc_leaves_the_editor_alone()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        var keybindings = new KeybindingService(commands);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(),
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git, gitHub: _gitHub);
+        var after = "";
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.Esc.WithCtrl),
+            () => { after = workbench.StatusBar.DisplayedFocus; });
+
+        Assert.Equal("Editor", after);
+        Assert.DoesNotContain(keybindings.Bindings, b => b.CommandId == CommandIds.FocusEditorTabStrip);
+        Assert.DoesNotContain(keybindings.Bindings, b => b.CanonicalId == KeyChord.Canonical(TestKeys.Chord("Ctrl+Esc")));
+        Assert.Equal("ft", CommandMnemonics.For(CommandIds.FocusEditorTabStrip));
+    }
+
+    [Fact]
+    public async Task A_key_the_user_bound_to_the_tab_strip_still_reaches_it()
+    {
+        using var workbench = BuildWorkbench();
+        var settings = new InMemorySettingsService();
+        settings.SetKeybindingOverrides([new KeybindingOverride(TestKeys.Chord("Ctrl+Esc"), CommandIds.FocusEditorTabStrip)]);
+        var commands = new CommandService();
+        using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
+            settings, driverName: DriverRegistry.Names.ANSI, git: _git, gitHub: _gitHub);
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.Esc.WithCtrl),
+            () => workbench.StatusBar.DisplayedFocus == "Tabs");
+    }
+
     private Workbench.Workbench BuildWorkbench()
     {
         var sidebar = new SidebarPart(new FileExplorerView(), review: new ReviewView(_git, _gitHub));

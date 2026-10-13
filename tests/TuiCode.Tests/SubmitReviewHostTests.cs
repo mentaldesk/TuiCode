@@ -1,5 +1,6 @@
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -32,7 +33,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
+            () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Looks good"),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Dialog(workbench) is null);
@@ -50,8 +51,8 @@ public class SubmitReviewHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
-            () => { shows = Dialog(workbench)!.SubViews.OfType<InputView>().Single().ShowsFocus; },
+            () => Dialog(workbench) is { Loaded: true },
+            () => { shows = Dialog(workbench)!.SummaryBox.ShowsFocus; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(shows);
@@ -66,7 +67,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
+            () => Dialog(workbench) is { Loaded: true },
             () => { title = Dialog(workbench)!.Title; },
             () => host.App.InjectKey(Key.Esc));
 
@@ -81,7 +82,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
+            () => Dialog(workbench) is { Loaded: true },
             () => Choose(host, GitHubReviewVerdict.Approve),
             () => Dialog(workbench)!.Verdict == GitHubReviewVerdict.Approve,
             () => host.App.InjectKey(Key.Enter.WithCtrl),
@@ -100,7 +101,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
+            () => Dialog(workbench) is { Loaded: true },
             () => Choose(host, verdict),
             () => Dialog(workbench)!.Verdict == verdict,
             () => host.App.InjectKey(Key.Enter.WithCtrl),
@@ -120,7 +121,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
+            () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Ship it"),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Dialog(workbench)!.Status == "GraphQL: Can not approve your own pull request",
@@ -132,26 +133,26 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task A_refusal_too_long_for_one_row_wraps_under_the_hints_rather_than_over_them()
+    public async Task A_refusal_too_long_for_one_row_wraps_under_the_buttons_rather_than_over_them()
     {
         _gitHub.ReviewError = "failed to create review: GraphQL: Can not approve your own pull request (addPullRequestReview)";
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var alert = System.Drawing.Rectangle.Empty;
-        var hint = System.Drawing.Rectangle.Empty;
+        var cancel = System.Drawing.Rectangle.Empty;
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
+            () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Ship it"),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Dialog(workbench)!.Status == _gitHub.ReviewError,
             () => Alert(workbench).Frame.Height > 1,
-            () => { alert = Alert(workbench).Frame; hint = Hint(workbench, "Esc cancel").Frame; },
+            () => { alert = Alert(workbench).Frame; cancel = Button(workbench, "Cancel").Frame; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(alert.Height > 1, $"the refusal took {alert.Height} row(s), so it never wrapped");
-        Assert.Equal(hint.Y + 1, alert.Y);
+        Assert.Equal(cancel.Y + 1, alert.Y);
     }
 
     [Fact]
@@ -162,7 +163,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
+            () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Never mind"),
             () => host.App.InjectKey(Key.Esc),
             () => Dialog(workbench) is null);
@@ -171,78 +172,154 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Sr_stops_saying_it_is_loading_once_the_dialog_is_up()
+    public async Task Sr_opens_at_once_and_shows_the_form_once_gh_has_found_the_pull_request()
     {
+        var gate = new TaskCompletionSource();
+        _gitHub.HoldPullRequest = gate;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        var message = "";
+        var stateWhileLoading = LoadState.Loaded;
+        var titleWhileLoading = "";
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
             () => Dialog(workbench) is not null,
-            () => { message = workbench.StatusBar.DisplayedText; },
+            () =>
+            {
+                stateWhileLoading = Dialog(workbench)!.State.State;
+                titleWhileLoading = Dialog(workbench)!.Title;
+                host.App.InjectKey(Key.Enter.WithCtrl);
+                gate.SetResult();
+            },
+            () => Dialog(workbench) is { Loaded: true },
             () => host.App.InjectKey(Key.Esc),
             () => Dialog(workbench) is null);
 
-        Assert.Equal(workbench.StatusBar.DefaultMessage, message);
+        Assert.Equal(LoadState.Loading, stateWhileLoading);
+        Assert.Equal("Submit review", titleWhileLoading);
+        Assert.Empty(_gitHub.Reviews);
         Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
     }
 
     [Fact]
-    public async Task Without_a_pull_request_sr_says_so_in_the_status_bar_and_opens_nothing()
+    public async Task Esc_closes_the_dialog_while_it_loads_and_the_late_answer_opens_nothing()
     {
-        _gitHub.PullRequest = null;
+        var gate = new TaskCompletionSource();
+        _gitHub.HoldPullRequest = gate;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-
-        await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.SubmitReview),
-            () => workbench.StatusBar.DisplayedText == "No pull request for this branch.");
-
-        Assert.Null(Dialog(workbench));
-    }
-
-    [Fact]
-    public async Task Without_gh_sr_says_so_in_the_status_bar_and_opens_nothing()
-    {
-        _gitHub.Missing = true;
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands);
-
-        await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.SubmitReview),
-            () => workbench.StatusBar.DisplayedText == "Pull requests need the GitHub CLI: run gh auth login");
-
-        Assert.Null(Dialog(workbench));
-    }
-
-    [Fact]
-    public async Task Clicking_the_submit_hint_posts_the_review()
-    {
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands);
+        var lookup = Task.CompletedTask;
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
             () => Dialog(workbench) is not null,
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null,
+            () =>
+            {
+                gate.SetResult();
+                lookup = Task.Delay(200);
+            },
+            () => lookup.IsCompleted,
+            () => Assert.Null(Dialog(workbench)));
+
+        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task Without_a_pull_request_the_dialog_says_so()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var says = "";
+
+        await HostSteps.Run(host,
+            () => { _gitHub.PullRequest = null; },
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench)?.State.State == LoadState.Empty,
+            () => { says = Dialog(workbench)!.State.Says; },
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal("No pull request for this branch", says);
+        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
+    }
+
+    [Fact]
+    public async Task Without_gh_the_dialog_says_so_and_R_tries_again()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var says = "";
+
+        await HostSteps.Run(host,
+            () => { _gitHub.Missing = true; },
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench)?.State.State == LoadState.Failed,
+            () =>
+            {
+                says = Dialog(workbench)!.State.Says;
+                _gitHub.Missing = false;
+                host.App.InjectKey(Key.R);
+            },
+            () => Dialog(workbench) is { Loaded: true },
+            () => Assert.Equal("", Dialog(workbench)!.Summary),
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal("Pull requests need the GitHub CLI: run gh auth login", says);
+    }
+
+    [Fact]
+    public async Task Outside_a_git_repository_the_dialog_says_so_and_offers_no_retry()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var says = "";
+
+        await HostSteps.Run(host,
+            () => { _git.Root = null; },
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench)?.State.State == LoadState.Empty,
+            () =>
+            {
+                says = Dialog(workbench)!.State.Says;
+                host.App.InjectKey(Key.R);
+            },
+            () => Assert.Equal(LoadState.Empty, Dialog(workbench)!.State.State),
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal($"{_fs.Path.GetFullPath("/work")} isn't in a git repository", says);
+    }
+
+    [Fact]
+    public async Task Clicking_Submit_posts_the_review()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Looks good"),
-            () => Click(Hint(workbench, "Ctrl+Enter submit")),
+            () => Click(Button(workbench, "Submit")),
             () => Dialog(workbench) is null);
 
         Assert.Equal([(_git.Root, 187, GitHubReviewVerdict.Comment, "Looks good")], _gitHub.Reviews);
     }
 
     [Fact]
-    public async Task Clicking_the_cancel_hint_closes_the_dialog_without_submitting()
+    public async Task Clicking_Cancel_closes_the_dialog_without_submitting()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
+            () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Never mind"),
-            () => Click(Hint(workbench, "Esc cancel")),
+            () => Click(Button(workbench, "Cancel")),
             () => Dialog(workbench) is null);
 
         Assert.Empty(_gitHub.Reviews);
@@ -257,7 +334,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
-            () => Dialog(workbench) is not null,
+            () => Dialog(workbench) is { Loaded: true },
             () => Type(host, summary),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Dialog(workbench) is null);
@@ -285,8 +362,8 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     private static AlertView Alert(Workbench.Workbench workbench) =>
         Dialog(workbench)!.SubViews.OfType<AlertView>().Single();
 
-    private static Button Hint(Workbench.Workbench workbench, string text) =>
-        Dialog(workbench)!.SubViews.OfType<Button>().Single(button => button.Text == text);
+    private static Button Button(Workbench.Workbench workbench, string text) =>
+        Dialog(workbench)!.SubViews.OfType<Button>().Single(button => button.Text.Trim() == text);
 
     private static void Click(View view) =>
         view.NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) });

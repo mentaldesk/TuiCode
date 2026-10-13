@@ -27,6 +27,19 @@ public class LanguageServerTests
     }
 
     [Fact]
+    public async Task A_server_that_finishes_loading_before_it_answers_initialize_is_ready_once_it_has()
+    {
+        _fake.ReportsProgress = false;
+        _fake.LoadsWhileInitializing = true;
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+
+        server.Start();
+
+        await ready.WaitAsync(Timeout);
+    }
+
+    [Fact]
     public async Task A_server_that_reports_no_progress_is_ready_once_it_has_been_quiet()
     {
         _fake.ReportsProgress = false;
@@ -80,10 +93,13 @@ public class LanguageServerTests
     public async Task Edits_made_before_the_server_has_started_open_it_at_their_version()
     {
         _fake.HoldLoading = true;
+        using var initializing = new ManualResetEventSlim();
+        _fake.HoldInitialize = initializing;
         using var server = Server();
         server.Start();
         server.Open(Widget, "class A { }");
         server.Change(Widget, "class B { }");
+        initializing.Set();
 
         await Until(() => _fake.Methods.Contains("textDocument/didOpen"));
 

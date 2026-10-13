@@ -78,7 +78,7 @@ public class ReplyToThreadHostTests : StaticConfigurationTest
             () =>
             {
                 title = Dialog(workbench)!.Title;
-                buttons = [.. Dialog(workbench)!.SubViews.OfType<Button>().Select(b => b.Text)];
+                buttons = [.. Dialog(workbench)!.SubViews.OfType<Button>().Select(b => b.Text.Trim())];
             },
             () => host.App.InjectKey(Key.Esc));
 

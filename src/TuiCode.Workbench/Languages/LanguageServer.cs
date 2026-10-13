@@ -100,6 +100,7 @@ public sealed class LanguageServer : IDisposable
                 connection.Notify("textDocument/didOpen", DidOpen(uri, document.Version, document.Text!));
             foreach (var document in _documents.Values) document.Text = null;
         }
+        UpdateReadiness();
         _ = Task.Delay(QuietLoad).ContinueWith(_ =>
         {
             lock (_gate)
@@ -157,15 +158,17 @@ public sealed class LanguageServer : IDisposable
         UpdateReadiness();
     }
 
+    // Decided and set under one lock, so a check that read the flags earlier can't overwrite a later one.
     private void UpdateReadiness()
     {
-        bool ready;
         lock (_gate)
         {
             if (State is LanguageServerState.Stopped or LanguageServerState.Missing) return;
-            ready = _initialized && _loaded && _progress.Count == 0;
+            var state = _initialized && _loaded && _progress.Count == 0 ? LanguageServerState.Ready : LanguageServerState.Loading;
+            if (State == state) return;
+            State = state;
         }
-        SetState(ready ? LanguageServerState.Ready : LanguageServerState.Loading);
+        _post(() => StateChanged?.Invoke(this, EventArgs.Empty));
     }
 
     public void Open(string path, string text)
@@ -288,9 +291,11 @@ public sealed class LanguageServer : IDisposable
             Failure = reason;
             process = _process;
             _connection = null;
+            // Stopped before the kill, whose exit calls back in here, so that call can't replace the reason.
+            State = LanguageServerState.Stopped;
         }
         process?.Kill();
-        SetState(LanguageServerState.Stopped);
+        _post(() => StateChanged?.Invoke(this, EventArgs.Empty));
     }
 
     private void SetState(LanguageServerState state)

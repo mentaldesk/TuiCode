@@ -54,6 +54,7 @@ internal sealed class FindController : IDisposable
             key => _bar.HasFocus || (key == Key.Esc && _tab?.ContentHasFocus == true));
 
         _bar.QueryChanged += (_, _) => Recompute(selectFromAnchor: true);
+        _bar.OptionsChanged += (_, _) => Recompute(selectFromAnchor: true);
     }
 
     public bool IsOpen => _tab is not null;
@@ -88,7 +89,7 @@ internal sealed class FindController : IDisposable
         _bar.ReplaceVisible && _bar.KeysInReplacement ? _bar.FocusReplacement() : _bar.FocusQuery();
 
     /// <summary>The bar's keys for F1, for whichever field has them.</summary>
-    internal HelpColumn Help()
+    internal HelpColumn Help(IEnumerable<HelpRow> options)
     {
         var inReplacement = _bar.ReplaceVisible && _bar.KeysInReplacement;
         HelpRow[] replaceRows = [new("Ctrl+Enter", "Replace all"), new("Tab", inReplacement ? "Find field" : "Replace field")];
@@ -97,6 +98,7 @@ internal sealed class FindController : IDisposable
             new("Enter", inReplacement ? "Replace and go to next" : "Next match"),
             new("Shift+Enter", "Previous match"),
             .. _bar.ReplaceVisible ? replaceRows : [],
+            .. options,
             new("Esc", "Close"),
         ];
         return new HelpColumn("Find bar", rows);
@@ -201,7 +203,7 @@ internal sealed class FindController : IDisposable
         if (_tab is not { } tab) return;
 
         var previous = _current >= 0 ? _matches[_current] : (TextMatch?)null;
-        _matches = tab.FindAll(_bar.Query);
+        _matches = tab.FindAll(_bar.Query, _bar.Options);
         tab.SetHighlights(_matches);
 
         if (selectFromAnchor)

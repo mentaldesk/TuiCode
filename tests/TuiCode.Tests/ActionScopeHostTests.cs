@@ -16,7 +16,7 @@ public class ActionScopeHostTests : StaticConfigurationTest
 {
     private static readonly string[] Editing =
         [
-        "Move line up", "Add cursor above", "Toggle column select", "Go to symbol in file", "Go to line:column",
+        "Move line up", "Add cursor above", "Turn on column select", "Go to symbol in file", "Go to line:column",
         "Change grammar", "Show document info", "Previous cursor position", "Next cursor position",
     ];
 
@@ -30,13 +30,13 @@ public class ActionScopeHostTests : StaticConfigurationTest
 
     private static readonly string[] NeedAnEditor =
     [
-        "Save active editor", "Close active editor", "Go to line:column", "Change grammar", "Toggle gutter",
+        "Save active editor", "Close active editor", "Go to line:column", "Change grammar", "Hide gutter",
         "Show document info", "Previous cursor position", "Next cursor position", "Focus editor tab 1",
     ];
 
     private static readonly string[] Globals =
     [
-        "Save active editor", "Close active editor", "Next tab", "Previous tab", "Toggle sidebar",
+        "Save active editor", "Close active editor", "Next tab", "Previous tab", "Hide sidebar",
         "Open settings", "Quit", "Getting Started (help)",
     ];
 
@@ -208,7 +208,7 @@ public class ActionScopeHostTests : StaticConfigurationTest
 
         Assert.All(NeedAnEditor, label => Assert.DoesNotContain(label, closed));
         Assert.All(NeedAnEditor, label => Assert.Contains(label, open));
-        Assert.Contains("Toggle sidebar", closed);
+        Assert.Contains("Hide sidebar", closed);
     }
 
     [Fact]

@@ -127,7 +127,8 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         Assert.Equal(_fs.Path.GetFullPath("/work/a.txt"), status);
         Assert.Equal("foo", queryAfterHelp);
         Assert.Equal("Find bar", help!.Place!.Title);
-        Assert.Equal(["Next match", "Previous match", "Close"], help.Place.Rows.Select(row => row.Description));
+        Assert.Equal(["Next match", "Previous match", "Match case on or off", "Match whole word on or off", "Close"],
+            help.Place.Rows.Select(row => row.Description));
         Assert.Contains(bar!, workbench.SubViewsDeep());
     }
 
@@ -156,7 +157,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
             () => bar!.Replacement == "dog");
 
         Assert.Equal(_fs.Path.GetFullPath("/work/a.txt"), status);
-        Assert.Equal(["Replace and go to next", "Previous match", "Replace all", "Find field", "Close"],
+        Assert.Equal(["Replace and go to next", "Previous match", "Replace all", "Find field", "Match case on or off", "Match whole word on or off", "Close"],
             help!.Place!.Rows.Select(row => row.Description));
         Assert.Equal("cat", bar!.Query);
     }

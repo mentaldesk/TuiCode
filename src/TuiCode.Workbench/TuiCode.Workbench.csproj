@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MentalDesk.Tui" Version="0.2.0" />
+    <PackageReference Include="MentalDesk.Tui" Version="0.2.9" />
     <PackageReference Include="Terminal.Gui" Version="2.5.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
   </ItemGroup>
