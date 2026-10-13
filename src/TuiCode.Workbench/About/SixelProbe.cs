@@ -5,11 +5,6 @@ using SizeF = System.Drawing.SizeF;
 
 namespace TuiCode.Workbench.About;
 
-internal sealed record SixelSupport(bool IsSupported, SizeF CellPixels)
-{
-    public static readonly SixelSupport Unsupported = new(false, SizeF.Empty);
-}
-
 internal enum CellSizeSource { Iterm2Report, CellResolutionReply, Assumed }
 
 internal sealed record CellMeasurement(SizeF Pixels, CellSizeSource Source, float Scale = 1);

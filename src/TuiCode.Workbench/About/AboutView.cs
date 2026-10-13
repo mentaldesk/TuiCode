@@ -1,6 +1,4 @@
-using Point = System.Drawing.Point;
 using Size = System.Drawing.Size;
-using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Services;
 
@@ -31,20 +29,21 @@ public sealed class AboutView : Window
     private const int ChromeHeight = 8;
 
     private readonly AboutArt _art;
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Size, string> EncodedImages = new();
+    private readonly ImageView _image;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Size, Color[,]> ScaledImages = new();
 
-    private IApplication? _app;
-    private SixelToRender? _sixel;
     private bool _disposed;
 
     public IKeybindingService Scope => _scopeKeybindings;
 
     internal bool IsLoading => _art.Mode == ArtMode.Loading;
     internal bool ShowsAsciiArt => _art.Mode == ArtMode.Ascii;
+    internal bool ShowsImage => _art.Mode == ArtMode.Image;
 
     public event EventHandler? Closed;
 
-    public AboutView(string version)
+    /// <param name="image">Kept by the caller across opens, so it doesn't encode the image again.</param>
+    public AboutView(string version, ImageView image)
     {
         Title = "About";
         BorderStyle = LineStyle.Single;
@@ -62,6 +61,12 @@ public sealed class AboutView : Window
             Height = Art.Length,
         };
 
+        _image = image;
+        _image.X = 1;
+        _image.Y = 1;
+        _image.Width = Dim.Fill(1);
+        _image.Visible = false;
+
         var details = new Label
         {
             X = Pos.Center(),
@@ -77,7 +82,7 @@ public sealed class AboutView : Window
             Text = "Esc · Enter  close",
         };
 
-        Add(art, details, footer);
+        Add(art, _image, details, footer);
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -86,60 +91,63 @@ public sealed class AboutView : Window
         _scopeKeybindings.Bind("Enter", CommandIds.AboutClose);
     }
 
-    /// <summary>
-    /// Shows the artwork as a sixel image if <paramref name="support"/> allows, else the ASCII art. Null means
-    /// detection is still running. Call once the view is added.
-    /// </summary>
-    internal void Present(SixelSupport? support)
+    /// <summary>An <see cref="ImageView"/> for <see cref="AboutView"/>: a picture, without pan and zoom.</summary>
+    public static ImageView CreateImage()
     {
-        if (_disposed || App is not { Driver: { } driver } app) return;
-
-        if (support is null)
+        var image = new ImageView
         {
-            StartLoading(app);
-            return;
-        }
-
-        if (!support.IsSupported)
-        {
-            _art.Mode = ArtMode.Ascii;
-            _art.SetNeedsDraw();
-            return;
-        }
-
-        var columns = Art.Max(line => line.Length);
-        var (pixels, rows) = AboutImage.Fit(AboutImage.ReadSize(), support.CellPixels, columns);
-        _art.Height = rows;
-        Height = rows + ChromeHeight;
-
-        if (EncodedImages.TryGetValue(pixels, out var cached))
-        {
-            ShowSixel(app, driver, cached);
-            return;
-        }
-
-        StartLoading(app);
-        Task.Run(() =>
-        {
-            var data = EncodedImages.GetOrAdd(pixels, size => new SixelEncoder().EncodeSixel(AboutImage.Cover(AboutImage.Load(), size)));
-            app.Invoke(() => ShowSixel(app, driver, data));
-        });
+            CanFocus = false,
+            UseBackgroundRendering = true,
+            MaxSixelPaletteColors = 256,
+        };
+        image.MouseBindings.Clear();
+        return image;
     }
 
-    private void ShowSixel(IApplication app, IDriver driver, string data)
+    internal void ShowAsciiArt()
     {
-        if (_disposed) return;
-        _app = app;
-        _sixel = new SixelToRender { Id = "about", SixelData = data };
-        _art.Sixel = _sixel;
-        _art.Mode = ArtMode.Image;
-        driver.GetOutput().GetSixels().Enqueue(_sixel);
+        _image.Visible = false;
+        _art.Mode = ArtMode.Ascii;
         _art.SetNeedsDraw();
     }
 
-    private void StartLoading(IApplication app)
+    /// <summary>Shows the artwork through whichever protocol the driver has been given, <paramref name="cellPixels"/> to a cell.</summary>
+    internal void ShowImage(Size cellPixels)
     {
-        if (_art.Mode == ArtMode.Loading) return;
+        if (_disposed || App is not { } app) return;
+
+        var columns = Art.Max(line => line.Length);
+        var (pixels, rows) = AboutImage.Fit(AboutImage.ReadSize(), cellPixels, columns);
+        _art.Height = rows;
+        _image.Height = rows;
+        Height = rows + ChromeHeight;
+
+        if (ScaledImages.TryGetValue(pixels, out var cached))
+        {
+            Show(cached);
+            return;
+        }
+
+        ShowLoading();
+        Task.Run(() =>
+        {
+            var image = ScaledImages.GetOrAdd(pixels, size => AboutImage.Cover(AboutImage.Load(), size));
+            app.Invoke(() => Show(image));
+        });
+    }
+
+    private void Show(Color[,] image)
+    {
+        if (_disposed) return;
+        if (!ReferenceEquals(_image.Image, image)) _image.Image = image;
+        _image.Visible = true;
+        _art.Mode = ArtMode.Image;
+        _art.SetNeedsDraw();
+    }
+
+    internal void ShowLoading()
+    {
+        if (_disposed || App is not { } app || _art.Mode == ArtMode.Loading) return;
         _art.Mode = ArtMode.Loading;
         _art.SetNeedsDraw();
         app.AddTimeout(TimeSpan.FromMilliseconds(80), () =>
@@ -153,14 +161,11 @@ public sealed class AboutView : Window
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing && !_disposed && _sixel is not null && _app?.Driver is { } driver)
+        if (disposing && !_disposed)
         {
-            var sixels = driver.GetOutput().GetSixels();
-            var others = sixels.Where(s => !ReferenceEquals(s, _sixel)).ToList();
-            sixels.Clear();
-            foreach (var other in others) sixels.Enqueue(other);
-            // TG only rewrites cells whose contents changed, which would leave the image on screen.
-            _app.ClearScreenNextIteration = true;
+            Remove(_image);
+            // Some terminals keep a sixel until the cells under it are written again.
+            if (_art.Mode == ArtMode.Image && App is { } app) app.ClearScreenNextIteration = true;
         }
         _disposed = true;
         base.Dispose(disposing);
@@ -175,7 +180,6 @@ public sealed class AboutView : Window
 
         public ArtMode Mode { get; set; }
         public int SpinnerFrame { get; set; }
-        public SixelToRender? Sixel { get; set; }
 
         protected override bool OnDrawingContent(DrawContext? context)
         {
@@ -183,7 +187,6 @@ public sealed class AboutView : Window
             switch (Mode)
             {
                 case ArtMode.Image:
-                    Sixel!.ScreenPosition = ViewportToScreen(Point.Empty);
                     break;
                 case ArtMode.Loading:
                     Move(Viewport.Width / 2, Viewport.Height / 2);

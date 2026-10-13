@@ -99,6 +99,7 @@ public sealed class WorkbenchHost : IDisposable
     private DiagnosticsView? _activeDiagnostics;
     private string? _cursorColour;
     private AboutView? _activeAbout;
+    private readonly ImageView _aboutImage = AboutView.CreateImage();
     private DocumentInfoView? _activeDocumentInfo;
     private BlameView? _activeBlame;
     private bool? _sixelSupported;
@@ -2210,7 +2211,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeAbout is not null) return;
 
-        var view = new AboutView(AppVersion.Current);
+        var view = new AboutView(AppVersion.Current, _aboutImage);
         view.Closed += (_, _) => CloseAbout(view);
         _activeAbout = view;
         _workbench.Add(view);
@@ -2222,19 +2223,31 @@ public sealed class WorkbenchHost : IDisposable
 
     private void PresentAbout(AboutView view)
     {
-        if (_sixelSupported is not true || _app.Driver is not { } driver)
+        if (_app.Driver is not { } driver || AboutImageProtocol() is not { } protocol)
         {
-            view.Present(_sixelSupported is null ? null : SixelSupport.Unsupported);
+            view.ShowLoading();
             return;
         }
 
-        view.Present(null);
+        if (protocol == ImageProtocol.None)
+        {
+            view.ShowAsciiArt();
+            return;
+        }
+
+        view.ShowLoading();
         // Measured on every open: the window may have moved to a screen with another scale since the last one.
         SixelProbe.MeasureCell(driver, cell => _app.Invoke(() =>
         {
-            if (ReferenceEquals(_activeAbout, view)) view.Present(new SixelSupport(true, cell.Pixels));
+            if (ReferenceEquals(_activeAbout, view)) view.ShowImage(ImageProtocols.Configure(driver, protocol, cell.Pixels));
         }));
     }
+
+    internal ImageProtocol? AboutImageProtocol() =>
+        _app.Driver is { } driver
+            ? ImageProtocols.Choose(driver.KittyGraphicsSupport is { IsSupported: true },
+                !string.IsNullOrEmpty(_environment.GetEnvironmentVariable("TMUX")), _sixelSupported)
+            : ImageProtocol.None;
 
     private void CloseAbout(AboutView view)
     {
@@ -3557,7 +3570,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var driverName = _app.Driver?.GetName() ?? "Unknown";
         var kittyNegotiationStatus = GetKittyNegotiationStatus();
-        var view = new DiagnosticsView(driverName, kittyNegotiationStatus, _cursorColour);
+        var view = new DiagnosticsView(driverName, kittyNegotiationStatus, _cursorColour, ImageProtocols.Describe(AboutImageProtocol()));
         view.Closed += (_, _) => CloseDiagnostics(view);
         _activeDiagnostics = view;
         _workbench.Add(view);
@@ -3645,6 +3658,7 @@ public sealed class WorkbenchHost : IDisposable
         _find.Dispose();
         _terminalCursors.Dispose();
         _workbench.Dispose();
+        _aboutImage.Dispose();
         _app.Dispose();
         // Tell WezTerm and kitty to stop remapping keys; matches the startup activation.
         // Emitted post-Dispose so it reaches the live terminal after TG restores it.

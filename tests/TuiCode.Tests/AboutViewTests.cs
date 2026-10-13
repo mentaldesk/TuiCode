@@ -10,7 +10,8 @@ public class AboutViewTests
     [Fact]
     public void Ctor_shows_the_version_and_repository()
     {
-        using var view = new AboutView("1.2.3");
+        using var image = AboutView.CreateImage();
+        using var view = new AboutView("1.2.3", image);
 
         var details = view.SubViews.OfType<Label>().Single(label => label.Text.Contains("Version"));
 
