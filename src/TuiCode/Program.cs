@@ -10,6 +10,7 @@ using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.About;
 using TuiCode.Workbench.Configuration;
+using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Icons;
 using TuiCode.Workbench.Languages;
@@ -27,6 +28,9 @@ if (args.Contains("--smoke-syntax"))
 
 if (args.Contains("--smoke-language-server"))
     return LanguageServerSmoke.Run(Console.Out);
+
+if (args.Contains("--smoke-trash"))
+    return TrashSmoke.Run(Console.Out);
 
 // --help / -h / --version: to stdout, before anything touches the terminal (#264).
 if (UsageCli.TryHandle(args, Console.Out, AppVersion.Current) is int usageExit)
@@ -47,6 +51,7 @@ services.AddSingleton<ISettingsService, DefaultSettingsService>();
 services.AddSingleton<IEnvironment, SystemEnvironment>();
 services.AddSingleton<IGitCli>(sp => new GitCli(sp.GetRequiredService<IFileSystem>()));
 services.AddSingleton<IGitHubCli>(_ => new GitHubCli());
+services.AddSingleton(sp => SystemTrash.For(sp.GetRequiredService<IFileSystem>(), sp.GetRequiredService<IEnvironment>()));
 services.AddSingleton(sp =>
 {
     var fs = sp.GetRequiredService<IFileSystem>();
@@ -96,7 +101,8 @@ services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
     gitHub: sp.GetRequiredService<IGitHubCli>(),
     fileSystem: sp.GetRequiredService<IFileSystem>(),
     languageServers: new ProcessLauncher(),
-    log: log));
+    log: log,
+    trash: sp.GetRequiredService<ITrash>()));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();

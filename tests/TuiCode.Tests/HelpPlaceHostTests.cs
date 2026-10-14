@@ -31,6 +31,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("Enter", "Open"),
             new("→ ←", "Expand or collapse"),
             new("Delete, Ctrl+D", "Delete file or folder"),
+            new("Shift+Delete", "Delete permanently"),
             new("F2", "Move or rename file or folder"),
             new("Ctrl+X", "Cut file or folder"),
             new("Ctrl+V", "Paste file or folder"),

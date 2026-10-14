@@ -149,7 +149,18 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         EntryPaths.Relative(RequireRoot(), item.FullName);
 
     /// <summary>Permanently delete <paramref name="item"/>; a selection at or under it moves to a sibling or the parent.</summary>
-    public void Delete(IFileSystemInfo item)
+    public void Delete(IFileSystemInfo item) => Remove(item, () =>
+    {
+        if (item is IDirectoryInfo)
+            item.FileSystem.Directory.Delete(item.FullName, recursive: true);
+        else
+            item.FileSystem.File.Delete(item.FullName);
+    });
+
+    /// <summary>Move <paramref name="item"/> to <paramref name="trash"/>, as <see cref="Delete"/> otherwise.</summary>
+    public void Trash(IFileSystemInfo item, ITrash trash) => Remove(item, () => trash.Move(item.FullName));
+
+    private void Remove(IFileSystemInfo item, Action remove)
     {
         var root = RequireRoot();
         if (IsRoot(item))
@@ -162,10 +173,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
             ? SelectionAfterRemoving(fs, parent, item.FullName)
             : selected;
 
-        if (item is IDirectoryInfo)
-            fs.Directory.Delete(item.FullName, recursive: true);
-        else
-            fs.File.Delete(item.FullName);
+        remove();
         ClearCutAtOrUnder(item);
 
         if (Find(parent) is { } parentNode)

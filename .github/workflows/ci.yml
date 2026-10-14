@@ -148,6 +148,11 @@ jobs:
         shell: bash
         run: ./publish/TuiCode --smoke-syntax
 
+      - name: Trash smoke
+        # The native Trash / Recycle Bin call, which only the AOT binary shows works under Native AOT.
+        shell: bash
+        run: ./publish/TuiCode --smoke-trash
+
       - name: Language server smoke
         # The LSP client against an in-process fake server: JSON handling is where trimming would bite.
         shell: bash

@@ -145,7 +145,7 @@ public class ActionScopeHostTests : StaticConfigurationTest
             () => { workbench.Sidebar.Explorer.SelectedObject = Node(workbench, "doomed.txt"); },
             () => host.App.InjectKey(Key.E.WithCtrl),
             () => Palette(workbench) is not null,
-            () => { foreach (var c in "delete") host.App.InjectKey(new Key(c)); },
+            () => { foreach (var c in "delete file") host.App.InjectKey(c == ' ' ? Key.Space : new Key(c)); },
             () => Palette(workbench)!.Labels.SequenceEqual(["Delete file or folder"]),
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is not null,
@@ -332,6 +332,7 @@ public class ActionScopeHostTests : StaticConfigurationTest
     {
         commands = new CommandService();
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
-            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git, gitHub: _gitHub);
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git, gitHub: _gitHub,
+            trash: new FakeTrash(_fs));
     }
 }

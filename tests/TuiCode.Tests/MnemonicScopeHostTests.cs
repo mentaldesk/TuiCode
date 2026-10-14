@@ -18,7 +18,7 @@ public class MnemonicScopeHostTests : StaticConfigurationTest
     private static readonly string[] Editing =
         ["mu", "md", "du", "dd", "aa", "ab", "sno", "spo", "sao", "tc", "gs", "gl", "gp", "gn", "di", "cg", "cts"];
 
-    private static readonly string[] FileCommands = ["df", "mf", "xf", "pf"];
+    private static readonly string[] FileCommands = ["df", "dp", "mf", "xf", "pf"];
 
     private static readonly string[] DiffCommands = ["nc", "pc", "rc", "ra"];
 

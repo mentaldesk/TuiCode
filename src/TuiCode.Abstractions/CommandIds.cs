@@ -168,6 +168,7 @@ public static class CommandIds
     public const string PathPromptCycleSelection = "pathPrompt.action.cycleSelection";
 
     public const string DeleteFile = "explorer.action.deleteFile";
+    public const string DeletePermanently = "explorer.action.deletePermanently";
     public const string RenameFile = "explorer.action.renameFile";
     public const string CutFile = "explorer.action.cutFile";
     public const string PasteFile = "explorer.action.pasteFile";
