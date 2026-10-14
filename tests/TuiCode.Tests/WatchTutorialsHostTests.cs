@@ -105,7 +105,7 @@ public class WatchTutorialsHostTests : StaticConfigurationTest
         var clipboard = new TestClipboard();
 
         await HostSteps.Run(host,
-            () => host.App.Driver!.Clipboard = clipboard,
+            () => { host.App.Driver!.Clipboard = clipboard; },
             () => commands.TryExecute(CommandIds.WatchTutorials));
 
         Assert.Empty(_browser.Opened);
