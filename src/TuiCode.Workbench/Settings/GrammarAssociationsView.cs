@@ -38,14 +38,14 @@ public sealed class GrammarAssociationsView : View
         _list.KeyDown += OnListKey;
         _list.MouseEvent += (_, _) => _list.SetFocus();
 
-        var footer = new Label
+        var footer = new VerbatimLabel
         {
             X = 0,
             Y = Pos.AnchorEnd(1),
             Text = syntax is null ? "Syntax highlighting isn't available." : FooterText,
         };
 
-        Add(_search, _list, new Label { X = 0, Y = Pos.AnchorEnd(2), Text = UserGrammarsText(syntax) }, footer);
+        Add(_search, _list, new VerbatimLabel { X = 0, Y = Pos.AnchorEnd(2), Text = UserGrammarsText(syntax) }, footer);
         Rebuild();
     }
 

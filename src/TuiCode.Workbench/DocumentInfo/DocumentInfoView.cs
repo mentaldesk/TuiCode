@@ -35,11 +35,11 @@ public sealed class DocumentInfoView : Window
         Columns = columns;
         var columnWidth = columns.SelectMany(c => c.Values.Append(c.Header)).Max(s => s.Length);
 
-        Add(new Label { X = 1, Y = 0, Text = path });
-        Add(new Label { X = 1, Y = 1, Text = facts });
+        Add(new VerbatimLabel { X = 1, Y = 0, Text = path });
+        Add(new VerbatimLabel { X = 1, Y = 1, Text = facts });
 
         for (var row = 0; row < Rows.Length; row++)
-            Add(new Label { X = 1, Y = 4 + row, Text = Rows[row] });
+            Add(new VerbatimLabel { X = 1, Y = 4 + row, Text = Rows[row] });
 
         var x = 1 + NameWidth + Gap;
         foreach (var (header, values) in columns)
@@ -97,6 +97,6 @@ public sealed class DocumentInfoView : Window
 
     private static string N(int value) => value.ToString("N0", CultureInfo.CurrentCulture);
 
-    private static Label Cell(int x, int y, int width, string text) =>
+    private static VerbatimLabel Cell(int x, int y, int width, string text) =>
         new() { X = x, Y = y, Width = width, Text = text, TextAlignment = Alignment.End };
 }

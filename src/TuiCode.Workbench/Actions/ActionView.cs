@@ -21,7 +21,7 @@ public sealed class ActionView : Window
 
     private readonly Action<string> _execute;
     private readonly TextField _search;
-    private readonly Label _header;
+    private readonly VerbatimLabel _header;
     private readonly CommandList _list;
 
     private readonly ICommandService _scopeCommands;
@@ -60,7 +60,7 @@ public sealed class ActionView : Window
         // Required for descendant focus — same reason as KeybindingsPickerView.
         CanFocus = true;
 
-        var filterLabel = new Label { X = 1, Y = 0, Text = "Filter:" };
+        var filterLabel = new VerbatimLabel { X = 1, Y = 0, Text = "Filter:" };
 
         _search = new TextField
         {
@@ -72,7 +72,7 @@ public sealed class ActionView : Window
         _search.TextChanged += (_, _) => RebuildVisible();
         _search.MouseEvent += (_, _) => _search.SetFocus();
 
-        _header = new Label
+        _header = new VerbatimLabel
         {
             X = 1,
             Y = Pos.Bottom(_search) + 1,

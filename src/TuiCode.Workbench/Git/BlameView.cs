@@ -120,7 +120,7 @@ public sealed class BlameView : Window
         return button;
     }
 
-    private static Label Row(string text, ref int y) => new() { X = 1, Y = y++, Width = Dim.Fill(1), Height = 1, Text = text };
+    private static VerbatimLabel Row(string text, ref int y) => new() { X = 1, Y = y++, Width = Dim.Fill(1), Height = 1, Text = text };
 
     protected override void OnHasFocusChanged(bool newHasFocus, View? previousFocusedView, View? focusedView)
     {

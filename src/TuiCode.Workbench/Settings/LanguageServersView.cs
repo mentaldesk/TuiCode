@@ -13,7 +13,7 @@ public sealed class LanguageServersView : View
     private readonly Dictionary<string, LanguageServerSetting> _chosen;
     private readonly Func<string, bool> _isInstalled;
     private readonly IInputScopeStack _scopes;
-    private readonly Label _header;
+    private readonly VerbatimLabel _header;
     private readonly ListView _list;
     private IReadOnlyList<LanguageServerRow> _rows = [];
 
@@ -34,11 +34,11 @@ public sealed class LanguageServersView : View
         Height = Dim.Fill();
         CanFocus = true;
 
-        _header = new Label { X = 0, Y = 0, Width = Dim.Fill() };
+        _header = new VerbatimLabel { X = 0, Y = 0, Width = Dim.Fill() };
         _list = new ListView { X = 0, Y = 1, Width = Dim.Fill(), Height = Dim.Fill(2) };
         _list.KeyDown += OnListKey;
         _list.MouseEvent += (_, _) => _list.SetFocus();
-        var footer = new Label { X = 0, Y = Pos.AnchorEnd(1), Text = FooterText };
+        var footer = new VerbatimLabel { X = 0, Y = Pos.AnchorEnd(1), Text = FooterText };
 
         Add(_header, _list, footer);
         Rebuild();

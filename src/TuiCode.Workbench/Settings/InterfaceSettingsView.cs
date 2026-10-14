@@ -20,11 +20,11 @@ public sealed class InterfaceSettingsView : View
         // Required: TG only allows focus on a descendant if every ancestor has CanFocus = true.
         CanFocus = true;
 
-        var caption = new Label { X = 0, Y = 0, Text = "Sidebar width" };
+        var caption = new VerbatimLabel { X = 0, Y = 0, Text = "Sidebar width" };
         _sidebarWidth = new NumericUpDown<int> { X = ControlColumn, Y = 0, Value = sidebarWidth };
         _sidebarWidth.ValueChanging += (_, e) =>
             e.Handled = e.NewValue is < SidebarSizing.Min or > SidebarSizing.SettingsMax;
-        var units = new Label { X = Pos.Right(_sidebarWidth) + 1, Y = 0, Text = "columns" };
+        var units = new VerbatimLabel { X = Pos.Right(_sidebarWidth) + 1, Y = 0, Text = "columns" };
 
         Add(caption, _sidebarWidth, units);
         KeyDown += OnKey;

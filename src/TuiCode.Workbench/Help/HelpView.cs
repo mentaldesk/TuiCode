@@ -91,7 +91,7 @@ public sealed class HelpView : Window
         Width = bodyWidth + 2;
         Height = bodyHeight + Chrome;
 
-        var footer = new Label
+        var footer = new VerbatimLabel
         {
             X = Pos.Center(),
             Y = Pos.AnchorEnd(1),
@@ -134,9 +134,9 @@ public sealed class HelpView : Window
         var height = rows.Count + 2;
         var view = new View { Width = width, Height = height };
         view.Add(
-            new Label { X = 0, Y = 0, Text = column.Title },
+            new VerbatimLabel { X = 0, Y = 0, Text = column.Title },
             new Line { X = 0, Y = 1, Width = width },
-            new Label { X = 0, Y = 2, Width = width, Height = rows.Count, Text = string.Join("\n", rows) });
+            new VerbatimLabel { X = 0, Y = 2, Width = width, Height = rows.Count, Text = string.Join("\n", rows) });
         return (view, width, height);
     }
 }

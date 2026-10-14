@@ -90,7 +90,7 @@ public sealed class SettingsView : Window
         // (KeyDown below) and gate on HasFocus to avoid trampling search-field typing.
         KeyDown += OnSettingsKey;
 
-        _separator = new Label
+        _separator = new VerbatimLabel
         {
             X = Pos.Right(_categoriesList) + 1,
             Y = 1,
@@ -188,7 +188,7 @@ public sealed class SettingsView : Window
         _categoriesList.Source = new ListWrapper<string>(new(_panels.Select(p => p.Name)));
         _categoriesList.SelectedItem = 0;
 
-        var footer = new Label
+        var footer = new VerbatimLabel
         {
             X = 1,
             Y = Pos.AnchorEnd(1),

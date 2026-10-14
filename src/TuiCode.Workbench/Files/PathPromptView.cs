@@ -14,7 +14,7 @@ namespace TuiCode.Workbench.Files;
 public sealed class PathPromptView : Window
 {
     private readonly TextField _input;
-    private readonly Label _error;
+    private readonly VerbatimLabel _error;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
@@ -40,7 +40,7 @@ public sealed class PathPromptView : Window
         // Required for descendant focus — same reason as the other modals.
         CanFocus = true;
 
-        var hintLabel = new Label
+        var hintLabel = new VerbatimLabel
         {
             X = 1,
             Y = 0,
@@ -58,7 +58,7 @@ public sealed class PathPromptView : Window
         // Park the caret at the end so typing appends to the pre-filled path.
         _input.InsertionPoint = prefill.Length;
 
-        _error = new Label
+        _error = new VerbatimLabel
         {
             X = 1,
             Y = 3,

@@ -42,7 +42,7 @@ public sealed class RecentFolderPickerView : Window
         _filter.TextChanged += (_, _) => ShowEntries();
 
         _list = new ListView { X = 1, Y = 1, Width = Dim.Fill(1), Height = Dim.Fill(1) };
-        var hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
+        var hint = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
         Add(_filter, _list, hint);
 
         _scopeCommands = new CommandService();

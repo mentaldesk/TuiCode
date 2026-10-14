@@ -1,4 +1,5 @@
 using Terminal.Gui.Text;
+using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Controls;
 
@@ -29,6 +30,7 @@ public sealed class AlertView : View
         Height = 0;
         Visible = false;
         CanFocus = false;
+        HotKeySpecifier = VerbatimLabel.NoHotKey;
         TextFormatter.WordWrap = true;
         TextFormatter.MultiLine = true;
     }

@@ -6,9 +6,9 @@ namespace TuiCode.Workbench.Parts;
 
 public sealed class StatusBarPart : View
 {
-    private readonly Label _label;
-    private readonly Label _position;
-    private readonly Label _focus;
+    private readonly VerbatimLabel _label;
+    private readonly VerbatimLabel _position;
+    private readonly VerbatimLabel _focus;
     private readonly Button _warnings;
     private int _unseenWarnings;
     private string _region = string.Empty;
@@ -29,8 +29,8 @@ public sealed class StatusBarPart : View
         CanFocus = false;
         SchemeName = "StatusBar";
 
-        _position = new Label { X = Pos.AnchorEnd() - 1, Y = 0 };
-        _focus = new Label { X = 1, Y = 0 };
+        _position = new VerbatimLabel { X = Pos.AnchorEnd() - 1, Y = 0 };
+        _focus = new VerbatimLabel { X = 1, Y = 0 };
         _warnings = new Button
         {
             X = Pos.Left(_position),
@@ -53,7 +53,7 @@ public sealed class StatusBarPart : View
             e.Result = WarningColour.On(e.Result ?? GetAttributeForRole(e.Role));
             e.Handled = true;
         };
-        _label = new Label
+        _label = new VerbatimLabel
         {
             X = Pos.Right(_focus),
             Y = 0,

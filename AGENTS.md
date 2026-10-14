@@ -27,7 +27,7 @@ DOTNET_ROOT=$HOME/.dotnet dotnet test TuiCode.slnx     # DOTNET_ROOT only needed
 - `src/TuiCode.Search/` — `TextSearch` / `WorkspaceSearch` (pure) and the sidebar `SearchView`.
 - `src/TuiCode.Syntax/` — TextMate grammar bundle for syntax highlighting (TG-free).
 - `src/TuiCode.Icons/` — file and folder icons for the explorer, Find results, Review tab and Open dialog.
-- `src/TuiCode.Abstractions/` — interfaces + DTOs, plus `PaneTabs`, the one view type shared by two features. Features depend only on this.
+- `src/TuiCode.Abstractions/` — interfaces + DTOs, plus `PaneTabs` and `VerbatimLabel`, the view types shared by more than one feature. Features depend only on this.
 - `tests/TuiCode.Tests/` — single test assembly.
 
 ## Tests
@@ -72,6 +72,7 @@ What follows is how TuiCode implements it today.
 - `LogView` is the one custom view: `TextView` can't scroll without moving its cursor.
 - Buttons are `AppButton` (`Primary`, `Danger`, `Secondary`): filled, in the theme's `ButtonPrimary` / `ButtonDanger` / `ButtonSecondary` schemes, which every bundled theme defines. `Primary` is the dialog's default, so Enter presses it. In `ConfirmView`, a `ConfirmChoice` that throws work away is `Destructive` and draws as `Danger`. A dialog button with a key is a `KeyedButton` (`Workbench/Controls/`), which writes the key first (`Ctrl+Enter Submit`) from the dialog's own binding, so bind the key it should show before any other on that command (#548). The exceptions are the Review tab's *Overview* and the status bar's warnings button.
 - `AlertView` (`Workbench/Controls/`) is the guide's message block. It wraps the message and reports the rows it needs (`Lines`); the dialog grows by that many and moves its buttons up (`SubmitReviewView.Alert`). `AlertSeverity.Error` draws it in the theme's `Error` scheme, `Info` in `Accent`. `sr`, `gs` and `cc` use it — `PathPromptView`, `RevisionPickerView` and `PullRequestPickerView` still have the one-row `Label` (#208).
+- Text goes in a `VerbatimLabel` (Abstractions), never a plain `Label`, which takes the first `_` as a hotkey marker and hides it (#549). `AlertView` turns the hotkey off the same way. `VerbatimLabelTests` fails on any `new Label` in our assemblies.
 - `LoadStateView` (from the library) is the guide's **Loading and empty** rule: `opr`, `sr`, `ctr` and the Review pane open at once and say loading, empty or failed where their content goes, never on the status bar (#525). `R` retries a failed load through a scoped command enabled only while it's failed, so it still types into the filter otherwise. `LoadStateViews.ShowLoadFailed` cuts the message to one row, since the library doesn't wrap it, and leaves `R retry` off outside a git repository, which the library can only do by showing it as empty (dimmed).
 - `InputView` (`Workbench/Controls/`) is the guide's bordered multi-line field, used by `sr` and `cc`. It draws its box heavy while it has focus and single while it hasn't (#223), and leaves where typing goes to the terminal cursor, as the editor does — it paints no caret of its own, so nothing covers the character the cursor is on. A dialog hosting one is `InputView.Frame` rows and columns taller for the box.
 

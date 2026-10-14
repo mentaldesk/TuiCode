@@ -77,7 +77,7 @@ public sealed class TerminalIntegrationPickerView : View
         int row = 0;
         foreach (var line in state.Lines)
         {
-            Add(new Label { X = 0, Y = row, Text = line });
+            Add(new VerbatimLabel { X = 0, Y = row, Text = line });
             row++;
         }
 

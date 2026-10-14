@@ -43,14 +43,14 @@ public sealed class FileIconsPickerView : View
         // TG doesn't auto-transfer focus on mouse click in this layout. Force it on any mouse event.
         _list.MouseEvent += (_, _) => _list.SetFocus();
 
-        var detection = new Label
+        var detection = new VerbatimLabel
         {
             X = 0,
             Y = Pos.Bottom(_list) + 1,
             Width = Dim.Fill(),
             Text = $"Auto: {icons.Detection.Reason}.",
         };
-        var hint = new Label
+        var hint = new VerbatimLabel
         {
             X = 0,
             Y = Pos.Bottom(detection),

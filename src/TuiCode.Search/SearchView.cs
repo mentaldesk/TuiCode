@@ -14,12 +14,12 @@ public sealed class SearchView : View
     private const int LabelWidth = 8;
 
     private readonly TextField _query;
-    private readonly Label _replaceLabel;
+    private readonly VerbatimLabel _replaceLabel;
     private readonly TextField _replacement;
     private readonly FindOption _matchCase;
     private readonly FindOption _wholeWord;
     private readonly FindOption _ignoredFiles;
-    private readonly Label _status;
+    private readonly VerbatimLabel _status;
     private readonly TreeView<SearchNode> _results;
     private CancellationTokenSource? _searchCts;
     private (Request Request, string Replacement, int Matches)? _pendingReplace;
@@ -71,14 +71,14 @@ public sealed class SearchView : View
     {
         CanFocus = true;
 
-        var queryLabel = new Label { X = 0, Y = 0, Text = "Find" };
+        var queryLabel = new VerbatimLabel { X = 0, Y = 0, Text = "Find" };
         _query = new TextField { X = LabelWidth, Y = 0, Width = Dim.Fill() };
-        _replaceLabel = new Label { X = 0, Y = 1, Text = "Replace", Visible = false };
+        _replaceLabel = new VerbatimLabel { X = 0, Y = 1, Text = "Replace", Visible = false };
         _replacement = new TextField { X = LabelWidth, Y = 1, Width = Dim.Fill(), Visible = false };
         _matchCase = new FindOption("_Case") { X = LabelWidth, Y = 1 };
         _wholeWord = new FindOption("_Word") { X = Pos.Right(_matchCase) + 2, Y = 1 };
         _ignoredFiles = new FindOption("Ignored files") { X = LabelWidth, Y = 2 };
-        _status = new Label { X = 0, Y = 3, Width = Dim.Fill(), Height = Dim.Auto(DimAutoStyle.Text), Text = string.Empty };
+        _status = new VerbatimLabel { X = 0, Y = 3, Width = Dim.Fill(), Height = Dim.Auto(DimAutoStyle.Text), Text = string.Empty };
         _status.TextFormatter.WordWrap = true;
         _results = new TreeView<SearchNode>
         {
