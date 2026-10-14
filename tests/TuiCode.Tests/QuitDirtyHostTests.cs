@@ -252,6 +252,27 @@ public class QuitDirtyHostTests : StaticConfigurationTest
         Assert.False(asked);
     }
 
+    [Fact]
+    public async Task A_tab_back_to_its_saved_text_quits_at_once()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var asked = false;
+        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmView;
+
+        await HostSteps.RunUntilQuit(host,
+            () =>
+            {
+                Open(workbench, "/work/a.txt", edit: null);
+                var tab = workbench.Editor.Group.ActiveTab!;
+                tab.Code.NewKeyDownEvent(Key.X);
+                tab.Code.Undo();
+            },
+            () => host.App.InjectKey(Key.Q.WithCtrl));
+
+        Assert.False(asked);
+    }
+
     // Cancel starts focused, so Tab round the row until the wanted button has it.
     private static Func<bool> Reach(WorkbenchHost host, Workbench.Workbench workbench, string label) => () =>
     {

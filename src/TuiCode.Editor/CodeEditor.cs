@@ -98,6 +98,9 @@ internal sealed partial class CodeEditor : TextEditor
 
     public int Lines => _lines.Count;
 
+    /// <summary>The length of every line in <see cref="LineStrings"/> added up, terminators excluded.</summary>
+    public long LineChars { get; private set; }
+
     public string LineText(int row) => _lines[row];
 
     /// <summary>Raised once for each edit, typed, pasted, replaced, undone or set through <see cref="Text"/>.</summary>
@@ -176,18 +179,31 @@ internal sealed partial class CodeEditor : TextEditor
         if (first + removed > _lines.Count || _lines.Count - removed + inserted != document.LineCount)
         {
             _lines.Clear();
+            LineChars = 0;
             for (var i = 0; i < document.LineCount; i++)
+            {
                 _lines.Add(Read(i));
+                LineChars += _lines[i].Length;
+            }
             RecordStray();
             return;
         }
         var fresh = new string[inserted];
         for (var i = 0; i < inserted; i++)
             fresh[i] = Keep(first + i < _lines.Count && i < removed ? _lines[first + i] : null, Read(first + i));
+        for (var i = first; i < first + removed; i++)
+            LineChars -= _lines[i].Length;
+        foreach (var line in fresh)
+            LineChars += line.Length;
         _lines.RemoveRange(first, removed);
         _lines.InsertRange(first, fresh);
         // A line break inserted between \r and \n moves the line above too.
-        if (first > 0) _lines[first - 1] = Keep(_lines[first - 1], Read(first - 1));
+        if (first > 0)
+        {
+            var above = Keep(_lines[first - 1], Read(first - 1));
+            LineChars += above.Length - _lines[first - 1].Length;
+            _lines[first - 1] = above;
+        }
         RecordStray();
     }
 

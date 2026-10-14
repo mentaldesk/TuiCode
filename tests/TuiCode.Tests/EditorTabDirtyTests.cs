@@ -28,7 +28,7 @@ public class EditorTabDirtyTests : StaticConfigurationTest
     [InlineData("Backspace", 0, 1, "lpha beta|gamma delta|")]
     [InlineData("Backspace", 1, 0, "alpha betagamma delta|")]
     [InlineData("Delete", 0, 0, "lpha beta|gamma delta|")]
-    [InlineData("Delete", 1, 11, "alpha beta|gamma delta")]
+    [InlineData("Delete", 0, 10, "alpha betagamma delta|")]
     [InlineData("Shift+CursorRight Backspace", 0, 0, "lpha beta|gamma delta|")]
     public async Task Deleting_keys_mark_the_tab_dirty_and_raise_ContentChanged(string key, int row, int col, string expected)
     {

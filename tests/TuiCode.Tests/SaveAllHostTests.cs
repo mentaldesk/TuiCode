@@ -94,6 +94,28 @@ public class SaveAllHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_tab_back_to_its_saved_text_is_left_alone()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var written = DateTime.MinValue;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                Open(workbench, "/work/a.txt", edit: null);
+                var tab = workbench.Editor.Group.ActiveTab!;
+                tab.Code.NewKeyDownEvent(Key.X);
+                tab.Code.Undo();
+                written = _fs.File.GetLastWriteTimeUtc("/work/a.txt");
+            },
+            () => host.App.InjectKey(Key.S.WithCtrl.WithShift),
+            () => workbench.StatusBar.Message == "No unsaved changes");
+
+        Assert.Equal(written, _fs.File.GetLastWriteTimeUtc("/work/a.txt"));
+    }
+
+    [Fact]
     public async Task A_file_changed_on_disk_gets_the_conflict_prompt_while_the_rest_save()
     {
         using var workbench = BuildWorkbench();

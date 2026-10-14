@@ -12,6 +12,8 @@ public sealed class EditorTab : FrameView
     private View? _header;
     private string _eol;
     private bool _dirty;
+    // What Save last wrote or the tab last read; null while nothing is on disk.
+    private string? _saved;
     private DiskState _disk;
     private bool _headerColoured;
     private bool _loading;
@@ -110,6 +112,7 @@ public sealed class EditorTab : FrameView
 
         var initial = unsaved ?? file.FileSystem.File.ReadAllText(file.FullName);
         OnDisk = FileSnapshot.Of(file, initial);
+        _saved = unsaved is null ? initial : file.Exists ? file.FileSystem.File.ReadAllText(file.FullName) : null;
         _eol = DetectEol(initial);
 
         _text = new CodeEditor
@@ -138,7 +141,7 @@ public sealed class EditorTab : FrameView
         _text.CursorMoved += (_, point) => CursorMoved?.Invoke(this, (point.Y, point.X));
         Add(_gutter, _text);
 
-        _dirty = unsaved is not null;
+        _dirty = unsaved is not null && !MatchesSaved();
         UpdateTitle();
     }
 
@@ -282,6 +285,7 @@ public sealed class EditorTab : FrameView
             _loading = false;
         }
         OnDisk = FileSnapshot.Of(File, content);
+        _saved = content;
         MoveCursor(row, column);
         _edits++;
         _gutter.ResetBaseline();
@@ -575,20 +579,14 @@ public sealed class EditorTab : FrameView
 
     public void Save()
     {
-        // The editor's Text joins its lines with Environment.NewLine, so on Windows the
-        // buffer comes back CRLF regardless of the file's real endings. Re-emit using
-        // the EOL we detected on load so a file's line-ending style round-trips
-        // unchanged on every OS (matches VS Code's preserve-on-save behaviour).
-        var eol = LineEnding == LineEnding.CRLF ? "\r\n" : "\n";
-        var content = Normalize(_text.Text, eol);
-        if (Settings.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
-            content += eol;
+        var content = SaveContent();
         // A deleted file's directory can have gone with it (#271), and a tab opened on a file that never
         // existed (#247) has nothing above it either; recreate the path rather than throwing.
         if (File.FileSystem.Path.GetDirectoryName(File.FullName) is { Length: > 0 } directory)
             File.FileSystem.Directory.CreateDirectory(directory);
         File.FileSystem.File.WriteAllText(File.FullName, content);
         OnDisk = FileSnapshot.Of(File, content);
+        _saved = content;
         _gutter.ResetBaseline();
         BaselineReset?.Invoke(this, EventArgs.Empty);
         _disk = DiskState.Unchanged;
@@ -599,6 +597,41 @@ public sealed class EditorTab : FrameView
         }
         UpdateTitle();
         Saved?.Invoke(this, EventArgs.Empty);
+    }
+
+    private string Eol => LineEnding == LineEnding.CRLF ? "\r\n" : "\n";
+
+    // The editor's Text joins its lines with Environment.NewLine, so on Windows the buffer comes back CRLF
+    // regardless of the file's real endings; re-emit with the EOL detected on load, as VS Code does.
+    private string SaveContent()
+    {
+        var eol = Eol;
+        var content = Normalize(_text.Text, eol);
+        if (Settings.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
+            content += eol;
+        return content;
+    }
+
+    // What SaveContent would write, compared in place: typing in a large file mustn't walk or build its text each key (#550).
+    private bool MatchesSaved()
+    {
+        if (_saved is not { } saved) return false;
+        var lines = _text.LineStrings;
+        var eol = Eol;
+        var finalEol = Settings.InsertFinalNewline && lines.Count > 0 && lines[^1].Length > 0;
+        var length = _text.LineChars + (Math.Max(lines.Count - 1, 0) + (finalEol ? 1 : 0)) * eol.Length;
+        if (length != saved.Length) return false;
+
+        var at = 0;
+        bool Next(string text)
+        {
+            if (!saved.AsSpan(at, text.Length).SequenceEqual(text)) return false;
+            at += text.Length;
+            return true;
+        }
+        for (var i = 0; i < lines.Count; i++)
+            if ((i > 0 && !Next(eol)) || !Next(lines[i])) return false;
+        return !finalEol || Next(eol);
     }
 
     // The file's line-ending style, fixed on load. An empty buffer is a new/blank file: there's
@@ -631,15 +664,15 @@ public sealed class EditorTab : FrameView
     {
         if (_loading) return;
         _edits++;
-        MarkDirty();
+        SetDirty(!MatchesSaved());
         _gutter.OnContentChanged();
         ContentChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void MarkDirty()
+    private void SetDirty(bool dirty)
     {
-        if (_dirty) return;
-        _dirty = true;
+        if (_dirty == dirty) return;
+        _dirty = dirty;
         UpdateTitle();
         DirtyChanged?.Invoke(this, EventArgs.Empty);
     }
