@@ -67,7 +67,7 @@ public sealed class AboutView : Window
         _image.Width = Dim.Fill(1);
         _image.Visible = false;
 
-        var details = new Label
+        var details = new VerbatimLabel
         {
             X = Pos.Center(),
             Y = Pos.Bottom(art) + 1,
@@ -75,7 +75,7 @@ public sealed class AboutView : Window
             TextAlignment = Alignment.Center,
         };
 
-        var footer = new Label
+        var footer = new VerbatimLabel
         {
             X = Pos.Center(),
             Y = Pos.AnchorEnd(1),

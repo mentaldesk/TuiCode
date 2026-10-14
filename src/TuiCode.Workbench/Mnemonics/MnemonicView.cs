@@ -22,7 +22,7 @@ public sealed class MnemonicView : Window
     private readonly MnemonicResolver _resolver;
     private readonly Action<string> _execute;
     private readonly KeyCaptureScope _scope;
-    private readonly Label _header;
+    private readonly VerbatimLabel _header;
     private readonly ListView _list;
 
     private readonly StringBuilder _input = new();
@@ -54,7 +54,7 @@ public sealed class MnemonicView : Window
         Height = 22;
         CanFocus = true;
 
-        _header = new Label
+        _header = new VerbatimLabel
         {
             X = 1,
             Y = 0,

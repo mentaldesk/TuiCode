@@ -13,13 +13,13 @@ public sealed class DiagnosticsView : Window
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
-    private readonly Label _keyName;
-    private readonly Label _keyHex;
-    private readonly Label _keyBase;
-    private readonly Label _keyRune;
-    private readonly Label _cursorColour;
-    private readonly Label _cellSize;
-    private readonly Label _imageProtocol;
+    private readonly VerbatimLabel _keyName;
+    private readonly VerbatimLabel _keyHex;
+    private readonly VerbatimLabel _keyBase;
+    private readonly VerbatimLabel _keyRune;
+    private readonly VerbatimLabel _cursorColour;
+    private readonly VerbatimLabel _cellSize;
+    private readonly VerbatimLabel _imageProtocol;
     private readonly string? _askedCursorColour;
 
     public IKeybindingService Scope => _scopeKeybindings;
@@ -46,22 +46,22 @@ public sealed class DiagnosticsView : Window
         var hintY = nameY + 6;
         Height = hintY + 6;
 
-        static Label Heading(string text, int y) => new Label
+        static VerbatimLabel Heading(string text, int y) => new VerbatimLabel
         {
             X = 1, Y = y,
             Text = text,
         };
 
-        static Label Field(int y) => new Label
+        static VerbatimLabel Field(int y) => new VerbatimLabel
         {
             X = FieldX, Y = y,
             Width = Dim.Fill(1),
         };
 
         var driverHeading = Heading("Driver", 1);
-        var driverNameLabel = new Label { X = FieldX, Y = 1, Text = driverName };
+        var driverNameLabel = new VerbatimLabel { X = FieldX, Y = 1, Text = driverName };
         var kittyHeading = Heading("Kitty kb", 2);
-        var kittyStatusLabel = new Label
+        var kittyStatusLabel = new VerbatimLabel
         {
             X = FieldX,
             Y = 2,
@@ -71,7 +71,7 @@ public sealed class DiagnosticsView : Window
         };
 
         var cursorColourHeading = Heading("Cursor colour", cursorColourY);
-        _cursorColour = new Label
+        _cursorColour = new VerbatimLabel
         {
             X = FieldX,
             Y = cursorColourY,
@@ -80,7 +80,7 @@ public sealed class DiagnosticsView : Window
         };
 
         var cellSizeHeading = Heading("Cell size", cellSizeY);
-        _cellSize = new Label
+        _cellSize = new VerbatimLabel
         {
             X = FieldX,
             Y = cellSizeY,
@@ -89,7 +89,7 @@ public sealed class DiagnosticsView : Window
         };
 
         var imageProtocolHeading = Heading("Image protocol", imageProtocolY);
-        _imageProtocol = new Label
+        _imageProtocol = new VerbatimLabel
         {
             X = FieldX,
             Y = imageProtocolY,
@@ -108,14 +108,14 @@ public sealed class DiagnosticsView : Window
         _keyBase = Field(nameY + 2);
         _keyRune = Field(nameY + 3);
 
-        var hint = new Label
+        var hint = new VerbatimLabel
         {
             X = Pos.Center(),
             Y = hintY,
             Text = "(press any key to update)",
         };
 
-        var footer = new Label
+        var footer = new VerbatimLabel
         {
             X = Pos.Center(),
             Y = Pos.AnchorEnd(1),

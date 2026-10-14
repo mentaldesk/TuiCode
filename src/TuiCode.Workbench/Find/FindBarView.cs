@@ -1,3 +1,4 @@
+using TuiCode.Abstractions;
 using TuiCode.Search;
 
 namespace TuiCode.Workbench.Find;
@@ -14,13 +15,13 @@ public sealed class FindBarView : View
     // "☐ Case  ☐ Word" with a gap either side.
     private const int OptionsWidth = 17;
 
-    private readonly Label _queryLabel;
+    private readonly VerbatimLabel _queryLabel;
     private readonly TextField _query;
-    private readonly Label _replaceLabel;
+    private readonly VerbatimLabel _replaceLabel;
     private readonly TextField _replacement;
     private readonly FindOption _matchCase;
     private readonly FindOption _wholeWord;
-    private readonly Label _status;
+    private readonly VerbatimLabel _status;
 
     public event EventHandler? QueryChanged;
     public event EventHandler? OptionsChanged;
@@ -32,12 +33,12 @@ public sealed class FindBarView : View
         BorderStyle = LineStyle.Single;
         Border.Thickness = new Thickness(0, 0, 0, 1);
 
-        _queryLabel = new Label { X = 1, Y = 0, Text = "Find" };
+        _queryLabel = new VerbatimLabel { X = 1, Y = 0, Text = "Find" };
         _query = new TextField { X = LabelWidth, Y = 0, Width = Dim.Fill(OptionsWidth + SideWidth) };
         _matchCase = new FindOption("_Case") { X = Pos.AnchorEnd(OptionsWidth + SideWidth - 1), Y = 0 };
         _wholeWord = new FindOption("_Word") { X = Pos.Right(_matchCase) + 2, Y = 0 };
-        _status = new Label { X = Pos.AnchorEnd(SideWidth), Y = 0, Width = SideWidth, Text = string.Empty };
-        _replaceLabel = new Label { X = 1, Y = 1, Text = "Replace", Visible = false };
+        _status = new VerbatimLabel { X = Pos.AnchorEnd(SideWidth), Y = 0, Width = SideWidth, Text = string.Empty };
+        _replaceLabel = new VerbatimLabel { X = 1, Y = 1, Text = "Replace", Visible = false };
         _replacement = new TextField { X = LabelWidth, Y = 1, Width = Dim.Fill(OptionsWidth + SideWidth), Visible = false };
 
         Add(_queryLabel, _query, _matchCase, _wholeWord, _status, _replaceLabel, _replacement);

@@ -10,7 +10,7 @@ namespace TuiCode.Workbench.Navigation;
 public sealed class GoToLineView : Window
 {
     private readonly TextField _input;
-    private readonly Label _error;
+    private readonly VerbatimLabel _error;
     private readonly int _totalLines;
 
     private readonly ICommandService _scopeCommands;
@@ -34,7 +34,7 @@ public sealed class GoToLineView : Window
         Height = 7;
         CanFocus = true;
 
-        var hint = new Label
+        var hint = new VerbatimLabel
         {
             X = 1,
             Y = 0,
@@ -49,7 +49,7 @@ public sealed class GoToLineView : Window
             Width = Dim.Fill(1),
         };
 
-        _error = new Label
+        _error = new VerbatimLabel
         {
             X = 1,
             Y = 3,

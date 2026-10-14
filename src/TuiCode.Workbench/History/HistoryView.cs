@@ -11,7 +11,7 @@ namespace TuiCode.Workbench.History;
 public sealed class HistoryView : FrameView
 {
     private readonly TextField _filter;
-    private readonly Label _note;
+    private readonly VerbatimLabel _note;
     private readonly ListView _list;
     private readonly LoadStateView _state;
     private IReadOnlyList<GitFileCommit> _commits = [];
@@ -29,7 +29,7 @@ public sealed class HistoryView : FrameView
         _filter = new TextField { X = 0, Y = 0, Width = Dim.Fill() };
         _filter.TextChanged += (_, _) => ShowCommits();
         _filter.KeyDown += OnFilterKey;
-        _note = new Label { X = Pos.AnchorEnd(0), Y = 0, Width = 0, Text = "" };
+        _note = new VerbatimLabel { X = Pos.AnchorEnd(0), Y = 0, Width = 0, Text = "" };
 
         _list = new CommitList(OnListKey) { Width = Dim.Fill(), Height = Dim.Fill() };
         _list.Accepting += (_, e) =>

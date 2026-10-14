@@ -11,7 +11,7 @@ public sealed class WorktreePickerView : Window
     private const string Hint = "Type to filter · Up/Down/PgUp/PgDn · Enter open · Esc cancel";
 
     private readonly TextField _filter;
-    private readonly Label _header;
+    private readonly VerbatimLabel _header;
     private readonly ListView _list;
 
     private readonly ICommandService _scopeCommands;
@@ -44,7 +44,7 @@ public sealed class WorktreePickerView : Window
         _filter = new TextField { X = 1, Y = 0, Width = Dim.Fill(1) };
         _filter.TextChanged += (_, _) => ShowEntries();
 
-        _header = new Label { X = 1, Y = Pos.Bottom(_filter) + 1, Width = Dim.Fill(1), Height = 1 };
+        _header = new VerbatimLabel { X = 1, Y = Pos.Bottom(_filter) + 1, Width = Dim.Fill(1), Height = 1 };
         _header.GettingAttributeForRole += (_, e) =>
         {
             var attribute = e.Result ?? GetAttributeForRole(e.Role);
@@ -53,7 +53,7 @@ public sealed class WorktreePickerView : Window
         };
 
         _list = new ListView { X = 1, Y = Pos.Bottom(_header), Width = Dim.Fill(1), Height = Dim.Fill(1) };
-        var hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
+        var hint = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
         Add(_filter, _header, _list, hint);
 
         _scopeCommands = new CommandService();

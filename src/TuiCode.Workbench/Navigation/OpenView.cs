@@ -23,9 +23,9 @@ public sealed class OpenView : Window
     private const string FileOnlyBrowseHint = "Type to filter · Enter open · Esc cancel";
     private const string FilterHint = "Up/Down select · Enter open · Esc clear filter";
 
-    private readonly Label _pathLabel;
-    private readonly Label _filterLabel;
-    private readonly Label _hint;
+    private readonly VerbatimLabel _pathLabel;
+    private readonly VerbatimLabel _filterLabel;
+    private readonly VerbatimLabel _hint;
     private readonly ListView _list;
     private readonly Button? _openFolderButton;
     private readonly string _browseHint;
@@ -62,8 +62,8 @@ public sealed class OpenView : Window
         // Required for descendant focus — same reason as the other modals.
         CanFocus = true;
 
-        _pathLabel = new Label { X = 1, Y = 0, Width = Dim.Fill(1) };
-        _filterLabel = new Label { X = 1, Y = 1, Width = Dim.Fill(1) };
+        _pathLabel = new VerbatimLabel { X = 1, Y = 0, Width = Dim.Fill(1) };
+        _filterLabel = new VerbatimLabel { X = 1, Y = 1, Width = Dim.Fill(1) };
 
         _list = new ListView
         {
@@ -74,7 +74,7 @@ public sealed class OpenView : Window
         };
         _list.MouseEvent += (_, _) => _list.SetFocus();
 
-        _hint = new Label
+        _hint = new VerbatimLabel
         {
             X = 1,
             Y = Pos.AnchorEnd(1),

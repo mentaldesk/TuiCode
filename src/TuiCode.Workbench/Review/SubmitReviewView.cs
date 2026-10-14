@@ -20,7 +20,7 @@ public sealed class SubmitReviewView : Window
     private readonly OptionSelector<GitHubReviewVerdict> _verdict;
     private readonly InputView _summary;
     private readonly LoadStateView _state;
-    private readonly Label _drafts;
+    private readonly VerbatimLabel _drafts;
     private readonly Button[] _buttons;
     private readonly AlertView _alert;
     private readonly Button _submit;
@@ -56,7 +56,7 @@ public sealed class SubmitReviewView : Window
             Value = GitHubReviewVerdict.Comment,
         };
 
-        _drafts = new Label { X = 1, Y = Pos.AnchorEnd(2), Text = string.Empty, Visible = false };
+        _drafts = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(2), Text = string.Empty, Visible = false };
 
         _summary = new InputView
         {

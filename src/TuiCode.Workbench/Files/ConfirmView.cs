@@ -38,7 +38,7 @@ public sealed class ConfirmView : Window
         Height = message.Split('\n').Length + 5;
         CanFocus = true;
 
-        Add(new Label
+        Add(new VerbatimLabel
         {
             X = 1,
             Y = 0,

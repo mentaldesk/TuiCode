@@ -22,9 +22,9 @@ public sealed class KeybindingsPickerView : View
     private readonly Dictionary<string, CommandScope> _commandScopes;
     private readonly List<KeyBinding> _currentBindings;                 // mutable; reflects the picker's pending state
     private readonly TextField _search;
-    private readonly Label _header;
+    private readonly VerbatimLabel _header;
     private readonly ListView _list;
-    private readonly Label _footer;
+    private readonly VerbatimLabel _footer;
 
     private IReadOnlyList<KeybindingRow> _displayRows = [];
     private KeyCaptureScope? _activeCapture;
@@ -65,7 +65,7 @@ public sealed class KeybindingsPickerView : View
         };
         _search.TextChanged += (_, _) => RebuildRows();
 
-        _header = new Label
+        _header = new VerbatimLabel
         {
             X = 0,
             Y = Pos.Bottom(_search) + 1,
@@ -87,7 +87,7 @@ public sealed class KeybindingsPickerView : View
         _list.MouseEvent += (_, _) => _list.SetFocus();
         _search.MouseEvent += (_, _) => _search.SetFocus();
 
-        _footer = new Label
+        _footer = new VerbatimLabel
         {
             X = 0,
             Y = Pos.AnchorEnd(1),

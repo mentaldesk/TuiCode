@@ -23,14 +23,14 @@ public sealed class ReviewView : View
     private readonly IGitHubCli _gitHub;
     private readonly FileIcons? _icons;
     private readonly SyntaxHighlighter? _syntax;
-    private readonly Label _title;
-    private readonly Label _header;
+    private readonly VerbatimLabel _title;
+    private readonly VerbatimLabel _header;
     private readonly TotalsLabel _totals;
-    private readonly Label _checks;
-    private readonly Label _threadCounts;
-    private readonly Label _hint;
-    private readonly Label _draftReview;
-    private readonly Label _viewed;
+    private readonly VerbatimLabel _checks;
+    private readonly VerbatimLabel _threadCounts;
+    private readonly VerbatimLabel _hint;
+    private readonly VerbatimLabel _draftReview;
+    private readonly VerbatimLabel _viewed;
     private readonly Button _overview;
     private readonly Line _rule;
     private readonly TreeView<ReviewNode> _files;
@@ -107,7 +107,7 @@ public sealed class ReviewView : View
 
     internal Button Overview => _overview;
 
-    internal Label Hint => _hint;
+    internal VerbatimLabel Hint => _hint;
 
     /// <summary>The changed files in the order the tab lists them (#181).</summary>
     public IReadOnlyList<GitChange> ChangedFiles => [.. AllFiles().Select(f => f.Change)];
@@ -129,8 +129,8 @@ public sealed class ReviewView : View
         _checks = Line();
         _threadCounts = Line();
         _hint = Line();
-        _draftReview = new Label { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Text = string.Empty, Visible = false };
-        _viewed = new Label { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Text = string.Empty, Visible = false };
+        _draftReview = new VerbatimLabel { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Text = string.Empty, Visible = false };
+        _viewed = new VerbatimLabel { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Text = string.Empty, Visible = false };
         // GetAttributeForRole isn't virtual in TG 2.1.0, so the hint is styled through its event; Handled makes the result stick.
         _hint.GettingAttributeForRole += (_, e) =>
         {
@@ -187,7 +187,7 @@ public sealed class ReviewView : View
         };
     }
 
-    private static Label Line() => new() { X = 0, Y = 0, Width = Dim.Fill(), Text = string.Empty, Visible = false };
+    private static VerbatimLabel Line() => new() { X = 0, Y = 0, Width = Dim.Fill(), Text = string.Empty, Visible = false };
 
     /// <summary>
     /// Lays out a file's row: what the branch did to it (#320) and its type icon (#321), its name, any thread badge (#186),
@@ -261,7 +261,7 @@ public sealed class ReviewView : View
     }
 
     /// <summary>The totals line, its <c>+</c> count in the added colour and its <c>−</c> count in the deleted one.</summary>
-    private sealed class TotalsLabel(Func<GitChangeKind, string, Attribute, Attribute> countColor) : Label
+    private sealed class TotalsLabel(Func<GitChangeKind, string, Attribute, Attribute> countColor) : VerbatimLabel
     {
         protected override bool OnDrawingText(DrawContext? context)
         {

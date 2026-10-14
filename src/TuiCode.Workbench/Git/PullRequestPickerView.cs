@@ -19,7 +19,7 @@ public sealed class PullRequestPickerView : Window
     private readonly TextField _filter;
     private readonly ListView _list;
     private readonly LoadStateView _state;
-    private readonly Label _status;
+    private readonly VerbatimLabel _status;
 
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
@@ -50,9 +50,9 @@ public sealed class PullRequestPickerView : Window
 
         _list = new ListView { Width = Dim.Fill(), Height = Dim.Fill() };
         _state = new LoadStateView(_list, "Loading pull requests…") { X = 1, Y = 1, Width = Dim.Fill(1), Height = Dim.Fill(3) };
-        _status = new Label { X = 1, Y = Pos.AnchorEnd(3), Width = Dim.Fill(1), Text = "" };
-        var legend = new Label { X = 1, Y = Pos.AnchorEnd(2), Width = Dim.Fill(1), Text = $"{PullRequestList.RequestedMarker} your review is requested" };
-        var hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
+        _status = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(3), Width = Dim.Fill(1), Text = "" };
+        var legend = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(2), Width = Dim.Fill(1), Text = $"{PullRequestList.RequestedMarker} your review is requested" };
+        var hint = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
         Add(_filter, _state, _status, legend, hint);
 
         _scopeCommands = new CommandService();

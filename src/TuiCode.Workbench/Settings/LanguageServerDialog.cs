@@ -13,7 +13,7 @@ public sealed class LanguageServerDialog : Window
     private readonly OptionSelector _server;
     private readonly TextField _command;
     private readonly TextField _arguments;
-    private readonly Label _status;
+    private readonly VerbatimLabel _status;
     private readonly ICommandService _scopeCommands = new CommandService();
     private bool _filling;
 
@@ -37,7 +37,7 @@ public sealed class LanguageServerDialog : Window
         Height = _form.Options.Count + 10;
         CanFocus = true;
 
-        var serverLabel = new Label { X = 1, Y = 0, Text = "Server:" };
+        var serverLabel = new VerbatimLabel { X = 1, Y = 0, Text = "Server:" };
         _server = new OptionSelector
         {
             X = FieldColumn,
@@ -49,15 +49,15 @@ public sealed class LanguageServerDialog : Window
         _server.FocusedChanged += (_, e) => FollowFocus(e);
 
         var fieldsTop = _form.Options.Count + 1;
-        var commandLabel = new Label { X = 1, Y = fieldsTop, Text = "Command:" };
+        var commandLabel = new VerbatimLabel { X = 1, Y = fieldsTop, Text = "Command:" };
         _command = new TextField { X = FieldColumn, Y = fieldsTop, Width = Dim.Fill(1), Text = _form.Command };
-        var argumentsLabel = new Label { X = 1, Y = fieldsTop + 1, Text = "Arguments:" };
+        var argumentsLabel = new VerbatimLabel { X = 1, Y = fieldsTop + 1, Text = "Arguments:" };
         _arguments = new TextField { X = FieldColumn, Y = fieldsTop + 1, Width = Dim.Fill(1), Text = _form.Arguments };
         _command.TextChanged += (_, _) => OnFieldsChanged();
         _arguments.TextChanged += (_, _) => OnFieldsChanged();
 
-        _status = new Label { X = 1, Y = fieldsTop + 3, Width = Dim.Fill(1), Height = 2 };
-        var hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Text = "Ctrl+Enter: Save   Esc: Cancel" };
+        _status = new VerbatimLabel { X = 1, Y = fieldsTop + 3, Width = Dim.Fill(1), Height = 2 };
+        var hint = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(1), Text = "Ctrl+Enter: Save   Esc: Cancel" };
 
         Add(serverLabel, _server, commandLabel, _command, argumentsLabel, _arguments, _status, hint);
 

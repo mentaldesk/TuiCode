@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Terminal.Gui.Text;
+using TuiCode.Abstractions;
 using TuiCode.Icons;
 using TuiCode.Workbench.Languages;
 using Attribute = Terminal.Gui.Drawing.Attribute;
@@ -10,8 +11,8 @@ namespace TuiCode.Workbench.Usages;
 /// <summary>The sidebar's Usages tab (#455): one symbol's usages, kept until the next Find usages.</summary>
 public sealed class UsagesView : View
 {
-    private readonly Label _header;
-    private readonly Label _count;
+    private readonly VerbatimLabel _header;
+    private readonly VerbatimLabel _count;
     private readonly TreeView<UsageNode> _tree;
     private string _title = "Find usages of a symbol to list them here";
     private string? _counted;
@@ -27,8 +28,8 @@ public sealed class UsagesView : View
     public UsagesView(FileIcons? icons = null)
     {
         CanFocus = true;
-        _header = new Label { X = 0, Y = 0, Width = Dim.Fill(), Height = 1, Text = _title };
-        _count = new Label { X = 0, Y = 1, Width = Dim.Fill(), Height = 1, Text = "" };
+        _header = new VerbatimLabel { X = 0, Y = 0, Width = Dim.Fill(), Height = 1, Text = _title };
+        _count = new VerbatimLabel { X = 0, Y = 1, Width = Dim.Fill(), Height = 1, Text = "" };
         _tree = new TreeView<UsageNode>
         {
             X = 0,

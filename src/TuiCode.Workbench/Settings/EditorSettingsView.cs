@@ -45,14 +45,14 @@ public sealed class EditorSettingsView : View
         // Required: TG only allows focus on a descendant if every ancestor has CanFocus = true.
         CanFocus = true;
 
-        var indentSizeLabel = new Label { X = 0, Y = 0, Text = "Indent size" };
+        var indentSizeLabel = new VerbatimLabel { X = 0, Y = 0, Text = "Indent size" };
         _indentSize = new NumericUpDown<int> { X = ControlColumn, Y = 0, Value = settings.IndentSize };
         _indentSize.ValueChanging += (_, e) =>
             e.Handled = e.NewValue is < EditorSettings.MinIndentSize or > EditorSettings.MaxIndentSize;
 
         _insertSpaces = new CheckBox { X = 0, Y = 2, Text = "Indent with spaces", Value = Check(settings.InsertSpaces) };
 
-        var lineEndingLabel = new Label { X = 0, Y = 4, Text = "Line endings" };
+        var lineEndingLabel = new VerbatimLabel { X = 0, Y = 4, Text = "Line endings" };
         _lineEnding = new OptionSelector<LineEnding>
         {
             X = ControlColumn,
@@ -75,7 +75,7 @@ public sealed class EditorSettingsView : View
 
         _stickyLines = new CheckBox { X = 0, Y = 10, Text = "Show sticky lines", Value = Check(settings.StickyLines) };
 
-        var wrapByLanguageLabel = new Label { X = 0, Y = 12, Text = "Wrap by language" };
+        var wrapByLanguageLabel = new VerbatimLabel { X = 0, Y = 12, Text = "Wrap by language" };
         _languageFilter = new TextField { X = 0, Y = 13, Width = Dim.Fill(), Height = 1 };
         _languageFilter.TextChanged += (_, _) => RebuildLanguages();
         _languageFilter.KeyDown += OnLanguageFilterKey;
@@ -83,7 +83,7 @@ public sealed class EditorSettingsView : View
         _languageList = new ListView { X = 0, Y = 14, Width = Dim.Fill(), Height = Dim.Fill(1) };
         _languageList.KeyDown += OnLanguageListKey;
         _languageList.MouseEvent += (_, _) => _languageList.SetFocus();
-        var hint = new Label { X = 0, Y = Pos.AnchorEnd(1), Text = WrapByLanguageHint };
+        var hint = new VerbatimLabel { X = 0, Y = Pos.AnchorEnd(1), Text = WrapByLanguageHint };
 
         Add(indentSizeLabel, _indentSize, _insertSpaces, lineEndingLabel, _lineEnding, _insertFinalNewline, _wordWrap,
             _stickyLines, wrapByLanguageLabel, _languageFilter, _languageList, hint);

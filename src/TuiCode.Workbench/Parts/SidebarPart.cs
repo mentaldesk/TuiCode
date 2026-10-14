@@ -62,7 +62,7 @@ public sealed class SidebarPart : FrameView
             CanFocus = true,
             Visible = false,
         };
-        _noFolder.Add(new Label { Text = "No folder open", X = 1, Y = 1 }, OpenFolderButton);
+        _noFolder.Add(new VerbatimLabel { Text = "No folder open", X = 1, Y = 1 }, OpenFolderButton);
         _explorerTab.Add(_noFolder);
         // Titled after the Find globally / Replace globally commands that open it (fg / rg).
         _findTab = WrapTab("Find", Search);

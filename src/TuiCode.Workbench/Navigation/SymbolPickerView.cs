@@ -25,7 +25,7 @@ public sealed class SymbolPickerView : Window
 
     private readonly TextField _filter;
     private readonly ListView _list;
-    private readonly Label _hint;
+    private readonly VerbatimLabel _hint;
     private readonly AlertView _alert;
 
     private readonly ICommandService _scopeCommands;
@@ -60,7 +60,7 @@ public sealed class SymbolPickerView : Window
         _filter.TextChanged += (_, _) => ShowEntries(keepSelection: false);
 
         _list = new ListView { X = 1, Y = 1, Width = Dim.Fill(1), Height = Dim.Fill(1) };
-        _hint = new Label { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = HintText };
+        _hint = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = HintText };
         _alert = new AlertView(DialogWidth - 2) { X = 0, Y = Pos.AnchorEnd() };
         Add(_filter, _list, _hint, _alert);
 

@@ -86,7 +86,7 @@ internal static class KeybindingConflictDialog
             Width = 64,
             Height = 7 + message.Split('\n').Length
         };
-        dialog.Add(new Label { X = 1, Y = 1, Text = message });
+        dialog.Add(new VerbatimLabel { X = 1, Y = 1, Text = message });
         return dialog;
     }
 }
