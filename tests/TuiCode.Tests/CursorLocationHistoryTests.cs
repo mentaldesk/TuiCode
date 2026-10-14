@@ -194,4 +194,19 @@ public class CursorLocationHistoryTests
         Assert.Equal(0, history.Count);
         Assert.Null(history.Current);
     }
+
+    [Fact]
+    public void Following_a_far_move_keeps_it_out_of_the_history()
+    {
+        var history = new CursorLocationHistory(lineThreshold: 10);
+        history.Visit(Loc("a", 0));
+        history.Visit(Loc("a", 50));
+
+        history.Follow(Loc("a", 200));
+        Assert.False(history.Visit(Loc("a", 199)));
+
+        Assert.Equal(2, history.Count);
+        Assert.Equal(Loc("a", 0), history.GoBack());
+        Assert.Equal(Loc("a", 199), history.GoForward());
+    }
 }

@@ -75,6 +75,13 @@ public sealed class CursorLocationHistory
         return true;
     }
 
+    /// <summary>Move the current entry to <paramref name="loc"/> without recording a jump.</summary>
+    public void Follow(CursorLocation loc)
+    {
+        if (_current < 0) Visit(loc);
+        else _entries[_current] = loc;
+    }
+
     /// <summary>Step back one entry and return it, or null if there's nothing behind.</summary>
     public CursorLocation? GoBack()
     {

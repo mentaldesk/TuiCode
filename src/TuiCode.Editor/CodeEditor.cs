@@ -112,6 +112,7 @@ internal sealed partial class CodeEditor : TextEditor
         set
         {
             field = value;
+            ForgetBrackets();
             SetNeedsDraw();
         }
     }
@@ -169,6 +170,7 @@ internal sealed partial class CodeEditor : TextEditor
 
     private void OnDocumentChanged(object? sender, DocumentChangeEventArgs e)
     {
+        ForgetBrackets();
         var document = Document!;
         var first = document.GetLineByOffset(Math.Min(e.Offset, document.TextLength)).LineNumber - 1;
         var removed = LineBreaks(e.RemovedText.Text) + 1;
@@ -383,6 +385,7 @@ internal sealed partial class CodeEditor : TextEditor
         (_selectionStart, _selectionEnd) = SelectionBounds();
         PrepareCaretSelections();
         PrepareSyntax();
+        PrepareBrackets();
 
         var right = Viewport.Width;
         var bottom = Viewport.Height;
@@ -456,8 +459,10 @@ internal sealed partial class CodeEditor : TextEditor
                 SetAttribute(_cellAttribute);
             else if (InSelection(idxCol, idxRow))
                 SetAttribute(_selected);
+            else if (IsHighlighted(idxCol, idxRow))
+                SetAttribute(_highlight);
             else
-                SetAttribute(IsHighlighted(idxCol, idxRow) ? _highlight : _cellAttribute);
+                SetAttribute(BracketAttribute(idxCol, idxRow) ?? _cellAttribute);
 
             if (text == "\t")
             {

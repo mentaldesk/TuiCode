@@ -121,6 +121,9 @@ public sealed class SyntaxHighlighter
 
     public static TokenStyle StyleOf(int metadata) => (TokenStyle)EncodedTokenAttributes.GetFontStyle(metadata);
 
+    /// <summary>False inside a string, comment or regular expression, as the grammar marks them.</summary>
+    public static bool IsCode(int metadata) => EncodedTokenAttributes.GetTokenType(metadata) == 0;
+
     private string[] ReadColors()
     {
         var theme = _registry.GetTheme();

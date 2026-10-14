@@ -251,7 +251,7 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
         Assert.Equal("gd", CommandMnemonics.For(CommandIds.GoToDefinition));
         Assert.Equal("Ctrl+G d", keybindings.Bindings.Single(b => b.CommandId == CommandIds.GoToDefinition).Display);
         var go = host.Menu.Items.Select(i => i.Id).ToList();
-        Assert.Equal(go.IndexOf(CommandIds.GoToSymbol) + 1, go.IndexOf(CommandIds.GoToDefinition));
+        Assert.Equal(go.IndexOf(CommandIds.GoToMatchingBracket) + 1, go.IndexOf(CommandIds.GoToDefinition));
     }
 
     private void Add(string path, string content)
