@@ -64,6 +64,7 @@ Needs a real terminal — the app won't render through a non-TTY pipe. On macOS,
 
 - Bug reports and feature requests: [open an issue](https://github.com/mentaldesk/TuiCode/issues).
 - Questions and ideas: [GitHub Discussions](https://github.com/mentaldesk/TuiCode/discussions).
+- Tutorial videos: [the TuiCode playlist on YouTube](https://www.youtube.com/playlist?list=PLGokw8JfNpWE).
 
 ## Contributing
 

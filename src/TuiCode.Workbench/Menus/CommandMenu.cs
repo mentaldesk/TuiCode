@@ -65,7 +65,7 @@ public sealed class CommandMenu
         [CommandIds.ToggleViewed] = 'v', [CommandIds.SubmitReview] = 's',
 
         [CommandIds.ShowHelp] = 'g', [CommandIds.ShowActions] = 's', [CommandIds.ShowMnemonics] = 'm',
-        [CommandIds.ShowDiagnostics] = 'd', [CommandIds.ShowLog] = 'l', [CommandIds.ShowAbout] = 'a',
+        [CommandIds.WatchTutorials] = 't', [CommandIds.ShowDiagnostics] = 'd', [CommandIds.ShowLog] = 'l', [CommandIds.ShowAbout] = 'a',
     };
 
     public static readonly (string Title, string[] Ids)[] Layout =
@@ -142,7 +142,7 @@ public sealed class CommandMenu
         [
             CommandIds.ShowHelp, CommandIds.ShowActions, CommandIds.ShowMnemonics,
             Separator,
-            CommandIds.ShowDiagnostics, CommandIds.ShowLog, CommandIds.ShowAbout,
+            CommandIds.WatchTutorials, CommandIds.ShowDiagnostics, CommandIds.ShowLog, CommandIds.ShowAbout,
         ]),
     ];
 

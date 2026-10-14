@@ -175,6 +175,7 @@ public sealed class WorkbenchHost : IDisposable
         _environment = environment ?? new SystemEnvironment();
         ShellSuspend = new ShellSuspend(_environment, JobControl.IsAvailable, WriteToTerminal, () => _app.Driver?.Suspend());
         Browser = SystemBrowser.For(_environment);
+        CopyToClipboard = text => VerifiedClipboard.Copy(_app.Clipboard, text);
         _logger = logger ?? NullLogger<WorkbenchHost>.Instance;
         _log = log;
         _icons = icons;
@@ -658,6 +659,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
         _commands.Register(CommandIds.ShowLog, "Show log", ShowLog);
         _commands.Register(CommandIds.ShowAbout, "About TuiCode", OpenAbout);
+        _commands.Register(CommandIds.WatchTutorials, "Watch tutorials", WatchTutorials);
         _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo, CommandScope.Editor, FileOpen);
         // No default key (#61): users can bind one in Settings.
         _commands.Register(CommandIds.CompareToSaved, "Compare to saved", CompareToSaved, CommandScope.Editor, FileOpen);
@@ -1669,6 +1671,21 @@ public sealed class WorkbenchHost : IDisposable
         }
         else if (Browser.Open(url) is { } failure) _workbench.StatusBar.SetError($"Couldn't open the link: {failure}");
         else _workbench.StatusBar.SetMessage($"Opened {url}");
+    }
+
+    internal const string TutorialsUrl = "https://www.youtube.com/playlist?list=PLGokw8JfNpWE";
+
+    internal Func<string, CopyOutcome> CopyToClipboard { get; set; }
+
+    private void WatchTutorials()
+    {
+        if (_environment.IsOverSsh)
+        {
+            if (CopyToClipboard(TutorialsUrl) is CopyOutcome.Failed(var reason)) _workbench.StatusBar.SetError($"Couldn't copy the link: {reason}");
+            else _workbench.StatusBar.SetMessage("Copied the tutorials link (no browser over SSH)");
+        }
+        else if (Browser.Open(TutorialsUrl) is { } failure) _workbench.StatusBar.SetError($"Couldn't open the link: {failure}");
+        else _workbench.StatusBar.SetMessage("Opened TuiCode tutorials in your browser");
     }
 
     internal const string SettingsErrorMessage = "TuiCode.settings.json has an error, so defaults are in use. sl shows the log";
