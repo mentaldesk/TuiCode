@@ -62,7 +62,7 @@ public class EditorDrawBenchmarkTests : StaticConfigurationTest
         tab.BeginInit();
         tab.EndInit();
         tab.Layout();
-        var text = tab.SubViews.OfType<EditorTextView>().Single();
+        var text = tab.SubViews.OfType<CodeEditor>().Single();
 
         var first = Stopwatch.StartNew();
         Draw(app, tab);

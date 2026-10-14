@@ -2,7 +2,9 @@ using System.IO.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Terminal.Gui.App;
+using Terminal.Gui.Input;
 using TuiCode.Abstractions;
+using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Icons;
 using TuiCode.Search;
@@ -149,17 +151,35 @@ provider.GetRequiredService<ISettingsService>().Load();
 using var app = provider.GetRequiredService<App>();
 app.Host.OpenWhenRunning(startup);
 
-// --smoke: boot through Application.Init + one render iteration, then quit.
+// --smoke: boot through Application.Init, type into an editor tab, then quit.
 // CI runs this against the AOT-published binary to catch runtime failures
 // (missing metadata, trim-stripped paths) that publish-time analyzers don't.
 if (args.Contains("--smoke"))
 {
-    void QuitOnFirstIteration(object? sender, EventArgs<IApplication?> e)
+    EditorTab? tab = null;
+    var iteration = 0;
+    void Smoke(object? sender, EventArgs<IApplication?> e)
     {
-        app.Host.App.Iteration -= QuitOnFirstIteration;
-        app.Host.App.RequestStop();
+        switch (iteration++)
+        {
+            case 0:
+                var file = fileSystem.FileInfo.New(Path.Combine(Path.GetTempPath(), "tuicode-smoke.cs"));
+                tab = app.Host.Workbench.Editor.Group.Restore(file, ["class Smoke", "{", "}"]);
+                tab.FocusContent();
+                break;
+            case 1:
+                app.Host.App.Keyboard.RaiseKeyDownEvent(Key.X);
+                app.Host.App.Keyboard.RaiseKeyDownEvent(Key.Enter);
+                break;
+            case 3:
+                app.Host.App.Iteration -= Smoke;
+                if (tab?.Lines is not ["x", "class Smoke", "{", "}"])
+                    throw new InvalidOperationException($"--smoke: the editor holds {string.Join('|', tab?.Lines ?? [])}");
+                app.Host.App.RequestStop();
+                break;
+        }
     }
-    app.Host.App.Iteration += QuitOnFirstIteration;
+    app.Host.App.Iteration += Smoke;
 }
 
 return Crash.Report(app.Run, app.Dispose, crashLogger, Console.Error, log.DisplayPath);

@@ -11,21 +11,21 @@ internal sealed class EditorGutter : View
     private static readonly Color DefaultModified = new(0x38, 0x8B, 0xFD);
     private static readonly Color DefaultDeleted = new(0xF8, 0x51, 0x49);
 
-    private readonly EditorTextView _text;
+    private readonly CodeEditor _text;
     private readonly SyntaxHighlighter? _syntax;
     private string[] _saved;
     private IReadOnlyList<string>? _committed;
     private LineChange[]? _changes;
     private IReadOnlyList<int> _pinned = [];
 
-    public EditorGutter(EditorTextView text, SyntaxHighlighter? syntax = null)
+    public EditorGutter(CodeEditor text, SyntaxHighlighter? syntax = null)
     {
         _text = text;
         _syntax = syntax;
-        _saved = [.. text.Snapshot.Refresh(text.GetAllLines())];
+        _saved = [.. text.LineStrings];
         Width = WidthFor(text.Lines);
         _text.ViewportChanged += (_, _) => SetNeedsDraw();
-        _text.UnwrappedCursorPositionChanged += (_, _) => SetNeedsDraw();
+        _text.CaretChanged += (_, _) => SetNeedsDraw();
         // Wrapped rows can shift on any edit or caret move, and the text view draws first.
         _text.DrawComplete += (_, _) =>
         {
@@ -34,7 +34,7 @@ internal sealed class EditorGutter : View
     }
 
     /// <summary>How each buffer line differs from the baseline; recomputed lazily after an edit.</summary>
-    public IReadOnlyList<LineChange> Changes => _changes ??= LineDiff.Compute(_committed ?? _saved, _text.Snapshot.Refresh(_text.GetAllLines()));
+    public IReadOnlyList<LineChange> Changes => _changes ??= LineDiff.Compute(_committed ?? _saved, _text.LineStrings);
 
     /// <summary>The file's lines at <c>HEAD</c>, which win over the saved state; null when git has none.</summary>
     public IReadOnlyList<string>? Committed
@@ -59,7 +59,7 @@ internal sealed class EditorGutter : View
     /// <summary>Take the current buffer as the saved state, which is the baseline while there's no <see cref="Committed"/>.</summary>
     public void ResetBaseline()
     {
-        _saved = [.. _text.Snapshot.Refresh(_text.GetAllLines())];
+        _saved = [.. _text.LineStrings];
         OnContentChanged();
     }
 

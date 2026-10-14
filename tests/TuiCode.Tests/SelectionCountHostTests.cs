@@ -144,14 +144,14 @@ public class SelectionCountHostTests : StaticConfigurationTest
         Assert.Equal(["Ln 1, Col 1", "Ln 1, Col 4 (3 selected)"], shown);
     }
 
-    private static void Click(EditorTextView view, Point at)
+    private static void Click(CodeEditor view, Point at)
     {
         foreach (var flags in new[] { MouseFlags.LeftButtonPressed, MouseFlags.LeftButtonReleased, MouseFlags.LeftButtonClicked })
             view.NewMouseEvent(new Mouse { Flags = flags, Position = at });
     }
 
-    private static EditorTextView TextView(Workbench.Workbench workbench) =>
-        workbench.Editor.Group.ActiveTab!.SubViews.OfType<EditorTextView>().Single();
+    private static CodeEditor TextView(Workbench.Workbench workbench) =>
+        workbench.Editor.Group.ActiveTab!.SubViews.OfType<CodeEditor>().Single();
 
     private Workbench.Workbench BuildWorkbench()
     {

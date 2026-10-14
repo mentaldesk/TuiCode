@@ -250,13 +250,13 @@ public class EditorLineCommentTests
         Assert.Equal(new Point(2, 0), view.Carets[0].Position);
     }
 
-    private static Caret Selected(Point anchor, Point position) => new(position, anchor, Extending: true);
+    private static Caret Selected(Point anchor, Point position) => new(position, anchor);
 
     private static Caret At(int row, int column) => new(new Point(column, row));
 
-    private static EditorTextView View(params string[] lines)
+    private static CodeEditor View(params string[] lines)
     {
-        var view = new EditorTextView { Width = 80, Height = 10, Text = string.Join("\n", lines) };
+        var view = new CodeEditor { Width = 80, Height = 10, Text = string.Join("\n", lines) };
         view.BeginInit();
         view.EndInit();
         view.Layout();

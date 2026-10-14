@@ -102,7 +102,7 @@ public class EditorTabStatsTests
         Assert.Equal(expected, tab.LineEnding);
     }
 
-    private static EditorTextView View(EditorTab tab) => tab.SubViews.OfType<EditorTextView>().Single();
+    private static CodeEditor View(EditorTab tab) => tab.SubViews.OfType<CodeEditor>().Single();
 
     private static EditorTab OpenTab(string content)
     {

@@ -59,7 +59,7 @@ public class EditorTabFindTests
 
         tab.Replace(new TextMatch(0, 8, 3), "three");
         Assert.Equal(1, changes);
-        tab.SubViews.OfType<EditorTextView>().Single().Undo();
+        tab.SubViews.OfType<CodeEditor>().Single().Undo();
 
         Assert.Equal("one two one", tab.Lines[0]);
     }

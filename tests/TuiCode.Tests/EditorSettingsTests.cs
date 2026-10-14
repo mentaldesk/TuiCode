@@ -38,7 +38,7 @@ public class EditorSettingsTests
     public void Tab_replaces_a_selection_with_spaces_to_the_tab_stop_at_its_start()
     {
         var view = View(4, insertSpaces: true, "abXYZ");
-        view.SetCarets([new Caret(new Point(5, 0), new Point(2, 0), Extending: true)]);
+        view.SetCarets([new Caret(new Point(5, 0), new Point(2, 0))]);
 
         view.NewKeyDownEvent(Key.Tab);
 
@@ -115,9 +115,9 @@ public class EditorSettingsTests
         return (fs, group);
     }
 
-    private static EditorTextView View(int indentSize, bool insertSpaces, params string[] lines)
+    private static CodeEditor View(int indentSize, bool insertSpaces, params string[] lines)
     {
-        var view = new EditorTextView
+        var view = new CodeEditor
         {
             Width = 80,
             Height = 10,

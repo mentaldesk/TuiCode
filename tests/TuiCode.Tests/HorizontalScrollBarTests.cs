@@ -27,11 +27,11 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
     public void An_editor_line_past_the_edge_shows_the_bar_sized_to_the_widest_line()
     {
         using var tab = Tab($"short\n{LongLine}");
-        var bar = tab.TextView.HorizontalScrollBar;
+        var bar = tab.Code.HorizontalScrollBar;
 
         Assert.True(bar.Visible);
-        Assert.Equal(tab.TextView.GetContentSize().Width, bar.ScrollableContentSize);
-        Assert.Equal(tab.TextView.Viewport.Width, bar.VisibleContentSize);
+        Assert.Equal(tab.Code.GetContentSize().Width, bar.ScrollableContentSize);
+        Assert.Equal(tab.Code.Viewport.Width, bar.VisibleContentSize);
     }
 
     [Fact]
@@ -39,8 +39,8 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
     {
         using var tab = Tab("one\ntwo");
 
-        Assert.False(tab.TextView.HorizontalScrollBar.Visible);
-        Assert.Equal(Height, tab.TextView.Viewport.Height);
+        Assert.False(tab.Code.HorizontalScrollBar.Visible);
+        Assert.Equal(Height, tab.Code.Viewport.Height);
     }
 
     [Fact]
@@ -48,11 +48,11 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
     {
         using var tab = Tab(LongLine);
 
-        tab.TextView.Viewport = tab.TextView.Viewport with { X = 20 };
-        Assert.Equal(20, tab.TextView.HorizontalScrollBar.Value);
+        tab.Code.Viewport = tab.Code.Viewport with { X = 20 };
+        Assert.Equal(20, tab.Code.HorizontalScrollBar.Value);
 
-        tab.TextView.HorizontalScrollBar.Value = 40;
-        Assert.Equal(40, tab.TextView.Viewport.X);
+        tab.Code.HorizontalScrollBar.Value = 40;
+        Assert.Equal(40, tab.Code.Viewport.X);
     }
 
     [Fact]
@@ -60,10 +60,10 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
     {
         using var tab = Tab(LongLine);
 
-        tab.TextView.NewKeyDownEvent(Key.End);
+        tab.Code.NewKeyDownEvent(Key.End);
 
-        Assert.NotEqual(0, tab.TextView.Viewport.X);
-        Assert.Equal(tab.TextView.Viewport.X, tab.TextView.HorizontalScrollBar.Value);
+        Assert.NotEqual(0, tab.Code.Viewport.X);
+        Assert.Equal(tab.Code.Viewport.X, tab.Code.HorizontalScrollBar.Value);
     }
 
     [Fact]
@@ -71,9 +71,9 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
     {
         using var tab = Tab($"{LongLine}\n{string.Join('\n', Enumerable.Range(1, 30))}");
 
-        Assert.True(tab.TextView.HorizontalScrollBar.Visible);
-        Assert.Equal(Height - 1, tab.TextView.Viewport.Height);
-        Assert.Equal(tab.TextView.Viewport.Height, Gutter(tab).Frame.Height);
+        Assert.True(tab.Code.HorizontalScrollBar.Visible);
+        Assert.Equal(Height - 1, tab.Code.Viewport.Height);
+        Assert.Equal(tab.Code.Viewport.Height, Gutter(tab).Frame.Height);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
 
         var screen = Render(tab);
 
-        Assert.True(tab.TextView.VerticalScrollBar.Visible);
+        Assert.True(tab.Code.VerticalScrollBar.Visible);
         Assert.StartsWith("◄", screen[^1][Gutter(tab).Frame.Width..]);
         Assert.EndsWith("► ", screen[^1]);
         Assert.EndsWith("▼", screen[^2]);
@@ -111,12 +111,12 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
 
         tab.Width = 80;
         tab.Layout();
-        var hidden = !tab.TextView.HorizontalScrollBar.Visible;
+        var hidden = !tab.Code.HorizontalScrollBar.Visible;
         tab.Width = Width;
         tab.Layout();
 
         Assert.True(hidden);
-        Assert.True(tab.TextView.HorizontalScrollBar.Visible);
+        Assert.True(tab.Code.HorizontalScrollBar.Visible);
     }
 
     [Fact]
@@ -232,7 +232,7 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
         using var tab = Tab(new string('x', 400));
         tab.Width = 20;
         tab.Layout();
-        var bar = tab.TextView.HorizontalScrollBar;
+        var bar = tab.Code.HorizontalScrollBar;
 
         foreach (var value in new[] { 0, 100, int.MaxValue })
         {
@@ -253,7 +253,7 @@ public class HorizontalScrollBarTests : StaticConfigurationTest
         return tab;
     }
 
-    private static View Gutter(EditorTab tab) => tab.SubViews.First(v => v is not EditorTextView);
+    private static View Gutter(EditorTab tab) => tab.SubViews.First(v => v is not CodeEditor);
 
     private DiffTab Diff(string saved, string buffer)
     {

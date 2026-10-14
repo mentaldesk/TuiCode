@@ -1,13 +1,11 @@
-using System.Runtime.CompilerServices;
 using Terminal.Gui.Drivers;
-using Terminal.Gui.Text;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 using Point = System.Drawing.Point;
 
 namespace TuiCode.Editor;
 
 /// <summary>An insertion point (column X, row Y), with the other end of its selection if it has one.</summary>
-internal readonly record struct Caret(Point Position, Point? Anchor = null, int ColumnTrack = -1, bool Extending = false)
+internal readonly record struct Caret(Point Position, Point? Anchor = null, int ColumnTrack = -1)
 {
     public Point Start => Anchor is { } anchor && Before(anchor, Position) ? anchor : Position;
     public Point End => Anchor is { } anchor && Before(Position, anchor) ? anchor : Position;
@@ -15,8 +13,8 @@ internal readonly record struct Caret(Point Position, Point? Anchor = null, int 
     public static bool Before(Point a, Point b) => a.Y < b.Y || (a.Y == b.Y && a.X < b.X);
 }
 
-// Multiple cursors (#106): the primary caret is TG's own; see "Multiple cursors and undo" in AGENTS.md.
-internal sealed partial class EditorTextView
+// Multiple cursors (#106): the primary caret is Editor's own; see "Multiple cursors and undo" in AGENTS.md.
+internal sealed partial class CodeEditor
 {
     // Run at every caret. Commands in neither set collapse to the primary caret first.
     private static readonly HashSet<Command> CaretCommands =
@@ -25,21 +23,23 @@ internal sealed partial class EditorTextView
         Command.Left, Command.LeftExtend, Command.Right, Command.RightExtend,
         Command.LeftStart, Command.LeftStartExtend, Command.RightEnd, Command.RightEndExtend,
         Command.WordLeft, Command.WordLeftExtend, Command.WordRight, Command.WordRightExtend,
-        Command.PageUp, Command.PageUpExtend, Command.PageDown, Command.PageDownExtend, Command.ToggleExtend,
+        Command.PageUp, Command.PageUpExtend, Command.PageDown, Command.PageDownExtend,
         Command.NewLine, Command.DeleteCharLeft, Command.DeleteCharRight, Command.KillWordLeft, Command.KillWordRight,
         Command.CutToEndOfLine, Command.CutToStartOfLine,
     ];
 
     private static readonly HashSet<Command> CaretIndependentCommands =
-        [Command.Undo, Command.Redo, Command.ToggleOverwrite, Command.EnableOverwrite, Command.DisableOverwrite, Command.Copy, Command.Cut];
+        [Command.Undo, Command.Redo, Command.ToggleOverwrite, Command.Copy, Command.Cut];
 
     private readonly List<Caret> _secondary = [];
     private readonly List<(long Start, long End)> _caretSelections = [];
+    private int _columnTrack = -1;
     private bool _visitingCarets;
     private string? _copiedText;
     private string[] _copiedPieces = [];
+    private bool _copiedLine;
 
-    /// <summary>True while edits move TG's insertion point from caret to caret.</summary>
+    /// <summary>True while edits move Editor's caret from caret to caret.</summary>
     internal bool IsVisitingCarets => _visitingCarets;
 
     public bool HasSecondaryCarets => _secondary.Count > 0;
@@ -49,13 +49,12 @@ internal sealed partial class EditorTextView
     /// <summary>Every caret, primary first.</summary>
     public Caret[] Carets => [PrimaryCaret, .. _secondary];
 
-    private Caret PrimaryCaret => new(InsertionPoint,
-        IsSelecting ? new Point(SelectionStartColumn, SelectionStartRow) : null, ColumnTrack(this), IsSelecting && ShiftSelecting(this));
+    private Caret PrimaryCaret => new(InsertionPoint, HasSelection ? SelectionAnchor : null, _columnTrack);
 
-    /// <summary>Selects as Shift would, so a plain move lets the selection go and Shift+move grows it from <paramref name="anchor"/>.</summary>
+    /// <summary>Selects from <paramref name="anchor"/> to <paramref name="position"/>, scrolling the caret into view.</summary>
     internal void Select(Point anchor, Point position)
     {
-        Load(new Caret(position, anchor, Extending: true), reveal: true);
+        Load(new Caret(position, anchor), reveal: true);
         SetNeedsDraw();
     }
 
@@ -90,7 +89,7 @@ internal sealed partial class EditorTextView
             var row = caret.Position.Y + step;
             if (row < 0 || row >= Lines) continue;
             var track = caret.ColumnTrack >= 0 ? caret.ColumnTrack : caret.Position.X;
-            added.Add(new Caret(new Point(Math.Min(track, GetLine(row).Count), row), ColumnTrack: track));
+            added.Add(new Caret(new Point(Math.Min(track, LineLength(row)), row), ColumnTrack: track));
         }
         SetCarets(added, reveal: false);
 
@@ -116,17 +115,15 @@ internal sealed partial class EditorTextView
         var up = direction == LineDirection.Up;
         if (ReadOnly || (up ? blocks[0].First == 0 : blocks[^1].Last == Lines - 1)) return;
 
-        var model = ModelField.GetValue(this)!;
         var step = up ? -1 : 1;
         Edit(() =>
         {
             foreach (var (first, last) in up ? blocks : Enumerable.Reverse(blocks))
             {
                 var top = up ? first - 1 : first;
-                List<List<Cell>> rows = [.. Enumerable.Range(top, last - first + 2).Select(row => new List<Cell>(GetLine(row)))];
-                List<List<Cell>> moved = up ? [.. rows[1..], rows[0]] : [rows[^1], .. rows[..^1]];
-                for (var i = 0; i < moved.Count; i++)
-                    ReplaceLine(model, top + i, moved[i]);
+                string[] rows = [.. Enumerable.Range(top, last - first + 2).Select(LineText)];
+                string[] moved = up ? [.. rows[1..], rows[0]] : [rows[^1], .. rows[..^1]];
+                ReplaceLineRange(top, rows.Length, moved);
             }
             return [.. carets.Select(caret => Shift(caret, step))];
         });
@@ -138,14 +135,12 @@ internal sealed partial class EditorTextView
         if (ReadOnly) return;
         var carets = Carets;
         var blocks = RowBlocks(carets);
-        var model = ModelField.GetValue(this)!;
         Edit(() =>
         {
             for (var b = blocks.Count - 1; b >= 0; b--)
             {
                 var (first, last) = blocks[b];
-                for (var row = first; row <= last; row++)
-                    AddLine(model, last + 1 + row - first, new List<Cell>(GetLine(row)));
+                ReplaceLineRange(last + 1, 0, [.. Enumerable.Range(first, last - first + 1).Select(LineText)]);
             }
             return [.. carets.Select(caret =>
             {
@@ -166,16 +161,9 @@ internal sealed partial class EditorTextView
     {
         if (ReadOnly) return;
         var carets = Carets;
-        var model = ModelField.GetValue(this)!;
         Edit(() =>
         {
-            var shared = Math.Min(count, lines.Count);
-            for (var i = 0; i < shared; i++)
-                ReplaceLine(model, start + i, Cell.ToCellList(lines[i]));
-            for (var i = shared; i < count; i++)
-                RemoveLine(model, start + shared);
-            for (var i = shared; i < lines.Count; i++)
-                AddLine(model, start + i, Cell.ToCellList(lines[i]));
+            ReplaceLineRange(start, count, [.. lines]);
             return carets;
         });
     }
@@ -205,7 +193,12 @@ internal sealed partial class EditorTextView
     private bool InvokeAtCarets(KeyBinding binding)
     {
         var commands = binding.Commands;
-        if (commands.All(CaretIndependentCommands.Contains)) return false;
+        if (commands.All(CaretIndependentCommands.Contains))
+        {
+            foreach (var command in commands)
+                InvokeCommand(command);
+            return true;
+        }
         switch (commands)
         {
             case [Command.Paste]:
@@ -219,14 +212,44 @@ internal sealed partial class EditorTextView
         if (!commands.All(CaretCommands.Contains))
         {
             RemoveSecondaryCarets();
-            return false;
+            foreach (var command in commands)
+                InvokeCommand(command);
+            return true;
         }
-        AtEachCaret(_ => InvokeEditCommands(commands, binding));
+        if (VerticalRows(commands) is var (rows, extend))
+            AtEachCaret(_ => MoveVertically(rows, extend));
+        else
+            AtEachCaret(_ => InvokeEditCommands(commands));
         return true;
+    }
+
+    private (int Rows, bool Extend)? VerticalRows(Command[] commands) => commands switch
+    {
+        [Command.Up] => (-1, false),
+        [Command.UpExtend] => (-1, true),
+        [Command.Down] => (1, false),
+        [Command.DownExtend] => (1, true),
+        [Command.PageUp] => (-Math.Max(Viewport.Height, 1), false),
+        [Command.PageUpExtend] => (-Math.Max(Viewport.Height, 1), true),
+        [Command.PageDown] => (Math.Max(Viewport.Height, 1), false),
+        [Command.PageDownExtend] => (Math.Max(Viewport.Height, 1), true),
+        _ => null,
+    };
+
+    // Editor's own vertical move keeps one sticky column, so each caret keeps its own here.
+    private void MoveVertically(int rows, bool extend)
+    {
+        var from = PrimaryCaret;
+        var track = from.ColumnTrack >= 0 ? from.ColumnTrack : from.Position.X;
+        var row = Math.Clamp(from.Position.Y + rows, 0, Lines - 1);
+        var to = from.Position.Y + rows > Lines - 1 ? new Point(LineLength(row), row) : new Point(Math.Min(track, LineLength(row)), row);
+        Load(new Caret(to, extend ? from.Anchor ?? from.Position : null, track), reveal: false);
     }
 
     protected override bool OnKeyDownNotHandled(Key key)
     {
+        // Editor's own column select and extra carets live here; TuiCode has its own.
+        if (key.IsCtrl || key.IsAlt) return false;
         var handled = false;
         if (_secondary.Count == 0)
             EditAtPrimary(() => handled = base.OnKeyDownNotHandled(key));
@@ -252,12 +275,12 @@ internal sealed partial class EditorTextView
         });
 
     // (columns to the end of the line, lines to the end of the buffer)
-    private Point ToEnd(Point point) => new(GetLine(point.Y).Count - point.X, Lines - 1 - point.Y);
+    private Point ToEnd(Point point) => new(LineLength(point.Y) - point.X, Lines - 1 - point.Y);
 
     private Point FromEnd(Point fromEnd)
     {
         var row = Math.Clamp(Lines - 1 - fromEnd.Y, 0, Lines - 1);
-        return new Point(Math.Max(GetLine(row).Count - fromEnd.X, 0), row);
+        return new Point(Math.Max(LineLength(row) - fromEnd.X, 0), row);
     }
 
     /// <summary>Raised after every copy and cut, saying whether the text reached the clipboard.</summary>
@@ -272,14 +295,14 @@ internal sealed partial class EditorTextView
         if (outcome is CopyOutcome.Failed) return outcome;
         _copiedPieces = [text];
         _copiedText = text;
-        CopyWithoutSelection(this) = false;
+        _copiedLine = false;
         return outcome;
     }
 
     private bool CopyAtCarets(bool cut)
     {
         var ordered = Carets.OrderBy(c => c.Start.Y).ThenBy(c => c.Start.X).ToArray();
-        string[] pieces = [.. ordered.Select(c => c.Anchor is null ? Cell.ToString(GetLine(c.Position.Y)) : TextBetween(c.Start, c.End))];
+        string[] pieces = [.. ordered.Select(c => c.Anchor is null ? LineText(c.Position.Y) : TextBetween(c.Start, c.End))];
         var text = string.Join(Environment.NewLine, pieces);
         var outcome = VerifiedClipboard.Write(App?.Clipboard, text, ClipboardFallback);
         Copied?.Invoke(this, outcome);
@@ -287,41 +310,64 @@ internal sealed partial class EditorTextView
 
         _copiedPieces = pieces;
         _copiedText = text;
-        // So TG's single-caret paste puts a whole copied line above the caret's, as its own Copy does.
-        CopyWithoutSelection(this) = ordered is [{ Anchor: null }];
+        // So a paste at one caret puts a whole copied line above the caret's, as TextView's did.
+        _copiedLine = ordered is [{ Anchor: null }];
         if (!cut || ReadOnly) return true;
 
         AtEachCaret(_ =>
         {
-            if (!IsSelecting) SelectCurrentLine();
-            DeleteCharLeft();
+            if (!HasSelection) SelectCurrentLine();
+            InvokeCommand(Command.DeleteCharLeft);
         });
         return true;
     }
 
-    // The terminal's own paste arrives here as a bracketed paste, through Command.Paste rather than a key.
-    protected override bool OnPaste(string text)
+    private IApplication? _pasteSource;
+
+    // Editor reads a bracketed paste from the clipboard rather than the terminal, so it's taken before Editor sees it.
+    protected override void OnHasFocusChanged(bool newHasFocus, View? previousFocusedView, View? focusedView)
     {
-        if (_holdContentsChanged) return base.OnPaste(text);
-        if (HasSecondaryCarets) PasteAtCarets(text);
-        else EditAtPrimary(() => base.OnPaste(text));
-        return true;
+        base.OnHasFocusChanged(newHasFocus, previousFocusedView, focusedView);
+        if (!newHasFocus || App is not { } app || app == _pasteSource) return;
+        if (_pasteSource is not null) _pasteSource.Paste -= OnTerminalPaste;
+        _pasteSource = app;
+        app.Paste += OnTerminalPaste;
+    }
+
+    private void OnTerminalPaste(object? sender, PasteEventArgs e)
+    {
+        if (e.Handled || App?.Navigation?.GetFocused() != this) return;
+        PasteAtCarets(e.Text.ReplaceLineEndings("\n"));
+        e.Handled = true;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _pasteSource is not null) _pasteSource.Paste -= OnTerminalPaste;
+        base.Dispose(disposing);
     }
 
     private void PasteAtCarets(string? text)
     {
         if (ReadOnly || text is not { Length: > 0 }) return;
         var carets = Carets;
+        if (carets is [{ Anchor: null } only] && _copiedLine && text == _copiedText)
+        {
+            Edit(() =>
+            {
+                Document!.Insert(OffsetOf(only.Position with { X = 0 }), text + "\n");
+                return [Shift(only, LineBreaks(text) + 1)];
+            });
+            return;
+        }
         var pieces = text == _copiedText && _copiedPieces.Length == carets.Length ? _copiedPieces : Split(text);
         if (pieces.Length != carets.Length) pieces = [.. carets.Select(_ => text)];
         var ranks = Enumerable.Range(0, carets.Length).OrderBy(i => carets[i].Start.Y).ThenBy(i => carets[i].Start.X).ToArray();
 
         AtEachCaret(i =>
         {
-            if (IsSelecting) DeleteCharLeft();
-            IsSelecting = false;
-            CopyWithoutSelection(this) = false;
-            InsertAllText(this, pieces[Array.IndexOf(ranks, i)], false);
+            if (HasSelection) InvokeCommand(Command.DeleteCharLeft);
+            Document!.Insert(CaretOffset, pieces[Array.IndexOf(ranks, i)]);
         });
 
         static string[] Split(string text)
@@ -338,49 +384,50 @@ internal sealed partial class EditorTextView
         var (anchor, end) = row + 1 < Lines
             ? (new Point(0, row), new Point(0, row + 1))
             : row > 0
-                ? (new Point(GetLine(row - 1).Count, row - 1), new Point(GetLine(row).Count, row))
-                : (new Point(0, row), new Point(GetLine(row).Count, row));
-        Load(new Caret(end, anchor, Extending: true), reveal: false);
+                ? (new Point(LineLength(row - 1), row - 1), new Point(LineLength(row), row))
+                : (new Point(0, row), new Point(LineLength(row), row));
+        Load(new Caret(end, anchor), reveal: false);
     }
 
     private string TextBetween(Point start, Point end)
     {
-        if (start.Y == end.Y) return Cell.ToString(GetLine(start.Y)[start.X..end.X]);
-        var first = GetLine(start.Y);
+        var first = Graphemes(start.Y);
+        if (start.Y == end.Y) return string.Concat(first[start.X..Math.Min(end.X, first.Length)]);
         return string.Join(Environment.NewLine,
-            [Cell.ToString(first[start.X..]), .. Enumerable.Range(start.Y + 1, end.Y - start.Y - 1).Select(row => Cell.ToString(GetLine(row))), Cell.ToString(GetLine(end.Y)[..end.X])]);
+            [string.Concat(first[Math.Min(start.X, first.Length)..]), .. Enumerable.Range(start.Y + 1, end.Y - start.Y - 1).Select(LineText), string.Concat(Graphemes(end.Y)[..end.X])]);
     }
 
     // Past the last line is the end of the buffer.
     private Point Clamp(Point point)
     {
-        if (point.Y >= Lines) return new Point(GetLine(Lines - 1).Count, Lines - 1);
+        if (point.Y >= Lines) return new Point(LineLength(Lines - 1), Lines - 1);
         var row = Math.Max(point.Y, 0);
-        return new Point(Math.Clamp(point.X, 0, GetLine(row).Count), row);
+        return new Point(Math.Clamp(point.X, 0, LineLength(row)), row);
     }
 
+    // Editor's public members can only select forwards, but its caret keeps the selection's anchor when set.
     private void Load(Caret caret, bool reveal)
     {
-        var position = Clamp(caret.Position);
-        if (reveal)
+        var viewport = Viewport;
+        var position = OffsetOf(Clamp(caret.Position));
+        var anchor = caret.Anchor is { } a ? OffsetOf(Clamp(a)) : position;
+        ClearSelection();
+        if (anchor < position)
         {
-            InsertionPoint = position;
+            SelectRange(anchor, position - anchor);
+        }
+        else if (anchor > position)
+        {
+            CaretOffset = anchor;
+            InvokeCommand(Command.LeftExtend);
+            CaretOffset = position;
         }
         else
         {
-            SetCurrentRow(this, position.Y);
-            SetCurrentColumn(this, position.X);
+            CaretOffset = position;
         }
-
-        if (caret.Anchor is { } anchor)
-        {
-            anchor = Clamp(anchor);
-            SelectionStartRowField(this) = anchor.Y;
-            SelectionStartColumnField(this) = anchor.X;
-        }
-        IsSelecting = caret.Anchor is not null;
-        ShiftSelecting(this) = caret.Extending && caret.Anchor is not null;
-        ColumnTrack(this) = caret.ColumnTrack;
+        _columnTrack = caret.ColumnTrack;
+        if (!reveal) Viewport = viewport;
         if (SoftWrap) SetNeedsDraw();
     }
 
@@ -417,30 +464,6 @@ internal sealed partial class EditorTextView
             Caret.Before(b.Start, a.End) || b.Position == a.Position || (b.Start == a.Start && b.End == a.End);
     }
 
-    protected override bool OnMouseEvent(Mouse mouse)
-    {
-        if (OnPinnedMouse(mouse)) return true;
-        if (SoftWrap) return OnWrappedMouse(mouse) || base.OnMouseEvent(mouse);
-        const MouseFlags leftButton = MouseFlags.LeftButtonPressed | MouseFlags.LeftButtonReleased | MouseFlags.LeftButtonClicked
-                                      | MouseFlags.LeftButtonDoubleClicked | MouseFlags.LeftButtonTripleClicked;
-        if ((mouse.Flags & leftButton) == 0) return base.OnMouseEvent(mouse);
-
-        if (!mouse.Flags.HasFlag(MouseFlags.Alt))
-        {
-            RemoveSecondaryCarets();
-            return base.OnMouseEvent(mouse);
-        }
-
-        if (CanFocus && !HasFocus) SetFocus();
-        if (mouse.Flags.HasFlag(MouseFlags.LeftButtonClicked))
-        {
-            var carets = Carets;
-            ProcessMouseClick(this, mouse, out _);
-            ToggleCaret(carets, InsertionPoint);
-        }
-        return true;
-    }
-
     private void ToggleCaret(Caret[] carets, Point clicked)
     {
         var index = Array.FindIndex(carets, c => c.Position == clicked);
@@ -457,7 +480,7 @@ internal sealed partial class EditorTextView
         _caretSelections.Clear();
         foreach (var caret in _secondary)
             if (caret.Anchor is not null)
-                _caretSelections.Add((Encode(caret.Start.Y, caret.Start.X), Encode(caret.End.Y, caret.End.X)));
+                _caretSelections.Add((Encode(caret.Start), Encode(caret.End)));
     }
 
     internal IEnumerable<Point> SecondaryCaretsOnScreen() =>
@@ -467,7 +490,7 @@ internal sealed partial class EditorTextView
     private void DrawCarets()
     {
         var paint = HasSecondaryCarets && !(HasFocus && TerminalCursors.IsSupportedBy(App));
-        var style = paint ? CursorStyle.Hidden : DefaultCursorStyle;
+        var style = paint ? CursorStyle.Hidden : OverwriteMode ? CursorStyle.SteadyBlock : TextField.DefaultCursorStyle;
         if (Cursor.Style != style) Cursor = Cursor with { Style = style };
         if (!paint) return;
 
@@ -475,8 +498,8 @@ internal sealed partial class EditorTextView
         foreach (var caret in Carets)
         {
             if (ViewportPosition(caret) is not { } point) continue;
-            var line = GetLine(caret.Position.Y);
-            var grapheme = caret.Position.X < line.Count ? line[caret.Position.X].Grapheme : " ";
+            var line = Graphemes(caret.Position.Y);
+            var grapheme = caret.Position.X < line.Length ? line[caret.Position.X] : " ";
             SetAttribute(block);
             AddStr(point.X, point.Y, grapheme == "\t" ? " " : grapheme);
         }
@@ -492,48 +515,7 @@ internal sealed partial class EditorTextView
         }
         var row = caret.Position.Y - Viewport.Y;
         if (row < _pinned.Count || row >= Viewport.Height || caret.Position.Y >= Lines) return null;
-        var line = GetLine(caret.Position.Y);
-        var x = ColumnsBefore(line, Math.Min(caret.Position.X, line.Count)) - Viewport.X;
+        var x = ColumnsBefore(Graphemes(caret.Position.Y), caret.Position.X) - Viewport.X;
         return x < 0 || x >= Viewport.Width ? null : new Point(x, row);
     }
-
-    private int ColumnsBefore(List<Cell> line, int column)
-    {
-        var columns = 0;
-        for (var i = 0; i < column; i++)
-        {
-            var grapheme = line[i].Grapheme;
-            columns += grapheme == "\t"
-                ? TabWidth > 0 ? TabWidth - columns % TabWidth : 0
-                : Math.Max(grapheme.GetColumns(), 1);
-        }
-        return columns;
-    }
-
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_columnTrack")]
-    private static extern ref int ColumnTrack(TextView view);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_shiftSelecting")]
-    private static extern ref bool ShiftSelecting(TextView view);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_copyWithoutSelection")]
-    private static extern ref bool CopyWithoutSelection(TextView view);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_selectionStartRow")]
-    private static extern ref int SelectionStartRowField(TextView view);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_selectionStartColumn")]
-    private static extern ref int SelectionStartColumnField(TextView view);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_CurrentRow")]
-    private static extern void SetCurrentRow(TextView view, int row);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_CurrentColumn")]
-    private static extern void SetCurrentColumn(TextView view, int column);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "InsertAllText")]
-    private static extern void InsertAllText(TextView view, string text, bool fromClipboard);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "ProcessMouseClick")]
-    private static extern void ProcessMouseClick(TextView view, Mouse mouse, out List<Cell> line);
 }

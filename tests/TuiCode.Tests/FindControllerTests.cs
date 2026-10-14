@@ -85,7 +85,7 @@ public class FindControllerTests : IDisposable
         _find.Open(replace: false);
         _find.Bar.Query = "foo";
 
-        tab.TextView.InsertText("x");
+        tab.Code.NewKeyDownEvent(Key.X);
 
         Assert.Equal(-1, _find.CurrentIndex);
         Assert.Equal(expected, _find.Bar.Status);

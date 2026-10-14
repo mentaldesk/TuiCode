@@ -70,14 +70,14 @@ public class EditorStickyLinesTests : StaticConfigurationTest
 
         ScrollTo(tab, 20);
 
-        var editable = tab.TextView.GetAttributeForRole(VisualRole.Editable);
-        var pinned = tab.TextView.PinnedAttribute(editable);
+        var editable = tab.Code.GetAttributeForRole(VisualRole.Editable);
+        var pinned = tab.Code.PinnedAttribute(editable);
         Assert.NotEqual(editable.Background, pinned.Background);
-        Assert.Equal(pinned.Background, AttributeAt(tab.TextView, 0, 0).Background);
-        Assert.Equal(pinned.Background, AttributeAt(tab.TextView, 1, 40).Background);
-        Assert.Equal("#569CD6", AttributeAt(tab.TextView, 0, 0).Foreground.ToString());
+        Assert.Equal(pinned.Background, AttributeAt(tab.Code, 0, 0).Background);
+        Assert.Equal(pinned.Background, AttributeAt(tab.Code, 1, 40).Background);
+        Assert.Equal("#569CD6", AttributeAt(tab.Code, 0, 0).Foreground.ToString());
         Assert.Equal(pinned.Background, AttributeAt(tab, 0, 1).Background);
-        Assert.Equal(editable.Background, AttributeAt(tab.TextView, 2, 0).Background);
+        Assert.Equal(editable.Background, AttributeAt(tab.Code, 2, 0).Background);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class EditorStickyLinesTests : StaticConfigurationTest
         tab.MoveCursor(22, 0);
         Render(tab);
 
-        tab.TextView.NewKeyDownEvent(Key.CursorUp);
+        tab.Code.NewKeyDownEvent(Key.CursorUp);
         Render(tab);
 
         Assert.Equal(21, tab.CursorRow);
@@ -131,7 +131,7 @@ public class EditorStickyLinesTests : StaticConfigurationTest
         tab.PinnedLineClicked += (_, line) => clicked.Add(line);
 
         foreach (var flags in new[] { MouseFlags.LeftButtonPressed, MouseFlags.LeftButtonReleased, MouseFlags.LeftButtonClicked })
-            tab.TextView.NewMouseEvent(new Mouse { Flags = flags, Position = new Point(3, 1) });
+            tab.Code.NewMouseEvent(new Mouse { Flags = flags, Position = new Point(3, 1) });
 
         Assert.Equal([Run], clicked);
         Assert.Equal(0, tab.CursorRow);
@@ -145,7 +145,7 @@ public class EditorStickyLinesTests : StaticConfigurationTest
         tab.StickyBudget = TimeSpan.Zero;
 
         tab.MoveCursor(0, 0);
-        tab.TextView.InsertText("// header\n");
+        tab.Code.Document!.Insert(0, "// header\n");
         ScrollTo(tab, 21);
 
         Assert.Equal([Class, Run], tab.PinnedLines);
@@ -229,7 +229,7 @@ public class EditorStickyLinesTests : StaticConfigurationTest
 
     private string[] ScrollTo(EditorTab tab, int top)
     {
-        var view = tab.TextView;
+        var view = tab.Code;
         view.Viewport = view.Viewport with { Y = top };
         Render(tab);
         return Render(tab);

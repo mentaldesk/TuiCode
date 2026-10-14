@@ -50,7 +50,7 @@ public class StickyLinesHostTests : StaticConfigurationTest
             () =>
             {
                 foreach (var flags in new[] { MouseFlags.LeftButtonPressed, MouseFlags.LeftButtonReleased, MouseFlags.LeftButtonClicked })
-                    Tab().TextView.NewMouseEvent(new Mouse { Flags = flags, Position = new Point(5, 1) });
+                    Tab().Code.NewMouseEvent(new Mouse { Flags = flags, Position = new Point(5, 1) });
                 landed = Tab().CursorRow;
             },
             () => { commands.TryExecute(CommandIds.NavigateBack); });

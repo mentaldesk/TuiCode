@@ -83,7 +83,11 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: AOT publish
-        run: dotnet publish src/TuiCode/TuiCode.csproj -c Release -r ${{ matrix.rid }} -o publish
+        # No trim or AOT warnings: each one is a runtime failure waiting for the code path that hits it.
+        shell: bash
+        run: |
+          dotnet publish src/TuiCode/TuiCode.csproj -c Release -r ${{ matrix.rid }} -o publish | tee publish.log
+          ! grep -E 'warning IL[0-9]+' publish.log
 
       - name: Third-party notices published
         # release.yml archives these beside the binary.
@@ -120,7 +124,7 @@ jobs:
               exit 1
             fi
             docker run --rm -v "$PWD/publish:/app:ro" "$image" /app/TuiCode --smoke-syntax
-            timeout 30s script -qfec "docker run --rm -t -e TERM=xterm-256color -v $PWD/publish:/app:ro $image /app/TuiCode --smoke" /dev/null
+            timeout 30s script -qfec "docker run --rm -t -e TERM=xterm-256color -v $PWD/publish:/app:ro $image /app/TuiCode --smoke" /dev/null < <(sleep 60)
             echo "::endgroup::"
           done
 
@@ -162,9 +166,15 @@ jobs:
         # `dotnet test` runs JIT, so AOT-only failures (missing metadata,
         # trim-stripped paths) only surface against the published native
         # binary. `script` allocates a pty so TG's driver initializes; the
-        # harness is Unix-only, so this stays on linux-x64.
+        # harness is Unix-only, so this stays on linux-x64. Its stdin stays open:
+        # `script` passes EOF on as Ctrl+D, a key the smoke would type into the editor.
         if: matrix.rid == 'linux-x64'
-        run: timeout 20s script -qfec './publish/TuiCode --smoke' /dev/null
+        run: timeout 20s script -qfec './publish/TuiCode --smoke' /dev/null < <(sleep 60)
+
+      - name: AOT smoke (macOS)
+        # BSD script, and no timeout(1) on the runner.
+        if: startsWith(matrix.rid, 'osx-')
+        run: perl -e 'alarm 20; exec @ARGV' script -q /dev/null ./publish/TuiCode --smoke < <(sleep 60)
 
   install-script:
     name: install.sh ${{ matrix.image }} ${{ matrix.arch }}

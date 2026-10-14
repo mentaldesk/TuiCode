@@ -1,16 +1,11 @@
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Text;
-using Terminal.Gui.Text;
 using TuiCode.Abstractions;
 using TuiCode.Syntax;
-using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Editor;
 
 public sealed class EditorTab : FrameView
 {
-    private readonly EditorTextView _textView;
+    private readonly CodeEditor _text;
     private readonly EditorGutter _gutter;
     private readonly SyntaxHighlighter? _syntax;
     private bool _grammarChosen;
@@ -63,16 +58,16 @@ public sealed class EditorTab : FrameView
 
     public string Content
     {
-        get => _textView.Text;
+        get => _text.Text;
         set
         {
-            _textView.Text = value;
+            _text.Text = value;
             OnEdited();
         }
     }
 
-    public int CursorRow => _textView.CurrentRow;
-    public int CursorColumn => _textView.CurrentColumn;
+    public int CursorRow => _text.CurrentRow;
+    public int CursorColumn => _text.CurrentColumn;
 
     public event EventHandler? DirtyChanged;
 
@@ -117,7 +112,7 @@ public sealed class EditorTab : FrameView
         OnDisk = FileSnapshot.Of(file, initial);
         _eol = DetectEol(initial);
 
-        _textView = new EditorTextView
+        _text = new CodeEditor
         {
             Y = 0,
             Width = Dim.Fill(),
@@ -125,26 +120,23 @@ public sealed class EditorTab : FrameView
             Text = initial,
             Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
         };
-        _textView.ViewportSettings |= ViewportSettingsFlags.HasScrollBars;
+        _text.ViewportSettings |= ViewportSettingsFlags.HasScrollBars;
         Settings = EditorSettings.Default;
-        _gutter = new EditorGutter(_textView, syntax) { X = 0, Y = 0, Height = Dim.Fill(Dim.Func(_ => _textView.Padding!.Thickness.Bottom)) };
-        _textView.HorizontalScrollBar.VisibleChanged += (_, _) => SetNeedsLayout();
-        ThinScrollBar.Apply(_textView.HorizontalScrollBar);
-        ScrollBarResize.Hold(_textView.VerticalScrollBar, () => _textView.Viewport.Y);
-        ScrollBarResize.Hold(_textView.HorizontalScrollBar, () => _textView.Viewport.X);
-        _textView.X = Pos.Right(_gutter);
+        _gutter = new EditorGutter(_text, syntax) { X = 0, Y = 0, Height = Dim.Fill(Dim.Func(_ => _text.Padding!.Thickness.Bottom)) };
+        _text.HorizontalScrollBar.VisibleChanged += (_, _) => SetNeedsLayout();
+        ThinScrollBar.Apply(_text.HorizontalScrollBar);
+        ScrollBarResize.Hold(_text.VerticalScrollBar, () => _text.Viewport.Y);
+        ScrollBarResize.Hold(_text.HorizontalScrollBar, () => _text.Viewport.X);
+        _text.X = Pos.Right(_gutter);
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
-        _textView.ContentsChanged += (_, _) => OnEdited();
+        _text.Edited += (_, _) => OnEdited();
+        _text.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
+        _text.RefreshingSticky = RefreshSticky;
+        _text.Drawing = ScrollToPendingView;
+        _text.PinnedLineClicked += (_, line) => PinnedLineClicked?.Invoke(this, line);
         // Point is (X=column, Y=row). Re-expose in (row, column) order to match the rest of the editor API.
-        _textView.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
-        _textView.RefreshingSticky = RefreshSticky;
-        _textView.Drawing = ScrollToPendingView;
-        _textView.PinnedLineClicked += (_, line) => PinnedLineClicked?.Invoke(this, line);
-        _textView.UnwrappedCursorPositionChanged += (_, point) =>
-        {
-            if (!_textView.IsVisitingCarets) CursorMoved?.Invoke(this, (point.Y, point.X));
-        };
-        Add(_gutter, _textView);
+        _text.CursorMoved += (_, point) => CursorMoved?.Invoke(this, (point.Y, point.X));
+        Add(_gutter, _text);
 
         _dirty = unsaved is not null;
         UpdateTitle();
@@ -154,7 +146,7 @@ public sealed class EditorTab : FrameView
     protected override void OnSubViewsLaidOut(LayoutEventArgs args)
     {
         base.OnSubViewsLaidOut(args);
-        var bars = (_textView.VerticalScrollBar.Visible, _textView.HorizontalScrollBar.Visible);
+        var bars = (_text.VerticalScrollBar.Visible, _text.HorizontalScrollBar.Visible);
         if (bars == _barsLaidOut) return;
         _barsLaidOut = bars;
         SetNeedsLayout();
@@ -167,9 +159,9 @@ public sealed class EditorTab : FrameView
         set
         {
             field = value;
-            _textView.TabWidth = value.IndentSize;
-            _textView.InsertSpaces = value.InsertSpaces;
-            _textView.SetNeedsDraw();
+            _text.TabWidth = value.IndentSize;
+            _text.InsertSpaces = value.InsertSpaces;
+            _text.SetNeedsDraw();
         }
     }
 
@@ -179,21 +171,21 @@ public sealed class EditorTab : FrameView
     internal SymbolScan? StickyScan => _stickyScan?.Scan;
 
     /// <summary>The lines pinned over the top of the text at its last draw.</summary>
-    public IReadOnlyList<int> PinnedLines => _textView.Pinned;
+    public IReadOnlyList<int> PinnedLines => _text.Pinned;
 
     // Invoke would run inline, inside this draw, which clears the request.
-    private void DrawAgainSoon() => _textView.App?.AddTimeout(TimeSpan.Zero, () =>
+    private void DrawAgainSoon() => _text.App?.AddTimeout(TimeSpan.Zero, () =>
     {
-        _textView.SetNeedsDraw();
+        _text.SetNeedsDraw();
         return false;
     });
 
     // Not ScanSymbols(): the gs picker draws from that scan as it fills (see "Sticky lines" in AGENTS.md).
     private void RefreshSticky()
     {
-        if (!Settings.StickyLines || Grammar is null || _textView.Viewport.Height < StickyLines.MinHeight)
+        if (!Settings.StickyLines || Grammar is null || _text.Viewport.Height < StickyLines.MinHeight)
         {
-            _textView.Sticky = StickyLines.None;
+            _text.Sticky = StickyLines.None;
             _stickyScan = null;
             _stickyFrom = null;
             return;
@@ -203,7 +195,7 @@ public sealed class EditorTab : FrameView
             _stickyScan = (_edits, Grammar, _syntax?.CreateSymbolScan(Grammar, Lines));
         if (_stickyScan?.Scan is not { } scan)
         {
-            _textView.Sticky = StickyLines.None;
+            _text.Sticky = StickyLines.None;
             return;
         }
         if (!scan.Advance(StickyBudget))
@@ -213,7 +205,7 @@ public sealed class EditorTab : FrameView
         }
         if (ReferenceEquals(scan, _stickyFrom)) return;
         _stickyFrom = scan;
-        _textView.Sticky = StickyLines.From(scan.Symbols, scan.Lines);
+        _text.Sticky = StickyLines.From(scan.Symbols, scan.Lines);
         if (stale) DrawAgainSoon();
     }
 
@@ -223,7 +215,7 @@ public sealed class EditorTab : FrameView
         set
         {
             _gutter.Visible = value;
-            _textView.X = value ? Pos.Right(_gutter) : 0;
+            _text.X = value ? Pos.Right(_gutter) : 0;
             SetNeedsLayout();
         }
     }
@@ -241,7 +233,7 @@ public sealed class EditorTab : FrameView
     public bool HasSyntax => _syntax is not null;
 
     /// <summary>The grammar colouring this tab, or null for plain text.</summary>
-    public SyntaxLanguage? Grammar => _textView.Syntax?.Language;
+    public SyntaxLanguage? Grammar => _text.Syntax?.Language;
 
     /// <summary>Pins this tab to <paramref name="grammar"/> (null for plain text), ignoring associations.</summary>
     public void SetGrammar(SyntaxLanguage? grammar)
@@ -260,7 +252,7 @@ public sealed class EditorTab : FrameView
     private void ApplyGrammar(SyntaxLanguage? grammar)
     {
         if (_syntax is null || Equals(Grammar, grammar)) return;
-        _textView.Syntax = _syntax.CreateCache(grammar);
+        _text.Syntax = _syntax.CreateCache(grammar);
         GrammarChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -279,11 +271,11 @@ public sealed class EditorTab : FrameView
         var (row, column) = (CursorRow, CursorColumn);
         _eol = DetectEol(content);
         // Text = clears the undo history: Ctrl+Z mustn't walk back through edits made against text that's gone.
-        // It also raises ContentsChanged, which would dirty the tab; taking up the file isn't an edit.
+        // It also raises Edited, which would dirty the tab; taking up the file isn't an edit.
         _loading = true;
         try
         {
-            _textView.Text = content;
+            _text.Text = content;
         }
         finally
         {
@@ -320,8 +312,8 @@ public sealed class EditorTab : FrameView
         InferGrammar();
     }
 
-    public bool FocusContent() => _textView.SetFocus();
-    public bool ContentHasFocus => _textView.HasFocus;
+    public bool FocusContent() => _text.SetFocus();
+    public bool ContentHasFocus => _text.HasFocus;
 
     /// <summary>
     /// Move the cursor to the given (zero-based) row/column, leaving one caret and nothing selected.
@@ -330,29 +322,29 @@ public sealed class EditorTab : FrameView
     public void MoveCursor(int row, int col)
     {
         _pendingView = null;
-        row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
-        col = Math.Clamp(col, 0, _textView.GetLine(row).Count);
-        _textView.MoveCaret(new System.Drawing.Point(col, row));
-        if (WordWrap) _textView.SetNeedsDraw();
+        row = Math.Clamp(row, 0, Math.Max(_text.Lines - 1, 0));
+        col = Math.Clamp(col, 0, _text.LineLength(row));
+        _text.MoveCaret(new System.Drawing.Point(col, row));
+        if (WordWrap) _text.SetNeedsDraw();
     }
 
     /// <summary>The cursor and the scroll, to come back to when the file is next opened (#502).</summary>
-    public ViewPosition ViewPosition => _pendingView ?? new(CursorRow, CursorColumn, _textView.TopLine, WordWrap ? 0 : _textView.Viewport.X);
+    public ViewPosition ViewPosition => _pendingView ?? new(CursorRow, CursorColumn, _text.TopLine, WordWrap ? 0 : _text.Viewport.X);
 
     /// <summary>Puts the cursor and the scroll back where <paramref name="position"/> had them, clamped to the file as it is now.</summary>
     public void RestoreViewPosition(ViewPosition position)
     {
         MoveCursor(position.Line, position.Column);
         _pendingView = position with { Line = CursorRow, Column = CursorColumn };
-        _textView.SetNeedsDraw();
+        _text.SetNeedsDraw();
     }
 
     private void ScrollToPendingView()
     {
-        if (_pendingView is not { } view || _textView.Viewport.Height <= 0) return;
+        if (_pendingView is not { } view || _text.Viewport.Height <= 0) return;
         _pendingView = null;
-        _textView.ScrollToLine(view.TopLine, view.LeftColumn);
-        if (CursorRow < _textView.TopLine || CursorRow >= _textView.TopLine + _textView.Viewport.Height) RevealLines(CursorRow, CursorRow);
+        _text.ScrollToLine(view.TopLine, view.LeftColumn);
+        if (CursorRow < _text.TopLine || CursorRow >= _text.TopLine + _text.Viewport.Height) RevealLines(CursorRow, CursorRow);
     }
 
     /// <summary>The cursor's column in UTF-16 chars, as language servers count them.</summary>
@@ -361,16 +353,16 @@ public sealed class EditorTab : FrameView
     /// <summary><see cref="MoveCursor"/> with the column in UTF-16 chars.</summary>
     public void MoveCursorToCharacter(int row, int character)
     {
-        row = Math.Clamp(row, 0, Math.Max(_textView.Lines - 1, 0));
+        row = Math.Clamp(row, 0, Math.Max(_text.Lines - 1, 0));
         MoveCursor(row, ToCellColumn(row, character));
     }
 
-    internal EditorTextView TextView => _textView;
+    internal CodeEditor Code => _text;
 
     /// <summary>A screen row while wrapped.</summary>
-    public int TopRow => _textView.Viewport.Y;
+    public int TopRow => _text.Viewport.Y;
 
-    public int VisibleRows => _textView.Viewport.Height;
+    public int VisibleRows => _text.Viewport.Height;
 
     /// <summary>
     /// Scroll so lines <paramref name="first"/> to <paramref name="last"/> are in view with a margin
@@ -381,34 +373,34 @@ public sealed class EditorTab : FrameView
         _pendingView = null;
         if (WordWrap)
         {
-            _textView.RevealWrappedLines(first, last);
+            _text.RevealWrappedLines(first, last);
             return;
         }
-        var viewport = _textView.Viewport;
-        if (Reveal.TopRow(viewport.Y, viewport.Height, _textView.Lines, first, last, _textView.PinnedCountAt) is not { } top) return;
-        _textView.ScrollTo(new System.Drawing.Point(viewport.X, top));
+        var viewport = _text.Viewport;
+        if (Reveal.TopRow(viewport.Y, viewport.Height, _text.Lines, first, last, _text.PinnedCountAt) is not { } top) return;
+        _text.Viewport = viewport with { Y = top };
     }
 
     /// <summary>
     /// The buffer's lines as the editor models them (terminators excluded). Columns in a
     /// <see cref="TextMatch"/> computed against these line up with <see cref="Select"/> / <see cref="Replace"/>.
     /// </summary>
-    public IReadOnlyList<string> Lines => _textView.LineStrings;
+    public IReadOnlyList<string> Lines => [.. _text.LineStrings];
 
     /// <summary>Like <see cref="Lines"/> but cheap to re-read; later reads update the returned list in place.</summary>
-    internal IReadOnlyList<string> SnapshotLines => _textView.Snapshot.Refresh(_textView.GetAllLines());
+    internal IReadOnlyList<string> SnapshotLines => _text.LineStrings;
 
-    public string SelectedText => _textView.SelectedText;
+    public string SelectedText => _text.SelectedText;
 
     /// <summary>The cursor's line, with the cursor's column in UTF-16 chars.</summary>
     public (string Text, int Column) CursorLine =>
-        (Cell.ToString(_textView.GetLine(CursorRow)), ToCharColumn(CursorRow, CursorColumn));
+        (_text.LineText(CursorRow), ToCharColumn(CursorRow, CursorColumn));
 
-    public CopyOutcome CopyText(string text) => _textView.CopyText(text);
+    public CopyOutcome CopyText(string text) => _text.CopyText(text);
 
-    public int CaretCount => _textView.CaretCount;
+    public int CaretCount => _text.CaretCount;
 
-    public DocumentStats CountDocument() => DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()));
+    public DocumentStats CountDocument() => DocumentStats.Of(_text.LineStrings);
 
     /// <summary>The file's definitions, scanned in slices; the same scan comes back until the buffer or the grammar changes.</summary>
     public SymbolScan? ScanSymbols()
@@ -422,12 +414,12 @@ public sealed class EditorTab : FrameView
     /// <summary>The counts across every caret's selection, or null when nothing is selected. Recounted only after the carets or the buffer change.</summary>
     public DocumentStats? CountSelection()
     {
-        if (!_textView.IsSelecting && !_textView.HasSecondaryCarets) return null;
-        var ranges = _textView.Carets.Where(c => c.Start != c.End).Select(c => (c.Start, c.End)).ToArray();
+        if (!_text.IsSelecting && !_text.HasSecondaryCarets) return null;
+        var ranges = _text.Carets.Where(c => c.Start != c.End).Select(c => (c.Start, c.End)).ToArray();
         if (ranges.Length == 0) return null;
         if (_selectionStats is (var edits, var counted, var cached) && edits == _edits && counted.AsSpan().SequenceEqual(ranges)) return cached;
 
-        var stats = DocumentStats.Of(_textView.Snapshot.Refresh(_textView.GetAllLines()), ranges);
+        var stats = DocumentStats.Of(_text.LineStrings, ranges);
         _selectionStats = (_edits, ranges, stats);
         SelectionCounts++;
         return stats;
@@ -442,64 +434,63 @@ public sealed class EditorTab : FrameView
         var chosen => chosen,
     };
 
-    public void MoveLines(LineDirection direction) => _textView.MoveLines(direction);
+    public void MoveLines(LineDirection direction) => _text.MoveLines(direction);
 
-    public void DuplicateLines(LineDirection direction) => _textView.DuplicateLines(direction);
+    public void DuplicateLines(LineDirection direction) => _text.DuplicateLines(direction);
 
-    public void IndentLines() => _textView.IndentLines();
+    public void IndentLines() => _text.IndentLines();
 
-    public void OutdentLines() => _textView.OutdentLines();
+    public void OutdentLines() => _text.OutdentLines();
 
     /// <summary>Toggles the grammar's line comment, or its block markers around each line (#389); false when it has neither.</summary>
     public bool ToggleLineComment()
     {
         if (Grammar?.LineComment is { } marker)
-            _textView.ToggleLineComment(marker);
+            _text.ToggleLineComment(marker);
         else if (Grammar?.BlockComment is var (open, close))
-            _textView.ToggleLineComment(open, close);
+            _text.ToggleLineComment(open, close);
         else
             return false;
         return true;
     }
 
     /// <summary>Replaces <paramref name="count"/> lines from <paramref name="start"/> with <paramref name="lines"/>, as one undo step (#245).</summary>
-    public void ReplaceLines(int start, int count, IReadOnlyList<string> lines) => _textView.ReplaceLines(start, count, lines);
+    public void ReplaceLines(int start, int count, IReadOnlyList<string> lines) => _text.ReplaceLines(start, count, lines);
 
-    public bool HasSecondaryCursors => _textView.HasSecondaryCarets;
+    public bool HasSecondaryCursors => _text.HasSecondaryCarets;
 
     public bool WordWrap
     {
-        get => _textView.SoftWrap;
-        set => _textView.SoftWrap = value;
+        get => _text.SoftWrap;
+        set => _text.SoftWrap = value;
     }
 
     /// <summary>Whether extending the selection sweeps a rectangle rather than a run of text (#114).</summary>
     public bool ColumnSelect
     {
-        get => _textView.ColumnSelect;
-        set => _textView.ColumnSelect = value;
+        get => _text.ColumnSelect;
+        set => _text.ColumnSelect = value;
     }
 
     /// <summary>Add a cursor on the line above or below every cursor.</summary>
-    public void AddCursor(LineDirection direction) => _textView.AddCaret(direction);
+    public void AddCursor(LineDirection direction) => _text.AddCaret(direction);
 
-    public void RemoveSecondaryCursors() => _textView.RemoveSecondaryCarets();
+    public void RemoveSecondaryCursors() => _text.RemoveSecondaryCarets();
 
-    public bool HasSelection => _textView.IsSelecting
-        && (_textView.SelectionStartRow, _textView.SelectionStartColumn) != (_textView.CurrentRow, _textView.CurrentColumn);
+    public bool HasSelection => _text.HasSelection;
 
     /// <summary>Back to one cursor, where the primary one is, with nothing selected.</summary>
     public void ClearSelectionAndCursors()
     {
-        _textView.RemoveSecondaryCarets();
+        _text.RemoveSecondaryCarets();
         ClearSelection();
     }
 
-    public void SelectNextOccurrence() => _textView.SelectNextOccurrence();
+    public void SelectNextOccurrence() => _text.SelectNextOccurrence();
 
-    public void SelectPreviousOccurrence() => _textView.SelectPreviousOccurrence();
+    public void SelectPreviousOccurrence() => _text.SelectPreviousOccurrence();
 
-    public void SelectAllOccurrences() => _textView.SelectAllOccurrences();
+    public void SelectAllOccurrences() => _text.SelectAllOccurrences();
 
     /// <summary>
     /// Start of the selection, or the cursor when nothing is selected — with the column in UTF-16 chars,
@@ -509,10 +500,10 @@ public sealed class EditorTab : FrameView
     {
         get
         {
-            var (row, col) = (_textView.CurrentRow, _textView.CurrentColumn);
-            if (_textView.IsSelecting)
+            var (row, col) = (_text.CurrentRow, _text.CurrentColumn);
+            if (_text.HasSelection)
             {
-                var (startRow, startCol) = (_textView.SelectionStartRow, _textView.SelectionStartColumn);
+                var (startCol, startRow) = (_text.SelectionAnchor.X, _text.SelectionAnchor.Y);
                 if (startRow < row || (startRow == row && startCol < col))
                     (row, col) = (startRow, startCol);
             }
@@ -536,21 +527,21 @@ public sealed class EditorTab : FrameView
             header.Width = Dim.Fill();
             Add(header);
         }
-        _textView.Y = _gutter.Y = header is null ? 0 : Pos.Bottom(header);
+        _text.Y = _gutter.Y = header is null ? 0 : Pos.Bottom(header);
         SetNeedsLayout();
     }
 
     /// <summary>Paint every match with the highlight colour (find-in-file). An empty set clears it.</summary>
     public void SetHighlights(IEnumerable<TextMatch> matches)
     {
-        _textView.Highlights.Clear();
+        _text.Highlights.Clear();
         foreach (var m in matches)
         {
-            if (!_textView.Highlights.TryGetValue(m.Row, out var ranges))
-                _textView.Highlights[m.Row] = ranges = [];
+            if (!_text.Highlights.TryGetValue(m.Row, out var ranges))
+                _text.Highlights[m.Row] = ranges = [];
             ranges.Add((ToCellColumn(m.Row, m.Column), ToCellColumn(m.Row, m.End)));
         }
-        _textView.SetNeedsDraw();
+        _text.SetNeedsDraw();
     }
 
     /// <summary>Select <paramref name="match"/>, leaving the cursor at its end and scrolling it into view.</summary>
@@ -559,58 +550,37 @@ public sealed class EditorTab : FrameView
         var start = ToCellColumn(match.Row, match.Column);
         var end = ToCellColumn(match.Row, match.End);
         _pendingView = null;
-        _textView.RemoveSecondaryCarets();
-        _textView.Select(new System.Drawing.Point(start, match.Row), new System.Drawing.Point(end, match.Row));
+        _text.RemoveSecondaryCarets();
+        _text.Select(new System.Drawing.Point(start, match.Row), new System.Drawing.Point(end, match.Row));
     }
 
-    public void ClearSelection()
-    {
-        _textView.IsSelecting = false;
-        _textView.SetNeedsDraw();
-    }
+    public void ClearSelection() => _text.ClearSelection();
 
     /// <summary>Replace the text covered by <paramref name="match"/>, as one undo step.</summary>
     public void Replace(TextMatch match, string replacement)
     {
         Select(match);
-        _textView.EditAtPrimary(() =>
+        _text.EditAtPrimary(() =>
         {
-            if (match.Length > 0) _textView.DeleteCharLeft();
-            if (replacement.Length > 0) _textView.InsertText(replacement);
+            if (match.Length > 0) _text.ReplaceSelection(replacement);
+            else _text.Document!.Insert(_text.CaretOffset, replacement);
         });
-        _textView.IsSelecting = false;
+        _text.ClearSelection();
     }
 
-    private int ToCharColumn(int row, int cellColumn)
-    {
-        var line = _textView.GetLine(row);
-        var chars = 0;
-        for (var i = 0; i < Math.Min(cellColumn, line.Count); i++)
-            chars += line[i].Grapheme.Length;
-        return chars;
-    }
+    private int ToCharColumn(int row, int column) => CodeEditor.CharsBefore(_text.LineText(row), column);
 
-    // TextMatch columns count UTF-16 chars; the TextView model counts grapheme cells.
-    private int ToCellColumn(int row, int charColumn)
-    {
-        var line = _textView.GetLine(row);
-        var chars = 0;
-        for (var i = 0; i < line.Count; i++)
-        {
-            if (chars >= charColumn) return i;
-            chars += line[i].Grapheme.Length;
-        }
-        return line.Count;
-    }
+    // TextMatch columns count UTF-16 chars; the editor's columns count graphemes.
+    private int ToCellColumn(int row, int charColumn) => CodeEditor.ColumnOf(_text.LineText(row), charColumn);
 
     public void Save()
     {
-        // TextView.Text joins its lines with Environment.NewLine, so on Windows the
+        // The editor's Text joins its lines with Environment.NewLine, so on Windows the
         // buffer comes back CRLF regardless of the file's real endings. Re-emit using
         // the EOL we detected on load so a file's line-ending style round-trips
         // unchanged on every OS (matches VS Code's preserve-on-save behaviour).
         var eol = LineEnding == LineEnding.CRLF ? "\r\n" : "\n";
-        var content = Normalize(_textView.Text, eol);
+        var content = Normalize(_text.Text, eol);
         if (Settings.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
             content += eol;
         // A deleted file's directory can have gone with it (#271), and a tab opened on a file that never
@@ -643,7 +613,7 @@ public sealed class EditorTab : FrameView
         return i > 0 && text[i - 1] == '\r' ? "\r\n" : "\n";
     }
 
-    // Collapse whatever endings TextView produced to LF, then re-emit with the target EOL.
+    // Collapse whatever endings the editor produced to LF, then re-emit with the target EOL.
     private static string Normalize(string text, string eol)
     {
         text = text.Replace("\r\n", "\n").Replace('\r', '\n');
@@ -697,332 +667,4 @@ public sealed class EditorTab : FrameView
             e.Handled = true;
         };
     }
-}
-
-/// <summary>
-/// TextView that paints syntax colours (#21) and find-in-file match highlights (#33), raises
-/// <see cref="TextView.ContentsChanged"/> only for edits that change the text, and keeps the content-width cache across edits.
-/// </summary>
-internal sealed partial class EditorTextView : TextView
-{
-    private static readonly Command[] KillCommands =
-        [Command.CutToEndOfLine, Command.CutToStartOfLine, Command.KillWordLeft, Command.KillWordRight];
-
-    // Run with ContentsChanged held and raised once if the text changed, since TG 2.1.0 raises it unreliably for these.
-    private static readonly HashSet<Command> EditCommands =
-    [
-        .. KillCommands, Command.NewLine, Command.DeleteCharLeft, Command.DeleteCharRight,
-        Command.Paste, Command.DeleteAll,
-    ];
-
-    private bool _holdContentsChanged;
-
-    private Attribute _editable;
-    private Attribute _highlight;
-    private Attribute _cellAttribute;
-    private readonly TokenPalette _palette = new();
-    private long _selectionStart;
-    private long _selectionEnd;
-
-    /// <summary>Row → half-open [start, end) cell-column ranges to highlight.</summary>
-    public Dictionary<int, List<(int Start, int End)>> Highlights { get; } = new();
-
-    public IReadOnlyList<string> LineStrings => GetAllLines().Select(Cell.ToString).ToArray();
-
-    /// <summary>Shared by the gutter and syntax colouring, so unchanged lines keep one string instance.</summary>
-    internal LineSnapshot Snapshot { get; } = new();
-
-    public LineTokenCache? Syntax
-    {
-        get;
-        set
-        {
-            field = value;
-            SetNeedsDraw();
-        }
-    }
-
-    /// <summary>Lexing time allowed per frame; the rest continues on later iterations.</summary>
-    internal TimeSpan SyntaxBudget { get; set; } = TimeSpan.FromMilliseconds(15);
-
-    public override void OnContentsChanged()
-    {
-        if (_holdContentsChanged) return;
-        // Records edits that don't come through a key, such as from TG's context menu.
-        if (!_recordedEdit) RecordPending(Carets);
-        var model = ModelField.GetValue(this)!;
-        var maxWidth = MaxWidthAfterEdit(model);
-        base.OnContentsChanged();
-        CachedMaxWidth(model) = maxWidth;
-    }
-
-    protected override bool OnKeyDown(Key key)
-    {
-        // TG's OnKeyDown reads SelectedLength, which builds the selection in quadratic time: minutes after select-all on a large file.
-        if (Autocomplete.Suggestions.Count > 0 && base.OnKeyDown(key)) return true;
-        if (SoftWrap) SetNeedsDraw();
-        var bound = KeyBindings.TryGet(key, out var binding);
-        if (ColumnSelect && bound && ExtendColumnSelection(binding)) return true;
-        // Anything else ends the box, so the next extend starts one from where the caret now is.
-        _box = null;
-        if (!bound) return false;
-        if (SoftWrap && MoveByRows(binding.Commands)) return true;
-        if (HasSecondaryCarets) return InvokeAtCarets(binding);
-        if (!binding.Commands.Any(EditCommands.Contains)) return false;
-
-        EditAtPrimary(() => InvokeEditCommands(binding.Commands, binding));
-        // Already invoked: returning false would let TG invoke the bound commands a second time.
-        return true;
-    }
-
-    // TG 2.1.0's kill commands ignore a selection and then throw reading it, so delete the selection instead, as VS Code does.
-    private void InvokeEditCommands(Command[] commands, Terminal.Gui.Input.KeyBinding binding)
-    {
-        if (IsSelecting && commands.Any(KillCommands.Contains))
-        {
-            if (SelectionStartRow != CurrentRow || SelectionStartColumn != CurrentColumn)
-            {
-                DeleteCharLeft();
-                return;
-            }
-            IsSelecting = false;
-        }
-        if (commands is [Command.NewLine])
-            NewLineKeepingIndent(() => InvokeCommands(commands, binding));
-        else
-            InvokeCommands(commands, binding);
-    }
-
-    // TG 2.1.0's TextView.OnDrawingContent, but stopping at the viewport bottom: upstream walks every row to EOF.
-    protected override bool OnDrawingContent(DrawContext? context)
-    {
-        Drawing?.Invoke();
-        RefreshingSticky?.Invoke();
-        if (SoftWrap) FollowCaret();
-        PinForCaret();
-        _editable = GetAttributeForRole(VisualRole.Editable);
-        _highlight = GetAttributeForRole(VisualRole.Highlight);
-        (_selectionStart, _selectionEnd) = SelectionBounds();
-        PrepareCaretSelections();
-        PrepareSyntax();
-        SetAttributeForRole(Enabled ? VisualRole.Editable : VisualRole.Disabled);
-
-        var right = Viewport.Width;
-        var bottom = Viewport.Height;
-        var row = 0;
-        if (SoftWrap)
-        {
-            DrawWrappedRows(right, bottom, ref row);
-        }
-        else
-        {
-            for (var idxRow = Viewport.Y; idxRow < Lines && row < bottom; idxRow++, row++)
-            {
-                var line = GetLine(idxRow);
-                DrawRow(line, idxRow, row, right, FirstVisibleGlyph(line), line.Count);
-            }
-        }
-        DrawPinned(right);
-        DrawCarets();
-        if (SoftWrap) PlaceWrappedCursor();
-        HideCursorUnderPinned();
-
-        if (row < bottom)
-        {
-            SetAttributeForRole(ReadOnly ? VisualRole.ReadOnly : VisualRole.Editable);
-            ClearRegion(0, row, right, bottom);
-        }
-        return false;
-    }
-
-    private void PrepareSyntax()
-    {
-        if (Syntax is null) return;
-        _palette.Sync(Syntax.Highlighter);
-
-        // Refreshed every frame rather than on edit: TG doesn't report every edit (see ContentsChanged in AGENTS.md).
-        Syntax.Update(Snapshot.Refresh(GetAllLines()));
-        var lastVisible = SoftWrap ? _wrap.At(Viewport.Y + Viewport.Height - 1).Line : Math.Min(Viewport.Y + Viewport.Height, Lines) - 1;
-        if (!Syntax.TokenizeThrough(lastVisible, SyntaxBudget))
-            App?.Invoke(SetNeedsDraw);
-    }
-
-    // Tab stops count from first.ColWidths.
-    private int DrawRow(List<Cell> line, int idxRow, int row, int right, (int ColWidths, int Col, int Index) first, int end)
-    {
-        var (colWidths, col, idxCol) = first;
-        var wasPreviousWideGlyphNegativeCol = false;
-        Move(0, row);
-
-        var tokens = Syntax?.TokensFor(idxRow);
-        var chars = tokens is null ? 0 : CharsBefore(line, idxCol);
-        var token = 0;
-        var attributeToken = -1;
-        _cellAttribute = _editable;
-
-        for (; idxCol < end; idxCol++)
-        {
-            var text = line[idxCol].Grapheme;
-            var cols = text.GetColumns(false);
-
-            if (tokens is { Length: > 0 })
-            {
-                while (token + 2 < tokens.Length && tokens[token + 2] <= chars)
-                    token += 2;
-                if (token != attributeToken)
-                {
-                    _cellAttribute = _palette.Apply(_editable, tokens[token + 1]);
-                    attributeToken = token;
-                }
-                chars += text.Length;
-            }
-
-            if (_drawingPinned)
-                SetAttribute(_cellAttribute);
-            else if (InSelection(idxCol, idxRow))
-                OnDrawSelectionColor(line, idxCol, idxRow);
-            else if (idxCol == CurrentColumn && idxRow == CurrentRow && !IsSelecting && !Used && HasFocus)
-                OnDrawUsedColor(line, idxCol, idxRow);
-            else if (ReadOnly)
-                OnDrawReadOnlyColor(line, idxCol, idxRow);
-            else
-                OnDrawNormalColor(line, idxCol, idxRow);
-
-            if (text == "\t")
-            {
-                cols = TabWidth > 0 ? TabWidth - colWidths % TabWidth : 0;
-                if (col + cols > right) cols = right - col;
-                for (var i = 0; i < cols; i++)
-                    AddRune(col + i, row, (Rune)' ');
-            }
-            else
-            {
-                if (col < 0 && cols > 1)
-                    wasPreviousWideGlyphNegativeCol = true;
-                else
-                    AddStr(col, row, text);
-                cols = Math.Max(cols, 1);
-            }
-
-            if (col + cols > Viewport.Right) break;
-            col += cols;
-            colWidths += cols;
-
-            if (idxCol + 1 < end && col + line[idxCol + 1].Grapheme.GetColumns() > right) break;
-        }
-
-        if (wasPreviousWideGlyphNegativeCol) AddStr(0, row, " ");
-
-        if (col < right)
-        {
-            if (_drawingPinned) SetAttribute(_editable);
-            else SetAttributeForRole(ReadOnly ? VisualRole.ReadOnly : VisualRole.Editable);
-            ClearRegion(col, row, right, row + 1);
-        }
-        return col;
-    }
-
-    // Col is where that glyph starts relative to the viewport, so <= 0 when it straddles the left edge.
-    private (int ColWidths, int Col, int Index) FirstVisibleGlyph(List<Cell> line)
-    {
-        var start = Viewport.X;
-        if (start <= 0 || line.Count == 0) return (0, 0, 0);
-
-        var sum = 0;
-        var count = Math.Min(start, line.Count);
-        for (var i = 0; i < count; i++)
-        {
-            var grapheme = line[i].Grapheme;
-            var width = grapheme == "\t"
-                ? TabWidth > 0 ? TabWidth - sum % TabWidth : 0
-                : Math.Max(grapheme.GetColumns(), 1);
-            if (sum + width > start) return (sum, sum - start, i);
-            sum += width;
-        }
-        return (sum, sum - start, count);
-    }
-
-    private (long Start, long End) SelectionBounds()
-    {
-        var anchor = Encode(SelectionStartRow, SelectionStartColumn);
-        var point = Encode(CurrentRow, CurrentColumn);
-        return anchor > point ? (point, anchor) : (anchor, point);
-    }
-
-    private bool InSelection(int col, int row)
-    {
-        var q = Encode(row, col);
-        if (IsSelecting && q >= _selectionStart && q < _selectionEnd) return true;
-        foreach (var (start, end) in _caretSelections)
-            if (q >= start && q < end) return true;
-        return false;
-    }
-
-    private static long Encode(int row, int col) => ((long)(uint)row << 32) | (uint)col;
-
-    private void ClearRegion(int left, int top, int right, int bottom)
-    {
-        for (var row = top; row < bottom; row++)
-        {
-            Move(left, row);
-            for (var col = left; col < right; col++)
-                AddRune(col, row, (Rune)' ');
-        }
-    }
-
-    private static int CharsBefore(List<Cell> line, int idxCol)
-    {
-        var chars = 0;
-        for (var i = 0; i < idxCol; i++)
-            chars += line[i].Grapheme.Length;
-        return chars;
-    }
-
-    // Skips base, which resolves the scheme attribute (allocating) and raises DrawNormalColor for every cell.
-    protected override void OnDrawNormalColor(List<Cell> line, int idxCol, int idxRow)
-    {
-        SetAttribute(IsHighlighted(idxCol, idxRow) ? _highlight : line[idxCol].Attribute ?? _cellAttribute);
-    }
-
-    private bool IsHighlighted(int idxCol, int idxRow)
-    {
-        if (!Highlights.TryGetValue(idxRow, out var ranges)) return false;
-        foreach (var (start, end) in ranges)
-            if (idxCol >= start && idxCol < end) return true;
-        return false;
-    }
-
-    // TG 2.1.0's base discards the width cache on every edit; any change beyond the current row has already invalidated it.
-    private int MaxWidthAfterEdit(object model)
-    {
-        var maxWidth = CachedMaxWidth(model);
-        // On a one-line model this is a full-range query, which returns the cache instead of measuring.
-        if (maxWidth < 0 || Lines == 1) return -1;
-
-        var width = GetMaxVisibleLine(model, CurrentRow, CurrentRow + 1, TabWidth);
-        var widestRows = WidestRows(model);
-        if (width > maxWidth)
-        {
-            widestRows.Clear();
-            widestRows[CurrentRow] = width;
-            return width;
-        }
-        if (width == maxWidth) widestRows[CurrentRow] = width;
-        else if (widestRows.Remove(CurrentRow) && widestRows.Count == 0) return -1;
-        return maxWidth;
-    }
-
-    private const string TextModelType = "Terminal.Gui.Views.TextModel, Terminal.Gui";
-
-    // UnsafeAccessorType can't return a ref to an inaccessible type.
-    private static readonly FieldInfo ModelField = typeof(TextView).GetField("_model", BindingFlags.NonPublic | BindingFlags.Instance)!;
-
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_cachedMaxWidth")]
-    private static extern ref int CachedMaxWidth([UnsafeAccessorType(TextModelType)] object model);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_cachedMaxWidthPerLine")]
-    private static extern ref Dictionary<int, int> WidestRows([UnsafeAccessorType(TextModelType)] object model);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "GetMaxVisibleLine")]
-    private static extern int GetMaxVisibleLine([UnsafeAccessorType(TextModelType)] object model, int first, int last, int tabWidth);
 }
