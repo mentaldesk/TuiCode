@@ -108,7 +108,7 @@ public class BlameHostTests : StaticConfigurationTest
             () => OpenFile(workbench, row: 1),
             () => commands.TryExecute(CommandIds.GitBlame),
             () => Dialog(workbench) is not null,
-            () => { Dialog(workbench)!.SubViews.OfType<Button>().Single(b => b.Text.Trim() == "Close")
+            () => { Dialog(workbench)!.SubViews.OfType<Button>().Single(b => b.Text.Trim() == "Esc Close")
                 .NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) }); },
             () => Dialog(workbench) is null);
 
@@ -205,12 +205,12 @@ public class BlameHostTests : StaticConfigurationTest
                 var buttons = dialog.SubViews.OfType<Button>().OrderBy(b => b.Frame.X).ToList();
                 buttonTexts = [.. buttons.Select(b => b.Text.Trim())];
                 margins = (buttons[0].Frame.X, dialog.Viewport.Width - buttons[^1].Frame.Right);
-                buttons.Single(b => b.Text.Trim() == "View change")
+                buttons.Single(b => b.Text.Trim() == "Enter View change")
                     .NewMouseEvent(new Mouse { Flags = MouseFlags.LeftButtonClicked, Position = new System.Drawing.Point(1, 0) });
             },
             () => workbench.Editor.Group.ActiveDiffTab is not null);
 
-        Assert.Equal(["View change", "Close"], buttonTexts);
+        Assert.Equal(["Enter View change", "Esc Close"], buttonTexts);
         Assert.InRange(margins.Left - margins.Right, -1, 1);
         Assert.Null(Dialog(workbench));
     }
@@ -278,7 +278,7 @@ public class BlameHostTests : StaticConfigurationTest
                 host.App.InjectKey(Key.Esc);
             });
 
-        Assert.Equal(["Close"], buttonTexts);
+        Assert.Equal(["Esc Close"], buttonTexts);
         Assert.Empty(workbench.Editor.Group.DiffTabs);
         Assert.Equal(0, _git.ShowCount);
     }

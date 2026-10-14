@@ -1,5 +1,6 @@
 using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Settings;
@@ -51,10 +52,6 @@ internal static class KeybindingConflictDialog
     {
         var dialog = Create("Conflict", message);
 
-        var ok = AppButton.Primary("OK");
-        ok.X = Pos.Center();
-        ok.Y = Pos.AnchorEnd(2);
-
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
 
@@ -66,9 +63,13 @@ internal static class KeybindingConflictDialog
             onClose();
         }
 
-        ok.Accepting += (_, _) => Close();
         commands.Register("conflict.dismiss", Close);
         keybindings.Bind("Esc", "conflict.dismiss");
+
+        var ok = KeyedButton.Of(ButtonKind.Primary, keybindings, "conflict.dismiss", "OK");
+        ok.X = Pos.Center();
+        ok.Y = Pos.AnchorEnd(2);
+        ok.Accepting += (_, _) => Close();
 
         dialog.Add(ok);
         scopes.Push(keybindings);

@@ -162,6 +162,7 @@ public static class CommandIds
 
     public const string CommentConfirm = "comment.action.confirm";
     public const string CommentCancel = "comment.action.cancel";
+    public const string CommentDelete = "comment.action.delete";
 
     public const string PathPromptConfirm = "pathPrompt.action.confirm";
     public const string PathPromptCancel = "pathPrompt.action.cancel";

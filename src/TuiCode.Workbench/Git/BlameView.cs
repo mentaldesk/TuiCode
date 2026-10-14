@@ -1,5 +1,5 @@
 using System.Globalization;
-using AppButton = MentalDesk.Tui.Dialogs.AppButton;
+using ButtonKind = MentalDesk.Tui.Dialogs.ButtonKind;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
@@ -56,17 +56,6 @@ public sealed class BlameView : Window
         Add(Row(LineText, ref y));
         y++;
 
-        if (blame.IsCommitted)
-        {
-            Add(Foot(AppButton.Primary("View change"), y, () => OpenChange?.Invoke(this, EventArgs.Empty)));
-        }
-        var close = Foot(blame.IsCommitted ? AppButton.Secondary("Close") : AppButton.Primary("Close"), y, () => Closed?.Invoke(this, EventArgs.Empty));
-
-        _alert = new AlertView(DialogWidth - 2) { X = 0, Y = y + 1 };
-        if (!blame.IsCommitted) _alert.Show(NotCommitted, AlertSeverity.Info);
-        Add(close, _alert);
-        Height = y + 1 + _alert.Lines + 2;
-
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
         _scopeCommands.Register(CommandIds.BlameClose, () => Closed?.Invoke(this, EventArgs.Empty));
@@ -77,6 +66,17 @@ public sealed class BlameView : Window
             if (blame.IsCommitted) OpenChange?.Invoke(this, EventArgs.Empty);
         });
         _scopeKeybindings.Bind("Enter", CommandIds.BlameOpenChange);
+
+        if (blame.IsCommitted)
+        {
+            Add(Foot(KeyedButton.Of(ButtonKind.Primary, _scopeKeybindings, CommandIds.BlameOpenChange, "View change"), y, () => OpenChange?.Invoke(this, EventArgs.Empty)));
+        }
+        var close = Foot(KeyedButton.Of(blame.IsCommitted ? ButtonKind.Secondary : ButtonKind.Primary, _scopeKeybindings, CommandIds.BlameClose, "Close"), y, () => Closed?.Invoke(this, EventArgs.Empty));
+
+        _alert = new AlertView(DialogWidth - 2) { X = 0, Y = y + 1 };
+        if (!blame.IsCommitted) _alert.Show(NotCommitted, AlertSeverity.Info);
+        Add(close, _alert);
+        Height = y + 1 + _alert.Lines + 2;
     }
 
     internal string Location { get; }

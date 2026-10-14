@@ -1,4 +1,4 @@
-using AppButton = MentalDesk.Tui.Dialogs.AppButton;
+using ButtonKind = MentalDesk.Tui.Dialogs.ButtonKind;
 using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
@@ -70,17 +70,6 @@ public sealed class SubmitReviewView : Window
         form.Add(_verdict, _summary);
         _state = new LoadStateView(form, "Loading pull request…") { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(Foot) };
 
-        _submit = Place(AppButton.Primary("Submit"), 1, OnSubmit);
-        _submit.Enabled = false;
-        _submit.Visible = false;
-        var cancel = Place(AppButton.Secondary("Cancel"), Pos.Right(_submit) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
-        _buttons = [_submit, cancel];
-
-        // Below the buttons, not beside them: the dialog grows for an alert rather than the summary shrinking.
-        _alert = new AlertView(DialogWidth - 2) { X = 0, Y = Pos.AnchorEnd() };
-
-        Add(_state, _drafts, _submit, cancel, _alert);
-
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
         _scopeCommands.Register(CommandIds.SubmitReviewCancel, () => Cancelled?.Invoke(this, EventArgs.Empty));
@@ -90,6 +79,17 @@ public sealed class SubmitReviewView : Window
         _scopeCommands.Register(CommandIds.SubmitReviewRetry, "Retry", () => _retry?.Invoke(), CommandScope.Global,
             () => _retry is not null && _state.State == LoadState.Failed);
         _scopeKeybindings.Bind("r", CommandIds.SubmitReviewRetry);
+
+        _submit = Place(KeyedButton.Of(ButtonKind.Primary, _scopeKeybindings, CommandIds.SubmitReviewConfirm, "Submit"), 1, OnSubmit);
+        _submit.Enabled = false;
+        _submit.Visible = false;
+        var cancel = Place(KeyedButton.Of(ButtonKind.Secondary, _scopeKeybindings, CommandIds.SubmitReviewCancel, "Cancel"), Pos.Right(_submit) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
+        _buttons = [_submit, cancel];
+
+        // Below the buttons, not beside them: the dialog grows for an alert rather than the summary shrinking.
+        _alert = new AlertView(DialogWidth - 2) { X = 0, Y = Pos.AnchorEnd() };
+
+        Add(_state, _drafts, _submit, cancel, _alert);
     }
 
     private static Button Place(Button button, Pos x, Action accepted)

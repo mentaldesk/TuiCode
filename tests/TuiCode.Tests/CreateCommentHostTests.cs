@@ -197,9 +197,40 @@ public class CreateCommentHostTests : StaticConfigurationTest
             () => workbench.Editor.Group.ActiveDiffTab!.CurrentDraft is not null,
             () => host.App.InjectKey(Key.Enter),
             () => Dialog(workbench) is not null,
-            () => Click(Button(workbench, "Delete")),
+            () => Click(Button(workbench, "Ctrl+D Delete")),
             () => Dialog(workbench) is null);
 
+        Assert.Empty(workbench.Editor.Group.ActiveDiffTab!.Drafts);
+        Assert.Equal("", workbench.Sidebar.Review.DraftReviewText);
+    }
+
+    [Fact]
+    public async Task Ctrl_D_deletes_the_draft_while_typing_in_the_box()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string? body = null;
+
+        await OpenDiff(host, workbench, commands);
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.CreateComment),
+            () => Dialog(workbench) is not null,
+            () => Type(host, "Rename this?"),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench) is null,
+            () => host.App.InjectKey(Key.CursorDown),
+            () => workbench.Editor.Group.ActiveDiffTab!.CurrentDraft is not null,
+            () => host.App.InjectKey(Key.Enter),
+            () => Dialog(workbench)?.MostFocused is InputView,
+            () =>
+            {
+                var dialog = Dialog(workbench)!;
+                dialog.Deleted += (_, _) => body = dialog.Body;
+                host.App.InjectKey(Key.D.WithCtrl);
+            },
+            () => Dialog(workbench) is null);
+
+        Assert.Equal("Rename this?", body);
         Assert.Empty(workbench.Editor.Group.ActiveDiffTab!.Drafts);
         Assert.Equal("", workbench.Sidebar.Review.DraftReviewText);
     }
