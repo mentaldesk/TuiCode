@@ -154,7 +154,7 @@ public sealed class SettingsView : Window
             Visible = false
         };
 
-        _interfaceSettings = new InterfaceSettingsView(settings.SidebarWidth)
+        _interfaceSettings = new InterfaceSettingsView(settings.SidebarWidth, settings.AltOpensMenuWhileTyping)
         {
             X = Pos.Right(_separator) + 1,
             Y = 1,
@@ -262,6 +262,7 @@ public sealed class SettingsView : Window
             _settings.FileIcons = _icons.Setting;
         _settings.Editor = _editorSettings.Current;
         _settings.SidebarWidth = _interfaceSettings.Current;
+        _settings.AltOpensMenuWhileTyping = _interfaceSettings.AltOpensMenuWhileTyping;
         _settings.LanguageServers = new Dictionary<string, LanguageServerSetting>(_languageServers.Current, StringComparer.OrdinalIgnoreCase);
         _settings.Save();
         _applyGrammarAssociations?.Invoke();

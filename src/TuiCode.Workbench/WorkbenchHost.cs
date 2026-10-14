@@ -455,6 +455,12 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
+        if (TryOpenMenuByLetter(key))
+        {
+            key.Handled = true;
+            return;
+        }
+
         // When the tab strip is the logical focus, the active TextView still
         // has TG focus underneath. Intercept tab-navigation keys before they
         // reach the editor. (Only relevant in the workbench scope; modals
@@ -464,6 +470,13 @@ public sealed class WorkbenchHost : IDisposable
             && TryHandleTabStripKey(key))
             key.Handled = true;
     }
+
+    // TG gives the focused view the key first, and a text box types the character a terminal attaches to Alt+F (#553).
+    private bool TryOpenMenuByLetter(Key key) =>
+        _settings.AltOpensMenuWhileTyping
+        && key is { IsAlt: true, IsCtrl: false, IsShift: false }
+        && !_workbench.HasDialog
+        && _menu.OpenByLetter(key.NoAlt);
 
     // Handled here short-circuits App.RaiseMouseEvent before any view sees the event, which is what keeps
     // the drag off the editor's cursor, the trees' selection and focus (#252, and see AGENTS.md).

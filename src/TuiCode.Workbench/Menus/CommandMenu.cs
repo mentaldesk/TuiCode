@@ -183,6 +183,15 @@ public sealed class CommandMenu
         if (!IsOpen) _bar.InvokeCommand(Command.HotKey);
     }
 
+    /// <summary>Opens the menu on the bar whose letter is <paramref name="letter"/>, if there is one.</summary>
+    public bool OpenByLetter(Key letter)
+    {
+        if (IsOpen || _bar.SubViews.OfType<MenuBarItem>().FirstOrDefault(m => m.HotKey.KeyCode == letter.KeyCode) is not { } menu)
+            return false;
+        menu.InvokeCommand(Command.HotKey);
+        return true;
+    }
+
     /// <summary>Shows each item's current key, e.g. after a rebind in Settings.</summary>
     public void Refresh()
     {

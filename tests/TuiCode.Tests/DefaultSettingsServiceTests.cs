@@ -383,6 +383,35 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void Alt_opens_the_menu_while_typing_by_default()
+    {
+        Assert.True(new DefaultSettingsService(new MockFileSystem()).AltOpensMenuWhileTyping);
+    }
+
+    [Fact]
+    public void Turning_off_alt_opens_the_menu_while_typing_round_trips()
+    {
+        var fs = new MockFileSystem();
+        var svc = new DefaultSettingsService(fs) { AltOpensMenuWhileTyping = false };
+
+        svc.Save();
+
+        Assert.False(new DefaultSettingsService(fs).AltOpensMenuWhileTyping);
+    }
+
+    [Fact]
+    public void Alt_opens_the_menu_while_typing_is_not_written_at_its_default()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{ \"AltOpensMenuWhileTyping\": false }"));
+        var svc = new DefaultSettingsService(fs) { AltOpensMenuWhileTyping = true };
+
+        svc.Save();
+
+        Assert.False(fs.File.Exists(SettingsPath(fs)));
+    }
+
+    [Fact]
     public void Language_servers_round_trip_through_the_settings_file()
     {
         var fs = new MockFileSystem();

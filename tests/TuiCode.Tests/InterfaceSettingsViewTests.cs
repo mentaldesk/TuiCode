@@ -20,6 +20,16 @@ public class InterfaceSettingsViewTests : StaticConfigurationTest
         Assert.Equal(45, view.Current);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_panel_reports_whether_alt_opens_the_menu_while_typing(bool on)
+    {
+        using var view = new InterfaceSettingsView(30, on);
+
+        Assert.Equal(on, view.AltOpensMenuWhileTyping);
+    }
+
     [Fact]
     public async Task A_typed_width_is_saved_and_applied()
     {
