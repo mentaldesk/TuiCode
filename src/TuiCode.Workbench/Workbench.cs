@@ -296,9 +296,21 @@ public sealed class Workbench : Window
     public void Delete(IFileSystemInfo item)
     {
         Sidebar.Explorer.Delete(item);
+        AfterRemoving(item, $"Deleted: {item.FullName}");
+    }
+
+    /// <summary>Move <paramref name="item"/> to <paramref name="trash"/>; throws, changing nothing, when it can't.</summary>
+    public void Trash(IFileSystemInfo item, ITrash trash)
+    {
+        Sidebar.Explorer.Trash(item, trash);
+        AfterRemoving(item, $"🗑 Moved '{item.Name}' to the {trash.Name}");
+    }
+
+    private void AfterRemoving(IFileSystemInfo item, string message)
+    {
         Editor.Groups.CloseUnder(item.FullName);
         Sidebar.Search.RunSearch();
-        StatusBar.SetMessage($"Deleted: {item.FullName}");
+        StatusBar.SetMessage(message);
         SaveWorkspaceState();
     }
 

@@ -68,6 +68,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly LogFile? _log;
     private readonly FileIcons? _icons;
     private readonly IGitCli _git;
+    private readonly ITrash _trash;
     private readonly IGitHubCli _gitHub;
     private readonly TerminalCursors _terminalCursors;
     private readonly CommandMenu _menu;
@@ -99,6 +100,7 @@ public sealed class WorkbenchHost : IDisposable
     private DiagnosticsView? _activeDiagnostics;
     private string? _cursorColour;
     private AboutView? _activeAbout;
+    private readonly ImageView _aboutImage = AboutView.CreateImage();
     private DocumentInfoView? _activeDocumentInfo;
     private BlameView? _activeBlame;
     private bool? _sixelSupported;
@@ -134,7 +136,8 @@ public sealed class WorkbenchHost : IDisposable
         IGitHubCli? gitHub = null,
         IFileSystem? fileSystem = null,
         ILanguageServerLauncher? languageServers = null,
-        LogFile? log = null)
+        LogFile? log = null,
+        ITrash? trash = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -176,6 +179,7 @@ public sealed class WorkbenchHost : IDisposable
         _log = log;
         _icons = icons;
         _git = git ?? new GitCli(new FileSystem());
+        _trash = trash ?? SystemTrash.For(new FileSystem(), _environment);
         _workbench.Sidebar.Search.Git = _git;
         _workbench.Sidebar.Search.InRepository = GitRepository.Contains;
         _gitHub = gitHub ?? new GitHubCli();
@@ -605,7 +609,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleViewed, "Mark viewed or not", ToggleViewed, CommandScope.Global, CanToggleViewed,
             () => ViewedTargetIsViewed() ? "Mark not viewed" : "Mark viewed");
         _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
-        _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmDelete, CommandScope.Explorer);
+        _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmTrash, CommandScope.Explorer);
+        _commands.Register(CommandIds.DeletePermanently, "Delete permanently", ConfirmDeletePermanently, CommandScope.Explorer);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
         _commands.Register(CommandIds.CutFile, "Cut file or folder", CutEntry, CommandScope.Explorer);
         _commands.Register(CommandIds.PasteFile, "Paste file or folder", PasteEntry, CommandScope.Explorer);
@@ -961,6 +966,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Delete", CommandIds.DeleteFile);
         // Our iTerm2 profile sends forward-delete as ^D (Iterm2Integration).
         keybindings.Bind("Ctrl+D", CommandIds.DeleteFile);
+        keybindings.Bind("Shift+Delete", CommandIds.DeletePermanently);
         keybindings.Bind("F2", CommandIds.RenameFile);
         keybindings.Bind("Ctrl+X", CommandIds.CutFile);
         keybindings.Bind("Ctrl+V", CommandIds.PasteFile);
@@ -2080,37 +2086,85 @@ public sealed class WorkbenchHost : IDisposable
             : $"{tab.File.Name} no longer exists on disk — nothing to reload");
     }
 
-    private void ConfirmDelete()
+    private void ConfirmTrash()
     {
         if (_activeConfirm is not null) return;
         var fromExplorer = ExplorerIsContext;
         if (FileCommandTarget(fromExplorer, "deleted") is not { } item) return;
 
-        var unsaved = _workbench.Editor.Groups.TabsUnder(item.FullName).Count(t => t.IsDirty);
-        var message = string.Join('\n', new[]
+        var message = DeleteMessage(item,
+            item is IDirectoryInfo ? $"Delete '{item.Name}' and its contents?" : $"Delete '{item.Name}'?",
+            $"You can restore it from the {_trash.Name}.");
+        ShowDeleteConfirm("Delete", message, "Delete", fromExplorer, () =>
         {
+            try
+            {
+                _workbench.Trash(item, _trash);
+                _history.Forget(item.FullName);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                ConfirmDeleteAfterTrashFailed(item, ex.Message, fromExplorer);
+            }
+        });
+    }
+
+    private void ConfirmDeleteAfterTrashFailed(IFileSystemInfo item, string reason, bool fromExplorer)
+    {
+        var message = string.Join('\n',
+            $"Couldn't move '{item.Name}' to the {_trash.Name}:",
+            reason,
+            "Delete it permanently instead? This can't be undone.");
+        ShowDeleteConfirm("Delete", message, "Delete permanently", fromExplorer, () => DeletePermanently(item));
+    }
+
+    private void ConfirmDeletePermanently()
+    {
+        if (_activeConfirm is not null) return;
+        var fromExplorer = ExplorerIsContext;
+        if (FileCommandTarget(fromExplorer, "deleted") is not { } item) return;
+
+        var message = DeleteMessage(item,
             item is IDirectoryInfo ? $"Permanently delete '{item.Name}' and its contents?" : $"Permanently delete '{item.Name}'?",
+            "This action is irreversible!");
+        ShowDeleteConfirm("Delete permanently", message, "Delete", fromExplorer, () => DeletePermanently(item));
+    }
+
+    private void DeletePermanently(IFileSystemInfo item)
+    {
+        try
+        {
+            _workbench.Delete(item);
+            _history.Forget(item.FullName);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _workbench.StatusBar.SetMessage(ex.Message);
+        }
+    }
+
+    private string DeleteMessage(IFileSystemInfo item, string question, string consequence)
+    {
+        var unsaved = _workbench.Editor.Groups.TabsUnder(item.FullName).Count(t => t.IsDirty);
+        return string.Join('\n', new[]
+        {
+            question,
             unsaved switch
             {
                 0 => null,
                 1 => "1 open file has unsaved changes, which will be lost.",
                 _ => $"{unsaved} open files have unsaved changes, which will be lost.",
             },
-            "This action is irreversible!",
+            consequence,
         }.OfType<string>());
+    }
 
-        var view = new ConfirmView("Delete", message, new ConfirmChoice("Delete", () =>
+    private void ShowDeleteConfirm(string title, string message, string choice, bool fromExplorer, Action delete)
+    {
+        var view = new ConfirmView(title, message, new ConfirmChoice(choice, () =>
         {
-            try
-            {
-                _workbench.Delete(item);
-                _history.Forget(item.FullName);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                _workbench.StatusBar.SetMessage(ex.Message);
-            }
-            if (fromExplorer) FocusSidebar();
+            delete();
+            if (fromExplorer && _activeConfirm is null) FocusSidebar();
         }, Destructive: true));
         view.Cancelled += (_, _) =>
         {
@@ -2210,7 +2264,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeAbout is not null) return;
 
-        var view = new AboutView(AppVersion.Current);
+        var view = new AboutView(AppVersion.Current, _aboutImage);
         view.Closed += (_, _) => CloseAbout(view);
         _activeAbout = view;
         _workbench.Add(view);
@@ -2222,19 +2276,31 @@ public sealed class WorkbenchHost : IDisposable
 
     private void PresentAbout(AboutView view)
     {
-        if (_sixelSupported is not true || _app.Driver is not { } driver)
+        if (_app.Driver is not { } driver || AboutImageProtocol() is not { } protocol)
         {
-            view.Present(_sixelSupported is null ? null : SixelSupport.Unsupported);
+            view.ShowLoading();
             return;
         }
 
-        view.Present(null);
+        if (protocol == ImageProtocol.None)
+        {
+            view.ShowAsciiArt();
+            return;
+        }
+
+        view.ShowLoading();
         // Measured on every open: the window may have moved to a screen with another scale since the last one.
         SixelProbe.MeasureCell(driver, cell => _app.Invoke(() =>
         {
-            if (ReferenceEquals(_activeAbout, view)) view.Present(new SixelSupport(true, cell.Pixels));
+            if (ReferenceEquals(_activeAbout, view)) view.ShowImage(ImageProtocols.Configure(driver, protocol, cell.Pixels));
         }));
     }
+
+    internal ImageProtocol? AboutImageProtocol() =>
+        _app.Driver is { } driver
+            ? ImageProtocols.Choose(driver.KittyGraphicsSupport is { IsSupported: true },
+                !string.IsNullOrEmpty(_environment.GetEnvironmentVariable("TMUX")), _sixelSupported)
+            : ImageProtocol.None;
 
     private void CloseAbout(AboutView view)
     {
@@ -3557,7 +3623,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var driverName = _app.Driver?.GetName() ?? "Unknown";
         var kittyNegotiationStatus = GetKittyNegotiationStatus();
-        var view = new DiagnosticsView(driverName, kittyNegotiationStatus, _cursorColour);
+        var view = new DiagnosticsView(driverName, kittyNegotiationStatus, _cursorColour, ImageProtocols.Describe(AboutImageProtocol()));
         view.Closed += (_, _) => CloseDiagnostics(view);
         _activeDiagnostics = view;
         _workbench.Add(view);
@@ -3645,6 +3711,7 @@ public sealed class WorkbenchHost : IDisposable
         _find.Dispose();
         _terminalCursors.Dispose();
         _workbench.Dispose();
+        _aboutImage.Dispose();
         _app.Dispose();
         // Tell WezTerm and kitty to stop remapping keys; matches the startup activation.
         // Emitted post-Dispose so it reaches the live terminal after TG restores it.

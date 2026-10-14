@@ -37,6 +37,26 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void Delete_permanently_is_bound_to_Shift_Delete_in_Explorer()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        Assert.Contains(_keybindings.Bindings, b => Is(b, CommandScope.Explorer, "Shift+Delete", CommandIds.DeletePermanently));
+    }
+
+    [Fact]
+    public void Delete_permanently_can_be_rebound_and_stays_in_Explorer()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench,
+            Override("Shift+Delete", "-" + CommandIds.DeletePermanently), Override("F8", CommandIds.DeletePermanently));
+
+        Assert.DoesNotContain(_keybindings.Bindings, b => Is(b, CommandScope.Explorer, "Shift+Delete", CommandIds.DeletePermanently));
+        Assert.Contains(_keybindings.Bindings, b => Is(b, CommandScope.Explorer, "F8", CommandIds.DeletePermanently));
+    }
+
+    [Fact]
     public void Removing_an_explorer_default_leaves_the_Global_binding_on_the_same_key()
     {
         using var workbench = BuildWorkbench();

@@ -86,7 +86,7 @@ public class MenuBarHostTests : StaticConfigurationTest
         [
             "_New file or folder", "_Open file or folder", "Open _recent folder", "Open _worktree", "Open _file path",
             "_Save active editor", "Save _all", "Re_load from disk", "_Close active editor", "Clos_e other tabs", "Close all ta_bs",
-            "_Move or rename file or folder", "Cu_t file or folder", "_Paste file or folder", "_Delete file or folder",
+            "_Move or rename file or folder", "Cu_t file or folder", "_Paste file or folder", "_Delete file or folder", "Delete permanentl_y",
             "Show document _info", "Open settin_gs", "Suspend to s_hell", "_Quit",
         ], file.Select(i => i.Title));
     }
@@ -113,7 +113,7 @@ public class MenuBarHostTests : StaticConfigurationTest
 
         Assert.False(workbench.MenuBar.IsOpen());
         Assert.Equal(CommandIds.DeleteFile, closedWith);
-        Assert.Contains("Permanently delete 'a.txt'?", workbench.SubViews.OfType<ConfirmView>().Single().SubViews.OfType<Label>().First().Text);
+        Assert.Contains("Delete 'a.txt'?", workbench.SubViews.OfType<ConfirmView>().Single().SubViews.OfType<Label>().First().Text);
     }
 
     [Fact]
@@ -528,6 +528,7 @@ public class MenuBarHostTests : StaticConfigurationTest
 
         Assert.Equal("Alt+↓", KeyShown(host, CommandIds.MoveLinesDown));
         Assert.Equal("Ctrl+G l", KeyShown(host, CommandIds.GoToLine));
+        Assert.Equal("Shift+Delete", KeyShown(host, CommandIds.DeletePermanently));
         Assert.Equal("", KeyShown(host, CommandIds.ToggleSidebar));
 
         host.ApplyKeybindings(

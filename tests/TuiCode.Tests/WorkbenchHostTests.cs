@@ -1029,7 +1029,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task About_dialog_shows_a_spinner_until_sixel_detection_finishes_then_the_ascii_art_if_unsupported()
+    public async Task About_dialog_shows_a_spinner_until_detection_finishes_then_the_ascii_art_if_unsupported()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -1041,8 +1041,8 @@ public class WorkbenchHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { commands.TryExecute(CommandIds.ShowAbout); },
-            () => { About().Present(null); loading = About().IsLoading; },
-            () => { About().Present(SixelSupport.Unsupported); ascii = About().ShowsAsciiArt; },
+            () => { About().ShowLoading(); loading = About().IsLoading; },
+            () => { About().ShowAsciiArt(); ascii = About().ShowsAsciiArt; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(loading, "AboutView didn't show the spinner while detection was pending");
