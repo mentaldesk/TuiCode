@@ -1,4 +1,4 @@
-using AppButton = MentalDesk.Tui.Dialogs.AppButton;
+using ButtonKind = MentalDesk.Tui.Dialogs.ButtonKind;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
@@ -35,7 +35,7 @@ public sealed class CommentView : Window
     /// <summary>What the draft or reply should say; the host adds it, replaces the one being edited, or posts it.</summary>
     public event EventHandler<string>? Added;
 
-    /// <summary>Raised by <c>[ Delete ]</c>, which only an existing draft has.</summary>
+    /// <summary>Raised by Delete or <c>Ctrl+D</c>, which only an existing draft has.</summary>
     public event EventHandler? Deleted;
 
     public CommentView(string path, int line, DraftComment? draft = null)
@@ -73,9 +73,21 @@ public sealed class CommentView : Window
         var lines = written.Split('\n');
         _end = new System.Drawing.Point(lines[^1].Length, lines.Length - 1);
 
-        _confirm = Foot(AppButton.Primary(confirm), 1, OnAdd);
-        var delete = deletable ? Foot(AppButton.Danger("Delete"), Pos.Right(_confirm) + 1, () => Deleted?.Invoke(this, EventArgs.Empty)) : null;
-        var cancel = Foot(AppButton.Secondary("Cancel"), Pos.Right(delete ?? _confirm) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
+        _scopeCommands = new CommandService();
+        _scopeKeybindings = new KeybindingService(_scopeCommands);
+        _scopeCommands.Register(CommandIds.CommentCancel, () => Cancelled?.Invoke(this, EventArgs.Empty));
+        _scopeCommands.Register(CommandIds.CommentConfirm, OnAdd);
+        _scopeKeybindings.Bind("Esc", CommandIds.CommentCancel);
+        _scopeKeybindings.Bind("Ctrl+Enter", CommandIds.CommentConfirm);
+        if (deletable)
+        {
+            _scopeCommands.Register(CommandIds.CommentDelete, OnDelete);
+            _scopeKeybindings.Bind("Ctrl+D", CommandIds.CommentDelete);
+        }
+
+        _confirm = Foot(KeyedButton.Of(ButtonKind.Primary, _scopeKeybindings, CommandIds.CommentConfirm, confirm), 1, OnAdd);
+        var delete = deletable ? Foot(KeyedButton.Of(ButtonKind.Danger, _scopeKeybindings, CommandIds.CommentDelete, "Delete"), Pos.Right(_confirm) + 1, OnDelete) : null;
+        var cancel = Foot(KeyedButton.Of(ButtonKind.Secondary, _scopeKeybindings, CommandIds.CommentCancel, "Cancel"), Pos.Right(delete ?? _confirm) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
         _buttons = delete is null ? [_confirm, cancel] : [_confirm, delete, cancel];
 
         // Below the buttons, not beside them: the dialog grows for an alert rather than the body shrinking.
@@ -83,13 +95,6 @@ public sealed class CommentView : Window
 
         Add(_body, _alert);
         foreach (var button in _buttons) Add(button);
-
-        _scopeCommands = new CommandService();
-        _scopeKeybindings = new KeybindingService(_scopeCommands);
-        _scopeCommands.Register(CommandIds.CommentCancel, () => Cancelled?.Invoke(this, EventArgs.Empty));
-        _scopeCommands.Register(CommandIds.CommentConfirm, OnAdd);
-        _scopeKeybindings.Bind("Esc", CommandIds.CommentCancel);
-        _scopeKeybindings.Bind("Ctrl+Enter", CommandIds.CommentConfirm);
     }
 
     private static Button Foot(Button button, Pos x, Action accepted)
@@ -134,6 +139,8 @@ public sealed class CommentView : Window
         foreach (var button in _buttons) button.Y = Pos.AnchorEnd(_alert.Lines + 1);
         SetNeedsLayout();
     }
+
+    private void OnDelete() => Deleted?.Invoke(this, EventArgs.Empty);
 
     private void OnAdd()
     {

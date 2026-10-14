@@ -2,6 +2,7 @@ using System.Globalization;
 using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.DocumentInfo;
@@ -49,7 +50,13 @@ public sealed class DocumentInfoView : Window
             x += columnWidth + Gap;
         }
 
-        var close = AppButton.Primary("Close");
+        _scopeCommands = new CommandService();
+        _scopeKeybindings = new KeybindingService(_scopeCommands);
+        _scopeCommands.Register(CommandIds.DocumentInfoClose, () => Closed?.Invoke(this, EventArgs.Empty));
+        _scopeKeybindings.Bind("Esc", CommandIds.DocumentInfoClose);
+        _scopeKeybindings.Bind("Enter", CommandIds.DocumentInfoClose);
+
+        var close = KeyedButton.Of(ButtonKind.Primary, _scopeKeybindings, CommandIds.DocumentInfoClose, "Close");
         close.X = Pos.Center();
         close.Y = Pos.AnchorEnd(1);
         close.Accepting += (_, e) => { e.Handled = true; Closed?.Invoke(this, EventArgs.Empty); };
@@ -58,12 +65,6 @@ public sealed class DocumentInfoView : Window
         var tableWidth = x - Gap - 1;
         Width = Math.Max(tableWidth, Math.Max(path.Length, facts.Length)) + 4;
         Height = 12;
-
-        _scopeCommands = new CommandService();
-        _scopeKeybindings = new KeybindingService(_scopeCommands);
-        _scopeCommands.Register(CommandIds.DocumentInfoClose, () => Closed?.Invoke(this, EventArgs.Empty));
-        _scopeKeybindings.Bind("Esc", CommandIds.DocumentInfoClose);
-        _scopeKeybindings.Bind("Enter", CommandIds.DocumentInfoClose);
     }
 
     /// <summary>Each column's header and numbers, top to bottom.</summary>

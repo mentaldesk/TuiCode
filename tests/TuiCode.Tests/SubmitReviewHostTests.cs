@@ -148,7 +148,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Dialog(workbench)!.Status == _gitHub.ReviewError,
             () => Alert(workbench).Frame.Height > 1,
-            () => { alert = Alert(workbench).Frame; cancel = Button(workbench, "Cancel").Frame; },
+            () => { alert = Alert(workbench).Frame; cancel = Button(workbench, "Esc Cancel").Frame; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(alert.Height > 1, $"the refusal took {alert.Height} row(s), so it never wrapped");
@@ -303,7 +303,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.SubmitReview),
             () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Looks good"),
-            () => Click(Button(workbench, "Submit")),
+            () => Click(Button(workbench, "Ctrl+Enter Submit")),
             () => Dialog(workbench) is null);
 
         Assert.Equal([(_git.Root, 187, GitHubReviewVerdict.Comment, "Looks good")], _gitHub.Reviews);
@@ -319,7 +319,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.SubmitReview),
             () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Never mind"),
-            () => Click(Button(workbench, "Cancel")),
+            () => Click(Button(workbench, "Esc Cancel")),
             () => Dialog(workbench) is null);
 
         Assert.Empty(_gitHub.Reviews);

@@ -83,7 +83,7 @@ public class ReplyToThreadHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal("Reply to octocat", title);
-        Assert.Equal(["Reply", "Cancel"], buttons);
+        Assert.Equal(["Ctrl+Enter Reply", "Esc Cancel"], buttons);
         Assert.Empty(_gitHub.Replies);
     }
 

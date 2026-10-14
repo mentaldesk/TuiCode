@@ -22,7 +22,7 @@ public class ButtonKindTests
     public void A_new_comment_offers_Add_and_Cancel()
     {
         Assert.Equal(
-            [("Add", SchemeNames.ButtonPrimary), ("Cancel", SchemeNames.ButtonSecondary)],
+            [("Ctrl+Enter Add", SchemeNames.ButtonPrimary), ("Esc Cancel", SchemeNames.ButtonSecondary)],
             Kinds(new CommentView("src/a.txt", 1)));
     }
 
@@ -30,7 +30,7 @@ public class ButtonKindTests
     public void A_draft_also_offers_Delete_as_a_danger()
     {
         Assert.Equal(
-            [("Add", SchemeNames.ButtonPrimary), ("Delete", SchemeNames.ButtonDanger), ("Cancel", SchemeNames.ButtonSecondary)],
+            [("Ctrl+Enter Add", SchemeNames.ButtonPrimary), ("Ctrl+D Delete", SchemeNames.ButtonDanger), ("Esc Cancel", SchemeNames.ButtonSecondary)],
             Kinds(new CommentView("src/a.txt", 1, new DraftComment("src/a.txt", 1, "Rename this?"))));
     }
 
@@ -40,7 +40,7 @@ public class ButtonKindTests
         var thread = new GitHubReviewThread("src/a.txt", 1, false, false, [new GitHubComment("octocat", default, "Hm.")]);
 
         Assert.Equal(
-            [("Reply", SchemeNames.ButtonPrimary), ("Cancel", SchemeNames.ButtonSecondary)],
+            [("Ctrl+Enter Reply", SchemeNames.ButtonPrimary), ("Esc Cancel", SchemeNames.ButtonSecondary)],
             Kinds(new CommentView(thread)));
     }
 
@@ -48,7 +48,7 @@ public class ButtonKindTests
     public void Submit_review_offers_a_primary_Submit_and_a_secondary_Cancel()
     {
         Assert.Equal(
-            [("Submit", SchemeNames.ButtonPrimary), ("Cancel", SchemeNames.ButtonSecondary)],
+            [("Ctrl+Enter Submit", SchemeNames.ButtonPrimary), ("Esc Cancel", SchemeNames.ButtonSecondary)],
             Kinds(new SubmitReviewView()));
     }
 
@@ -56,7 +56,7 @@ public class ButtonKindTests
     public void Blame_on_a_committed_line_offers_a_primary_View_change_and_a_secondary_Close()
     {
         Assert.Equal(
-            [("View change", SchemeNames.ButtonPrimary), ("Close", SchemeNames.ButtonSecondary)],
+            [("Enter View change", SchemeNames.ButtonPrimary), ("Esc Close", SchemeNames.ButtonSecondary)],
             Kinds(new BlameView("a.txt", 1, Blame("4a91c0e2b7d1f3e5a6c8b9d0e1f2a3b4c5d6e7f8"), DateTimeOffset.UnixEpoch)));
     }
 
@@ -64,7 +64,7 @@ public class ButtonKindTests
     public void Blame_on_an_uncommitted_line_closes_with_a_primary_button()
     {
         Assert.Equal(
-            [("Close", SchemeNames.ButtonPrimary)],
+            [("Esc Close", SchemeNames.ButtonPrimary)],
             Kinds(new BlameView("a.txt", 1, Blame(new string('0', 40)), DateTimeOffset.UnixEpoch)));
     }
 
@@ -73,7 +73,7 @@ public class ButtonKindTests
     {
         var view = new DocumentInfoView("a.txt", "Plain Text", new DocumentStats(1, 1, 1, 1), null);
 
-        Assert.Equal([("Close", SchemeNames.ButtonPrimary)], Kinds(view));
+        Assert.Equal([("Esc Close", SchemeNames.ButtonPrimary)], Kinds(view));
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class ButtonKindTests
         KeybindingConflictDialog.Refuse(host, new InputScopeStack(), "Ctrl+Q can't be rebound.", () => closed++);
 
         var ok = host.SubViews.OfType<Dialog>().Single().SubViews.OfType<Button>().Single();
-        Assert.Equal(("OK", SchemeNames.ButtonPrimary), Kind(ok));
+        Assert.Equal(("Esc OK", SchemeNames.ButtonPrimary), Kind(ok));
         Assert.True(ok.HasFocus);
 
         host.NewKeyDownEvent(Key.Enter);
