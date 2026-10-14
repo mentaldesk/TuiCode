@@ -245,6 +245,33 @@ public class CloseTabsHostTests : StaticConfigurationTest
     private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
         workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
 
+    [Fact]
+    public async Task Close_other_tabs_asks_nothing_about_a_tab_back_to_its_saved_text()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var asked = false;
+        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmView;
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                Open(workbench, "a.txt");
+                EditAndUndo(workbench.Editor.Group.ActiveTab!);
+                Open(workbench, "b.txt");
+            },
+            () => _commands.TryExecute(CommandIds.CloseOtherTabs));
+
+        Assert.False(asked);
+        Assert.Equal(["b.txt"], Names(workbench.Editor.Group));
+    }
+
+    private static void EditAndUndo(EditorTab tab)
+    {
+        tab.Code.NewKeyDownEvent(Key.X);
+        tab.Code.Undo();
+    }
+
     private static IEnumerable<string> Names(EditorGroup group) => group.Tabs.Select(t => t.File.Name).Order();
 
     private void Open(Workbench.Workbench workbench, string name, string? edit = null)

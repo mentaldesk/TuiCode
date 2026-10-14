@@ -238,6 +238,31 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
         return false;
     };
 
+    [Fact]
+    public async Task A_tab_undone_back_to_its_saved_text_closes_without_asking()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var asked = false;
+        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmView;
+        _fs.AddFile(Path, new MockFileData("one\n"));
+
+        await HostSteps.Run(host,
+            () =>
+            {
+                workbench.OpenFile(_fs.FileInfo.New(Path));
+                workbench.Editor.Group.ActiveTab!.FocusContent();
+            },
+            () => host.App.InjectKey(Key.X),
+            () => workbench.Editor.Group.ActiveTab!.IsDirty,
+            () => host.App.InjectKey(Key.Z.WithCtrl),
+            () => !workbench.Editor.Group.ActiveTab!.IsDirty,
+            () => host.App.InjectKey(Key.W.WithCtrl),
+            () => workbench.Editor.Group.Tabs.Count == 0);
+
+        Assert.False(asked);
+    }
+
     private EditorTab OpenDirty(Workbench.Workbench workbench)
     {
         _fs.AddFile(Path, new MockFileData("one\n"));
