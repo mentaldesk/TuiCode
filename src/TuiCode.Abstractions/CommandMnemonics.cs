@@ -40,6 +40,7 @@ public static class CommandMnemonics
             [CommandIds.ShowDiagnostics] = "sd",
             [CommandIds.ShowLog] = "sl",
             [CommandIds.ShowAbout] = "tui",
+            [CommandIds.WatchTutorials] = "wt",
             [CommandIds.New] = "nf",
             [CommandIds.DeleteFile] = "df",
             [CommandIds.DeletePermanently] = "dp",

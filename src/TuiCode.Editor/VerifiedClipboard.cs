@@ -11,10 +11,12 @@ public abstract record CopyOutcome
     public sealed record Failed(string Reason) : CopyOutcome;
 }
 
-internal static class VerifiedClipboard
+public static class VerifiedClipboard
 {
+    public static CopyOutcome Copy(IClipboard? clipboard, string text) => Write(clipboard, text, ClipboardTools.ThisMachine);
+
     // Checked by reading back, not IClipboard.IsSupported, which is false on macOS while the clipboard works (#210).
-    public static CopyOutcome Write(IClipboard? clipboard, string text, ClipboardTools? fallback = null)
+    internal static CopyOutcome Write(IClipboard? clipboard, string text, ClipboardTools? fallback = null)
     {
         var terminal = clipboard as TerminalClipboard;
         var platform = terminal is null ? clipboard : terminal.Platform;

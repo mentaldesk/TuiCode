@@ -46,6 +46,7 @@ public static class CommandIds
     public const string ShowDiagnostics = "workbench.action.showDiagnostics";
     public const string ShowLog = "workbench.action.showLog";
     public const string ShowAbout = "workbench.action.showAbout";
+    public const string WatchTutorials = "workbench.action.watchTutorials";
     public const string ShowDocumentInfo = "workbench.action.showDocumentInfo";
     public const string CompareToSaved = "workbench.action.compareToSaved";
     public const string CompareToRevision = "workbench.action.compareToRevision";
