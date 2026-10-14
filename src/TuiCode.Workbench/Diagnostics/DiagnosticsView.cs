@@ -19,13 +19,14 @@ public sealed class DiagnosticsView : Window
     private readonly Label _keyRune;
     private readonly Label _cursorColour;
     private readonly Label _cellSize;
+    private readonly Label _imageProtocol;
     private readonly string? _askedCursorColour;
 
     public IKeybindingService Scope => _scopeKeybindings;
 
     public event EventHandler? Closed;
 
-    public DiagnosticsView(string driverName, string kittyNegotiationStatus, string? cursorColour = null)
+    public DiagnosticsView(string driverName, string kittyNegotiationStatus, string? cursorColour = null, string imageProtocol = "")
     {
         _askedCursorColour = cursorColour;
         Title = "Diagnostics";
@@ -39,7 +40,8 @@ public sealed class DiagnosticsView : Window
         var kittyStatusText = string.Join("\n", kittyStatusLines);
         var cursorColourY = 2 + kittyStatusLines.Length;
         var cellSizeY = cursorColourY + 1;
-        var keyHeadingY = cellSizeY + 2;
+        var imageProtocolY = cellSizeY + 1;
+        var keyHeadingY = imageProtocolY + 2;
         var nameY = keyHeadingY + 1;
         var hintY = nameY + 6;
         Height = hintY + 6;
@@ -86,6 +88,15 @@ public sealed class DiagnosticsView : Window
             Text = "asking the terminal…",
         };
 
+        var imageProtocolHeading = Heading("Image protocol", imageProtocolY);
+        _imageProtocol = new Label
+        {
+            X = FieldX,
+            Y = imageProtocolY,
+            Width = GetFieldWidth(),
+            Text = imageProtocol,
+        };
+
         var keyHeading = Heading("Last key", keyHeadingY);
         var nameLabel = Heading("  Name", nameY);
         var hexLabel = Heading("  Hex", nameY + 1);
@@ -114,6 +125,7 @@ public sealed class DiagnosticsView : Window
         Add(driverHeading, driverNameLabel, kittyHeading, kittyStatusLabel,
             cursorColourHeading, _cursorColour,
             cellSizeHeading, _cellSize,
+            imageProtocolHeading, _imageProtocol,
             keyHeading, nameLabel, hexLabel, baseLabel, runeLabel,
             _keyName, _keyHex, _keyBase, _keyRune,
             hint, footer);
@@ -177,6 +189,8 @@ public sealed class DiagnosticsView : Window
     }
 
     public string CellSizeText => _cellSize.Text;
+
+    public string ImageProtocolText => _imageProtocol.Text;
 
     internal void ShowCellSize(CellMeasurement cell) => _cellSize.Text = DescribeCellSize(cell);
 
