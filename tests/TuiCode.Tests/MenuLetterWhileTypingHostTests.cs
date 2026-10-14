@@ -52,7 +52,7 @@ public class MenuLetterWhileTypingHostTests : StaticConfigurationTest
         ]);
 
         Assert.Equal(on, opened);
-        Assert.Equal(on ? "one\n" : "ƒone\n", workbench.Editor.Group.ActiveTab!.Content);
+        Assert.Equal(on ? "one\n" : "ƒone\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
     }
 
     [Theory]
@@ -97,7 +97,7 @@ public class MenuLetterWhileTypingHostTests : StaticConfigurationTest
             () => !workbench.MenuBar.IsOpen(),
         ]);
 
-        Assert.Equal("one\n", workbench.Editor.Group.ActiveTab!.Content);
+        Assert.Equal("one\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class MenuLetterWhileTypingHostTests : StaticConfigurationTest
         ]);
 
         Assert.False(opened);
-        Assert.Equal("πone\n", workbench.Editor.Group.ActiveTab!.Content);
+        Assert.Equal("πone\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public class MenuLetterWhileTypingHostTests : StaticConfigurationTest
 
         Assert.False(_settings.AltOpensMenuWhileTyping);
         Assert.False(workbench.MenuBar.IsOpen());
-        Assert.Equal("ƒone\n", workbench.Editor.Group.ActiveTab!.Content);
+        Assert.Equal("ƒone\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
     }
 
     private IEnumerable<Func<bool>> OpenFile(Workbench.Workbench workbench)
