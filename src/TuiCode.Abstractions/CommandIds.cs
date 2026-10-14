@@ -85,6 +85,7 @@ public static class CommandIds
     public const string GoToLineCancel = "goToLine.action.cancel";
 
     public const string GoToSymbol = "workbench.action.goToSymbol";
+    public const string GoToMatchingBracket = "workbench.action.goToMatchingBracket";
     public const string SymbolPickerConfirm = "symbolPicker.action.confirm";
     public const string SymbolPickerCancel = "symbolPicker.action.cancel";
     public const string SymbolPickerUp = "symbolPicker.action.up";

@@ -328,6 +328,15 @@ public sealed class EditorTab : FrameView
         if (WordWrap) _text.SetNeedsDraw();
     }
 
+    /// <summary>Moves to the partner of the bracket at the cursor, or to the bracket closing the block it's in; false when there's none (#539).</summary>
+    public bool GoToMatchingBracket()
+    {
+        if (_text.MatchingBracket() is not { } target) return false;
+        MoveCursor(target.Y, target.X);
+        RevealLines(target.Y, target.Y);
+        return true;
+    }
+
     /// <summary>The cursor and the scroll, to come back to when the file is next opened (#502).</summary>
     public ViewPosition ViewPosition => _pendingView ?? new(CursorRow, CursorColumn, _text.TopLine, WordWrap ? 0 : _text.Viewport.X);
 

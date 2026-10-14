@@ -646,6 +646,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Editor, FileOpen);
         // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
         _commands.Register(CommandIds.GoToSymbol, "Go to symbol in file", OpenSymbolPicker, CommandScope.Editor);
+        _commands.Register(CommandIds.GoToMatchingBracket, "Go to matching bracket", GoToMatchingBracket, CommandScope.Editor, FileOpen);
         // Enabled without a ready server, so the key can say what's missing; the menu dims it (IsAvailableFrom).
         _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
@@ -931,6 +932,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("F10", CommandIds.ShowMenu);
         // Ctrl+G is a chord family (#35): L = go-to-line, P/N = previous/next cursor location, B = blame (#330).
         keybindings.Bind("Ctrl+G L", CommandIds.GoToLine);
+        keybindings.Bind("Ctrl+G M", CommandIds.GoToMatchingBracket);
         keybindings.Bind("Ctrl+G P", CommandIds.NavigateBack);
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("Ctrl+G B", CommandIds.GitBlame);
@@ -1382,6 +1384,19 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Add(view);
         _scopes.Push(view.Scope);
         view.FocusInput();
+    }
+
+    // Not a stop for Back (#539): the command is its own way back.
+    private void GoToMatchingBracket()
+    {
+        if (Group.ActiveTab is not { } tab) return;
+        if (!tab.GoToMatchingBracket())
+        {
+            _workbench.StatusBar.SetMessage("No matching bracket");
+            return;
+        }
+        _history.Follow(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
+        FocusEditorBody();
     }
 
     private void CloseGoToLine(GoToLineView view)
