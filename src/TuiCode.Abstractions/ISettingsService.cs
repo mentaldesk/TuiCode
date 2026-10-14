@@ -43,6 +43,9 @@ public interface ISettingsService
     /// </summary>
     int SidebarWidth { get; set; }
 
+    /// <summary>Alt + a menu bar letter opens that menu even from a text box (#553). Stages the change in memory; <see cref="Save"/> persists it.</summary>
+    bool AltOpensMenuWhileTyping { get; set; }
+
     /// <summary>Each language's server where it differs from the default, keyed by grammar id (#456). Stages the change in memory; <see cref="Save"/> persists it.</summary>
     IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; }
 

@@ -8,10 +8,13 @@ public sealed class InterfaceSettingsView : View
     private const int ControlColumn = 15;
 
     private readonly NumericUpDown<int> _sidebarWidth;
+    private readonly CheckBox _altOpensMenu;
 
     public int Current => _sidebarWidth.Value;
 
-    public InterfaceSettingsView(int sidebarWidth)
+    public bool AltOpensMenuWhileTyping => _altOpensMenu.Value == CheckState.Checked;
+
+    public InterfaceSettingsView(int sidebarWidth, bool altOpensMenuWhileTyping = true)
     {
         X = 0;
         Y = 0;
@@ -26,7 +29,15 @@ public sealed class InterfaceSettingsView : View
             e.Handled = e.NewValue is < SidebarSizing.Min or > SidebarSizing.SettingsMax;
         var units = new VerbatimLabel { X = Pos.Right(_sidebarWidth) + 1, Y = 0, Text = "columns" };
 
-        Add(caption, _sidebarWidth, units);
+        _altOpensMenu = new CheckBox
+        {
+            X = 0,
+            Y = 2,
+            Text = "Alt + a menu letter opens the menu while typing",
+            Value = altOpensMenuWhileTyping ? CheckState.Checked : CheckState.UnChecked,
+        };
+
+        Add(caption, _sidebarWidth, units, _altOpensMenu);
         KeyDown += OnKey;
     }
 

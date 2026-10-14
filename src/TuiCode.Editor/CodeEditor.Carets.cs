@@ -249,7 +249,9 @@ internal sealed partial class CodeEditor
     protected override bool OnKeyDownNotHandled(Key key)
     {
         // Editor's own column select and extra carets live here; TuiCode has its own.
-        if (key.IsCtrl || key.IsAlt) return false;
+        if (key.IsCtrl || (key.IsAlt && string.IsNullOrEmpty(key.AssociatedText))) return false;
+        // An Alt key with text is the Option character a macOS terminal composed, e.g. Option+P's π (#553).
+        if (key.IsAlt) key = key.NoAlt;
         var handled = false;
         if (_secondary.Count == 0)
             EditAtPrimary(() => handled = base.OnKeyDownNotHandled(key));

@@ -91,6 +91,8 @@ public sealed class DefaultSettingsService : ISettingsService
 
     public int SidebarWidth { get; set; } = SidebarSizing.Default;
 
+    public bool AltOpensMenuWhileTyping { get; set; } = true;
+
     public IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; } =
         new Dictionary<string, LanguageServerSetting>(StringComparer.OrdinalIgnoreCase);
 
@@ -139,6 +141,8 @@ public sealed class DefaultSettingsService : ISettingsService
         }
         if (SidebarWidth != SidebarSizing.Default)
             root["SidebarWidth"] = SidebarWidth;
+        if (!AltOpensMenuWhileTyping)
+            root["AltOpensMenuWhileTyping"] = AltOpensMenuWhileTyping;
         if (LanguageServers.Count > 0)
         {
             var servers = new JsonObject();
@@ -249,6 +253,7 @@ public sealed class DefaultSettingsService : ISettingsService
         SidebarWidth = Read(root, "SidebarWidth", SidebarSizing.Default) is var width && width >= SidebarSizing.Min
             ? width
             : SidebarSizing.Default;
+        AltOpensMenuWhileTyping = Read(root, "AltOpensMenuWhileTyping", true);
         LanguageServers = ReadLanguageServers(root);
     }
 
