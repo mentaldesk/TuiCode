@@ -49,6 +49,9 @@ public interface ISettingsService
     /// <summary>Each language's server where it differs from the default, keyed by grammar id (#456). Stages the change in memory; <see cref="Save"/> persists it.</summary>
     IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; }
 
+    /// <summary>The agent the AI assistance tab runs (#566). Stages the change in memory; <see cref="Save"/> persists it.</summary>
+    AssistantSetting Assistant { get; set; }
+
     /// <summary><c>TuiCode.settings.json</c> didn't parse, so every setting in it is at its default (#473).</summary>
     bool SettingsFileInvalid { get; }
 

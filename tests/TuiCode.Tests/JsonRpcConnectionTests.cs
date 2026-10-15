@@ -112,9 +112,42 @@ public class JsonRpcConnectionTests
         await Assert.ThrowsAsync<IOException>(() => client.RequestAsync("after").WaitAsync(Timeout));
     }
 
-    private static JsonRpcConnection Client(InProcessServer server)
+    [Fact]
+    public async Task Line_framing_reads_one_message_per_line_however_the_reads_split_them()
     {
-        var client = new JsonRpcConnection(server.Output, server.Input);
+        var stream = new ChunkedStream(Encoding.UTF8.GetBytes("{\"a\":1}\n\n{\"b\":\"é\"}\r\n{\"c\":3}"), chunk: 3);
+        var reader = new LineMessageReader(stream);
+
+        Assert.Equal("""{"a":1}""", Encoding.UTF8.GetString((await reader.ReadAsync())!));
+        Assert.Equal("""{"b":"é"}""", Encoding.UTF8.GetString((await reader.ReadAsync())!));
+        Assert.Equal("""{"c":3}""", Encoding.UTF8.GetString((await reader.ReadAsync())!));
+        Assert.Null(await reader.ReadAsync());
+    }
+
+    [Fact]
+    public void Line_framing_writes_the_body_and_a_newline_with_no_headers() =>
+        Assert.Equal("{}\n", Encoding.UTF8.GetString(JsonRpcConnection.Frame("{}"u8.ToArray(), JsonRpcFraming.Lines)));
+
+    [Fact]
+    public async Task Over_line_framing_a_request_waiting_on_an_async_answer_holds_up_no_other_message()
+    {
+        using var server = new InProcessServer(JsonRpcFraming.Lines);
+        var release = new TaskCompletionSource<JsonNode?>();
+        server.Connection.AsyncRequestHandler = (method, _) => method == "slow" ? release.Task : Task.FromResult<JsonNode?>("fast");
+        server.Connection.Start();
+        using var client = Client(server, JsonRpcFraming.Lines);
+
+        var slow = client.RequestAsync("slow");
+        var fast = await client.RequestAsync("fast").WaitAsync(Timeout);
+        release.SetResult("slow");
+
+        Assert.Equal("fast", fast!.GetValue<string>());
+        Assert.Equal("slow", (await slow.WaitAsync(Timeout))!.GetValue<string>());
+    }
+
+    private static JsonRpcConnection Client(InProcessServer server, JsonRpcFraming framing = JsonRpcFraming.ContentLength)
+    {
+        var client = new JsonRpcConnection(server.Output, server.Input, framing);
         client.Start();
         return client;
     }

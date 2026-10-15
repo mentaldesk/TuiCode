@@ -4,7 +4,7 @@ using Attribute = Terminal.Gui.Drawing.Attribute;
 namespace TuiCode.Editor;
 
 /// <summary>Turns token metadata into attributes, keeping the base attribute's background.</summary>
-internal sealed class TokenPalette
+public sealed class TokenPalette
 {
     private Color[] _colors = [];
     private int _themeVersion = -1;

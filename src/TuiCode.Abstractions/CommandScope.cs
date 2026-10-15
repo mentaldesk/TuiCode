@@ -12,4 +12,5 @@ public enum CommandScope
     Find,
     Diff,
     Review,
+    Assistant,
 }

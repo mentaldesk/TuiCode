@@ -14,6 +14,9 @@ internal static class FolderPath
         return TrimEnd(path);
     }
 
+    /// <summary><paramref name="path"/> with <paramref name="home"/> as <c>~</c>.</summary>
+    public static string Shorten(string path, string home) => RecentFolderList.ShortenHome(TrimEnd(path), TrimEnd(home));
+
     private static string TrimEnd(string path)
     {
         var trimmed = path.TrimEnd(Separators);

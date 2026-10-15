@@ -26,6 +26,12 @@ public sealed class ConfirmView : Window
     public event EventHandler? Cancelled;
 
     public ConfirmView(string title, string message, params ConfirmChoice[] choices)
+        : this(title, message, "Cancel", choices)
+    {
+    }
+
+    /// <param name="cancelLabel">The focused way out, which Esc also takes.</param>
+    public ConfirmView(string title, string message, string cancelLabel, params ConfirmChoice[] choices)
     {
         ArgumentNullException.ThrowIfNull(choices);
         ArgumentNullException.ThrowIfNull(message);
@@ -53,7 +59,7 @@ public sealed class ConfirmView : Window
             _buttons[i] = Choice(choice.Destructive ? AppButton.Danger(choice.Label) : AppButton.Primary(choice.Label));
             _buttons[i].Accepting += (_, e) => { e.Handled = true; Chosen?.Invoke(this, choice); };
         }
-        _buttons[^1] = Choice(AppButton.Secondary("Cancel"));
+        _buttons[^1] = Choice(AppButton.Secondary(cancelLabel));
         _buttons[^1].Accepting += (_, e) => { e.Handled = true; Cancelled?.Invoke(this, EventArgs.Empty); };
         foreach (var button in _buttons) Add(button);
 

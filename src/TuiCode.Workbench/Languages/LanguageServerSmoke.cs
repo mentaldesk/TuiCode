@@ -3,16 +3,16 @@ using System.Text.Json.Nodes;
 
 namespace TuiCode.Workbench.Languages;
 
-/// <summary>A language server in this process, joined to the client by in-memory pipes: the client's end.</summary>
+/// <summary>A language server or agent in this process, joined to the client by in-memory pipes: the client's end.</summary>
 public sealed class InProcessServer : ILanguageServerProcess
 {
     private readonly Pipe _toServer = new();
     private readonly Pipe _toClient = new();
     private readonly TaskCompletionSource _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public InProcessServer()
+    public InProcessServer(JsonRpcFraming framing = JsonRpcFraming.ContentLength)
     {
-        Connection = new JsonRpcConnection(_toServer.Reader.AsStream(), _toClient.Writer.AsStream());
+        Connection = new JsonRpcConnection(_toServer.Reader.AsStream(), _toClient.Writer.AsStream(), framing);
     }
 
     /// <summary>The server's end.</summary>

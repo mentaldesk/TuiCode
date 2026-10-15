@@ -6,7 +6,7 @@ namespace TuiCode.Workbench.Focus;
 /// Where the next key goes. <see cref="Tabs"/> is a mode over the focused editor, not a Terminal.Gui focus state,
 /// and <see cref="FindBar"/> is the find bar over the active file — the sidebar's find pane is <see cref="Find"/>.
 /// </summary>
-public enum FocusRegion { Editor, Diff, Explorer, Find, FindBar, Usages, Review, History, Tabs }
+public enum FocusRegion { Editor, Diff, Explorer, Find, FindBar, Usages, Review, Assistant, History, Tabs }
 
 /// <summary>
 /// The single source of truth for the focused region (#227). Every focus move the workbench makes goes
@@ -70,6 +70,7 @@ public sealed class FocusService(Func<object?> focusedView)
         FocusRegion.Find => CommandScope.Find,
         FocusRegion.Diff => CommandScope.Diff,
         FocusRegion.Review => CommandScope.Review,
+        FocusRegion.Assistant => CommandScope.Assistant,
         // The strip is a mode over the editor, which still holds Terminal.Gui's focus underneath it, and the
         // find bar answers its own keys from its layered scope; the rest still act on the file beneath it.
         FocusRegion.Editor or FocusRegion.Tabs or FocusRegion.FindBar => CommandScope.Editor,
@@ -85,6 +86,7 @@ public sealed class FocusService(Func<object?> focusedView)
         FocusRegion.Find or FocusRegion.FindBar => "Find",
         FocusRegion.Usages => "Usages",
         FocusRegion.Review => "Review",
+        FocusRegion.Assistant => "AI assistance",
         FocusRegion.History => "History",
         _ => "Tabs",
     };

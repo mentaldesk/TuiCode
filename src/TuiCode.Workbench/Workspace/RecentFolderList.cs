@@ -43,7 +43,7 @@ internal static class RecentFolderList
 
     private static readonly char[] Separators = ['/', '\\'];
 
-    private static string ShortenHome(string parent, string home)
+    internal static string ShortenHome(string parent, string home)
     {
         if (home.Length == 0) return parent;
         if (parent == home) return "~";

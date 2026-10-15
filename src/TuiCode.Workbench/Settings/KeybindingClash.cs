@@ -60,6 +60,7 @@ internal sealed record KeybindingClash(KeybindingConflict Kind, KeyBinding Exist
         CommandScope.Find => "the Find sidebar",
         CommandScope.Diff => "a diff tab",
         CommandScope.Review => "the Review tab",
+        CommandScope.Assistant => "the AI assistance tab",
         _ => "anything",
     };
 }

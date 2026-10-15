@@ -96,6 +96,7 @@ public static class CommandMnemonics
             [CommandIds.GoToMatchingBracket] = "gm",
             [CommandIds.GoToDefinition] = "gd",
             [CommandIds.FindUsages] = "gu",
+            [CommandIds.AiAssistance] = "ai",
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
             [CommandIds.GitBlame] = "gb",

@@ -24,6 +24,7 @@ public sealed class CommandMenu
         [CommandIds.FindGlobally] = "Find",
         [CommandIds.FocusUsages] = "Usages",
         [CommandIds.FocusReview] = "Review",
+        [CommandIds.AiAssistance] = "AI assistance",
     };
 
     /// <summary>Each item's letter, unique within its menu, which runs it while the menu is open (#516).</summary>
@@ -48,7 +49,7 @@ public sealed class CommandMenu
         [CommandIds.SelectPreviousOccurrence] = 'p', [CommandIds.SelectAllOccurrences] = 'o',
 
         [CommandIds.ShowExplorer] = 'e', [CommandIds.FindGlobally] = 'f', [CommandIds.FocusUsages] = 'u',
-        [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
+        [CommandIds.FocusReview] = 'r', [CommandIds.AiAssistance] = 'a', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
         [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'h', [CommandIds.ToggleGutter] = 'g',
         [CommandIds.ToggleWordWrap] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
         [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i',
@@ -102,7 +103,7 @@ public sealed class CommandMenu
         ]),
         ("_View",
         [
-            CommandIds.ShowExplorer, CommandIds.FindGlobally, CommandIds.FocusUsages, CommandIds.FocusReview,
+            CommandIds.ShowExplorer, CommandIds.FindGlobally, CommandIds.FocusUsages, CommandIds.FocusReview, CommandIds.AiAssistance,
             Separator,
             CommandIds.ToggleSidebar, CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
             Separator,

@@ -11,6 +11,7 @@ using TuiCode.Search;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.About;
+using TuiCode.Workbench.Assistant;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Git;
@@ -30,6 +31,9 @@ if (args.Contains("--smoke-syntax"))
 
 if (args.Contains("--smoke-language-server"))
     return LanguageServerSmoke.Run(Console.Out);
+
+if (args.Contains("--smoke-acp"))
+    return AcpSmoke.Run(Console.Out);
 
 if (args.Contains("--smoke-trash"))
     return TrashSmoke.Run(Console.Out);
@@ -78,6 +82,7 @@ services.AddTransient<FileExplorerView>();
 services.AddTransient<SearchView>();
 services.AddTransient<UsagesView>();
 services.AddTransient<ReviewView>();
+services.AddTransient(sp => new AssistantView(new Conversation(), sp.GetRequiredService<SyntaxHighlighter>()));
 services.AddTransient<SidebarPart>();
 services.AddTransient<EditorPart>();
 services.AddTransient<StatusBarPart>();
@@ -104,7 +109,9 @@ services.AddTransient<WorkbenchHost>(sp => new WorkbenchHost(
     fileSystem: sp.GetRequiredService<IFileSystem>(),
     languageServers: new ProcessLauncher(),
     log: log,
-    trash: sp.GetRequiredService<ITrash>()));
+    trash: sp.GetRequiredService<ITrash>(),
+    agents: new ProcessLauncher(),
+    assistantSessions: AssistantSessions.ForUser(sp.GetRequiredService<IFileSystem>(), sp.GetRequiredService<ILogger<AssistantSessions>>())));
 services.AddSingleton<App>();
 
 using var provider = services.BuildServiceProvider();

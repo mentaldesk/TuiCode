@@ -40,6 +40,8 @@ internal sealed class InMemorySettingsService : ISettingsService
     public IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; } =
         new Dictionary<string, LanguageServerSetting>(StringComparer.OrdinalIgnoreCase);
 
+    public AssistantSetting Assistant { get; set; } = AssistantSetting.Default;
+
     public bool SettingsFileInvalid { get; set; }
 
     public int SaveCount { get; private set; }

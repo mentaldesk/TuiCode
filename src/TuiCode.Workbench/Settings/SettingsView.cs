@@ -31,6 +31,7 @@ public sealed class SettingsView : Window
     private readonly LanguageServersView _languageServers;
     private readonly TerminalIntegrationPickerView _terminalIntegrationPicker;
     private readonly InterfaceSettingsView _interfaceSettings;
+    private readonly AssistantSettingsView _assistantSettings;
     private readonly List<(string Name, View Panel, Func<bool> Focus)> _panels;
 
     private readonly ICommandService _scopeCommands;
@@ -163,6 +164,15 @@ public sealed class SettingsView : Window
             Visible = false
         };
 
+        _assistantSettings = new AssistantSettingsView(settings.Assistant, commandInstalled ?? (_ => false))
+        {
+            X = Pos.Right(_separator) + 1,
+            Y = 1,
+            Width = Dim.Fill(2),
+            Height = Dim.Fill(2),
+            Visible = false
+        };
+
         _panels =
         [
             ("Theme", _themePicker, _themePicker.FocusContent),
@@ -170,6 +180,7 @@ public sealed class SettingsView : Window
             ("Keyboard Shortcuts", _keybindingsPicker, _keybindingsPicker.FocusContent),
             ("Grammars", _grammarAssociations, _grammarAssociations.FocusContent),
             ("Language Servers", _languageServers, _languageServers.FocusContent),
+            ("AI Assistance", _assistantSettings, _assistantSettings.FocusContent),
             ("Terminal Integration", _terminalIntegrationPicker, _terminalIntegrationPicker.FocusContent),
             ("Interface", _interfaceSettings, _interfaceSettings.FocusContent),
         ];
@@ -264,6 +275,7 @@ public sealed class SettingsView : Window
         _settings.SidebarWidth = _interfaceSettings.Current;
         _settings.AltOpensMenuWhileTyping = _interfaceSettings.AltOpensMenuWhileTyping;
         _settings.LanguageServers = new Dictionary<string, LanguageServerSetting>(_languageServers.Current, StringComparer.OrdinalIgnoreCase);
+        _settings.Assistant = _assistantSettings.Current;
         _settings.Save();
         _applyGrammarAssociations?.Invoke();
         Closed?.Invoke(this, EventArgs.Empty);
