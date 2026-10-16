@@ -113,9 +113,10 @@ public class HelpPlaceHostTests : StaticConfigurationTest
         [
             new("Ctrl+G h", "Show or hide file history"),
             new("Ctrl+Shift+A", "AI assistance"),
+            new("Ctrl+G a", "Show or hide AI assistance"),
             new("Ctrl+PageDown", "Next panel tab"),
             new("Ctrl+PageUp", "Previous panel tab"),
-        ], help.Rows.TakeLast(4));
+        ], help.Rows.TakeLast(5));
     }
 
     [Fact]

@@ -828,6 +828,7 @@ public sealed class WorkbenchHost : IDisposable
     [
         .. HelpRowOf(CommandIds.ToggleFileHistory, "Show or hide file history"),
         .. HelpRowOf(CommandIds.AiAssistance, "AI assistance"),
+        .. HelpRowOf(CommandIds.ToggleAssistant, "Show or hide AI assistance"),
         .. HelpRowOf(CommandIds.NextEditor, "Next panel tab"),
         .. HelpRowOf(CommandIds.PreviousEditor, "Previous panel tab"),
     ];
@@ -1009,6 +1010,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("Ctrl+G B", CommandIds.GitBlame);
         keybindings.Bind("Ctrl+G H", CommandIds.ToggleFileHistory);
+        keybindings.Bind("Ctrl+G A", CommandIds.ToggleAssistant);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
         keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
         keybindings.Bind("Enter", CommandIds.AssistantSend);

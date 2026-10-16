@@ -192,6 +192,27 @@ public class AssistantHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Ctrl_G_A_hides_the_tab_from_its_question_box_and_shows_it_again_from_the_editor()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => workbench.Panel.Assistant.InputHasFocus,
+            () => host.App.InjectKey(Key.G.WithCtrl),
+            () => host.App.InjectKey(Key.A),
+            () => !workbench.IsAssistantShowing && workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.G.WithCtrl),
+            () => host.App.InjectKey(Key.A),
+            () => workbench.Panel.Assistant.InputHasFocus);
+
+        Assert.True(workbench.IsAssistantShowing);
+        Assert.Equal("", workbench.Panel.Assistant.Question);
+    }
+
+    [Fact]
     public async Task Ctrl_PageDown_in_the_panel_switches_its_tab_and_leaves_the_editor_tabs_alone()
     {
         _fs.AddFile("/work/B.cs", new MockFileData("b"));
