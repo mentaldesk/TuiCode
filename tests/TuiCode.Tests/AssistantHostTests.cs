@@ -158,7 +158,7 @@ public class AssistantHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Ctrl_Shift_A_opens_the_tab_in_the_panel_under_the_editor_with_the_question_box_focused()
+    public async Task Ctrl_G_A_opens_the_tab_in_the_panel_under_the_editor_with_the_question_box_focused()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
@@ -166,7 +166,8 @@ public class AssistantHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
-            () => host.App.InjectKey(Key.A.WithCtrl.WithShift),
+            () => host.App.InjectKey(Key.G.WithCtrl),
+            () => host.App.InjectKey(Key.A),
             () => view.InputHasFocus);
 
         Assert.True(workbench.Panel.Visible);
@@ -175,7 +176,7 @@ public class AssistantHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task ta_hides_the_tab_and_gives_the_keys_back_to_the_editor()
+    public async Task ai_again_hides_the_tab_and_gives_the_keys_back_to_the_editor()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
@@ -184,7 +185,7 @@ public class AssistantHostTests : StaticConfigurationTest
             () => OpenFile(workbench),
             () => _commands.TryExecute(CommandIds.AiAssistance),
             () => workbench.Panel.Assistant.InputHasFocus,
-            () => _commands.TryExecute(CommandIds.ToggleAssistant),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
             () => workbench.StatusBar.DisplayedFocus == "Editor");
 
         Assert.False(workbench.IsAssistantShowing);

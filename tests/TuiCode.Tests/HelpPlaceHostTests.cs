@@ -107,16 +107,15 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     [Fact]
     public async Task F1_in_the_AI_assistance_tab_ends_with_the_keys_that_switch_the_panels_tabs()
     {
-        var help = await HelpFrom(() => _commands.TryExecute(CommandIds.ToggleAssistant), "AI assistance");
+        var help = await HelpFrom(() => { Built.ShowAssistant(true); Built.Panel.Assistant.FocusInput(); }, "AI assistance");
 
         Assert.Equal(
         [
             new("Ctrl+G h", "Show or hide file history"),
-            new("Ctrl+Shift+A", "AI assistance"),
-            new("Ctrl+G a", "Show or hide AI assistance"),
+            new("Ctrl+G a", "AI assistance"),
             new("Ctrl+PageDown", "Next panel tab"),
             new("Ctrl+PageUp", "Previous panel tab"),
-        ], help.Rows.TakeLast(5));
+        ], help.Rows.TakeLast(4));
     }
 
     [Fact]

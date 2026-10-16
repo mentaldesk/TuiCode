@@ -691,8 +691,6 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
         // Global and ungated, so with no agent installed it can say so (#566).
         _commands.Register(CommandIds.AiAssistance, "AI assistance", AskAssistant);
-        _commands.Register(CommandIds.ToggleAssistant, "Show or hide AI assistance", ToggleAssistant, CommandScope.Global, null,
-            () => _workbench.IsAssistantShowing ? "Hide AI assistance" : "Show AI assistance");
         var assistant = _workbench.Panel.Assistant;
         _commands.Register(CommandIds.AssistantSend, "Send question", SendQuestion, CommandScope.Assistant, () => assistant.InputHasFocus);
         _commands.Register(CommandIds.AssistantStop, "Stop answering", () => _assistant?.Stop(), CommandScope.Assistant,
@@ -828,7 +826,6 @@ public sealed class WorkbenchHost : IDisposable
     [
         .. HelpRowOf(CommandIds.ToggleFileHistory, "Show or hide file history"),
         .. HelpRowOf(CommandIds.AiAssistance, "AI assistance"),
-        .. HelpRowOf(CommandIds.ToggleAssistant, "Show or hide AI assistance"),
         .. HelpRowOf(CommandIds.NextEditor, "Next panel tab"),
         .. HelpRowOf(CommandIds.PreviousEditor, "Previous panel tab"),
     ];
@@ -1010,7 +1007,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("Ctrl+G B", CommandIds.GitBlame);
         keybindings.Bind("Ctrl+G H", CommandIds.ToggleFileHistory);
-        keybindings.Bind("Ctrl+G A", CommandIds.ToggleAssistant);
+        keybindings.Bind("Ctrl+G A", CommandIds.AiAssistance);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
         keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
         keybindings.Bind("Enter", CommandIds.AssistantSend);
@@ -1036,7 +1033,6 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Shift+E", CommandIds.ShowExplorer);
         keybindings.Bind("Ctrl+Shift+R", CommandIds.FocusReview);
         keybindings.Bind("Ctrl+Shift+U", CommandIds.FocusUsages);
-        keybindings.Bind("Ctrl+Shift+A", CommandIds.AiAssistance);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -2354,9 +2350,14 @@ public sealed class WorkbenchHost : IDisposable
         return null;
     }
 
-    /// <summary>AI assistance (<c>ai</c>, #566): opens the tab about the selection, or the lines around the cursor, with the question box focused.</summary>
+    /// <summary>AI assistance (<c>ai</c>, #566): opens the tab about the selection, or the lines around the cursor, with the question box focused; hides it if it's showing.</summary>
     private void AskAssistant()
     {
+        if (_workbench.IsAssistantShowing)
+        {
+            _workbench.ShowAssistant(false);
+            return;
+        }
         var agent = AgentPresets.Resolve(_settings.Assistant);
         if (_assistant is null || agent is null || !CommandInstalled(agent.Program))
         {
@@ -2372,16 +2373,6 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.ShowAssistant(true);
         MoveFocus(FocusRegion.Assistant);
         StartAssistant();
-    }
-
-    private void ToggleAssistant()
-    {
-        if (!_workbench.IsAssistantShowing)
-        {
-            _workbench.ShowAssistant(true);
-            MoveFocus(FocusRegion.Assistant);
-        }
-        else _workbench.ShowAssistant(false);
     }
 
     private string? AssistantRoot() =>

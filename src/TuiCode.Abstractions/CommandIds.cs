@@ -103,7 +103,6 @@ public static class CommandIds
     public const string DefinitionPickerPageDown = "definitionPicker.action.pageDown";
     public const string FindUsages = "workbench.action.findUsages";
     public const string AiAssistance = "workbench.action.aiAssistance";
-    public const string ToggleAssistant = "workbench.action.toggleAssistant";
     public const string AssistantSend = "assistant.action.send";
     public const string AssistantStop = "assistant.action.stop";
     public const string AssistantClear = "assistant.action.clear";
