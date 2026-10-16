@@ -112,6 +112,13 @@ public sealed class SidebarPart : FrameView
             _ => _explorerTab,
         };
 
+    /// <summary>Makes the tab <paramref name="step"/> along from the active one active, wrapping.</summary>
+    public void Cycle(int step)
+    {
+        var tabs = _tabs.TabCollection.ToArray();
+        _tabs.Value = tabs[(Array.IndexOf(tabs, _tabs.Value) + step + tabs.Length) % tabs.Length];
+    }
+
     private static View WrapTab(string title, View content)
     {
         content.X = 0;

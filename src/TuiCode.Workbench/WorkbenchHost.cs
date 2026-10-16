@@ -9,6 +9,7 @@ using TuiCode.Icons;
 using TuiCode.Search;
 using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
+using TuiCode.Workbench.Assistant;
 using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.DocumentInfo;
@@ -115,6 +116,9 @@ public sealed class WorkbenchHost : IDisposable
     private SubmitReviewView? _activeSubmitReview;
     private CommentView? _activeComment;
     private DraftComments? _draftComments;
+    private readonly AssistantController? _assistant;
+    private AskContext? _askContext;
+    private bool _answering;
     private bool _launchedFromExplorer;
     private bool _sidebarDragging;
     private bool _userBoundLegacyCtrlSlash;
@@ -137,7 +141,9 @@ public sealed class WorkbenchHost : IDisposable
         IFileSystem? fileSystem = null,
         ILanguageServerLauncher? languageServers = null,
         LogFile? log = null,
-        ITrash? trash = null)
+        ITrash? trash = null,
+        ILanguageServerLauncher? agents = null,
+        AssistantSessions? assistantSessions = null)
     {
         // Neutralize TG's default Esc-as-Quit by reassigning the built-in
         // Quit command to a key we never bind in our own service. Our Ctrl+Q
@@ -224,6 +230,10 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (!_workbench.IsHistoryShowing && _focus.Region == FocusRegion.History) FocusEditorBody();
         };
+        _workbench.AssistantShowingChanged += (_, _) =>
+        {
+            if (!_workbench.IsAssistantShowing && _focus.Region == FocusRegion.Assistant) FocusEditorBody();
+        };
         _workbench.History.CommitActivated += (_, commit) => OpenHistoryCommit(commit);
 
         if (languageServers is not null)
@@ -232,6 +242,18 @@ public sealed class WorkbenchHost : IDisposable
             _workbench.Languages.Configure(_settings.LanguageServers);
         }
         CommandInstalled = command => CommandPath.Exists(command, fileSystem, _environment);
+
+        if (agents is not null)
+        {
+            _assistant = new AssistantController(agents, fileSystem, assistantSessions, action => _app.Invoke(action), _workbench.Panel.Assistant.Conversation)
+            {
+                OpenBuffer = OpenBufferLines,
+                AskPermission = AskAgentPermission,
+            };
+            _assistant.Changed += (_, _) => ShowAssistant();
+            _assistant.Configure(AgentPresets.Resolve(_settings.Assistant));
+        }
+        ShowAssistant();
 
         _workbench.Sidebar.Usages.UsageActivated += (_, location) =>
         {
@@ -289,13 +311,16 @@ public sealed class WorkbenchHost : IDisposable
         var editor = _workbench.Editor;
         var sidebarBorder = new FocusBorder(sidebar);
         var groupBorders = editor.Frames.Select(frame => new FocusBorder(frame)).ToList();
-        var historyBorder = new FocusBorder(_workbench.History);
+        var panel = _workbench.Panel;
+        var panelBorder = new FocusBorder(panel);
 
         _focus.Register(FocusRegion.Find, () => Take(sidebar.Search, sidebar.Search.FocusQuery), focused => Owns(sidebar.Search, focused));
         _focus.Register(FocusRegion.Review, () => Take(sidebar.Review, sidebar.Review.FocusList), focused => Owns(sidebar.Review, focused));
         _focus.Register(FocusRegion.Usages, () => Take(sidebar.Usages, sidebar.Usages.FocusResults), focused => Owns(sidebar.Usages, focused));
-        _focus.Register(FocusRegion.History, () => _workbench.IsHistoryShowing && Take(_workbench.History, _workbench.History.FocusList),
-            focused => Owns(_workbench.History, focused));
+        _focus.Register(FocusRegion.Assistant, () => TakePanelTab(PanelTab.Assistant, panel.Assistant.FocusInput),
+            focused => Owns(panel.Assistant, focused));
+        _focus.Register(FocusRegion.History, () => TakePanelTab(PanelTab.History, panel.History.FocusList),
+            focused => Owns(panel.History, focused));
         _focus.Register(FocusRegion.Explorer,
             () => sidebar.IsShowingNoFolder ? Take(sidebar.OpenFolderButton) : Take(sidebar.Explorer),
             focused => Owns(sidebar.Explorer, focused) || Owns(sidebar.OpenFolderButton, focused));
@@ -311,12 +336,12 @@ public sealed class WorkbenchHost : IDisposable
 
         void ShowBorders()
         {
-            var inSidebar = _focus.Region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review;
-            var inHistory = _focus.Region == FocusRegion.History;
+            var inSidebar = InSidebar(_focus.Region);
+            var inPanel = InPanel(_focus.Region);
             sidebarBorder.Show(inSidebar);
-            historyBorder.Show(inHistory);
+            panelBorder.Show(inPanel);
             for (var i = 0; i < groupBorders.Count; i++)
-                groupBorders[i].Show(!inSidebar && !inHistory && ReferenceEquals(editor.Groups.All[i], editor.Group));
+                groupBorders[i].Show(!inSidebar && !inPanel && ReferenceEquals(editor.Groups.All[i], editor.Group));
         }
 
         _focus.RegionChanged += (_, region) =>
@@ -574,8 +599,8 @@ public sealed class WorkbenchHost : IDisposable
             () => Group.Value is not null);
         _commands.Register(CommandIds.CloseAllTabs, "Close all tabs", CloseAllTabs, CommandScope.Global,
             () => Group.Value is not null);
-        _commands.Register(CommandIds.NextEditor, "Next tab", () => _workbench.Editor.NextTab());
-        _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => _workbench.Editor.PreviousTab());
+        _commands.Register(CommandIds.NextEditor, "Next tab", () => CycleTabs(1));
+        _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => CycleTabs(-1));
         _commands.Register(CommandIds.MoveToOtherGroup, "Move to other group", MoveToOtherGroup, CommandScope.Global,
             () => Group.Value is not null);
         _commands.Register(CommandIds.FocusOtherGroup, "Focus other group", FocusOtherGroup, CommandScope.Global,
@@ -664,6 +689,13 @@ public sealed class WorkbenchHost : IDisposable
         // Enabled without a ready server, so the key can say what's missing; the menu dims it (IsAvailableFrom).
         _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
+        // Global and ungated, so with no agent installed it can say so (#566).
+        _commands.Register(CommandIds.AiAssistance, "AI assistance", AskAssistant);
+        var assistant = _workbench.Panel.Assistant;
+        _commands.Register(CommandIds.AssistantSend, "Send question", SendQuestion, CommandScope.Assistant, () => assistant.InputHasFocus);
+        _commands.Register(CommandIds.AssistantStop, "Stop answering", () => _assistant?.Stop(), CommandScope.Assistant,
+            () => _assistant?.IsAnswering == true);
+        _commands.Register(CommandIds.AssistantClear, "Clear conversation", ClearConversation, CommandScope.Assistant);
         // No default key (#21): rarely needed, and users can bind one in Settings.
         _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker, CommandScope.Editor, FileOpen);
         // No default key (#466).
@@ -762,7 +794,7 @@ public sealed class WorkbenchHost : IDisposable
     private HelpColumn? PlaceHelp()
     {
         Reconcile();
-        return _focus.Region switch
+        var help = _focus.Region switch
         {
             FocusRegion.FindBar => _find.Help(FindOptionKeys()),
             FocusRegion.Diff => DiffHelp(),
@@ -771,11 +803,32 @@ public sealed class WorkbenchHost : IDisposable
             FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, GroupHelp()),
             FocusRegion.Review => ReviewHelp(),
             FocusRegion.Usages => new HelpColumn("Usages", UsagesKeys),
+            FocusRegion.Assistant => ScopeHelp("AI assistance", CommandScope.Assistant, AssistantKeys),
             FocusRegion.History => new HelpColumn("History", HistoryKeys),
             FocusRegion.Tabs => TabsHelp(),
             _ => null,
         };
+        HelpRow[] switching = InSidebar(_focus.Region) ? SidebarTabKeys() : InPanel(_focus.Region) ? PanelTabKeys() : [];
+        return help is null ? null : help with { Rows = [.. help.Rows, .. switching] };
     }
+
+    private HelpRow[] SidebarTabKeys() =>
+    [
+        .. HelpRowOf(CommandIds.ShowExplorer, "Show explorer"),
+        .. HelpRowOf(CommandIds.FindGlobally, "Show find"),
+        .. HelpRowOf(CommandIds.FocusUsages, "Show usages"),
+        .. HelpRowOf(CommandIds.FocusReview, "Show review"),
+        .. HelpRowOf(CommandIds.NextEditor, "Next sidebar tab"),
+        .. HelpRowOf(CommandIds.PreviousEditor, "Previous sidebar tab"),
+    ];
+
+    private HelpRow[] PanelTabKeys() =>
+    [
+        .. HelpRowOf(CommandIds.ToggleFileHistory, "Show or hide file history"),
+        .. HelpRowOf(CommandIds.AiAssistance, "AI assistance"),
+        .. HelpRowOf(CommandIds.NextEditor, "Next panel tab"),
+        .. HelpRowOf(CommandIds.PreviousEditor, "Previous panel tab"),
+    ];
 
     private HelpColumn ReviewHelp()
     {
@@ -832,6 +885,8 @@ public sealed class WorkbenchHost : IDisposable
 
     private static readonly HelpRow[] HistoryKeys =
         [new("Enter", "Open the commit's change"), new("↑ ↓", "Choose a commit"), new("Type", "Filter the commits"), new("Esc", "Back to the editor")];
+
+    private static readonly HelpRow[] AssistantKeys = [new("↑ ↓ PgUp PgDn", "Scroll the chat")];
 
     private static readonly HelpRow[] UsagesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
 
@@ -952,8 +1007,12 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("Ctrl+G B", CommandIds.GitBlame);
         keybindings.Bind("Ctrl+G H", CommandIds.ToggleFileHistory);
+        keybindings.Bind("Ctrl+G A", CommandIds.AiAssistance);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
         keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
+        keybindings.Bind("Enter", CommandIds.AssistantSend);
+        keybindings.Bind("Esc", CommandIds.AssistantStop);
+        keybindings.Bind("Ctrl+L", CommandIds.AssistantClear);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
         keybindings.Bind("Alt+CursorUp", CommandIds.MoveLinesUp);
         keybindings.Bind("Alt+CursorDown", CommandIds.MoveLinesDown);
@@ -1015,7 +1074,7 @@ public sealed class WorkbenchHost : IDisposable
     // view. We read the focus state *before* the flip — TG doesn't clear HasFocus on hide.
     private void ToggleSidebar()
     {
-        var sidebarWasFocused = _focus.Region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review;
+        var sidebarWasFocused = InSidebar(_focus.Region);
         _workbench.ToggleSidebar();
 
         if (_workbench.IsSidebarVisible)
@@ -1072,6 +1131,36 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     private void AddCursor(LineDirection direction) => EditActiveTab(tab => tab.AddCursor(direction));
+
+    private static bool InSidebar(FocusRegion region) =>
+        region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review;
+
+    private static bool InPanel(FocusRegion region) => region is FocusRegion.History or FocusRegion.Assistant;
+
+    private bool TakePanelTab(PanelTab tab, Func<bool> focus)
+    {
+        var panel = _workbench.Panel;
+        if (!panel.IsOpen(tab)) return false;
+        panel.ShowTab(tab);
+        return Take(tab == PanelTab.History ? panel.History : panel.Assistant, focus);
+    }
+
+    // Ctrl+PgUp/PgDn switch the tabs of whichever part has the keys: the sidebar, the panel or the editor.
+    private void CycleTabs(int step)
+    {
+        Reconcile();
+        if (InSidebar(_focus.Region))
+        {
+            _workbench.Sidebar.Cycle(step);
+            FocusSidebar();
+        }
+        else if (InPanel(_focus.Region))
+        {
+            if (_workbench.Panel.Cycle(step) is { } tab) MoveFocus(tab == PanelTab.History ? FocusRegion.History : FocusRegion.Assistant);
+        }
+        else if (step > 0) _workbench.Editor.NextTab();
+        else _workbench.Editor.PreviousTab();
+    }
 
     // A sidebar item's shortcut (#33) shows its tab, revealing the sidebar if needed, and never hides it:
     // only ts does (#259). Like ToggleSidebar it decides on visibility, not focus, so it behaves the same
@@ -1235,6 +1324,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Groups.Settings = _settings.Editor;
         _workbench.SetSidebarWidth(_settings.SidebarWidth);
         _workbench.Languages?.Configure(_settings.LanguageServers);
+        _assistant?.Configure(AgentPresets.Resolve(_settings.Assistant));
         FocusCallingRegion();
     }
 
@@ -1666,6 +1756,7 @@ public sealed class WorkbenchHost : IDisposable
         // Picks up focus Terminal.Gui moved on its own, and any move that didn't land where it was asked to.
         Reconcile();
         _activeSymbolPicker?.Advance();
+        if (_workbench.Panel.ActiveTab == PanelTab.Assistant) ShowingAssistant();
         // Some isEnabled checks touch the disk, so not on every iteration.
         if (Environment.TickCount64 - _menuShownAt >= 250) ShowAvailableMenus();
     }
@@ -2257,6 +2348,114 @@ public sealed class WorkbenchHost : IDisposable
         if (!explorer.IsRoot(item)) return item;
         _workbench.StatusBar.SetMessage($"The workspace root can't be {verb}.");
         return null;
+    }
+
+    /// <summary>AI assistance (<c>ai</c>, #566): opens the tab about the selection, or the lines around the cursor, with the question box focused; hides it if it's showing.</summary>
+    private void AskAssistant()
+    {
+        if (_workbench.IsAssistantShowing)
+        {
+            _workbench.ShowAssistant(false);
+            return;
+        }
+        var agent = AgentPresets.Resolve(_settings.Assistant);
+        if (_assistant is null || agent is null || !CommandInstalled(agent.Program))
+        {
+            var missing = agent is null ? "No AI agent is set up" : $"No AI agent found: {agent.Program} isn't on PATH";
+            _workbench.StatusBar.SetMessage($"{missing}. Choose one in Settings › AI Assistance ({CommandMnemonics.For(CommandIds.OpenSettings)})");
+            return;
+        }
+        _assistant.Configure(agent);
+        _askContext = _workbench.Editor.Group.ActiveTab is { } tab
+            ? AskContext.Of(tab.File.FullName, AssistantRoot(), tab.Lines, tab.SelectedRows, tab.CursorRow)
+            : null;
+        _workbench.Panel.Assistant.ShowContext(_askContext?.Label);
+        _workbench.ShowAssistant(true);
+        MoveFocus(FocusRegion.Assistant);
+        StartAssistant();
+    }
+
+    private string? AssistantRoot() =>
+        _workbench.Sidebar.Explorer.Root?.FullName ?? _workbench.Editor.Group.ActiveTab?.File.DirectoryName;
+
+    // Showing the tab starts the agent once per folder and agent, so its last conversation is there to read.
+    private void ShowingAssistant()
+    {
+        var showing = (AssistantRoot(), _assistant?.Agent);
+        if (showing == _assistantShown) return;
+        _assistantShown = showing;
+        StartAssistant();
+    }
+
+    private (string?, AgentSpec?) _assistantShown;
+
+    // Follows the open folder, and starts the agent there, reopening its last conversation.
+    private void StartAssistant()
+    {
+        if (_assistant is null || AssistantRoot() is not { } root) return;
+        _assistant.OpenFolder(root);
+        if (_assistant.Agent is { } agent && !_assistant.IsStarting && CommandInstalled(agent.Program))
+            _ = _assistant.EnsureStartedAsync().ContinueWith(t => _ = t.Exception, TaskScheduler.Default);
+    }
+
+    private void SendQuestion()
+    {
+        var view = _workbench.Panel.Assistant;
+        var question = view.Question.Trim();
+        if (_assistant is null || question.Length == 0 || _assistant.IsAnswering) return;
+        _assistant.Ask(question, _askContext);
+        _askContext = null;
+        view.Question = "";
+        view.ShowContext(null);
+    }
+
+    private void ClearConversation()
+    {
+        _assistant?.Clear();
+        _askContext = null;
+        _workbench.Panel.Assistant.ShowContext(null);
+    }
+
+    private void ShowAssistant()
+    {
+        var view = _workbench.Panel.Assistant;
+        var agent = _assistant?.Agent;
+        var root = AssistantRoot() is { } folder ? FolderPath.Shorten(folder, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)) : "no folder";
+        view.ShowHeader(agent is null
+            ? "No agent: choose one in Settings › AI Assistance"
+            : $"{(_assistant!.IsStarting ? "◌" : "●")} {agent.Name} · {root}");
+        view.Refresh();
+        var answering = _assistant?.IsAnswering == true;
+        if (answering == _answering) return;
+        _answering = answering;
+        if (answering) _workbench.StatusBar.SetMessage(AnsweringMessage);
+        else _workbench.StatusBar.ClearMessage(AnsweringMessage);
+    }
+
+    private const string AnsweringMessage = "AI assistance: answering…";
+
+    private IReadOnlyList<string>? OpenBufferLines(string path) =>
+        _workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path)?.Lines;
+
+    // Edits are refused and reads allowed before it gets here; anything else, such as a command, is the user's call.
+    private Task<bool> AskAgentPermission(PermissionRequest request)
+    {
+        var answer = new TaskCompletionSource<bool>();
+        if (_activeConfirm is not null || _assistant?.Agent is not { } agent)
+        {
+            answer.SetResult(false);
+            return answer.Task;
+        }
+        var title = request.Command is not null || request.Kind == "execute" ? $"{agent.Name} wants to run a command" : $"{agent.Name} wants to use a tool";
+        var view = new ConfirmView(title, request.Command ?? request.Title, "Deny",
+            new ConfirmChoice("Allow once", () => answer.TrySetResult(true)));
+        view.Cancelled += (_, _) =>
+        {
+            CloseConfirm(view);
+            answer.TrySetResult(false);
+        };
+        ShowConfirm(view);
+        return answer.Task;
     }
 
     // Show the sidebar and focus its active tab: the explorer tree, or the search query input.
@@ -3750,6 +3949,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Groups.CursorMoved -= OnEditorCursorMoved;
         _workbench.Editor.Groups.ActiveTabChanged -= OnActiveTabChanged;
         _workbench.Languages?.Dispose();
+        _assistant?.Dispose();
         _diskChanges.Dispose();
         _baselines.Dispose();
         _folderWatcher.Dispose();

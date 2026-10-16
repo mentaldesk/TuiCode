@@ -22,13 +22,6 @@ internal static class FileHistory
     private const int Gap = 2;
     private const int MaxAuthorWidth = 24;
 
-    /// <summary>
-    /// A third of the <paramref name="available"/> rows, leaving the editor <see cref="EditorFloor"/>, but never below
-    /// <see cref="MinPanelHeight"/>: on a terminal too short for both, the panel's floor wins.
-    /// </summary>
-    public static int PanelHeight(int available) =>
-        Math.Max(MinPanelHeight, Math.Min(available / 3, available - EditorFloor));
-
     /// <summary>Commits whose hash starts with, or whose author or subject contains, <paramref name="filter"/>, in any case.</summary>
     public static IReadOnlyList<GitFileCommit> Filter(IReadOnlyList<GitFileCommit> commits, string filter)
     {

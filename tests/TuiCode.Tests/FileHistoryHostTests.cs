@@ -66,7 +66,7 @@ public class FileHistoryHostTests : StaticConfigurationTest
         Assert.Equal("4444444  24 hours ago  Cy   Add old", history.Rows[3].TrimEnd());
 
         var editor = workbench.Editor.Frame;
-        var panel = history.Frame;
+        var panel = workbench.Panel.Frame;
         Assert.Equal(editor.X, panel.X);
         Assert.Equal(editor.Width, panel.Width);
         Assert.Equal(editor.Bottom, panel.Y);

@@ -35,6 +35,7 @@ public class HelpReviewHostTests : StaticConfigurationTest
             new("Enter", "Open the file's diff"),
             new("↑", "To Overview"),
             new("Space", "Mark viewed or not"),
+            .. SidebarHelp.TabKeys,
         ], help.Rows);
     }
 
@@ -66,7 +67,7 @@ public class HelpReviewHostTests : StaticConfigurationTest
         var help = await HelpFrom(review => review.TitleText.Length > 0, onOverview: true);
 
         Assert.Equal("Review", help.Title);
-        Assert.Equal([new HelpRow("Enter", "Open the Overview"), new HelpRow("↓", "To the files")], help.Rows);
+        Assert.Equal([new HelpRow("Enter", "Open the Overview"), new HelpRow("↓", "To the files"), .. SidebarHelp.TabKeys], help.Rows);
     }
 
     private async Task<HelpColumn> HelpFrom(Func<ReviewView, bool> ready, bool onOverview = false, Action<InMemorySettingsService>? settings = null)

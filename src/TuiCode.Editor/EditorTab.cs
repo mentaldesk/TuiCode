@@ -505,6 +505,19 @@ public sealed class EditorTab : FrameView
 
     public void SelectAllOccurrences() => _text.SelectAllOccurrences();
 
+    /// <summary>The rows the selection covers, leaving out a last row it ends at the start of; null with nothing selected.</summary>
+    public (int First, int Last)? SelectedRows
+    {
+        get
+        {
+            if (!_text.HasSelection) return null;
+            var (anchor, caret) = (_text.SelectionAnchor, new System.Drawing.Point(_text.CurrentColumn, _text.CurrentRow));
+            var (start, end) = anchor.Y < caret.Y || (anchor.Y == caret.Y && anchor.X <= caret.X) ? (anchor, caret) : (caret, anchor);
+            var last = end.X == 0 && end.Y > start.Y ? end.Y - 1 : end.Y;
+            return (start.Y, last);
+        }
+    }
+
     /// <summary>
     /// Start of the selection, or the cursor when nothing is selected — with the column in UTF-16 chars,
     /// comparable with <see cref="TextMatch"/> positions.

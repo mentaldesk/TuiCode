@@ -162,6 +162,11 @@ jobs:
         shell: bash
         run: ./publish/TuiCode --smoke-language-server
 
+      - name: ACP smoke
+        # The ACP client against an in-process fake agent, over ACP's line framing.
+        shell: bash
+        run: ./publish/TuiCode --smoke-acp
+
       - name: AOT smoke
         # `dotnet test` runs JIT, so AOT-only failures (missing metadata,
         # trim-stripped paths) only surface against the published native

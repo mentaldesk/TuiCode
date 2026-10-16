@@ -6,7 +6,7 @@ namespace TuiCode.Abstractions;
 
 /// <summary>
 /// A <see cref="Tabs"/> that claims all four arrows and does nothing with them, so an arrow the focused
-/// view can't use switches no tab and moves no focus (#254, #255). Both the editor group and the
+/// view can't use switches no tab and moves no focus (#254, #255). The editor group, the panel and the
 /// sidebar are one of these.
 /// </summary>
 public class PaneTabs : Tabs

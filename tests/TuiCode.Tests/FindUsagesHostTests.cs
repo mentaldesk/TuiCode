@@ -216,6 +216,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
             new("Enter", "Go to the usage"),
             new("↑ ↓", "Step through usages"),
             new("→ ←", "Expand or collapse"),
+            .. SidebarHelp.TabKeys,
         ], help.Place.Rows);
     }
 

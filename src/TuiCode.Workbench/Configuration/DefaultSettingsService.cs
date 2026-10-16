@@ -96,6 +96,8 @@ public sealed class DefaultSettingsService : ISettingsService
     public IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; } =
         new Dictionary<string, LanguageServerSetting>(StringComparer.OrdinalIgnoreCase);
 
+    public AssistantSetting Assistant { get; set; } = AssistantSetting.Default;
+
     public bool SettingsFileInvalid { get; private set; }
 
     public void Load()
@@ -153,6 +155,12 @@ public sealed class DefaultSettingsService : ISettingsService
                     ["Arguments"] = new JsonArray([.. server.Arguments.Select(a => (JsonNode?)a)]),
                 };
             root["LanguageServers"] = servers;
+        }
+        if (Assistant != AssistantSetting.Default)
+        {
+            var assistant = new JsonObject { ["Agent"] = Assistant.Agent };
+            if (Assistant.Agent == AssistantSetting.Custom) assistant["Command"] = Assistant.Command;
+            root["AiAssistance"] = assistant;
         }
 
         if (root.Count == 0)
@@ -255,6 +263,14 @@ public sealed class DefaultSettingsService : ISettingsService
             : SidebarSizing.Default;
         AltOpensMenuWhileTyping = Read(root, "AltOpensMenuWhileTyping", true);
         LanguageServers = ReadLanguageServers(root);
+        Assistant = ReadAssistant(root);
+    }
+
+    private static AssistantSetting ReadAssistant(JsonObject? root)
+    {
+        if (root?["AiAssistance"] is not JsonObject assistant) return AssistantSetting.Default;
+        var agent = Read(assistant, "Agent", "");
+        return agent.Length == 0 ? AssistantSetting.Default : new AssistantSetting(agent, Read(assistant, "Command", "").Trim());
     }
 
     private static Dictionary<string, LanguageServerSetting> ReadLanguageServers(JsonObject? root)

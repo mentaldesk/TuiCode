@@ -3,7 +3,7 @@ using Terminal.Gui.Text;
 namespace TuiCode.Editor;
 
 /// <summary>Where a wrapped line breaks (#378). Columns are grapheme indexes; tabs reach the next stop from the start of their row.</summary>
-internal static class WrapLayout
+public static class WrapLayout
 {
     /// <summary>The grapheme each row starts at. Spaces at a break may run past the edge rather than start a row.</summary>
     public static int[] RowStarts(IReadOnlyList<string> graphemes, int width, int tabWidth)

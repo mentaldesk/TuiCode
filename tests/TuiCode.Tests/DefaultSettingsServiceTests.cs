@@ -456,6 +456,27 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         Assert.Equal(2, svc.Editor.IndentSize);
     }
 
+    [Theory]
+    [InlineData("codex", "")]
+    [InlineData("custom", "my-agent --acp")]
+    public void The_AI_assistance_agent_survives_a_restart(string agent, string command)
+    {
+        var fs = new MockFileSystem();
+        new DefaultSettingsService(fs) { Assistant = new AssistantSetting(agent, command) }.Save();
+
+        Assert.Equal(new AssistantSetting(agent, command), new DefaultSettingsService(fs).Assistant);
+    }
+
+    [Fact]
+    public void Claude_Code_is_the_AI_assistance_default_and_isnt_written()
+    {
+        var fs = new MockFileSystem();
+        new DefaultSettingsService(fs) { Assistant = AssistantSetting.Default }.Save();
+
+        Assert.Equal(AssistantSetting.Default, new DefaultSettingsService(fs).Assistant);
+        Assert.False(fs.File.Exists(SettingsPath(fs)));
+    }
+
     [Fact]
     public void A_settings_file_that_does_not_parse_logs_where_and_says_defaults_are_in_use()
     {
