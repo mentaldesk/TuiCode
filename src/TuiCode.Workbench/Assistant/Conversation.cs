@@ -6,8 +6,8 @@ namespace TuiCode.Workbench.Assistant;
 
 public enum ChatLineKind { Blank, Heading, Text, Tool, Note, Code }
 
-/// <summary>One screen row of the chat. A code row names its fenced block, the line in it and the UTF-16 offset the row starts at.</summary>
-public sealed record ChatLine(ChatLineKind Kind, string Text, int Block = -1, int Line = -1, int Offset = 0);
+/// <summary>One screen row of the chat: who said it (null for a note), and for a code row its fenced block, the line in it and the UTF-16 offset the row starts at.</summary>
+public sealed record ChatLine(ChatLineKind Kind, string Text, int Block = -1, int Line = -1, int Offset = 0, ChatRole? Role = null);
 
 /// <summary>A fenced code block in an answer: its language as the fence names it, and its lines.</summary>
 public sealed record CodeBlock(string Language, IReadOnlyList<string> Lines);
@@ -16,6 +16,9 @@ public sealed record CodeBlock(string Language, IReadOnlyList<string> Lines);
 public sealed class Conversation
 {
     private const int TabWidth = 4;
+
+    /// <summary>Columns left blank left of the user's turns and right of the agent's.</summary>
+    public const int Gutter = 4;
 
     private readonly List<Entry> _entries = [];
 
@@ -96,6 +99,7 @@ public sealed class Conversation
     {
         var lines = new List<ChatLine>();
         var blocks = new List<CodeBlock>();
+        var turnWidth = Math.Max(width - Gutter, 1);
         foreach (var entry in _entries)
         {
             switch (entry)
@@ -106,17 +110,17 @@ public sealed class Conversation
                     break;
                 case Turn { Role: ChatRole.User } turn:
                     Gap(lines);
-                    Wrap(lines, ChatLineKind.Heading, turn.Context is null ? "You" : $"You · {turn.Context}", width);
+                    Wrap(lines, ChatLineKind.Heading, turn.Context is null ? "You" : $"You · {turn.Context}", turnWidth, ChatRole.User);
                     foreach (var part in turn.Parts.OfType<TextPart>())
-                        foreach (var line in Split(part.Text.ToString().Trim('\n'))) Wrap(lines, ChatLineKind.Text, line, width);
+                        foreach (var line in Split(part.Text.ToString().Trim('\n'))) Wrap(lines, ChatLineKind.Text, line, turnWidth, ChatRole.User);
                     break;
                 case Turn turn:
                     Gap(lines);
-                    Wrap(lines, ChatLineKind.Heading, AgentName, width);
+                    Wrap(lines, ChatLineKind.Heading, AgentName, turnWidth, ChatRole.Agent);
                     foreach (var part in turn.Parts)
                     {
-                        if (part is ToolPart tool) Wrap(lines, ChatLineKind.Tool, $"▸ {tool.Title}{(tool.Status == "failed" ? " (failed)" : "")}", width);
-                        else if (part is TextPart text) Markdown(lines, blocks, text.Text.ToString(), width);
+                        if (part is ToolPart tool) Wrap(lines, ChatLineKind.Tool, $"▸ {tool.Title}{(tool.Status == "failed" ? " (failed)" : "")}", turnWidth, ChatRole.Agent);
+                        else if (part is TextPart text) Markdown(lines, blocks, text.Text.ToString(), turnWidth);
                     }
                     break;
             }
@@ -152,7 +156,7 @@ public sealed class Conversation
             }
             if (code is null)
             {
-                Wrap(lines, ChatLineKind.Text, line, width);
+                Wrap(lines, ChatLineKind.Text, line, width, ChatRole.Agent);
                 continue;
             }
             var expanded = line.Replace("\t", new string(' ', TabWidth));
@@ -161,14 +165,14 @@ public sealed class Conversation
         }
     }
 
-    private static void Wrap(List<ChatLine> lines, ChatLineKind kind, string text, int width)
+    private static void Wrap(List<ChatLine> lines, ChatLineKind kind, string text, int width, ChatRole? role = null)
     {
         var graphemes = Graphemes(text);
         var starts = WrapLayout.RowStarts(graphemes, width, TabWidth);
         for (var row = 0; row < starts.Length; row++)
         {
             var end = row + 1 < starts.Length ? starts[row + 1] : graphemes.Count;
-            lines.Add(new ChatLine(kind, string.Concat(graphemes.Skip(starts[row]).Take(end - starts[row])).TrimEnd()));
+            lines.Add(new ChatLine(kind, string.Concat(graphemes.Skip(starts[row]).Take(end - starts[row])).TrimEnd(), Role: role));
         }
     }
 
@@ -181,7 +185,7 @@ public sealed class Conversation
         {
             var end = row + 1 < starts.Length ? starts[row + 1] : graphemes.Count;
             var piece = string.Concat(graphemes.Skip(starts[row]).Take(end - starts[row]));
-            lines.Add(new ChatLine(ChatLineKind.Code, piece, block, line, offset));
+            lines.Add(new ChatLine(ChatLineKind.Code, piece, block, line, offset, ChatRole.Agent));
             offset += piece.Length;
         }
     }

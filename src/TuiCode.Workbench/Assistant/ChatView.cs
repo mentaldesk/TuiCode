@@ -1,6 +1,7 @@
 using Terminal.Gui.Text;
 using TuiCode.Editor;
 using TuiCode.Syntax;
+using TuiCode.Workbench.Settings;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Workbench.Assistant;
@@ -99,6 +100,7 @@ public sealed class ChatView : View
     {
         LayOut();
         var normal = GetAttributeForRole(VisualRole.Normal);
+        var mine = RowStripes.Stripe(normal);
         if (_syntax is not null) _palette.Sync(_syntax);
         var lexing = false;
         for (var row = 0; row < Viewport.Height; row++)
@@ -114,13 +116,22 @@ public sealed class ChatView : View
                 lexing |= DrawCode(line, row, normal);
                 continue;
             }
+            var attribute = normal;
+            var left = 0;
+            if (line.Role == ChatRole.User)
+            {
+                (attribute, left) = (mine, Conversation.Gutter);
+                SetAttribute(mine);
+                Move(left, row);
+                AddStr(new string(' ', Math.Max(TextWidth - left, 0)));
+            }
             SetAttribute(line.Kind switch
             {
-                ChatLineKind.Heading => normal with { Style = normal.Style | TextStyle.Bold },
-                ChatLineKind.Tool or ChatLineKind.Note => normal with { Style = normal.Style | TextStyle.Faint },
-                _ => normal,
+                ChatLineKind.Heading => attribute with { Style = attribute.Style | TextStyle.Bold },
+                ChatLineKind.Tool or ChatLineKind.Note => attribute with { Style = attribute.Style | TextStyle.Faint },
+                _ => attribute,
             });
-            Move(0, row);
+            Move(left, row);
             AddStr(line.Text);
         }
         if (lexing) App?.Invoke(SetNeedsDraw);

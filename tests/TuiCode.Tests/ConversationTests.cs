@@ -6,7 +6,7 @@ public class ConversationTests
 {
     private static Conversation New() => new() { AgentName = "Claude Code", Root = "/work" };
 
-    private static IEnumerable<(ChatLineKind, string)> Rows(Conversation conversation, int width = 40) =>
+    private static IEnumerable<(ChatLineKind, string)> Rows(Conversation conversation, int width = 40 + Conversation.Gutter) =>
         conversation.Render(width).Lines.Select(l => (l.Kind, l.Text));
 
     [Fact]
@@ -46,7 +46,7 @@ public class ConversationTests
         var chat = New();
         chat.Apply(new MessageChunk(ChatRole.Agent, "one two three four five"));
 
-        Assert.Equal(["Claude Code", "one two", "three four", "five"], Rows(chat, 12).Select(r => r.Item2));
+        Assert.Equal(["Claude Code", "one two", "three four", "five"], Rows(chat, 12 + Conversation.Gutter).Select(r => r.Item2));
     }
 
     [Fact]
@@ -72,9 +72,28 @@ public class ConversationTests
         var chat = New();
         chat.Apply(new MessageChunk(ChatRole.Agent, "```\nabcdefghij\n```"));
 
-        var code = chat.Render(4).Lines.Where(l => l.Kind == ChatLineKind.Code).Select(l => (l.Text, l.Offset));
+        var code = chat.Render(4 + Conversation.Gutter).Lines.Where(l => l.Kind == ChatLineKind.Code).Select(l => (l.Text, l.Offset));
 
         Assert.Equal([("abcd", 0), ("efgh", 4), ("ij", 8)], code);
+    }
+
+    [Fact]
+    public void Each_side_leaves_a_gutter_and_says_whose_rows_they_are()
+    {
+        var chat = New();
+        chat.AddQuestion("aaaaa bbbbb", null);
+        chat.Apply(new MessageChunk(ChatRole.Agent, "ccccc ddddd"));
+        chat.AddNote("Stopped.");
+
+        var lines = chat.Render(11 + Conversation.Gutter).Lines;
+
+        Assert.Equal(
+        [
+            ("You", ChatRole.User), ("aaaaa bbbbb", ChatRole.User), ("", null),
+            ("Claude Code", ChatRole.Agent), ("ccccc ddddd", ChatRole.Agent), ("", null),
+            ("Stopped.", null),
+        ], lines.Select(l => (l.Text, l.Role)));
+        Assert.Equal(["aaaaa", "bbbbb"], chat.Render(10 + Conversation.Gutter).Lines.Where(l => l.Role == ChatRole.User).Skip(1).Select(l => l.Text));
     }
 
     [Fact]
