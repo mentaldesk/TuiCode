@@ -28,7 +28,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Sidebar.Assistant;
+        var view = workbench.Panel.Assistant;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -39,7 +39,7 @@ public class AssistantHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter),
             () => Chat(view).Contains("Hello"));
 
-        Assert.Equal(SidebarTab.Assistant, workbench.Sidebar.ActiveTab);
+        Assert.Equal(PanelTab.Assistant, workbench.Panel.ActiveTab);
         Assert.StartsWith("● Claude Code · ", view.HeaderText);
         var prompt = _agent.Received("session/prompt").Single()!["prompt"]!.AsArray();
         Assert.Equal("// line 41\n// line 42\n// line 43", prompt[1]!["resource"]!["text"]!.GetValue<string>());
@@ -52,7 +52,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Sidebar.Assistant;
+        var view = workbench.Panel.Assistant;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -68,7 +68,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Sidebar.Assistant;
+        var view = workbench.Panel.Assistant;
         string? whileAnswering = null;
         _agent.OnPrompt = async (agent, _) =>
         {
@@ -96,7 +96,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Sidebar.Assistant;
+        var view = workbench.Panel.Assistant;
 
         await HostSteps.Run(host,
             () => _commands.TryExecute(CommandIds.AiAssistance),
@@ -119,7 +119,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Sidebar.Assistant;
+        var view = workbench.Panel.Assistant;
         string? answer = "unset";
         (string? Title, string? Focused) dialog = default;
         _agent.OnPrompt = async (agent, _) =>
@@ -153,8 +153,62 @@ public class AssistantHostTests : StaticConfigurationTest
             () => _commands.TryExecute(CommandIds.AiAssistance));
 
         Assert.Contains("No AI agent found: npx isn't on PATH. Choose one in Settings › AI Assistance (os)", workbench.StatusBar.DisplayedText);
-        Assert.NotEqual(SidebarTab.Assistant, workbench.Sidebar.ActiveTab);
+        Assert.False(workbench.IsAssistantShowing);
         Assert.Empty(_agent.Launches);
+    }
+
+    [Fact]
+    public async Task Ctrl_Shift_A_opens_the_tab_in_the_panel_under_the_editor_with_the_question_box_focused()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Panel.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => host.App.InjectKey(Key.A.WithCtrl.WithShift),
+            () => view.InputHasFocus);
+
+        Assert.True(workbench.Panel.Visible);
+        Assert.Equal(PanelTab.Assistant, workbench.Panel.ActiveTab);
+        Assert.Equal("AI assistance", workbench.StatusBar.DisplayedFocus);
+    }
+
+    [Fact]
+    public async Task ta_hides_the_tab_and_gives_the_keys_back_to_the_editor()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => workbench.Panel.Assistant.InputHasFocus,
+            () => _commands.TryExecute(CommandIds.ToggleAssistant),
+            () => workbench.StatusBar.DisplayedFocus == "Editor");
+
+        Assert.False(workbench.IsAssistantShowing);
+        Assert.False(workbench.Panel.Visible);
+    }
+
+    [Fact]
+    public async Task Ctrl_PageDown_in_the_panel_switches_its_tab_and_leaves_the_editor_tabs_alone()
+    {
+        _fs.AddFile("/work/B.cs", new MockFileData("b"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/B.cs")),
+            () => workbench.ShowHistory(true),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => workbench.Panel.Assistant.InputHasFocus,
+            () => host.App.InjectKey(Key.PageDown.WithCtrl),
+            () => workbench.StatusBar.DisplayedFocus == "History");
+
+        Assert.Equal(PanelTab.History, workbench.Panel.ActiveTab);
+        Assert.Equal("B.cs", Tab(workbench).File.Name);
     }
 
     private static string Chat(AssistantView view) => string.Join('\n', view.Chat.Lines.Select(l => l.Text));

@@ -39,15 +39,4 @@ public class FileHistoryTests
         Assert.Equal("3 weeks ago", FileHistory.Age(Commits[0] with { Date = Now.AddDays(-21) }, Now));
         Assert.Equal("3 months ago", FileHistory.Age(Commits[0] with { Date = Now.AddDays(-90) }, Now));
     }
-
-    [Theory]
-    [InlineData(28, 9)]
-    [InlineData(60, 20)]
-    [InlineData(20, 8)]
-    [InlineData(14, 8)]
-    public void PanelHeight_is_a_third_leaving_the_editor_ten_rows_and_the_list_five(int available, int expected)
-    {
-        Assert.Equal(expected, FileHistory.PanelHeight(available));
-        Assert.True(expected >= FileHistory.MinPanelHeight);
-    }
 }

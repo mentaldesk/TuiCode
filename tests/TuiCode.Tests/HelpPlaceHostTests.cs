@@ -35,6 +35,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("F2", "Move or rename file or folder"),
             new("Ctrl+X", "Cut file or folder"),
             new("Ctrl+V", "Paste file or folder"),
+            .. SidebarHelp.TabKeys,
         ], help.Rows);
     }
 
@@ -76,6 +77,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("Ctrl+Enter", "Replace all globally"),
             new("Alt+C", "Match case on or off"),
             new("Alt+W", "Match whole word on or off"),
+            .. SidebarHelp.TabKeys,
         ], help.Rows);
     }
 
@@ -99,7 +101,21 @@ public class HelpPlaceHostTests : StaticConfigurationTest
 
         Assert.Equal("Find", help.Title);
 
-        Assert.Equal([new HelpRow("Enter", "Open result")], help.Rows);
+        Assert.Equal([new HelpRow("Enter", "Open result"), .. SidebarHelp.TabKeys], help.Rows);
+    }
+
+    [Fact]
+    public async Task F1_in_the_AI_assistance_tab_ends_with_the_keys_that_switch_the_panels_tabs()
+    {
+        var help = await HelpFrom(() => _commands.TryExecute(CommandIds.ToggleAssistant), "AI assistance");
+
+        Assert.Equal(
+        [
+            new("Ctrl+G h", "Show or hide file history"),
+            new("Ctrl+Shift+A", "AI assistance"),
+            new("Ctrl+PageDown", "Next panel tab"),
+            new("Ctrl+PageUp", "Previous panel tab"),
+        ], help.Rows.TakeLast(4));
     }
 
     [Fact]

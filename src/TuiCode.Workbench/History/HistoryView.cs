@@ -7,8 +7,8 @@ using TuiCode.Workbench.Controls;
 
 namespace TuiCode.Workbench.History;
 
-/// <summary>The History panel under the editor (#534): the commits that changed one file, newest first, behind a filter.</summary>
-public sealed class HistoryView : FrameView
+/// <summary>The panel's History tab (#534): the commits that changed one file, newest first, behind a filter.</summary>
+public sealed class HistoryView : View
 {
     private readonly TextField _filter;
     private readonly VerbatimLabel _note;
@@ -23,7 +23,6 @@ public sealed class HistoryView : FrameView
     public HistoryView()
     {
         Title = "History";
-        BorderStyle = LineStyle.Single;
         CanFocus = true;
 
         _filter = new TextField { X = 0, Y = 0, Width = Dim.Fill() };
@@ -63,6 +62,7 @@ public sealed class HistoryView : FrameView
     {
         FilePath = path;
         Title = $"History: {name}";
+        PaneTabs.ShowTitle(this);
         _commits = [];
         _filter.Text = "";
         SetNote("");

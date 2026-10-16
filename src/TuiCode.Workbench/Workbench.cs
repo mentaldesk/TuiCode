@@ -18,10 +18,11 @@ public sealed class Workbench : Window
     public EditorPart Editor { get; }
     public StatusBarPart StatusBar { get; }
     public MenuBar MenuBar { get; } = new();
-    public HistoryView History { get; } = new();
+    public PanelPart Panel { get; }
+    public HistoryView History => Panel.History;
 
     /// <summary>A dialog is open over the workbench: every view the host adds beside the five parts is one.</summary>
-    public bool HasDialog => SubViews.Any(view => view != MenuBar && view != Sidebar && view != Editor && view != History && view != StatusBar);
+    public bool HasDialog => SubViews.Any(view => view != MenuBar && view != Sidebar && view != Editor && view != Panel && view != StatusBar);
 
     /// <summary>The user has the History panel on (#534); it shows only while the active tab has history.</summary>
     public bool IsHistoryOn { get; private set; }
@@ -31,6 +32,10 @@ public sealed class Workbench : Window
     public event EventHandler? HistoryOnChanged;
 
     public event EventHandler? HistoryShowingChanged;
+
+    public bool IsAssistantShowing => Panel.IsOpen(PanelTab.Assistant);
+
+    public event EventHandler? AssistantShowingChanged;
 
     public bool IsSidebarVisible { get; private set; } = true;
 
@@ -46,8 +51,10 @@ public sealed class Workbench : Window
     // Null while switching folders or shutting down, so closing the old folder's tabs isn't saved as its state.
     private string? _workspaceFolder;
 
-    public Workbench(SidebarPart sidebar, EditorPart editor, StatusBarPart statusBar, WorkspaceStateStore? workspaceState = null, FilePositionStore? positions = null)
+    public Workbench(SidebarPart sidebar, EditorPart editor, StatusBarPart statusBar, WorkspaceStateStore? workspaceState = null, FilePositionStore? positions = null,
+        PanelPart? panel = null)
     {
+        Panel = panel ?? new PanelPart();
         _workspaceState = workspaceState;
         _positions = positions;
         Sidebar = sidebar;
@@ -67,18 +74,18 @@ public sealed class Workbench : Window
         editor.Width = Dim.Fill();
         editor.Height = Dim.Fill(1);
 
-        History.X = Pos.Right(sidebar);
-        History.Y = Pos.Bottom(editor);
-        History.Width = Dim.Fill();
-        History.Height = 0;
-        History.Visible = false;
+        Panel.X = Pos.Right(sidebar);
+        Panel.Y = Pos.Bottom(editor);
+        Panel.Width = Dim.Fill();
+        Panel.Height = 0;
+        Panel.Visible = false;
 
         statusBar.X = 0;
         statusBar.Y = Pos.AnchorEnd(1);
         statusBar.Width = Dim.Fill();
         statusBar.Height = 1;
 
-        Add(MenuBar, sidebar, editor, History, statusBar);
+        Add(MenuBar, sidebar, editor, Panel, statusBar);
 
         sidebar.Explorer.FileActivated += (_, file) => OpenFile(file);
 
@@ -417,7 +424,7 @@ public sealed class Workbench : Window
     {
         base.OnSubViewsLaidOut(args);
         ApplyDrawnSidebarWidth();
-        ApplyHistoryHeight();
+        ApplyPanelHeight();
     }
 
     public void SetHistoryOn(bool on)
@@ -428,22 +435,34 @@ public sealed class Workbench : Window
         SaveWorkspaceState();
     }
 
-    /// <summary>Unfolds the History panel under the editor, or gives its rows back to the editor.</summary>
+    /// <summary>Puts the History tab in the panel under the editor, or takes it out.</summary>
     public void ShowHistory(bool showing)
     {
         if (IsHistoryShowing == showing) return;
         IsHistoryShowing = showing;
-        History.Visible = showing;
-        ApplyHistoryHeight();
+        Panel.SetOpen(PanelTab.History, showing);
+        ApplyPanelHeight();
         HistoryShowingChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ApplyHistoryHeight()
+    /// <summary>Puts the AI assistance tab in the panel under the editor, or takes it out.</summary>
+    public void ShowAssistant(bool showing)
+    {
+        if (IsAssistantShowing == showing) return;
+        Panel.SetOpen(PanelTab.Assistant, showing);
+        ApplyPanelHeight();
+        AssistantShowingChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // The panel gives the editor back its rows when it has no tab, and takes more of them for a chat.
+    private void ApplyPanelHeight()
     {
         // Less the menu bar and the status bar.
-        var height = IsHistoryShowing ? FileHistory.PanelHeight(Viewport.Height - 2) : 0;
-        if (History.Height is DimAbsolute { Size: var size } && size == height) return;
-        History.Height = height;
+        var available = Viewport.Height - 2;
+        var height = Panel.HasTabs ? PanelPart.RowsFor(available, chat: IsAssistantShowing) : 0;
+        Panel.Visible = height > 0;
+        if (Panel.Height is DimAbsolute { Size: var size } && size == height) return;
+        Panel.Height = height;
         Editor.Height = Dim.Fill(1 + height);
         SetNeedsLayout();
     }
@@ -464,7 +483,7 @@ public sealed class Workbench : Window
         IsSidebarVisible = visible;
         Sidebar.Visible = visible;
         Editor.X = visible ? Pos.Right(Sidebar) : 0;
-        History.X = Editor.X;
+        Panel.X = Editor.X;
         SetNeedsLayout();
         RefreshReviewIfShowing();
     }
