@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using TuiCode.Abstractions;
@@ -61,13 +62,13 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
             () => Confirm(workbench) is not null,
             () =>
             {
-                (asked, focused) = (Message(Confirm(workbench)!), Confirm(workbench)!.FocusedChoice!);
+                (asked, focused) = (Message(Confirm(workbench)!), Confirm(workbench)!.FocusedButton()!);
                 pickerShown = Picker(workbench) is not null;
             });
 
         Assert.Equal(WorkbenchHost.UnsavedChanges(["a.txt"], "Save them before opening another folder?"),
             asked.ReplaceLineEndings("\n"));
-        Assert.Equal("Cancel", focused);
+        Assert.Equal("Esc Cancel", focused);
         Assert.False(pickerShown);
     }
 
@@ -78,7 +79,7 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var asked = false;
-        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmView;
+        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmDialog;
 
         await HostSteps.Run(host,
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
@@ -89,7 +90,7 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
     }
 
     [Theory]
-    [InlineData(false)] // Enter lands on the focused Cancel
+    [InlineData(false)] // Space presses the focused Cancel
     [InlineData(true)]
     public async Task Cancelling_opens_nothing_and_keeps_the_tab_dirty(bool escape)
     {
@@ -101,7 +102,7 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
             () => Edit(workbench, "/work/a.txt", "mine\n"),
             () => _commands.TryExecute(CommandIds.OpenWorktree),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(escape ? Key.Esc : Key.Enter),
+            () => host.App.InjectKey(escape ? Key.Esc : Key.Space),
             () => Confirm(workbench) is null,
             () => { pickerShown = Picker(workbench) is not null; });
 
@@ -121,8 +122,7 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
             () => Edit(workbench, "/work/a.txt", "mine\n"),
             () => _commands.TryExecute(command),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Don't save"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Don't save"),
             () => Picker(workbench) is not null,
             () => host.App.InjectKey(Key.Esc),
             () => Picker(workbench) is null);
@@ -141,8 +141,7 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
             () => Edit(workbench, "/work/a.txt", "mine\n"),
             () => _commands.TryExecute(CommandIds.OpenFilePath),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Don't save"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Don't save"),
             () => Picker(workbench) is not null,
             () => Type(host, Full("/code/feature")),
             () => host.App.InjectKey(Key.Enter),
@@ -167,8 +166,7 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
             },
             () => _commands.TryExecute(CommandIds.OpenRecentFolder),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save all"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save all"),
             () => Picker(workbench) is not null);
 
         Assert.Equal("mine a\n", _fs.File.ReadAllText("/work/a.txt"));
@@ -191,8 +189,7 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
             },
             () => _commands.TryExecute(CommandIds.OpenRecentFolder),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save all"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save all"),
             () => Confirm(workbench) is null,
             () => { pickerShown = Picker(workbench) is not null; });
 
@@ -215,8 +212,7 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
             },
             () => _commands.TryExecute(CommandIds.OpenRecentFolder),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save all"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save all"),
             () => Confirm(workbench)?.Title == "File changed on disk",
             () => host.App.InjectKey(Key.Esc),
             () => Confirm(workbench) is null,
@@ -226,13 +222,6 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
         Assert.Equal("theirs\n", _fs.File.ReadAllText("/work/a.txt"));
     }
 
-    // Cancel starts focused, so Tab round the row until the wanted button has it.
-    private static Func<bool> Reach(WorkbenchHost host, Workbench.Workbench workbench, string label) => () =>
-    {
-        if (Confirm(workbench)?.FocusedChoice == label) return true;
-        host.App.InjectKey(Key.Tab);
-        return false;
-    };
 
     private void Edit(Workbench.Workbench workbench, string path, string content)
     {
@@ -247,14 +236,13 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
         foreach (var c in text) host.App.InjectKey(new Key(c));
     }
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
     private static View? Picker(Workbench.Workbench workbench) =>
         workbench.SubViews.SingleOrDefault(v => v is OpenView or PullRequestPickerView or RecentFolderPickerView
             or WorktreePickerView or PathPromptView);
 
-    private static string Message(ConfirmView view) => view.SubViews.OfType<Label>().First().Text;
+    private static string Message(ConfirmDialog view) => view.Message();
 
     private Workbench.Workbench BuildWorkbench()
     {

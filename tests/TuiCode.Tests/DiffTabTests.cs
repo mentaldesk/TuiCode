@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
@@ -1119,13 +1120,8 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             },
             () => commands.TryExecute(CommandIds.PreviousEditor),
             () => commands.TryExecute(CommandIds.CloseActiveEditor),
-            () =>
-            {
-                if (workbench.SubViews.OfType<ConfirmView>().Single().FocusedChoice == "Don't save") return true;
-                host.App.InjectKey(Key.Tab);
-                return false;
-            },
-            () => host.App.InjectKey(Key.Enter));
+            () => ConfirmDialogs.Of(workbench) is not null,
+            ConfirmDialogs.Choose(host, workbench, "Don't save"));
 
         Assert.Empty(group.DiffTabs);
         Assert.Empty(group.TabCollection);

@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.Views;
@@ -123,7 +124,7 @@ public class CloseTabsHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var asked = "";
-        string[] buttons = [];
+        string[] buttons = [], kinds = [];
 
         await HostSteps.Run(host,
             () =>
@@ -137,12 +138,14 @@ public class CloseTabsHostTests : StaticConfigurationTest
             () =>
             {
                 var view = Confirm(workbench)!;
-                asked = view.SubViews.OfType<Label>().First().Text;
-                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text.Trim())];
+                asked = view.Message();
+                buttons = view.Buttons();
+                kinds = view.Kinds();
             });
 
         Assert.Equal(WorkbenchHost.UnsavedChanges(["a.txt"], Question), asked.ReplaceLineEndings("\n"));
-        Assert.Equal(["Save all", "Don't save", "Cancel"], buttons);
+        Assert.Equal(["Ctrl+Enter Save all", "Don't save", "Esc Cancel"], buttons);
+        Assert.Equal(["Primary", "Danger", "Secondary"], kinds);
     }
 
     [Fact]
@@ -178,8 +181,7 @@ public class CloseTabsHostTests : StaticConfigurationTest
             () => { Open(workbench, "a.txt", edit: "mine a\n"); Open(workbench, "b.txt", edit: "mine b\n"); },
             () => _commands.TryExecute(CommandIds.CloseOtherTabs),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save all"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save all"),
             () => Confirm(workbench) is null);
 
         Assert.Equal("mine a\n", _fs.File.ReadAllText("/work/a.txt"));
@@ -201,8 +203,7 @@ public class CloseTabsHostTests : StaticConfigurationTest
             () => groups.IsSplit,
             () => _commands.TryExecute(CommandIds.CloseAllTabs),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Don't save"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Don't save"),
             () => Confirm(workbench) is null);
 
         Assert.Empty(groups.First.TabCollection);
@@ -217,7 +218,7 @@ public class CloseTabsHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
         var groups = workbench.Editor.Groups;
         var asked = false;
-        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmView;
+        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmDialog;
 
         await HostSteps.Run(host,
             () => { Open(workbench, "a.txt"); Open(workbench, "b.txt"); Open(workbench, "c.txt"); },
@@ -234,16 +235,8 @@ public class CloseTabsHostTests : StaticConfigurationTest
         Assert.Null(state.Second);
     }
 
-    // Cancel starts focused, so Tab round the row until the wanted button has it.
-    private static Func<bool> Reach(WorkbenchHost host, Workbench.Workbench workbench, string label) => () =>
-    {
-        if (Confirm(workbench)?.FocusedChoice == label) return true;
-        host.App.InjectKey(Key.Tab);
-        return false;
-    };
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
     [Fact]
     public async Task Close_other_tabs_asks_nothing_about_a_tab_back_to_its_saved_text()
@@ -251,7 +244,7 @@ public class CloseTabsHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var asked = false;
-        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmView;
+        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmDialog;
 
         await HostSteps.Run(host,
             () =>

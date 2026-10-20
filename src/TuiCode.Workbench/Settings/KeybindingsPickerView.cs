@@ -1,5 +1,7 @@
 using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
+using MentalDesk.Tui.Dialogs;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Settings;
@@ -242,27 +244,30 @@ public sealed class KeybindingsPickerView : View
         var message = clash.Message(id => _commandLabels.GetValueOrDefault(id, id));
         if (clash.IsWarning)
         {
-            KeybindingConflictDialog.Confirm(host, _scopes, message, "Bind", destructive: false, bind =>
-            {
-                _list.SetFocus();
-                if (bind) AddBinding(candidate);
-            });
+            ConfirmConflict(host, message, "Bind", () => AddBinding(candidate));
         }
         else if (clash.Kind is KeybindingConflict.ExactMatch)
         {
-            KeybindingConflictDialog.Confirm(host, _scopes, message, "Replace", destructive: true, replace =>
+            ConfirmConflict(host, message, "Replace", () =>
             {
-                _list.SetFocus();
-                if (!replace) return;
                 _currentBindings.Remove(clash.Existing);
                 AddBinding(candidate);
             });
         }
         else
         {
-            KeybindingConflictDialog.Refuse(host, _scopes, message, () => _list.SetFocus());
+            KeybindingRefusal.Show(host, _scopes, message, () => _list.SetFocus());
         }
     }
+
+    private void ConfirmConflict(View host, string message, string action, Action confirmed) =>
+        HostedConfirm.Show(host, _scopes, "Shortcut in use", message,
+            [new ConfirmAction(action, ButtonKind.Primary, HostedConfirm.MainKey)],
+            chosen =>
+            {
+                _list.SetFocus();
+                if (chosen is not null) confirmed();
+            });
 
     private void AddBinding(KeyBinding binding)
     {

@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using System.Drawing;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
@@ -168,7 +169,7 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench, new InMemorySettingsService());
         KeybindingsPickerView? picker = null;
         SettingsView? settings = null;
-        (string Title, View? Host, int Width, string Message)? dialog = null;
+        (string Title, View? Host, int Width, string Message, string[] Buttons, string[] Kinds, string? Focused)? dialog = null;
 
         await HostSteps.Run(host,
             () => host.App.InjectKey(new Key(',').WithCtrl),
@@ -185,17 +186,20 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             () =>
             {
                 if (workbench.SubViewsDeep().OfType<Dialog>().SingleOrDefault() is not { } d) return false;
-                dialog = (d.Title, d.SuperView, d.Frame.Width, d.SubViews.OfType<Label>().Single().Text);
+                var confirm = (ConfirmDialog)d;
+                dialog = (d.Title, d.SuperView, d.Frame.Width, confirm.Message(), confirm.Buttons(), confirm.Kinds(), confirm.FocusedButton());
                 return true;
             },
-            () => host.App.InjectKey(Key.Tab.WithShift),
-            () => host.App.InjectKey(Key.Enter),
+            () => host.App.InjectKey(ConfirmDialogs.CtrlEnter),
             () => host.App.InjectKey(Key.Esc));
 
         // The screen size isn't settable on Windows CI, so check against the settings view's 78 columns inside its border at 80.
         const int innerWidthAt80 = 78;
-        var (title, dialogHost, width, message) = dialog!.Value;
+        var (title, dialogHost, width, message, buttons, kinds, focused) = dialog!.Value;
         Assert.Equal("Shortcut in use", title);
+        Assert.Equal(["Ctrl+Enter Bind", "Esc Cancel"], buttons);
+        Assert.Equal(["Primary", "Secondary"], kinds);
+        Assert.Equal("Esc Cancel", focused);
         Assert.Same(settings, dialogHost);
         Assert.InRange(width, message.Split('\n').Max(l => l.Length) + 3, innerWidthAt80);
         Assert.Equal(KeybindingRowsTests.WidthAt80, innerWidthAt80 - (settings!.Viewport.Width - picker!.Viewport.Width));
