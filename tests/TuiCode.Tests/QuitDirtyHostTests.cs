@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.Views;
@@ -60,7 +61,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
         var title = "";
         var asked = "";
         var focused = "";
-        string[] buttons = [];
+        string[] buttons = [], kinds = [];
 
         await HostSteps.Run(host,
             () =>
@@ -74,18 +75,20 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             () =>
             {
                 var view = Confirm(workbench)!;
-                (title, asked, focused) = (view.Title, Message(view), view.FocusedChoice!);
-                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text.Trim())];
+                (title, asked, focused) = (view.Title, Message(view), view.FocusedButton()!);
+                buttons = view.Buttons();
+                kinds = view.Kinds();
             });
 
         Assert.Equal("Unsaved changes", title);
         Assert.Equal(WorkbenchHost.UnsavedChanges(["a.txt", "c.txt"], "Save them before quitting?"), asked.ReplaceLineEndings("\n"));
-        Assert.Equal(["Save all", "Don't save", "Cancel"], buttons);
-        Assert.Equal("Cancel", focused);
+        Assert.Equal(["Ctrl+Enter Save all", "Don't save", "Esc Cancel"], buttons);
+        Assert.Equal(["Primary", "Danger", "Secondary"], kinds);
+        Assert.Equal("Esc Cancel", focused);
     }
 
     [Theory]
-    [InlineData(false)] // Enter lands on the focused Cancel
+    [InlineData(false)] // Space presses the focused Cancel
     [InlineData(true)]
     public async Task Cancelling_keeps_the_app_running_with_everything_dirty(bool escape)
     {
@@ -97,7 +100,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             () => Open(workbench, "/work/a.txt", edit: "mine\n"),
             () => host.App.InjectKey(Key.Q.WithCtrl),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(escape ? Key.Esc : Key.Enter),
+            () => host.App.InjectKey(escape ? Key.Esc : Key.Space),
             () => Confirm(workbench) is null,
             () => { stillRunning = true; });
 
@@ -120,8 +123,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             },
             () => host.App.InjectKey(Key.Q.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save all"),
-            () => host.App.InjectKey(Key.Enter));
+            ConfirmDialogs.Choose(host, workbench, "Save all"));
 
         Assert.Equal("mine a\n", _fs.File.ReadAllText("/work/a.txt"));
         Assert.Equal("mine b\n", _fs.File.ReadAllText("/work/b.txt"));
@@ -138,8 +140,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             () => Open(workbench, "/work/a.txt", edit: "mine\n"),
             () => host.App.InjectKey(Key.Q.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Don't save"),
-            () => host.App.InjectKey(Key.Enter));
+            ConfirmDialogs.Choose(host, workbench, "Don't save"));
 
         Assert.Equal("one\n", _fs.File.ReadAllText("/work/a.txt"));
     }
@@ -160,8 +161,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             },
             () => host.App.InjectKey(Key.Q.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save all"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save all"),
             () => Confirm(workbench) is null,
             () => { stillRunning = true; });
 
@@ -188,11 +188,9 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             },
             () => host.App.InjectKey(Key.Q.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save all"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save all"),
             () => Confirm(workbench)?.Title == "File changed on disk",
-            Reach(host, workbench, choice),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, choice),
             () => Confirm(workbench)?.Title != "File changed on disk",
             () => { stillRunning = true; });
 
@@ -214,11 +212,9 @@ public class QuitDirtyHostTests : StaticConfigurationTest
             },
             () => host.App.InjectKey(Key.Q.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save all"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save all"),
             () => Confirm(workbench)?.Title == "File changed on disk",
-            Reach(host, workbench, "Overwrite"),
-            () => host.App.InjectKey(Key.Enter));
+            ConfirmDialogs.Choose(host, workbench, "Overwrite"));
 
         Assert.Equal("mine\n", _fs.File.ReadAllText("/work/a.txt"));
     }
@@ -243,7 +239,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var asked = false;
-        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmView;
+        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmDialog;
 
         await HostSteps.RunUntilQuit(host,
             () => Open(workbench, "/work/a.txt", edit: null),
@@ -258,7 +254,7 @@ public class QuitDirtyHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var asked = false;
-        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmView;
+        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmDialog;
 
         await HostSteps.RunUntilQuit(host,
             () =>
@@ -273,13 +269,6 @@ public class QuitDirtyHostTests : StaticConfigurationTest
         Assert.False(asked);
     }
 
-    // Cancel starts focused, so Tab round the row until the wanted button has it.
-    private static Func<bool> Reach(WorkbenchHost host, Workbench.Workbench workbench, string label) => () =>
-    {
-        if (Confirm(workbench)?.FocusedChoice == label) return true;
-        host.App.InjectKey(Key.Tab);
-        return false;
-    };
 
     private void Open(Workbench.Workbench workbench, string path, string? edit)
     {
@@ -288,10 +277,9 @@ public class QuitDirtyHostTests : StaticConfigurationTest
         if (edit is not null) workbench.Editor.Group.ActiveTab!.Content = edit;
     }
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
-    private static string Message(ConfirmView view) => view.SubViews.OfType<Label>().First().Text;
+    private static string Message(ConfirmDialog view) => view.Message();
 
     private Workbench.Workbench BuildWorkbench()
     {

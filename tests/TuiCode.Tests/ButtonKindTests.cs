@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using System.IO.Abstractions.TestingHelpers;
 using MentalDesk.Tui.Theming;
 using Terminal.Gui.ViewBase;
@@ -84,7 +85,7 @@ public class ButtonKindTests
         host.EndInit();
         host.SetFocus();
         var closed = 0;
-        KeybindingConflictDialog.Refuse(host, new InputScopeStack(), "Ctrl+Q can't be rebound.", () => closed++);
+        KeybindingRefusal.Show(host, new InputScopeStack(), "Ctrl+Q can't be rebound.", () => closed++);
 
         var ok = host.SubViews.OfType<Dialog>().Single().SubViews.OfType<Button>().Single();
         Assert.Equal(("Esc OK", SchemeNames.ButtonPrimary), Kind(ok));
@@ -93,33 +94,6 @@ public class ButtonKindTests
         host.NewKeyDownEvent(Key.Enter);
 
         Assert.Equal(1, closed);
-    }
-
-    [Fact]
-    public void Unsaved_changes_offers_a_primary_Save_a_danger_Dont_save_and_a_secondary_Cancel()
-    {
-        var view = new ConfirmView("Unsaved changes", "Save?", new ConfirmChoice("Save", () => { }), new ConfirmChoice("Don't save", () => { }, Destructive: true));
-
-        Assert.Equal(
-            [("Save", SchemeNames.ButtonPrimary), ("Don't save", SchemeNames.ButtonDanger), ("Cancel", SchemeNames.ButtonSecondary)],
-            Kinds(view));
-    }
-
-    [Theory]
-    [InlineData(false, SchemeNames.ButtonPrimary)]
-    [InlineData(true, SchemeNames.ButtonDanger)]
-    public void Shortcut_in_use_draws_its_choice_by_kind_and_keeps_Cancel_the_default(bool destructive, string scheme)
-    {
-        var host = new View { Width = 80, Height = 24, CanFocus = true };
-        host.BeginInit();
-        host.EndInit();
-        host.SetFocus();
-        KeybindingConflictDialog.Confirm(host, new InputScopeStack(), "Ctrl+X is in use.", "Replace", destructive, _ => { });
-
-        var buttons = host.SubViews.OfType<Dialog>().Single().SubViews.OfType<Button>().ToList();
-
-        Assert.Equal([("Replace", scheme), ("Cancel", SchemeNames.ButtonSecondary)], buttons.Select(Kind));
-        Assert.Equal(["Cancel"], buttons.Where(b => b.IsDefault).Select(b => b.Text.Trim()));
     }
 
     [Fact]

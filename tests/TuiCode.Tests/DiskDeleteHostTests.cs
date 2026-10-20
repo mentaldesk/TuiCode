@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using TuiCode.Abstractions;
@@ -58,7 +59,7 @@ public class DiskDeleteHostTests : StaticConfigurationTest
 
         Assert.Equal("mine\n", _fs.File.ReadAllText(_fs.Path.GetFullPath(Path)));
         Assert.Equal("a.txt", title);
-        Assert.Empty(workbench.SubViews.OfType<ConfirmView>());
+        Assert.Empty(workbench.SubViews.OfType<ConfirmDialog>());
     }
 
     private void Delete(string path)

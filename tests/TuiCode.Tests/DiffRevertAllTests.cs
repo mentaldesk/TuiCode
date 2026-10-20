@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
@@ -90,17 +91,19 @@ public class RevertAllHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var asked = "";
+        string[] buttons = [], kinds = [];
 
         await HostSteps.Run(host,
             () => OpenThreeChanges(workbench, commands),
             () => commands.TryExecute(CommandIds.RevertAllChanges),
             () => Confirm(workbench) is not null,
-            () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Tab); },
-            () => Confirm(workbench)!.FocusedChoice == "Revert",
-            () => host.App.InjectKey(Key.Enter),
+            () => { asked = Message(Confirm(workbench)!); buttons = Confirm(workbench)!.Buttons(); kinds = Confirm(workbench)!.Kinds(); },
+            ConfirmDialogs.Choose(host, workbench, "Revert"),
             () => Confirm(workbench) is null);
 
         Assert.Equal("Revert all 3 changes in a.txt?", asked);
+        Assert.Equal(["Ctrl+Enter Revert", "Esc Cancel"], buttons);
+        Assert.Equal(["Danger", "Secondary"], kinds);
         Assert.Equal(Saved.Split('\n'), workbench.Editor.Group.Tabs[0].Lines);
         Assert.Equal(0, workbench.Editor.Group.ActiveDiffTab!.ChangeCount);
         Assert.True(workbench.Editor.Group.Tabs[0].IsDirty);
@@ -119,9 +122,8 @@ public class RevertAllHostTests : StaticConfigurationTest
             () => OpenDiff(workbench, commands, "alpha\nbravo", "alpha\nBRAVO"),
             () => commands.TryExecute(CommandIds.RevertAllChanges),
             () => Confirm(workbench) is not null,
-            () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Tab); },
-            () => Confirm(workbench)!.FocusedChoice == "Revert",
-            () => host.App.InjectKey(Key.Enter),
+            () => { asked = Message(Confirm(workbench)!); },
+            ConfirmDialogs.Choose(host, workbench, "Revert"),
             () => Confirm(workbench) is null);
 
         Assert.Equal("Revert all 1 change in a.txt?", asked);
@@ -129,7 +131,7 @@ public class RevertAllHostTests : StaticConfigurationTest
     }
 
     [Theory]
-    [InlineData(false)] // Enter lands on the focused Cancel
+    [InlineData(false)] // Space presses the focused Cancel
     [InlineData(true)]
     public async Task Cancelling_leaves_the_buffer_as_it_was(bool escape)
     {
@@ -140,7 +142,7 @@ public class RevertAllHostTests : StaticConfigurationTest
             () => OpenThreeChanges(workbench, commands),
             () => commands.TryExecute(CommandIds.RevertAllChanges),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(escape ? Key.Esc : Key.Enter),
+            () => host.App.InjectKey(escape ? Key.Esc : Key.Space),
             () => Confirm(workbench) is null);
 
         Assert.Equal(Edited.Split('\n'), workbench.Editor.Group.Tabs[0].Lines);
@@ -159,9 +161,7 @@ public class RevertAllHostTests : StaticConfigurationTest
             () => OpenThreeChanges(workbench, commands),
             () => commands.TryExecute(CommandIds.RevertAllChanges),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.FocusedChoice == "Revert",
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Revert"),
             () => Confirm(workbench) is null,
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveTab is not null,
@@ -196,10 +196,9 @@ public class RevertAllHostTests : StaticConfigurationTest
         commands.TryExecute(CommandIds.CompareToSaved);
     }
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
-    private static string Message(ConfirmView view) => view.SubViews.OfType<Label>().First().Text;
+    private static string Message(ConfirmDialog view) => view.Message();
 
     private Workbench.Workbench BuildWorkbench()
     {

@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.Views;
@@ -31,7 +32,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
             () => OpenWithAnExternalChange(workbench),
             () => host.App.InjectKey(Key.S.WithCtrl),
             () => Confirm(workbench) is not null,
-            () => { asked = Message(Confirm(workbench)!); focused = Confirm(workbench)!.FocusedChoice!; });
+            () => { asked = Message(Confirm(workbench)!); focused = Confirm(workbench)!.FocusedButton()!; });
 
         Assert.Equal(
             """
@@ -40,7 +41,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
             What would you like to do?
             """.ReplaceLineEndings("\n"),
             asked.ReplaceLineEndings("\n"));
-        Assert.Equal("Cancel", focused);
+        Assert.Equal("Esc Cancel", focused);
         Assert.Equal("from the other branch\n", _fs.File.ReadAllText(Path));
         Assert.True(workbench.Editor.Group.ActiveTab!.IsDirty);
     }
@@ -50,7 +51,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        string[] buttons = [];
+        string[] buttons = [], kinds = [];
         var width = 0;
         var overflowing = Array.Empty<string>();
 
@@ -61,20 +62,23 @@ public class SaveConflictHostTests : StaticConfigurationTest
             () =>
             {
                 var view = Confirm(workbench)!;
-                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text.Trim())];
+                buttons = view.Buttons();
+                kinds = view.Kinds();
                 width = view.Frame.Width;
                 overflowing = [.. view.SubViews.OfType<Button>()
                     .Where(b => b.Frame.X < 0 || b.Frame.Right > view.Viewport.Width)
                     .Select(b => b.Text.Trim())];
             });
 
-        Assert.Equal(["Compare", "Overwrite", "Reload", "Cancel"], buttons);
+        Assert.Equal(["Ctrl+Enter Compare", "Overwrite", "Reload", "Esc Cancel"], buttons);
+
+        Assert.Equal(["Primary", "Danger", "Danger", "Secondary"], kinds);
         Assert.True(width <= 80, $"the modal is {width} columns wide");
         Assert.Empty(overflowing);
     }
 
     [Theory]
-    [InlineData(false)] // Enter lands on the focused Cancel
+    [InlineData(false)] // Space presses the focused Cancel
     [InlineData(true)]
     public async Task Cancelling_leaves_the_file_on_disk_alone(bool escape)
     {
@@ -85,7 +89,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
             () => OpenWithAnExternalChange(workbench),
             () => host.App.InjectKey(Key.S.WithCtrl),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(escape ? Key.Esc : Key.Enter),
+            () => host.App.InjectKey(escape ? Key.Esc : Key.Space),
             () => Confirm(workbench) is null);
 
         Assert.Equal("from the other branch\n", _fs.File.ReadAllText(Path));
@@ -106,8 +110,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
             () => OpenWithAnExternalChange(workbench),
             () => host.App.InjectKey(Key.S.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Overwrite"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Overwrite"),
             () => Confirm(workbench) is null,
             () =>
             {
@@ -137,8 +140,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
             () => OpenWithAnExternalChange(workbench),
             () => host.App.InjectKey(Key.S.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Compare"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Compare"),
             () => workbench.Editor.Group.ActiveDiffTab is not null,
             () => { focused = workbench.Editor.Group.ActiveDiffTab!.IsFocused; });
 
@@ -164,8 +166,7 @@ public class SaveConflictHostTests : StaticConfigurationTest
             () => { workbench.Editor.Group.ActiveTab!.MarkOnDisk(DiskState.Changed); },
             () => host.App.InjectKey(Key.S.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Reload"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Reload"),
             () => Confirm(workbench) is null,
             () =>
             {
@@ -233,13 +234,6 @@ public class SaveConflictHostTests : StaticConfigurationTest
         Assert.Null(Confirm(workbench));
     }
 
-    // Cancel starts focused, so Tab round the row until the wanted button has it.
-    private static Func<bool> Reach(WorkbenchHost host, Workbench.Workbench workbench, string label) => () =>
-    {
-        if (Confirm(workbench)?.FocusedChoice == label) return true;
-        host.App.InjectKey(Key.Tab);
-        return false;
-    };
 
     private void OpenWithAnExternalChange(Workbench.Workbench workbench)
     {
@@ -249,10 +243,9 @@ public class SaveConflictHostTests : StaticConfigurationTest
         _fs.File.WriteAllText(Path, "from the other branch\n");
     }
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
-    private static string Message(ConfirmView view) => view.SubViews.OfType<Label>().First().Text;
+    private static string Message(ConfirmDialog view) => view.Message();
 
     private Workbench.Workbench BuildWorkbench()
     {
