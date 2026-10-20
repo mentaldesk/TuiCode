@@ -52,7 +52,7 @@ public sealed class Workbench : Window
     private string? _workspaceFolder;
 
     public Workbench(SidebarPart sidebar, EditorPart editor, StatusBarPart statusBar, WorkspaceStateStore? workspaceState = null, FilePositionStore? positions = null,
-        PanelPart? panel = null)
+        PanelPart? panel = null, RecoveryStore? recovery = null)
     {
         Panel = panel ?? new PanelPart();
         _workspaceState = workspaceState;
@@ -105,8 +105,15 @@ public sealed class Workbench : Window
 
         editor.Groups.Copied += (_, outcome) => ShowCopy(outcome);
 
+        if (recovery is not null)
+        {
+            UnsavedEdits = new UnsavedEdits(editor.Groups, recovery);
+            UnsavedEdits.Recovered += (_, _) => OnRecovered();
+        }
+
         editor.Groups.EditorOpening += (_, tab) =>
         {
+            if (tab.IsRecovered) return;
             if (_positions?.Load(tab.File.FullName) is { } position) tab.RestoreViewPosition(position);
         };
         editor.Groups.EditorClosing += (_, tab) => RememberPositions([tab]);
@@ -120,6 +127,23 @@ public sealed class Workbench : Window
         {
             if (ReferenceEquals(tab, editor.Group.ActiveTab)) ShowActiveFile(tab);
         };
+    }
+
+    /// <summary>Keeps dirty tabs' edits through TuiCode ending unexpectedly (#579); null keeps nothing.</summary>
+    public UnsavedEdits? UnsavedEdits { get; }
+
+    private int _recovered;
+
+    // Tabs come back one by one, so the count waits for the loop to finish opening them.
+    private void OnRecovered()
+    {
+        if (_recovered++ > 0 || App is not { } app) return;
+        app.AddTimeout(TimeSpan.Zero, () =>
+        {
+            StatusBar.SetMessage($"⟲ Recovered unsaved edits in {Plural.Count(_recovered, "file")}");
+            _recovered = 0;
+            return false;
+        });
     }
 
     /// <summary>The language servers for the open folder; null runs none.</summary>
@@ -271,6 +295,7 @@ public sealed class Workbench : Window
         SetHistoryOn(false);
         Languages?.OpenFolder(directory.FullName);
         RememberPositions(Editor.Groups.Tabs);
+        UnsavedEdits?.Discard(Editor.Groups.Tabs);
         Editor.Groups.CloseAll();
         Sidebar.ShowNoFolder(false);
         Sidebar.Explorer.Open(directory);
@@ -354,7 +379,7 @@ public sealed class Workbench : Window
             foreach (var path in files)
             {
                 var file = directory.FileSystem.FileInfo.New(path);
-                if (!file.Exists || groups.Holding(path) is not null) continue;
+                if ((!file.Exists && UnsavedEdits?.Has(path) != true) || groups.Holding(path) is not null) continue;
                 try
                 {
                     var tab = group.OpenOrFocus(file);
@@ -390,6 +415,7 @@ public sealed class Workbench : Window
     {
         if (disposing)
         {
+            UnsavedEdits?.Dispose();
             _workspaceFolder = null;
             RememberPositions(Editor.Groups.Tabs);
         }
