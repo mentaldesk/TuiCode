@@ -25,7 +25,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     {
         var help = await HelpFrom(() => _commands.TryExecute(CommandIds.FocusSidebar), "Explorer");
 
-        Assert.Equal("Explorer", help.Title);
+        Assert.Equal("Explorer", help.Heading);
         Assert.Equal(
         [
             new("Enter", "Open"),
@@ -36,7 +36,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("Ctrl+X", "Cut file or folder"),
             new("Ctrl+V", "Paste file or folder"),
             .. SidebarHelp.TabKeys,
-        ], help.Rows);
+        ], help.Rows());
     }
 
     [Fact]
@@ -47,8 +47,8 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             Override("F6", CommandIds.RenameFile),
             Override("Ctrl+X", "-" + CommandIds.CutFile));
 
-        Assert.Contains(new HelpRow("F6", "Move or rename file or folder"), help.Rows);
-        Assert.DoesNotContain(help.Rows, row => row.Description == "Cut file or folder");
+        Assert.Contains(new KeyRow("F6", "Move or rename file or folder"), help.Rows());
+        Assert.DoesNotContain(help.Rows(), row => row.Label == "Cut file or folder");
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             Built.Sidebar.Explorer.Cut(_fs.FileInfo.New("/work/a.txt"));
         }, "Explorer");
 
-        Assert.Contains(new HelpRow("Esc", "Cancel cut"), help.Rows);
+        Assert.Contains(new KeyRow("Esc", "Cancel cut"), help.Rows());
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     {
         var help = await HelpFrom(() => _commands.TryExecute(CommandIds.FindGlobally), "Find");
 
-        Assert.Equal("Find", help.Title);
+        Assert.Equal("Find", help.Heading);
         Assert.Equal(
         [
             new("Enter, ↓", "Focus find results"),
@@ -78,14 +78,14 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("Alt+C", "Match case on or off"),
             new("Alt+W", "Match whole word on or off"),
             .. SidebarHelp.TabKeys,
-        ], help.Rows);
+        ], help.Rows());
     }
 
     [Fact]
     public async Task F1_in_the_find_results_lists_how_to_open_one()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("needle"));
-        HelpView? view = null;
+        KeysDialog? view = null;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
@@ -95,13 +95,13 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             () => workbench.Sidebar.Search.FocusResults(),
             () => !workbench.Sidebar.Search.InputsHaveFocus,
             () => host.App.InjectKey(Key.F1),
-            () => (view = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (view = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
-        var help = view!.Place!;
+        var help = view!.Sheet.Here!;
 
-        Assert.Equal("Find", help.Title);
+        Assert.Equal("Find", help.Heading);
 
-        Assert.Equal([new HelpRow("Enter", "Open result"), .. SidebarHelp.TabKeys], help.Rows);
+        Assert.Equal([new KeyRow("Enter", "Open result"), .. SidebarHelp.TabKeys], help.Rows());
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("Ctrl+G a", "AI assistance"),
             new("Ctrl+PageDown", "Next panel tab"),
             new("Ctrl+PageUp", "Previous panel tab"),
-        ], help.Rows.TakeLast(4));
+        ], help.Rows().TakeLast(4));
     }
 
     [Fact]
@@ -124,13 +124,13 @@ public class HelpPlaceHostTests : StaticConfigurationTest
         _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));
         var help = await HelpFrom(() => Built.OpenFile(_fs.FileInfo.New("/work/a.txt")), "Editor");
 
-        Assert.Equal("Editor", help.Title);
-        Assert.Contains(new HelpRow("Alt+↑", "Move line up"), help.Rows);
-        Assert.Contains(new HelpRow("Ctrl+Alt+↓", "Add cursor below"), help.Rows);
-        Assert.Contains(new HelpRow("Ctrl+G l", "Go to line:column"), help.Rows);
-        Assert.DoesNotContain(help.Rows, row => row.Description is "Clear selection" or "Remove secondary cursors");
-        Assert.DoesNotContain(help.Rows, row => row.Description == "Go to symbol in file");
-        Assert.DoesNotContain(help.Rows, row => row.Description == "Save active editor");
+        Assert.Equal("Editor", help.Heading);
+        Assert.Contains(new KeyRow("Alt+↑", "Move line up"), help.Rows());
+        Assert.Contains(new KeyRow("Ctrl+Alt+↓", "Add cursor below"), help.Rows());
+        Assert.Contains(new KeyRow("Ctrl+G l", "Go to line:column"), help.Rows());
+        Assert.DoesNotContain(help.Rows(), row => row.Label is "Clear selection" or "Remove secondary cursors");
+        Assert.DoesNotContain(help.Rows(), row => row.Label == "Go to symbol in file");
+        Assert.DoesNotContain(help.Rows(), row => row.Label == "Save active editor");
     }
 
     [Fact]
@@ -139,8 +139,8 @@ public class HelpPlaceHostTests : StaticConfigurationTest
         _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));
         var help = await HelpFrom(() => Built.OpenFile(_fs.FileInfo.New("/work/a.txt")), "Editor");
 
-        Assert.Contains(help.Rows, row => row.Description == "Column select on or off");
-        Assert.Contains(help.Rows, row => row.Description == "Word wrap on or off");
+        Assert.Contains(help.Rows(), row => row.Label == "Column select on or off");
+        Assert.Contains(help.Rows(), row => row.Label == "Word wrap on or off");
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
         var help = await HelpFrom(() => Built.OpenFile(_fs.FileInfo.New("/work/a.txt")), "Editor",
             before: host => host.App.InjectKey(Key.CursorRight.WithShift));
 
-        Assert.Contains(new HelpRow("Esc", "Clear selection"), help.Rows);
+        Assert.Contains(new KeyRow("Esc", "Clear selection"), help.Rows());
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     {
         var help = await TabStripHelp();
 
-        Assert.Equal("Tabs", help.Title);
+        Assert.Equal("Tabs", help.Heading);
         Assert.Equal(
         [
             new("← →", "Switch tab"),
@@ -167,7 +167,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             new("Ctrl+PageUp", "Previous tab"),
             new("Ctrl+W", "Close tab"),
             new("Ctrl+\\", "Move to other group"),
-        ], help.Rows);
+        ], help.Rows());
     }
 
     [Fact]
@@ -175,15 +175,15 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     {
         var help = await TabStripHelp(Override("Ctrl+PageDown", "-" + CommandIds.NextEditor), Override("F6", CommandIds.NextEditor));
 
-        Assert.Contains(new HelpRow("F6", "Next tab"), help.Rows);
-        Assert.DoesNotContain(new HelpRow("Ctrl+PageDown", "Next tab"), help.Rows);
+        Assert.Contains(new KeyRow("F6", "Next tab"), help.Rows());
+        Assert.DoesNotContain(new KeyRow("Ctrl+PageDown", "Next tab"), help.Rows());
     }
 
     [Fact]
     public async Task F1_with_no_file_open_shows_everywhere_alone()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one"));
-        HelpView? view = null;
+        KeysDialog? view = null;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
 
@@ -193,13 +193,91 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             () => _commands.TryExecute(CommandIds.CloseActiveEditor),
             () => workbench.Editor.Group.Value is null && workbench.StatusBar.DisplayedFocus == "Editor",
             () => host.App.InjectKey(Key.F1),
-            () => (view = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (view = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Null(view!.Place);
+        Assert.Null(view!.Sheet.Here);
     }
 
-    private async Task<HelpColumn> TabStripHelp(params KeybindingOverride[] overrides)
+    [Fact]
+    public async Task F1_in_the_explorer_shows_help_with_everywhere_beside_the_explorer()
+    {
+        var view = await ExplorerDialog();
+
+        Assert.Equal("Help", view.Title);
+        Assert.False(view.Stacked);
+        Assert.Equal("Explorer", view.Sheet.Here!.Heading);
+        Assert.Equal("Everywhere", view.Sheet.Everywhere!.Heading);
+        var headings = view.Sheet.Everywhere.Groups.Select(group => group.Heading!).ToList();
+        string[] menus = ["File", "Edit", "Selection", "View", "Go", "Diff", "Review", "Help", "Other"];
+        Assert.Equal(headings, menus.Where(headings.Contains));
+        Assert.Equal("File", headings[0]);
+        Assert.Contains(new KeyRow("Ctrl+O", "Open file or folder"), view.Sheet.Everywhere.Groups[0].Rows);
+        Assert.Contains(new KeyRow("F1", "Show keys"), view.Sheet.Everywhere.Groups.Single(group => group.Heading == "Help").Rows);
+    }
+
+    [Fact]
+    public async Task Everywhere_follows_a_rebind_of_the_command_palette()
+    {
+        var view = await ExplorerDialog(Override("Ctrl+E", "-" + CommandIds.ShowActions), Override("F6", CommandIds.ShowActions));
+
+        Assert.Contains(new KeyRow("F6", "Show all commands"), Everywhere(view));
+        Assert.DoesNotContain(Everywhere(view), row => row.Keys == "Ctrl+E");
+    }
+
+    [Fact]
+    public async Task A_command_given_a_key_appears_under_its_menu_and_goes_when_unbound()
+    {
+        var bound = await ExplorerDialog(Override("F7", CommandIds.OpenRecentFolder));
+        var unbound = await ExplorerDialog();
+
+        Assert.Contains(new KeyRow("F7", "Open recent folder"), bound.Sheet.Everywhere!.Groups.Single(group => group.Heading == "File").Rows);
+        Assert.DoesNotContain(Everywhere(unbound), row => row.Label == "Open recent folder");
+    }
+
+    [Fact]
+    public async Task Everywhere_leaves_out_a_command_that_cannot_run_here()
+    {
+        var view = await ExplorerDialog();
+
+        Assert.DoesNotContain(Everywhere(view), row => row.Label == "Match case on or off");
+    }
+
+    [Fact]
+    public async Task Everywhere_leaves_editor_commands_to_the_editor_column()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));
+        var view = await DialogFrom(() => Built.OpenFile(_fs.FileInfo.New("/work/a.txt")), "Editor", null);
+
+        Assert.Contains(view.Sheet.Here!.Rows(), row => row.Label == "Move line up");
+        Assert.DoesNotContain(Everywhere(view), row => row.Label == "Move line up");
+    }
+
+    [Fact]
+    public async Task No_key_reaches_the_editor_while_help_is_open_and_Esc_hands_the_keys_back()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("one"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var region = "";
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.F1),
+            () => workbench.SubViews.OfType<KeysDialog>().Any(),
+            () => host.App.InjectKey(new Key('x')),
+            () => host.App.InjectKey(Key.Esc),
+            () => !workbench.SubViews.OfType<KeysDialog>().Any(),
+            () => { region = workbench.StatusBar.DisplayedFocus; },
+            () => host.App.InjectKey(new Key('y')),
+            () => workbench.Editor.Group.ActiveTab!.Lines[0] != "one");
+
+        Assert.Equal("Editor", region);
+        Assert.Equal("yone", workbench.Editor.Group.ActiveTab!.Lines[0]);
+    }
+
+    private async Task<KeyColumn> TabStripHelp(params KeybindingOverride[] overrides)
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one"));
         return await HelpFrom(() =>
@@ -213,51 +291,63 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     public async Task The_editor_column_scrolls_to_its_last_row_in_an_80_by_24_terminal()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one"));
-        HelpView? view = null;
+        KeysDialog? view = null;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var fits = false;
+        bool fits = false, scrolls = false;
 
         await HostSteps.Run(host,
             () => HostSteps.PinScreenSize(host, 80, 24),
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
             () => workbench.StatusBar.DisplayedFocus == "Editor",
             () => host.App.InjectKey(Key.F1),
-            () => (view = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
-            () => fits = view!.Frame.Height <= workbench.Viewport.Height,
-            () => host.App.InjectKey(Key.PageDown),
-            () => host.App.InjectKey(Key.PageDown),
-            () => host.App.InjectKey(Key.CursorDown),
-            () => view!.Body.Viewport.Bottom == view.Body.GetContentSize().Height,
+            () => (view = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
+            () => { fits = view!.Frame.Height <= workbench.Viewport.Height; scrolls = view.Body.GetContentSize().Height > view.Body.Viewport.Height; },
+            () =>
+            {
+                host.App.InjectKey(Key.PageDown);
+                return view!.Body.Viewport.Bottom >= view.Body.GetContentSize().Height;
+            },
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.True(view!.IsScrollable);
+        Assert.True(scrolls);
         Assert.True(fits);
+        Assert.True(view!.Stacked);
+        Assert.Equal("Editor", view.Sheet.Here!.Heading);
     }
 
     private Workbench.Workbench Built => _built!;
     private Workbench.Workbench? _built;
 
-    private async Task<HelpColumn> HelpFrom(Action focus, string region, params KeybindingOverride[] overrides) =>
+    private async Task<KeyColumn> HelpFrom(Action focus, string region, params KeybindingOverride[] overrides) =>
         await HelpFrom(focus, region, null, overrides);
 
-    private async Task<HelpColumn> HelpFrom(Action focus, string region, Action<WorkbenchHost>? before, params KeybindingOverride[] overrides)
+    private async Task<KeyColumn> HelpFrom(Action focus, string region, Action<WorkbenchHost>? before, params KeybindingOverride[] overrides) =>
+        (await DialogFrom(focus, region, before, overrides)).Sheet.Here!;
+
+    private async Task<KeysDialog> DialogFrom(Action focus, string region, Action<WorkbenchHost>? before, params KeybindingOverride[] overrides)
     {
-        HelpView? view = null;
+        KeysDialog? view = null;
         using var workbench = BuildWorkbench();
         _built = workbench;
         using var host = BuildHost(workbench, overrides);
 
         await HostSteps.Run(host,
+            () => HostSteps.PinScreenSize(host, 120, 30),
             focus,
             () => workbench.StatusBar.DisplayedFocus == region,
             () => before?.Invoke(host),
             () => host.App.InjectKey(Key.F1),
-            () => (view = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (view = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        return view!.Place!;
+        return view!;
     }
+
+    private Task<KeysDialog> ExplorerDialog(params KeybindingOverride[] overrides) =>
+        DialogFrom(() => _commands.TryExecute(CommandIds.FocusSidebar), "Explorer", null, overrides);
+
+    private static IEnumerable<KeyRow> Everywhere(KeysDialog view) => view.Sheet.Everywhere!.Rows();
 
     private Workbench.Workbench BuildWorkbench()
     {

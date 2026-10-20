@@ -308,7 +308,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(helpViewWasMounted, "HelpView did not appear in the workbench after F1");
+        Assert.True(helpViewWasMounted, "KeysDialog did not appear in the workbench after F1");
 
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {
@@ -321,7 +321,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnSecondIteration;
-            helpViewWasMounted = workbench.SubViews.OfType<TuiCode.Workbench.Help.HelpView>().Any();
+            helpViewWasMounted = workbench.SubViews.OfType<KeysDialog>().Any();
             if (Key.TryParse("Ctrl+Q", out var ctrlQ))
                 host.App.InjectKey(ctrlQ);
         }
@@ -344,7 +344,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         await host.RunAsync(cts.Token);
         Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
 
-        Assert.True(helpViewWasGone, "HelpView was still mounted after Esc");
+        Assert.True(helpViewWasGone, "KeysDialog was still mounted after Esc");
 
         void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
         {
@@ -365,7 +365,7 @@ public class WorkbenchHostTests : StaticConfigurationTest
         void OnThirdIteration(object? sender, EventArgs<IApplication?> e)
         {
             host.App.Iteration -= OnThirdIteration;
-            helpViewWasGone = !workbench.SubViews.OfType<TuiCode.Workbench.Help.HelpView>().Any();
+            helpViewWasGone = !workbench.SubViews.OfType<KeysDialog>().Any();
             if (Key.TryParse("Ctrl+Q", out var ctrlQ))
                 host.App.InjectKey(ctrlQ);
         }
@@ -1050,47 +1050,25 @@ public class WorkbenchHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void The_status_bar_names_the_help_key_while_no_file_is_open_and_follows_a_rebind()
+    public void The_status_bar_ends_with_the_help_key_and_follows_a_rebind()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
         using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
-        workbench.ShowCursorPosition();
-        var byDefault = workbench.StatusBar.DisplayedPosition;
+        var byDefault = workbench.StatusBar.DisplayedHelp;
 
         host.ApplyKeybindings(
         [
             new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp),
             new KeybindingOverride([Key.F3], CommandIds.ShowHelp),
         ]);
-        var rebound = workbench.StatusBar.DisplayedPosition;
+        var rebound = workbench.StatusBar.DisplayedHelp;
         host.ApplyKeybindings([new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp)]);
 
         Assert.Equal("Press F1 for help", byDefault);
         Assert.Equal("Press F3 for help", rebound);
-        Assert.Equal("", workbench.StatusBar.DisplayedPosition);
-    }
-
-    [Fact]
-    public void The_default_message_names_the_help_key_and_follows_a_rebind()
-    {
-        using var workbench = BuildWorkbench();
-        var commands = new CommandService();
-        var keybindings = new KeybindingService(commands);
-        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
-        var byDefault = workbench.StatusBar.DisplayedText;
-
-        host.ApplyKeybindings(
-        [
-            new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp),
-            new KeybindingOverride([Key.F3], CommandIds.ShowHelp),
-        ]);
-        var rebound = workbench.StatusBar.DisplayedText;
-        host.ApplyKeybindings([new KeybindingOverride([Key.F1], "-" + CommandIds.ShowHelp)]);
-
-        Assert.Equal("TuiCode  •  F1 help", byDefault);
-        Assert.Equal("TuiCode  •  F3 help", rebound);
+        Assert.Equal("", workbench.StatusBar.DisplayedHelp);
         Assert.Equal("TuiCode", workbench.StatusBar.DisplayedText);
     }
 

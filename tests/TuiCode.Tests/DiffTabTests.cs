@@ -971,17 +971,17 @@ public class CompareToSavedHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        HelpView? help = null;
+        KeysDialog? help = null;
 
         await HostSteps.Run(host,
             () => OpenThreeChanges(workbench, commands),
             () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: true },
             () => host.App.InjectKey(Key.F1),
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal("Help", help!.Title);
-        Assert.Equal("Diff", help.Place!.Title);
+        Assert.Equal("Diff", help.Sheet.Here!.Heading);
         Assert.Equal(
         [
             new("Alt+↓", "Next change"),
@@ -991,7 +991,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             new("← →", "Scroll sideways"),
             new("Shift+← →", "Page sideways"),
             new("Ctrl+\\", "Move to other group"),
-        ], help.Place.Rows);
+        ], help.Sheet.Here!.Rows());
     }
 
     [Fact]
@@ -999,7 +999,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        HelpView? help = null;
+        KeysDialog? help = null;
 
         await HostSteps.Run(host,
             () =>
@@ -1014,11 +1014,11 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             },
             () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: true },
             () => host.App.InjectKey(Key.F1),
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal(new HelpRow("F8", "Next change"), help!.Place!.Rows[0]);
-        Assert.DoesNotContain(help.Place.Rows, row => row.Description == "Revert change");
+        Assert.Equal(new KeyRow("F8", "Next change"), help!.Sheet.Here!.Rows()[0]);
+        Assert.DoesNotContain(help.Sheet.Here!.Rows(), row => row.Label == "Revert change");
     }
 
     [Theory]
@@ -1028,7 +1028,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        HelpView? help = null;
+        KeysDialog? help = null;
         List<KeybindingOverride> overrides = [new(TestKeys.Chord("Shift+CursorRight"), "-" + CommandIds.ScrollDiffPageRight)];
         if (pageRight is not null) overrides.Add(new(TestKeys.Chord(pageRight), CommandIds.ScrollDiffPageRight));
 
@@ -1040,10 +1040,10 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             },
             () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: true },
             () => host.App.InjectKey(Key.F1),
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal(expected, help!.Place!.Rows.Single(row => row.Description == "Page sideways").Key);
+        Assert.Equal(expected, help!.Sheet.Here!.Rows().Single(row => row.Label == "Page sideways").Keys);
     }
 
     [Fact]
@@ -1051,7 +1051,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        HelpView? help = null;
+        KeysDialog? help = null;
         var status = "";
 
         await HostSteps.Run(host,
@@ -1061,11 +1061,11 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => { foreach (var c in "line") host.App.InjectKey(new Key(c)); },
             () => workbench.Editor.Group.ActiveDiffTab!.CurrentMatch is not null,
             () => { status = workbench.StatusBar.DisplayedText; host.App.InjectKey(Key.F1); },
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal("Find bar", help!.Place!.Title);
-        Assert.Equal(["Enter", "Shift+Enter", "Alt+C", "Alt+W", "Esc"], help.Place.Rows.Select(row => row.Key));
+        Assert.Equal("Find bar", help!.Sheet.Here!.Heading);
+        Assert.Equal(["Enter", "Shift+Enter", "Alt+C", "Alt+W", "Esc"], help.Sheet.Here!.Rows().Select(row => row.Keys));
         Assert.DoesNotContain("Enter", status);
     }
 
@@ -1074,7 +1074,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        HelpView? help = null;
+        KeysDialog? help = null;
 
         await HostSteps.Run(host,
             () => OpenThreeChanges(workbench, commands),
@@ -1082,10 +1082,10 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusSidebar),
             () => workbench.Editor.Group.ActiveDiffTab is { IsFocused: false },
             () => host.App.InjectKey(Key.F1),
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal("Explorer", help!.Place!.Title);
+        Assert.Equal("Explorer", help!.Sheet.Here!.Heading);
     }
 
     // Changes at rows 4 (modified), 14 (line 15 removed) and 30 (modified).

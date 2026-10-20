@@ -151,7 +151,7 @@ public class BlameHostTests : StaticConfigurationTest
         var group = workbench.Editor.Group;
         string? status = null;
         bool? revert = null, revertAll = null, goToLine = null;
-        HelpView? help = null;
+        KeysDialog? help = null;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench, row: 1),
@@ -169,7 +169,7 @@ public class BlameHostTests : StaticConfigurationTest
                 goToLine = commands.IsEnabled(CommandIds.GoToChangeLine);
             },
             () => host.App.InjectKey(Key.F1),
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Null(Dialog(workbench));
@@ -182,7 +182,7 @@ public class BlameHostTests : StaticConfigurationTest
         Assert.False(revert);
         Assert.False(revertAll);
         Assert.False(goToLine);
-        Assert.Equal(["Next change", "Previous change", "Scroll sideways", "Page sideways", "Move to other group"], help!.Place!.Rows.Select(row => row.Description));
+        Assert.Equal(["Next change", "Previous change", "Scroll sideways", "Page sideways", "Move to other group"], help!.Sheet.Here!.Rows().Select(row => row.Label));
         Assert.False(group.Tabs.Single().IsDirty);
         Assert.Equal((null, null), (diff.Source, diff.Review));
     }

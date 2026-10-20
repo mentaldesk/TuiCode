@@ -107,7 +107,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         FindBarView? bar = null;
-        HelpView? help = null;
+        KeysDialog? help = null;
         var status = "";
         var queryAfterHelp = "";
 
@@ -118,17 +118,17 @@ public class FindAndSearchHostTests : StaticConfigurationTest
             () => { foreach (var c in "foo") host.App.InjectKey(new Key(c)); },
             () => bar!.Query == "foo",
             () => { status = workbench.StatusBar.DisplayedText; host.App.InjectKey(Key.F1); },
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc),
-            () => !workbench.SubViews.OfType<HelpView>().Any(),
+            () => !workbench.SubViews.OfType<KeysDialog>().Any(),
             () => { queryAfterHelp = bar!.Query; host.App.InjectKey(new Key('x')); },
             () => bar!.Query == "x");
 
         Assert.Equal(_fs.Path.GetFullPath("/work/a.txt"), status);
         Assert.Equal("foo", queryAfterHelp);
-        Assert.Equal("Find bar", help!.Place!.Title);
+        Assert.Equal("Find bar", help!.Sheet.Here!.Heading);
         Assert.Equal(["Next match", "Previous match", "Match case on or off", "Match whole word on or off", "Close"],
-            help.Place.Rows.Select(row => row.Description));
+            help.Sheet.Here!.Rows().Select(row => row.Label));
         Assert.Contains(bar!, workbench.SubViewsDeep());
     }
 
@@ -139,7 +139,7 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         FindBarView? bar = null;
-        HelpView? help = null;
+        KeysDialog? help = null;
         var status = "";
 
         await HostSteps.Run(host,
@@ -150,15 +150,15 @@ public class FindAndSearchHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Tab),
             () => bar!.ReplacementHasFocus,
             () => { status = workbench.StatusBar.DisplayedText; host.App.InjectKey(Key.F1); },
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
-            () => host.App.InjectKey(Key.Enter),
-            () => !workbench.SubViews.OfType<HelpView>().Any(),
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc),
+            () => !workbench.SubViews.OfType<KeysDialog>().Any(),
             () => { foreach (var c in "dog") host.App.InjectKey(new Key(c)); },
             () => bar!.Replacement == "dog");
 
         Assert.Equal(_fs.Path.GetFullPath("/work/a.txt"), status);
         Assert.Equal(["Replace and go to next", "Previous match", "Replace all", "Find field", "Match case on or off", "Match whole word on or off", "Close"],
-            help!.Place!.Rows.Select(row => row.Description));
+            help!.Sheet.Here!.Rows().Select(row => row.Label));
         Assert.Equal("cat", bar!.Query);
     }
 

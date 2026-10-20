@@ -196,17 +196,17 @@ public class FindOptionsHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        HelpView? help = null;
+        KeysDialog? help = null;
 
         await HostSteps.Run(host,
             () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
             () => workbench.Sidebar.Search.InputsHaveFocus,
             () => host.App.InjectKey(Key.F1),
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Contains(new HelpRow("Alt+C", "Match case on or off"), help!.Place!.Rows);
-        Assert.Contains(new HelpRow("Alt+W", "Match whole word on or off"), help.Place.Rows);
+        Assert.Contains(new KeyRow("Alt+C", "Match case on or off"), help!.Sheet.Here!.Rows());
+        Assert.Contains(new KeyRow("Alt+W", "Match whole word on or off"), help.Sheet.Here!.Rows());
     }
 
     private IReadOnlyList<string> Palette(string query)

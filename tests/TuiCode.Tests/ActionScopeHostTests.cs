@@ -37,7 +37,7 @@ public class ActionScopeHostTests : StaticConfigurationTest
     private static readonly string[] Globals =
     [
         "Save active editor", "Close active editor", "Next tab", "Previous tab", "Hide sidebar",
-        "Open settings", "Quit", "Getting Started (help)",
+        "Open settings", "Quit", "Show keys",
     ];
 
     private readonly MockFileSystem _fs = new();

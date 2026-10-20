@@ -3,6 +3,7 @@ using Terminal.Gui.ViewBase;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Find;
+using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Tests;
@@ -123,7 +124,7 @@ public class DiffFindTests : IDisposable
             new("Enter", "Next match"),
             new("Shift+Enter", "Previous match"),
             new("Esc", "Close"),
-        ], _find.Help([]).Rows);
+        ], _find.Help([]).Rows());
     }
 
     [Fact]

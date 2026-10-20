@@ -65,7 +65,7 @@ public sealed class CommandMenu
         [CommandIds.OpenPullRequest] = 'o', [CommandIds.PullRequestOverview] = 'p', [CommandIds.CreateComment] = 'c',
         [CommandIds.ToggleViewed] = 'v', [CommandIds.SubmitReview] = 's',
 
-        [CommandIds.ShowHelp] = 'g', [CommandIds.ShowActions] = 's', [CommandIds.ShowMnemonics] = 'm',
+        [CommandIds.ShowHelp] = 'k', [CommandIds.ShowActions] = 's', [CommandIds.ShowMnemonics] = 'm',
         [CommandIds.WatchTutorials] = 't', [CommandIds.ShowDiagnostics] = 'd', [CommandIds.ShowLog] = 'l', [CommandIds.ShowAbout] = 'a',
     };
 
