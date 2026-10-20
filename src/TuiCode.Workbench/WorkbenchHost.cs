@@ -2466,7 +2466,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeHelp is not null) return;
 
-        var view = new KeysDialog(HelpSheet.For(PlaceHelp(), _commands, _keybindings), _workbench.Viewport.Size);
+        var view = new KeysDialog(HelpSheet.For(PlaceHelp(), _commands, _keybindings, CanRunNow), _workbench.Viewport.Size);
         view.Closed += (_, _) => CloseHelp(view);
         _activeHelp = view;
         _helpScope = new LibraryScope(view.Scope);
@@ -2474,6 +2474,14 @@ public sealed class WorkbenchHost : IDisposable
         _scopes.Push(_helpScope);
         view.SetFocus();
     }
+
+    // With no file tab, Ctrl+F and Ctrl+H open the Find pane, which Find globally and Replace globally already list.
+    private bool CanRunNow(string id) => _commands.IsEnabled(id) && id switch
+    {
+        CommandIds.FindInFile => Group.ActiveTab is not null || Group.ActiveDiffTab is not null,
+        CommandIds.ReplaceInFile => Group.ActiveTab is not null,
+        _ => true,
+    };
 
     private void CloseHelp(KeysDialog view)
     {

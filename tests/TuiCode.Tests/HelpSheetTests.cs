@@ -112,4 +112,22 @@ public class HelpSheetTests
         Assert.Equal([new KeyRow("Enter", "Open"), new KeyRow("F2", "Move or rename")], sheet.Here.Rows());
         Assert.Equal("Everywhere", sheet.Everywhere!.Heading);
     }
+
+    [Fact]
+    public void Everywhere_leaves_out_a_key_the_place_already_lists()
+    {
+        var sheet = HelpSheet.For(HelpSheet.Place("Find", [new("Ctrl+S", "Save the query")]), _commands, _keybindings);
+
+        Assert.DoesNotContain(sheet.Everywhere!.Rows(), row => row.Label == "Save");
+        Assert.Contains(new KeyRow("Ctrl+O", "Open"), sheet.Everywhere.Rows());
+    }
+
+    [Fact]
+    public void Everywhere_lists_only_what_the_caller_says_can_run()
+    {
+        var sheet = HelpSheet.For(null, _commands, _keybindings, id => id != "file.open");
+
+        Assert.DoesNotContain(sheet.Everywhere!.Rows(), row => row.Label == "Open");
+        Assert.Contains(new KeyRow("Ctrl+S", "Save"), sheet.Everywhere.Rows());
+    }
 }

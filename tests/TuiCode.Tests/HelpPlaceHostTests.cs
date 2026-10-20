@@ -244,6 +244,47 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task With_no_file_open_everywhere_leaves_out_find_and_replace_in_file()
+    {
+        var view = await ExplorerDialog();
+
+        Assert.DoesNotContain(Everywhere(view), row => row.Label is "Find in file" or "Replace in file");
+        Assert.Contains(new KeyRow("Ctrl+Shift+H", "Replace globally"), Everywhere(view));
+    }
+
+    [Fact]
+    public async Task With_a_file_open_everywhere_lists_find_and_replace_in_file()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("one"));
+        var view = await DialogFrom(() =>
+        {
+            Built.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+            _commands.TryExecute(CommandIds.FocusSidebar);
+        }, "Explorer", null);
+
+        Assert.Contains(new KeyRow("Ctrl+F", "Find in file"), Everywhere(view));
+        Assert.Contains(new KeyRow("Ctrl+H", "Replace in file"), Everywhere(view));
+    }
+
+    [Fact]
+    public async Task In_the_find_pane_the_find_options_are_only_in_the_find_column()
+    {
+        var view = await DialogFrom(() => _commands.TryExecute(CommandIds.FindGlobally), "Find", null);
+
+        Assert.Contains(view.Sheet.Here!.Rows(), row => row.Label == "Match case on or off");
+        Assert.DoesNotContain(Everywhere(view), row => row.Label is "Match case on or off" or "Match whole word on or off");
+    }
+
+    [Fact]
+    public async Task Everywhere_leaves_out_keys_the_place_already_lists()
+    {
+        var view = await ExplorerDialog();
+        var here = view.Sheet.Here!.Rows().Select(row => row.Keys).ToHashSet();
+
+        Assert.DoesNotContain(Everywhere(view), row => here.Contains(row.Keys));
+    }
+
+    [Fact]
     public async Task Everywhere_leaves_editor_commands_to_the_editor_column()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));
