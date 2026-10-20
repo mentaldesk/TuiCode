@@ -116,6 +116,15 @@ public sealed class EditorGroup : PaneTabs
         return tab;
     }
 
+    /// <summary>Opens <paramref name="closed"/>'s file at <paramref name="index"/>, or last, with its cursor and, while the file is unchanged, its undo (#578).</summary>
+    internal EditorTab Reopen(ClosedTab closed, int? index)
+    {
+        var tab = Opening(new EditorTab(closed.File, _syntax));
+        closed.History.RestoreTo(tab.Code);
+        tab.RestoreViewPosition(closed.Position);
+        return Track(tab, index);
+    }
+
     /// <summary>Opens a read-only Markdown document that isn't on disk (#185), like a PR's Overview.</summary>
     public DocumentTab OpenDocument(IFileInfo file, string content, string? title = null)
     {
@@ -144,7 +153,7 @@ public sealed class EditorGroup : PaneTabs
         return tab;
     }
 
-    private EditorTab Track(EditorTab tab)
+    private EditorTab Track(EditorTab tab, int? index = null)
     {
         tab.GutterVisible = GutterVisible;
         tab.ColumnSelect = ColumnSelect;
@@ -156,7 +165,8 @@ public sealed class EditorGroup : PaneTabs
         // see — and announce it before that, so the file is being watched by the time anything reacts to it (#269).
         _byPath[tab.File.FullName] = tab;
         TabsChanged?.Invoke(this, EventArgs.Empty);
-        Add(tab);
+        if (index is { } at) InsertTab(at, tab);
+        else Add(tab);
         Value = tab;
         return tab;
     }

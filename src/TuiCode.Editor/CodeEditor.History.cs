@@ -3,9 +3,9 @@ namespace TuiCode.Editor;
 // Undo is ours, not Editor's, so a step restores every caret: see "Multiple cursors and undo" in AGENTS.md.
 internal sealed partial class CodeEditor
 {
-    private sealed record EditGroup(Change[] Changes, Caret[] Before, Caret[] After);
+    internal sealed record EditGroup(Change[] Changes, Caret[] Before, Caret[] After);
 
-    private readonly record struct Change(int OldStart, string[] Old, int NewStart, string[] New);
+    internal readonly record struct Change(int OldStart, string[] Old, int NewStart, string[] New);
 
     private readonly List<EditGroup> _undo = [];
     private int _undone;
@@ -76,6 +76,21 @@ internal sealed partial class CodeEditor
         _undone = 0;
         _undo.Add(new EditGroup(changes, before, Carets));
         Replay(changes, undo: false, applyToDocument: false);
+    }
+
+    /// <summary>The undo and redo steps, for a tab reopened later on the same lines (#578).</summary>
+    internal UndoHistory History => new([.. _undo], _undone, [.. _recorded]);
+
+    internal sealed class UndoHistory(EditGroup[] steps, int undone, string[] lines)
+    {
+        /// <summary>Puts the steps back on <paramref name="editor"/>, unless its lines aren't the ones they were recorded against.</summary>
+        internal void RestoreTo(CodeEditor editor)
+        {
+            if (!lines.SequenceEqual(editor._recorded, StringComparer.Ordinal)) return;
+            editor._undo.Clear();
+            editor._undo.AddRange(steps);
+            editor._undone = undone;
+        }
     }
 
     public bool Undo() => Step(undo: true);

@@ -221,6 +221,14 @@ public sealed class Workbench : Window
         FileOpened?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Reopens the most recently closed file tab where it was (#578).</summary>
+    public void ReopenClosedTab()
+    {
+        if (Editor.Groups.ReopenClosed() is not { } tab) return;
+        StatusBar.SetMessage(FileMessage(tab));
+        FileOpened?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>Open a file with <paramref name="match"/> selected — where a search result lands.</summary>
     public void OpenMatch(IFileInfo file, TextMatch match)
     {
