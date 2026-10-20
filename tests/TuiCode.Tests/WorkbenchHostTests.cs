@@ -297,34 +297,13 @@ public class WorkbenchHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
         var keybindings = new KeybindingService(commands);
-        var scopes = new InputScopeStack();
-        var settings = new InMemorySettingsService();
-        using var host = new WorkbenchHost(workbench, commands, keybindings, scopes, settings, driverName: DriverRegistry.Names.ANSI);
+        using var host = new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(), new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
 
-        var helpViewWasMounted = false;
-        host.App.Iteration += OnFirstIteration;
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await host.RunAsync(cts.Token);
-        Assert.False(cts.IsCancellationRequested, "RunAsync timed out");
-
-        Assert.True(helpViewWasMounted, "KeysDialog did not appear in the workbench after F1");
-
-        void OnFirstIteration(object? sender, EventArgs<IApplication?> e)
-        {
-            host.App.Iteration -= OnFirstIteration;
-            if (Key.TryParse("F1", out var key))
-                host.App.InjectKey(key);
-            host.App.Iteration += OnSecondIteration;
-        }
-
-        void OnSecondIteration(object? sender, EventArgs<IApplication?> e)
-        {
-            host.App.Iteration -= OnSecondIteration;
-            helpViewWasMounted = workbench.SubViews.OfType<KeysDialog>().Any();
-            if (Key.TryParse("Ctrl+Q", out var ctrlQ))
-                host.App.InjectKey(ctrlQ);
-        }
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.F1),
+            () => workbench.SubViews.OfType<KeysDialog>().Any(),
+            () => host.App.InjectKey(Key.Esc),
+            () => !workbench.SubViews.OfType<KeysDialog>().Any());
     }
 
     [Fact]
