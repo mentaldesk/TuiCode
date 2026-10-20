@@ -12,6 +12,8 @@ Per-feature catalogues ("what works today") don't go in the README — they belo
 
 ## Quick start
 
+Install the .NET SDK 10.0.402 or a newer 10.0 SDK ([download](https://dotnet.microsoft.com/download/dotnet/10.0)). `global.json` refuses anything older, and .NET 11 SDKs: an older SDK's Native AOT compiler crashes on macOS when a Go program starts TuiCode ([dotnet/runtime#132581](https://github.com/dotnet/runtime/issues/132581)). CI installs the SDK `global.json` names.
+
 ```bash
 dotnet build TuiCode.slnx
 dotnet run --project src/TuiCode                       # needs a real terminal

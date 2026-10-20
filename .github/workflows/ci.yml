@@ -36,7 +36,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       - name: Build
         run: dotnet build TuiCode.slnx --configuration Release
@@ -80,7 +80,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       - name: AOT publish
         # No trim or AOT warnings: each one is a runtime failure waiting for the code path that hits it.
