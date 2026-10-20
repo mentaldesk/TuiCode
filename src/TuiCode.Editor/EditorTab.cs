@@ -104,16 +104,35 @@ public sealed class EditorTab : FrameView
     internal static EditorTab Unsaved(IFileInfo file, string content, SyntaxHighlighter? syntax = null) =>
         new(file, syntax, content);
 
-    private EditorTab(IFileInfo file, SyntaxHighlighter? syntax, string? unsaved)
+    /// <summary>
+    /// A tab holding <paramref name="edits"/> as unsaved edits over the file as it was when they were kept (#579),
+    /// so a file that changed or went since shows <c>⚠</c> or <c>⊘</c>. Undo starts at the recovered text.
+    /// </summary>
+    public static EditorTab Recovered(IFileInfo file, RecoveredEdits edits, SyntaxHighlighter? syntax = null)
+    {
+        ArgumentNullException.ThrowIfNull(edits);
+        var tab = new EditorTab(file, syntax, edits.Text, edits.OnDisk);
+        tab.IsRecovered = true;
+        tab.MarkOnDisk(tab.DiskNow);
+        tab.RestoreViewPosition(edits.Position);
+        return tab;
+    }
+
+    /// <summary>The tab opened with edits kept from a session that ended unexpectedly (#579).</summary>
+    public bool IsRecovered { get; private set; }
+
+    private EditorTab(IFileInfo file, SyntaxHighlighter? syntax, string? unsaved, FileSnapshot? onDisk = null)
     {
         File = file;
         _syntax = syntax;
         BorderStyle = LineStyle.None;
 
         var initial = unsaved ?? file.FileSystem.File.ReadAllText(file.FullName);
-        OnDisk = FileSnapshot.Of(file, initial);
-        _saved = unsaved is null ? initial : file.Exists ? file.FileSystem.File.ReadAllText(file.FullName) : null;
-        _eol = DetectEol(initial);
+        OnDisk = onDisk ?? FileSnapshot.Of(file, initial);
+        _saved = onDisk is not null ? (onDisk.Length < 0 ? null : onDisk.Content)
+            : unsaved is null ? initial
+            : file.Exists ? file.FileSystem.File.ReadAllText(file.FullName) : null;
+        _eol = DetectEol(onDisk is null ? initial : _saved ?? initial);
 
         _text = new CodeEditor
         {

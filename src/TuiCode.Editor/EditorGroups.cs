@@ -133,6 +133,12 @@ public sealed class EditorGroups
         Focused = First;
     }
 
+    public Func<IFileInfo, RecoveredEdits?>? Recovery
+    {
+        get => First.Recovery;
+        set { foreach (var group in _all) group.Recovery = value; }
+    }
+
     public bool GutterVisible
     {
         get => First.GutterVisible;
