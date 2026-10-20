@@ -1,3 +1,5 @@
+using ButtonKind = MentalDesk.Tui.Dialogs.ButtonKind;
+using ConfirmAction = MentalDesk.Tui.Dialogs.ConfirmAction;
 using System.Reflection;
 using System.Text;
 using Terminal.Gui.Drawing;
@@ -60,10 +62,14 @@ public class VerbatimLabelTests : StaticConfigurationTest
     [Fact]
     public void A_confirm_prompt_names_the_file_with_every_underscore()
     {
-        using var view = new ConfirmView("Delete", "Delete _test_data.json?", new ConfirmChoice("Delete", () => { }, Destructive: true));
+        using var host = new View { App = _app, Width = 120, Height = 30, CanFocus = true };
+        host.BeginInit();
+        host.EndInit();
+        HostedConfirm.Show(host, new InputScopeStack(), "Delete", "Delete _test_data.json?",
+            [new ConfirmAction("Delete", ButtonKind.Danger, HostedConfirm.MainKey)], _ => { });
 
-        Assert.Contains("Delete _test_data.json?", Render(view));
-        AssertNoLabelHotKeys(view);
+        Assert.Contains("Delete _test_data.json?", Render(host));
+        AssertNoLabelHotKeys(host);
     }
 
     [Fact]
@@ -82,7 +88,7 @@ public class VerbatimLabelTests : StaticConfigurationTest
         using var host = new View { App = _app, Width = 120, Height = 30, CanFocus = true };
         host.BeginInit();
         host.EndInit();
-        KeybindingConflictDialog.Refuse(host, new InputScopeStack(), "Ctrl+X runs _my_command_.", () => { });
+        KeybindingRefusal.Show(host, new InputScopeStack(), "Ctrl+X runs _my_command_.", () => { });
 
         Assert.Contains("Ctrl+X runs _my_command_.", Render(host));
         AssertNoLabelHotKeys(host);

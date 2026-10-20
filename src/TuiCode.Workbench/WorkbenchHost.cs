@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using MentalDesk.Tui.Dialogs;
 using MentalDesk.Tui.Shell;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Time;
@@ -11,6 +12,7 @@ using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Assistant;
 using TuiCode.Workbench.Configuration;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Diagnostics;
 using TuiCode.Workbench.DocumentInfo;
 using TuiCode.Workbench.Files;
@@ -108,7 +110,7 @@ public sealed class WorkbenchHost : IDisposable
     private MnemonicView? _activeMnemonics;
     private OpenView? _activeOpen;
     private PathPromptView? _activePathPrompt;
-    private ConfirmView? _activeConfirm;
+    private ConfirmDialog? _activeConfirm;
     private RevisionPickerView? _activeRevisionPicker;
     private PullRequestPickerView? _activePullRequestPicker;
     private RecentFolderPickerView? _activeRecentFolderPicker;
@@ -2059,12 +2061,9 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var view = new ConfirmView("Unsaved changes",
+        Confirm("Unsaved changes",
             $"Save changes to '{tab.File.Name}' before closing?\nYour changes will be lost if you don't save them.",
-            new ConfirmChoice("Save", () => SaveAndClose(tab)),
-            new ConfirmChoice("Don't save", () => CloseEditor(tab), Destructive: true));
-        view.Cancelled += (_, _) => CloseConfirm(view);
-        ShowConfirm(view);
+            [Main("Save", ButtonKind.Primary, () => SaveAndClose(tab)), DontSave(() => CloseEditor(tab))]);
     }
 
     private void SaveAndClose(EditorTab tab)
@@ -2122,11 +2121,8 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var view = new ConfirmView("Unsaved changes", UnsavedChanges([.. dirty.Select(t => t.File.Name)], question),
-            new ConfirmChoice("Save all", () => SaveAllThen(dirtyTabs, proceed)),
-            new ConfirmChoice("Don't save", proceed, Destructive: true));
-        view.Cancelled += (_, _) => CloseConfirm(view);
-        ShowConfirm(view);
+        Confirm("Unsaved changes", UnsavedChanges([.. dirty.Select(t => t.File.Name)], question),
+            [Main("Save all", ButtonKind.Primary, () => SaveAllThen(dirtyTabs, proceed)), DontSave(proceed)]);
     }
 
     internal static string UnsavedChanges(IReadOnlyList<string> names, string question)
@@ -2184,16 +2180,16 @@ public sealed class WorkbenchHost : IDisposable
 
         // Compare leads: it's the only way out that decides nothing. Then take mine, then take theirs (#270).
         // Compare is the diff `cts` opens — the buffer against what's on disk now.
-        var view = new ConfirmView("File changed on disk", message,
-            new ConfirmChoice("Compare", CompareToSaved),
-            new ConfirmChoice("Overwrite", () =>
+        Confirm("File changed on disk", message,
+        [
+            Main("Compare", ButtonKind.Primary, CompareToSaved),
+            Danger("Overwrite", Key.O, () =>
             {
                 tab.Save();
                 afterOverwrite?.Invoke();
-            }, Destructive: true),
-            new ConfirmChoice("Reload", () => _diskChanges.Reload(tab), Destructive: true));
-        view.Cancelled += (_, _) => CloseConfirm(view);
-        ShowConfirm(view);
+            }),
+            Danger("Reload", Key.R, () => _diskChanges.Reload(tab)),
+        ]);
     }
 
     private void ReloadFromDisk()
@@ -2211,11 +2207,9 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var view = new ConfirmView("Reload from disk",
+        Confirm("Reload from disk",
             $"Reload '{tab.File.Name}' from disk?\nYour unsaved changes will be lost.",
-            new ConfirmChoice("Reload", Reload, Destructive: true));
-        view.Cancelled += (_, _) => CloseConfirm(view);
-        ShowConfirm(view);
+            [Main("Reload", ButtonKind.Danger, Reload)]);
 
         void Reload() => _workbench.StatusBar.SetMessage(_diskChanges.Reload(tab, evenIfUnchanged: true)
             ? $"⟳ Reloaded {tab.File.Name} from disk"
@@ -2295,47 +2289,37 @@ public sealed class WorkbenchHost : IDisposable
         }.OfType<string>());
     }
 
-    private void ShowDeleteConfirm(string title, string message, string choice, bool fromExplorer, Action delete)
-    {
-        var view = new ConfirmView(title, message, new ConfirmChoice(choice, () =>
-        {
-            delete();
-            if (fromExplorer && _activeConfirm is null) FocusSidebar();
-        }, Destructive: true));
-        view.Cancelled += (_, _) =>
-        {
-            CloseConfirm(view);
-            if (fromExplorer) FocusSidebar();
-        };
-        ShowConfirm(view);
-    }
+    private void ShowDeleteConfirm(string title, string message, string choice, bool fromExplorer, Action delete) =>
+        Confirm(title, message,
+            [Main(choice, ButtonKind.Danger, () =>
+            {
+                delete();
+                if (fromExplorer && _activeConfirm is null) FocusSidebar();
+            })],
+            cancelled: () =>
+            {
+                if (fromExplorer) FocusSidebar();
+            });
+
+    private sealed record Choice(ConfirmAction Action, Action Run);
+
+    private static Choice Main(string label, ButtonKind kind, Action run) => new(new(label, kind, HostedConfirm.MainKey), run);
+
+    private static Choice Danger(string label, Key key, Action run) => new(new(label, ButtonKind.Danger, key), run);
+
+    private static Choice DontSave(Action run) => Danger("Don't save", Key.D, run);
 
     // Every way out runs only once the modal has closed: removing a focused modal hands focus back into the
     // editor group, and a Tabs switches Value to whichever tab takes focus, so a diff opened first wouldn't
     // stay the active one (#191).
-    private void ShowConfirm(ConfirmView view)
-    {
-        view.Chosen += (_, choice) =>
+    private void Confirm(string title, string message, Choice[] choices, Action? cancelled = null, string cancel = "Cancel") =>
+        _activeConfirm = HostedConfirm.Show(_workbench, _scopes, title, message, [.. choices.Select(c => c.Action)], chosen =>
         {
-            CloseConfirm(view);
-            choice.Run();
-        };
-
-        _activeConfirm = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusCancel();
-    }
-
-    private void CloseConfirm(ConfirmView view)
-    {
-        if (!ReferenceEquals(_activeConfirm, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeConfirm = null;
-        FocusCallingRegion();
-    }
+            _activeConfirm = null;
+            FocusCallingRegion();
+            if (chosen is null) cancelled?.Invoke();
+            else choices.First(c => c.Action == chosen).Run();
+        }, cancel);
 
     private bool ExplorerIsContext => _launchedFromExplorer || _workbench.Sidebar.Explorer.HasFocus;
 
@@ -2447,14 +2431,9 @@ public sealed class WorkbenchHost : IDisposable
             return answer.Task;
         }
         var title = request.Command is not null || request.Kind == "execute" ? $"{agent.Name} wants to run a command" : $"{agent.Name} wants to use a tool";
-        var view = new ConfirmView(title, request.Command ?? request.Title, "Deny",
-            new ConfirmChoice("Allow once", () => answer.TrySetResult(true)));
-        view.Cancelled += (_, _) =>
-        {
-            CloseConfirm(view);
-            answer.TrySetResult(false);
-        };
-        ShowConfirm(view);
+        Confirm(title, request.Command ?? request.Title,
+            [Main("Allow once", ButtonKind.Primary, () => answer.TrySetResult(true))],
+            cancelled: () => answer.TrySetResult(false), cancel: "Deny");
         return answer.Task;
     }
 
@@ -2678,16 +2657,14 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        var view = new ConfirmView("Revert all changes",
+        Confirm("Revert all changes",
             $"Revert all {Plural.Count(changes, "change")} in {diff.File.Name}?",
-            new ConfirmChoice("Revert", () =>
+            [Main("Revert", ButtonKind.Danger, () =>
             {
                 if (diff.RevertAll() is not { } reverted) return;
                 _workbench.StatusBar.SetMessage(
                     $"Reverted {Plural.Count(reverted, "change")} in {diff.File.Name} — Ctrl+Z to undo");
-            }, Destructive: true));
-        view.Cancelled += (_, _) => CloseConfirm(view);
-        ShowConfirm(view);
+            })]);
     }
 
     /// <summary>

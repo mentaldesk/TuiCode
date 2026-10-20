@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.Views;
@@ -28,7 +29,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
         var title = "";
         var asked = "";
         var focused = "";
-        string[] buttons = [];
+        string[] buttons = [], kinds = [];
 
         await HostSteps.Run(host,
             () => { OpenDirty(workbench); },
@@ -37,8 +38,9 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () =>
             {
                 var view = Confirm(workbench)!;
-                (title, asked, focused) = (view.Title, Message(view), view.FocusedChoice!);
-                buttons = [.. view.SubViews.OfType<Button>().Select(b => b.Text.Trim())];
+                (title, asked, focused) = (view.Title, Message(view), view.FocusedButton()!);
+                buttons = view.Buttons();
+                kinds = view.Kinds();
             });
 
         Assert.Equal("Unsaved changes", title);
@@ -48,13 +50,14 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             Your changes will be lost if you don't save them.
             """.ReplaceLineEndings("\n"),
             asked.ReplaceLineEndings("\n"));
-        Assert.Equal(["Save", "Don't save", "Cancel"], buttons);
-        Assert.Equal("Cancel", focused);
+        Assert.Equal(["Ctrl+Enter Save", "Don't save", "Esc Cancel"], buttons);
+        Assert.Equal(["Primary", "Danger", "Secondary"], kinds);
+        Assert.Equal("Esc Cancel", focused);
         Assert.NotNull(workbench.Editor.Group.ActiveTab);
     }
 
     [Theory]
-    [InlineData(false)] // Enter lands on the focused Cancel
+    [InlineData(false)] // Space presses the focused Cancel
     [InlineData(true)]
     public async Task Cancelling_leaves_the_tab_open_and_dirty(bool escape)
     {
@@ -65,7 +68,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () => { OpenDirty(workbench); },
             () => host.App.InjectKey(Key.W.WithCtrl),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(escape ? Key.Esc : Key.Enter),
+            () => host.App.InjectKey(escape ? Key.Esc : Key.Space),
             () => Confirm(workbench) is null);
 
         Assert.True(workbench.Editor.Group.ActiveTab!.IsDirty);
@@ -83,8 +86,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () => { OpenDirty(workbench); },
             () => host.App.InjectKey(Key.W.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save"),
             () => Confirm(workbench) is null);
 
         Assert.Empty(workbench.Editor.Group.Tabs);
@@ -103,8 +105,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () => { closed = OpenDirty(workbench); },
             () => host.App.InjectKey(Key.W.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Don't save"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Don't save"),
             () => Confirm(workbench) is null,
             () => workbench.OpenFile(_fs.FileInfo.New(Path)));
 
@@ -126,12 +127,10 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () => OpenDirtyWithAnExternalChange(workbench),
             () => host.App.InjectKey(Key.W.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save"),
             () => Confirm(workbench)?.Title == "File changed on disk",
             () => { conflict = Confirm(workbench)!.Title; },
-            Reach(host, workbench, "Overwrite"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Overwrite"),
             () => Confirm(workbench) is null);
 
         Assert.Equal("File changed on disk", conflict);
@@ -153,11 +152,9 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
             () => OpenDirtyWithAnExternalChange(workbench),
             () => host.App.InjectKey(Key.W.WithCtrl),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Save"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Save"),
             () => Confirm(workbench)?.Title == "File changed on disk",
-            Reach(host, workbench, choice),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, choice),
             () => Confirm(workbench) is null);
 
         Assert.Single(workbench.Editor.Group.Tabs);
@@ -230,13 +227,6 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
         Assert.Null(Confirm(workbench));
     }
 
-    // Cancel starts focused, so Tab round the row until the wanted button has it.
-    private static Func<bool> Reach(WorkbenchHost host, Workbench.Workbench workbench, string label) => () =>
-    {
-        if (Confirm(workbench)?.FocusedChoice == label) return true;
-        host.App.InjectKey(Key.Tab);
-        return false;
-    };
 
     [Fact]
     public async Task A_tab_undone_back_to_its_saved_text_closes_without_asking()
@@ -244,7 +234,7 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var asked = false;
-        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmView;
+        workbench.SubViewAdded += (_, e) => asked |= e.SubView is ConfirmDialog;
         _fs.AddFile(Path, new MockFileData("one\n"));
 
         await HostSteps.Run(host,
@@ -278,10 +268,9 @@ public class CloseDirtyTabHostTests : StaticConfigurationTest
         _fs.File.WriteAllText(Path, "from the other branch\n");
     }
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
-    private static string Message(ConfirmView view) => view.SubViews.OfType<Label>().First().Text;
+    private static string Message(ConfirmDialog view) => view.Message();
 
     private Workbench.Workbench BuildWorkbench()
     {

@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
@@ -114,14 +115,16 @@ public class AssistantHostTests : StaticConfigurationTest
         Assert.Equal(2, _agent.Received("session/new").Count());
     }
 
-    [Fact]
-    public async Task A_command_the_agent_wants_to_run_asks_with_Deny_focused_so_Enter_denies()
+    [Theory]
+    [InlineData("Esc", "reject")]
+    [InlineData("Ctrl+Enter", "allow")]
+    public async Task A_command_the_agent_wants_to_run_asks_with_Deny_focused_and_Enter_does_nothing(string key, string expected)
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var view = workbench.Panel.Assistant;
         string? answer = "unset";
-        (string? Title, string? Focused) dialog = default;
+        (string? Title, string[]? Buttons, string[]? Kinds, string? Focused) dialog = default;
         _agent.OnPrompt = async (agent, _) =>
         {
             answer = await agent.AskPermission("execute", "git log", "git log --oneline -5");
@@ -133,13 +136,17 @@ public class AssistantHostTests : StaticConfigurationTest
             () => view.InputHasFocus,
             () => Type(host, "Go"),
             () => host.App.InjectKey(Key.Enter),
-            () => Confirm(workbench)?.FocusedChoice is not null,
-            () => { dialog = (Confirm(workbench)!.Title, Confirm(workbench)!.FocusedChoice); },
+            () => Confirm(workbench)?.FocusedButton() is not null,
+            () => { dialog = (Confirm(workbench)!.Title, Confirm(workbench)!.Buttons(), Confirm(workbench)!.Kinds(), Confirm(workbench)!.FocusedButton()); },
             () => host.App.InjectKey(Key.Enter),
+            () => host.App.InjectKey(Key.TryParse(key, out var k) ? k : throw new ArgumentException(key)),
             () => Chat(view).Contains("Carrying on."));
 
-        Assert.Equal(("Claude Code wants to run a command", "Deny"), dialog);
-        Assert.Equal("reject", answer);
+        Assert.Equal("Claude Code wants to run a command", dialog.Title);
+        Assert.Equal(["Ctrl+Enter Allow once", "Esc Deny"], dialog.Buttons);
+        Assert.Equal(["Primary", "Secondary"], dialog.Kinds);
+        Assert.Equal("Esc Deny", dialog.Focused);
+        Assert.Equal(expected, answer);
         Assert.Null(Confirm(workbench));
     }
 
@@ -245,7 +252,7 @@ public class AssistantHostTests : StaticConfigurationTest
         for (var i = 0; i < times; i++) host.App.InjectKey(key.WithShift);
     }
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) => workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
     private void OpenFile(Workbench.Workbench workbench) => workbench.OpenFile(_fs.FileInfo.New("/work/A.cs"));
 

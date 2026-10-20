@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using Terminal.Gui.Views;
 using TuiCode.Editor;
@@ -52,7 +53,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var asked = "";
-        var enterOnCancelKeptFile = false;
+        var enterKeptFile = false;
 
         await HostSteps.Run(host,
             () =>
@@ -64,18 +65,20 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => SelectInExplorer(workbench, "a.txt"),
             () => host.App.InjectKey(Key.Delete),
             () => Confirm(workbench) is not null,
-            // Cancel has focus, so a bare Enter must not delete.
             () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Enter); },
+            () =>
+            {
+                enterKeptFile = Confirm(workbench) is not null && _fs.File.Exists("/work/a.txt");
+                host.App.InjectKey(Key.Esc);
+            },
             () => Confirm(workbench) is null,
-            () => { enterOnCancelKeptFile = _fs.File.Exists("/work/a.txt"); host.App.InjectKey(Key.Delete); },
+            () => host.App.InjectKey(Key.Delete),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.FocusedChoice == "Delete",
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Delete"),
             () => Confirm(workbench) is null);
 
         Assert.Contains("1 open file has unsaved changes", asked);
-        Assert.True(enterOnCancelKeptFile, "Enter on the focused Cancel button deleted the file");
+        Assert.True(enterKeptFile, "Enter closed the prompt or deleted the file");
         Assert.Equal([_fs.Path.GetFullPath("/work/a.txt")], _trash.Moved);
         Assert.False(_fs.File.Exists("/work/a.txt"));
         Assert.Equal([_fs.Path.GetFullPath("/work/b.txt")], workbench.Editor.Group.Tabs.Select(t => t.File.FullName));
@@ -95,6 +98,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
         using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, trash: trash);
         var asked = "";
+        string[] buttons = [], kinds = [];
 
         await HostSteps.Run(host,
             () =>
@@ -105,14 +109,15 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => SelectInExplorer(workbench, "fixtures"),
             () => host.App.InjectKey(Key.Delete),
             () => Confirm(workbench) is not null,
-            () => { asked = Message(Confirm(workbench)!); host.App.InjectKey(Key.Tab); },
-            () => Confirm(workbench)!.FocusedChoice == "Delete",
-            () => host.App.InjectKey(Key.Enter),
+            () => { asked = Message(Confirm(workbench)!); buttons = Confirm(workbench)!.Buttons(); kinds = Confirm(workbench)!.Kinds(); },
+            ConfirmDialogs.Choose(host, workbench, "Delete"),
             () => Confirm(workbench) is null);
 
         Assert.Equal(
             "Delete 'fixtures' and its contents?\n1 open file has unsaved changes, which will be lost.\nYou can restore it from the Recycle Bin.",
             asked);
+        Assert.Equal(["Ctrl+Enter Delete", "Esc Cancel"], buttons);
+        Assert.Equal(["Danger", "Secondary"], kinds);
         Assert.Equal([_fs.Path.GetFullPath("/work/fixtures")], trash.Moved);
         Assert.Empty(workbench.Editor.Group.Tabs);
         Assert.Equal("🗑 Moved 'fixtures' to the Recycle Bin", workbench.StatusBar.DisplayedText);
@@ -123,6 +128,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
     {
         _fs.AddFile("/work/build.log", new MockFileData("log"));
         _trash.Refusal = new IOException("/work has no Trash folder.");
+        var enterKeptFile = false;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var asked = "";
@@ -132,16 +138,18 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => SelectInExplorer(workbench, "build.log"),
             () => host.App.InjectKey(Key.Delete),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.FocusedChoice == "Delete",
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Delete"),
             () => Confirm(workbench) is { } second && Message(second).StartsWith("Couldn't", StringComparison.Ordinal),
             () =>
             {
                 asked = Message(Confirm(workbench)!);
                 title = Confirm(workbench)!.Title;
-                // Cancel has focus, so a bare Enter must not delete.
                 host.App.InjectKey(Key.Enter);
+            },
+            () =>
+            {
+                enterKeptFile = Confirm(workbench) is not null && _fs.File.Exists("/work/build.log");
+                host.App.InjectKey(Key.Esc);
             },
             () => Confirm(workbench) is null);
 
@@ -149,6 +157,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             "Couldn't move 'build.log' to the Trash:\n/work has no Trash folder.\nDelete it permanently instead? This can't be undone.",
             asked);
         Assert.Equal("Delete", title);
+        Assert.True(enterKeptFile, "Enter closed the prompt or deleted the file");
         Assert.True(_fs.File.Exists("/work/build.log"));
         Assert.True(workbench.Sidebar.Explorer.HasFocus, "Focus should return to the explorer after cancelling");
     }
@@ -166,13 +175,9 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => SelectInExplorer(workbench, "build.log"),
             () => host.App.InjectKey(Key.Delete),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.FocusedChoice == "Delete",
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Delete"),
             () => Confirm(workbench) is { } second && Message(second).StartsWith("Couldn't", StringComparison.Ordinal),
-            () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.FocusedChoice == "Delete permanently",
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Delete permanently"),
             () => Confirm(workbench) is null);
 
         Assert.False(_fs.File.Exists("/work/build.log"));
@@ -198,10 +203,8 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             {
                 asked = Message(Confirm(workbench)!);
                 title = Confirm(workbench)!.Title;
-                host.App.InjectKey(Key.Tab);
             },
-            () => Confirm(workbench)!.FocusedChoice == "Delete",
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Delete"),
             () => Confirm(workbench) is null);
 
         Assert.Equal("Permanently delete 'a.txt'?\nThis action is irreversible!", asked);
@@ -527,9 +530,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => SelectInExplorer(workbench, "src"),
             () => host.App.InjectKey(Key.Delete),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.FocusedChoice == "Delete",
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Delete"),
             () => Confirm(workbench) is null);
 
         Assert.Null(workbench.Sidebar.Explorer.PendingCut);
@@ -621,13 +622,12 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
         Assert.Equal("The workspace root can't be cut.", workbench.StatusBar.DisplayedText);
     }
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
     private static PathPromptView? Prompt(Workbench.Workbench workbench) =>
         workbench.SubViews.OfType<PathPromptView>().SingleOrDefault();
 
-    private static string Message(ConfirmView view) => view.SubViews.OfType<Label>().First().Text;
+    private static string Message(ConfirmDialog view) => view.Message();
 
     private static void SelectInExplorer(Workbench.Workbench workbench, string relativePath)
     {

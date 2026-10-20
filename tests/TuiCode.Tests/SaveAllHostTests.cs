@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.Views;
@@ -131,7 +132,7 @@ public class SaveAllHostTests : StaticConfigurationTest
             },
             () => host.App.InjectKey(Key.S.WithCtrl.WithShift),
             () => Confirm(workbench) is not null,
-            () => { asked = Confirm(workbench)!.SubViews.OfType<Label>().First().Text; });
+            () => { asked = Confirm(workbench)!.Message(); });
 
         Assert.StartsWith("'a.txt' changed on disk since you opened it.", asked);
         Assert.Equal("Saved 1 file", workbench.StatusBar.Message);
@@ -153,13 +154,7 @@ public class SaveAllHostTests : StaticConfigurationTest
             },
             () => _commands.TryExecute(CommandIds.SaveAll),
             () => Confirm(workbench) is not null,
-            () =>
-            {
-                if (Confirm(workbench)?.FocusedChoice == "Overwrite") return true;
-                host.App.InjectKey(Key.Tab);
-                return false;
-            },
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Overwrite"),
             () => Confirm(workbench) is null);
 
         Assert.Equal("mine\n", _fs.File.ReadAllText("/work/a.txt"));
@@ -190,8 +185,7 @@ public class SaveAllHostTests : StaticConfigurationTest
         if (edit is not null) workbench.Editor.Group.ActiveTab!.Content = edit;
     }
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
     private Workbench.Workbench BuildWorkbench()
     {
