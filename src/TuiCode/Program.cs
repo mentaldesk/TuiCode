@@ -89,6 +89,7 @@ services.AddTransient<EditorPart>();
 services.AddTransient<StatusBarPart>();
 services.AddSingleton(sp => WorkspaceStateStore.ForUser(sp.GetRequiredService<IFileSystem>(), sp.GetRequiredService<ILogger<WorkspaceStateStore>>()));
 services.AddSingleton(sp => FilePositionStore.ForUser(sp.GetRequiredService<IFileSystem>(), sp.GetRequiredService<ILogger<FilePositionStore>>()));
+services.AddSingleton(sp => RecoveryStore.ForUser(sp.GetRequiredService<IFileSystem>(), sp.GetRequiredService<ILogger<RecoveryStore>>()));
 services.AddTransient<Workbench>();
 // Driver override (--driver <name> / TUICODE_DRIVER) lets us A/B the TG driver on Windows,
 // where the auto-selected `ansi` driver mis-decodes kitty key events (issue #82). Resolved
