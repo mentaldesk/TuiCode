@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -190,8 +189,14 @@ public sealed class RecoveryStore
 
     private string PathFor(string file, int processId) => _fs.Path.Combine(_directory, $"{KeyOf(file)}-{processId}.json");
 
-    private static string KeyOf(string file) =>
-        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(file)))[..16];
+    // FNV-1a: .NET's SHA-256 needs libssl on Linux, which minimal images lack.
+    private static string KeyOf(string file)
+    {
+        var hash = 14695981039346656037UL;
+        foreach (var b in Encoding.UTF8.GetBytes(file))
+            hash = (hash ^ b) * 1099511628211UL;
+        return hash.ToString("x16");
+    }
 
     private sealed record Copy(string Path, string File, RecoveryOwner Owner, DateTime Written, RecoveredEdits Edits);
 }
