@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -149,9 +150,7 @@ public class ActionScopeHostTests : StaticConfigurationTest
             () => Palette(workbench)!.Labels.SequenceEqual(["Delete file or folder"]),
             () => host.App.InjectKey(Key.Enter),
             () => Confirm(workbench) is not null,
-            () => host.App.InjectKey(Key.Tab),
-            () => Confirm(workbench)!.FocusedChoice == "Delete",
-            () => host.App.InjectKey(Key.Enter),
+            () => host.App.InjectKey(ConfirmDialogs.CtrlEnter),
             () => Confirm(workbench) is null);
 
         Assert.False(_fs.File.Exists("/work/doomed.txt"));
@@ -310,8 +309,7 @@ public class ActionScopeHostTests : StaticConfigurationTest
     private static ActionView? Palette(Workbench.Workbench workbench) =>
         workbench.SubViews.OfType<ActionView>().SingleOrDefault();
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
     private static IFileSystemInfo Node(Workbench.Workbench workbench, string name)
     {

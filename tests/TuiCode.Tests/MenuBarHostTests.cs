@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using System.Drawing;
 using Terminal.Gui.Configuration;
 using Terminal.Gui.Drawing;
@@ -109,11 +110,11 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.F.WithAlt),
             () => workbench.MenuBar.IsOpen(),
             () => host.App.InjectKey(Key.D),
-            () => workbench.SubViews.OfType<ConfirmView>().Any());
+            () => workbench.SubViews.OfType<ConfirmDialog>().Any());
 
         Assert.False(workbench.MenuBar.IsOpen());
         Assert.Equal(CommandIds.DeleteFile, closedWith);
-        Assert.Contains("Delete 'a.txt'?", workbench.SubViews.OfType<ConfirmView>().Single().SubViews.OfType<Label>().First().Text);
+        Assert.Contains("Delete 'a.txt'?", workbench.SubViews.OfType<ConfirmDialog>().Single().SubViews.OfType<Label>().First().Text);
     }
 
     [Fact]

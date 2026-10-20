@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Dialogs;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.Views;
@@ -91,7 +92,7 @@ public class ReloadFromDiskHostTests : StaticConfigurationTest
     }
 
     [Theory]
-    [InlineData(false)] // Enter lands on the focused Cancel
+    [InlineData(false)] // Space presses the focused Cancel
     [InlineData(true)]
     public async Task A_dirty_tab_asks_first_and_cancelling_changes_nothing(bool escape)
     {
@@ -103,12 +104,12 @@ public class ReloadFromDiskHostTests : StaticConfigurationTest
             () => OpenWithAnExternalChange(workbench, dirty: true),
             () => _commands.TryExecute(CommandIds.ReloadFromDisk),
             () => Confirm(workbench) is not null,
-            () => { focused = Confirm(workbench)!.FocusedChoice!; },
-            () => host.App.InjectKey(escape ? Key.Esc : Key.Enter),
+            () => { focused = Confirm(workbench)!.FocusedButton()!; },
+            () => host.App.InjectKey(escape ? Key.Esc : Key.Space),
             () => Confirm(workbench) is null);
 
         var tab = workbench.Editor.Group.ActiveTab!;
-        Assert.Equal("Cancel", focused);
+        Assert.Equal("Esc Cancel", focused);
         Assert.Equal("mine\n", tab.Content.ReplaceLineEndings("\n"));
         Assert.True(tab.IsDirty);
         Assert.Equal(1, _scopes.Depth);
@@ -119,19 +120,19 @@ public class ReloadFromDiskHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        string[] buttons = [];
+        string[] buttons = [], kinds = [];
 
         await HostSteps.Run(host,
             () => OpenWithAnExternalChange(workbench, dirty: true),
             () => _commands.TryExecute(CommandIds.ReloadFromDisk),
             () => Confirm(workbench) is not null,
-            () => { buttons = [.. Confirm(workbench)!.SubViews.OfType<Button>().Select(b => b.Text.Trim())]; },
-            Reach(host, workbench, "Reload"),
-            () => host.App.InjectKey(Key.Enter),
+            () => { buttons = Confirm(workbench)!.Buttons(); kinds = Confirm(workbench)!.Kinds(); },
+            ConfirmDialogs.Choose(host, workbench, "Reload"),
             () => Confirm(workbench) is null);
 
         var tab = workbench.Editor.Group.ActiveTab!;
-        Assert.Equal(["Reload", "Cancel"], buttons);
+        Assert.Equal(["Ctrl+Enter Reload", "Esc Cancel"], buttons);
+        Assert.Equal(["Danger", "Secondary"], kinds);
         Assert.Equal("theirs\n", tab.Content.ReplaceLineEndings("\n"));
         Assert.False(tab.IsDirty);
         Assert.Equal(1, _scopes.Depth);
@@ -153,8 +154,7 @@ public class ReloadFromDiskHostTests : StaticConfigurationTest
             },
             () => _commands.TryExecute(CommandIds.ReloadFromDisk),
             () => Confirm(workbench) is not null,
-            Reach(host, workbench, "Reload"),
-            () => host.App.InjectKey(Key.Enter),
+            ConfirmDialogs.Choose(host, workbench, "Reload"),
             () => Confirm(workbench) is null);
 
         var tab = workbench.Editor.Group.ActiveTab!;
@@ -180,13 +180,6 @@ public class ReloadFromDiskHostTests : StaticConfigurationTest
         Assert.Equal("a.txt no longer exists on disk — nothing to reload", workbench.StatusBar.DisplayedText);
     }
 
-    private static Func<bool> Reach(WorkbenchHost host, Workbench.Workbench workbench, string label) => () =>
-    {
-        if (Confirm(workbench)?.FocusedChoice == label) return true;
-        host.App.InjectKey(Key.Tab);
-        return false;
-    };
-
     private void OpenWithAnExternalChange(Workbench.Workbench workbench, bool dirty)
     {
         _fs.AddFile(Path, new MockFileData("one\n"));
@@ -195,8 +188,7 @@ public class ReloadFromDiskHostTests : StaticConfigurationTest
         _fs.File.WriteAllText(Path, "theirs\n");
     }
 
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
+    private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
     private Workbench.Workbench BuildWorkbench()
     {
