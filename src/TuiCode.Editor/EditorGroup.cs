@@ -108,7 +108,12 @@ public sealed class EditorGroup : PaneTabs
     }
 
     public EditorTab OpenOrFocus(IFileInfo file) =>
-        Focus(file.FullName) ?? Track(Opening(new EditorTab(file, _syntax)));
+        Focus(file.FullName) ?? Track(Opening(Recovery?.Invoke(file) is { } edits
+            ? EditorTab.Recovered(file, edits, _syntax)
+            : new EditorTab(file, _syntax)));
+
+    /// <summary>Unsaved edits a session that ended unexpectedly left for a file, which it opens with (#579); null opens it from disk.</summary>
+    public Func<IFileInfo, RecoveredEdits?>? Recovery { get; set; }
 
     private EditorTab Opening(EditorTab tab)
     {

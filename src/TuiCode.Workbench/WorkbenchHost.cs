@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using MentalDesk.Tui.Dialogs;
@@ -263,6 +264,12 @@ public sealed class WorkbenchHost : IDisposable
         };
 
         var explorer = _workbench.Sidebar.Explorer;
+        if (_workbench.UnsavedEdits is { } unsaved)
+        {
+            unsaved.Schedule = ScheduleFlush;
+            _terminating = [.. new[] { PosixSignal.SIGHUP, PosixSignal.SIGTERM }.Select(signal => PosixSignalRegistration.Create(signal, KeepUnsavedEdits))];
+        }
+
         _folderWatcher = new FolderWatcher(fileSystem, ScheduleFlush, _logger);
         explorer.ExpandedFoldersChanged += (_, _) => _folderWatcher.Follow(explorer.ExpandedFolders);
         _folderWatcher.Changed += (_, folders) => explorer.Refresh(folders);
@@ -2099,7 +2106,25 @@ public sealed class WorkbenchHost : IDisposable
         _app.LayoutAndDraw(forceRedraw: true);
     }
 
-    private void Quit() => AskToSaveDirtyTabs("Save them before quitting?", () => _app.RequestStop());
+    private void Quit() => AskToSaveDirtyTabs("Save them before quitting?", () =>
+    {
+        _workbench.UnsavedEdits?.DiscardAll();
+        _app.RequestStop();
+    });
+
+    private PosixSignalRegistration[] _terminating = [];
+
+    // The buffers can only be read on the UI thread; the signal then takes its default course and ends the process.
+    internal void KeepUnsavedEdits(PosixSignalContext? context)
+    {
+        var kept = new ManualResetEventSlim();
+        _app.Invoke(() =>
+        {
+            _workbench.UnsavedEdits?.Flush();
+            kept.Set();
+        });
+        kept.Wait(TimeSpan.FromSeconds(2));
+    }
 
     private void AskBeforeSwitchingFolder(Action open) =>
         AskToSaveDirtyTabs("Save them before opening another folder?", open);
@@ -3919,6 +3944,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        foreach (var registration in _terminating) registration.Dispose();
         _app.Keyboard.KeyDown -= OnAppKeyDown;
         _app.Mouse.MouseEvent -= OnAppMouseEvent;
         _app.Iteration -= OnIteration;
