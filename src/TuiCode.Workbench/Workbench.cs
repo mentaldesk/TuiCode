@@ -1,3 +1,5 @@
+using MentalDesk.Tui;
+using MentalDesk.Tui.Chrome;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Configuration;
@@ -92,14 +94,19 @@ public sealed class Workbench : Window
         sidebar.Search.RootProvider = () => sidebar.Explorer.Root;
         sidebar.Search.OpenBuffers = new EditorBuffers(editor.Groups);
         sidebar.Search.MatchActivated += (_, hit) => OpenMatch(hit.File, hit.Match);
-        sidebar.Search.Message += (_, message) => statusBar.SetMessage(message);
+        sidebar.Search.Message += (_, message) => statusBar.ShowMessage(message);
 
         sidebar.Review.RootProvider = () => sidebar.Explorer.Root;
-        sidebar.Review.RefreshFailed += (_, error) => statusBar.SetMessage($"Couldn't refresh the review: {error}");
+        sidebar.Review.RefreshFailed += (_, error) =>
+        {
+            statusBar.Withdraw(_reviewFailure);
+            _reviewFailure = statusBar.ShowNews($"Couldn't refresh the review: {error}", Severity.Error);
+        };
+        sidebar.Review.Refreshed += (_, _) => statusBar.Withdraw(_reviewFailure);
 
         editor.FileSaved += (_, file) =>
         {
-            statusBar.SetMessage($"Saved: {file.FullName}");
+            statusBar.ShowMessage($"Saved: {file.FullName}");
             RefreshReviewIfShowing();
         };
 
@@ -133,6 +140,9 @@ public sealed class Workbench : Window
     public UnsavedEdits? UnsavedEdits { get; }
 
     private int _recovered;
+    private StatusMessage? _reviewFailure;
+    private StatusMessage? _languageTrouble;
+    private LanguageServer? _troubledServer;
 
     // Tabs come back one by one, so the count waits for the loop to finish opening them.
     private void OnRecovered()
@@ -140,7 +150,7 @@ public sealed class Workbench : Window
         if (_recovered++ > 0 || App is not { } app) return;
         app.AddTimeout(TimeSpan.Zero, () =>
         {
-            StatusBar.SetMessage($"⟲ Recovered unsaved edits in {Plural.Count(_recovered, "file")}");
+            StatusBar.ShowNews($"⟲ Recovered unsaved edits in {Plural.Count(_recovered, "file")}");
             _recovered = 0;
             return false;
         });
@@ -162,16 +172,24 @@ public sealed class Workbench : Window
     {
         var tab = Editor.Group.ActiveTab;
         ShowLanguage(tab);
-        if (tab is not null && Languages?.ServerFor(tab) is { State: LanguageServerState.Missing or LanguageServerState.Stopped })
-            StatusBar.SetMessage(FileMessage(tab));
+        ShowLanguageTrouble(tab);
+    }
+
+    // Once per server: a restarted server is a new one, and takes the old one's trouble off.
+    private void ShowLanguageTrouble(EditorTab? tab)
+    {
+        if (tab is null || Languages?.ServerFor(tab) is not { } server || server == _troubledServer) return;
+        var trouble = LanguageTrouble(server);
+        if (trouble is null && server.Spec.LanguageId != _troubledServer?.Spec.LanguageId) return;
+        StatusBar.Withdraw(_languageTrouble);
+        (_troubledServer, _languageTrouble) = trouble is var (text, severity) ? (server, StatusBar.ShowNews(text, severity)) : (null, null);
     }
 
     private void ShowActiveFile(EditorTab? tab)
     {
-        if (tab is not null) StatusBar.SetMessage(FileMessage(tab));
-        else if (Editor.Group.ActiveDiffTab is { } diff) StatusBar.SetMessage(diff.Title);
-        else if (Editor.Group.ActiveDocumentTab is { } document) StatusBar.SetMessage(document.Title);
+        StatusBar.SetResting(tab?.File.FullName ?? Editor.Group.ActiveDiffTab?.Title ?? Editor.Group.ActiveDocumentTab?.Title);
         ShowLanguage(tab);
+        ShowLanguageTrouble(tab);
         StatusBar.SetWrap(tab is { WordWrap: true });
     }
 
@@ -192,32 +210,24 @@ public sealed class Workbench : Window
         });
     }
 
-    /// <summary>The file's path, or what its language server needs from the user.</summary>
-    private string FileMessage(EditorTab tab) => Languages?.ServerFor(tab) switch
+    /// <summary>What the language server needs from the user, if anything.</summary>
+    private static (string Text, Severity Severity)? LanguageTrouble(LanguageServer running) => running switch
     {
-        { State: LanguageServerState.Missing } server => server.Spec.NotInstalled,
-        { State: LanguageServerState.Stopped, Failure: { } failure } server => $"{server.Spec.Name} language server stopped: {failure}",
-        _ => tab.File.FullName,
+        { State: LanguageServerState.Missing } server => (server.Spec.NotInstalled, Severity.Info),
+        { State: LanguageServerState.Stopped, Failure: { } failure } server => ($"{server.Spec.Name} language server stopped: {failure}", Severity.Error),
+        _ => null,
     };
-
-    /// <summary>How long a successful copy's message shows before the file path comes back.</summary>
-    internal TimeSpan CopyMessageDuration { get; set; } = TimeSpan.FromSeconds(4);
 
     private void ShowCopy(CopyOutcome outcome)
     {
         if (outcome is CopyOutcome.Failed(var reason))
         {
-            StatusBar.SetError($"Copy failed: {reason}");
+            StatusBar.ShowMessage($"Copy failed: {reason}", Severity.Error);
             return;
         }
         var (lines, characters, throughTerminal) = (CopyOutcome.Copied)outcome;
         var message = $"Copied {Plural.Count(lines, "line")}  •  {Plural.Count(characters, "character")}{(throughTerminal ? " through the terminal" : "")}";
-        StatusBar.SetMessage(message);
-        App?.AddTimeout(CopyMessageDuration, () =>
-        {
-            if (StatusBar.Message == message) ShowActiveFile(Editor.Group.ActiveTab);
-            return false;
-        });
+        StatusBar.ShowMessage(message);
     }
 
     /// <summary>Show the active tab's cursor position and selection; the host calls this every main-loop iteration.</summary>
@@ -240,16 +250,14 @@ public sealed class Workbench : Window
     /// <summary>Open a file in the editor. Shared by the explorer and the Open dialog.</summary>
     public void OpenFile(IFileInfo file)
     {
-        var tab = Editor.Open(file);
-        StatusBar.SetMessage(FileMessage(tab));
+        Editor.Open(file);
         FileOpened?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Reopens the most recently closed file tab where it was (#578).</summary>
     public void ReopenClosedTab()
     {
-        if (Editor.Groups.ReopenClosed() is not { } tab) return;
-        StatusBar.SetMessage(FileMessage(tab));
+        if (Editor.Groups.ReopenClosed() is null) return;
         FileOpened?.Invoke(this, EventArgs.Empty);
     }
 
@@ -259,7 +267,7 @@ public sealed class Workbench : Window
         var tab = Editor.Open(file);
         tab.Select(match);
         tab.RevealLines(match.Row, match.Row);
-        StatusBar.SetMessage($"{file.FullName}:{match.Row + 1}:{match.Column + 1}");
+        StatusBar.ShowMessage($"{file.FullName}:{match.Row + 1}:{match.Column + 1}");
         FileOpened?.Invoke(this, EventArgs.Empty);
     }
 
@@ -309,7 +317,7 @@ public sealed class Workbench : Window
         Sidebar.Explorer.Open(directory);
         Sidebar.Search.RunSearch();
         RefreshReviewIfShowing();
-        StatusBar.SetMessage($"Opened folder: {directory.FullName}");
+        StatusBar.ShowMessage($"Opened folder: {directory.FullName}");
 
         if (!rememberTabs) return;
         RestoreOpenFiles(directory);
@@ -350,7 +358,7 @@ public sealed class Workbench : Window
     {
         Editor.Groups.CloseUnder(item.FullName);
         Sidebar.Search.RunSearch();
-        StatusBar.SetMessage(message);
+        StatusBar.ShowMessage(message);
         SaveWorkspaceState();
     }
 
@@ -363,7 +371,7 @@ public sealed class Workbench : Window
         Editor.Groups.Relocate(item.FullName, moved.FullName);
         ShowActiveFile(Editor.Group.ActiveTab);
         Sidebar.Search.RunSearch();
-        StatusBar.SetMessage($"Renamed: {moved.FullName}");
+        StatusBar.ShowMessage($"Renamed: {moved.FullName}");
         SaveWorkspaceState();
         return moved;
     }

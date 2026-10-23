@@ -52,7 +52,7 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
             () => Ready(workbench),
-            () => { languageShown = workbench.StatusBar.DisplayedText; Tab(workbench).MoveCursor(4, 26); },
+            () => { languageShown = workbench.StatusBar.DisplayedState; Tab(workbench).MoveCursor(4, 26); },
             () => host.App.InjectKey(Key.G.WithCtrl),
             () => host.App.InjectKey(Key.D),
             () => Tab(workbench) is { File.Name: "Diff.cs", StickyScan.Done: true },
@@ -63,7 +63,7 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
             () => { forward = Where(workbench); });
         host.Dispose();
 
-        Assert.EndsWith("C# ● ready", languageShown, StringComparison.Ordinal);
+        Assert.Contains("C# ● ready", languageShown, StringComparison.Ordinal);
         Assert.Equal(("Diff.cs", 42, 8), jumped);
         // Two rows below `class Diff`, pinned over the top row.
         Assert.Equal(42 - 1 - 2, topRow);
@@ -162,11 +162,12 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => { opened = workbench.StatusBar.DisplayedText; workbench.StatusBar.SetMessage("elsewhere"); },
+            () => workbench.StatusBar.Bar.Current is not null,
+            () => { opened = workbench.StatusBar.DisplayedText; workbench.StatusBar.ShowMessage("elsewhere"); },
             () => { Execute(host); },
             () => { pressed = workbench.StatusBar.DisplayedText; });
 
-        Assert.Equal("No C# language server. Install: dotnet tool install -g csharp-ls  •  C#", opened);
+        Assert.Equal("No C# language server. Install: dotnet tool install -g csharp-ls", opened);
         Assert.Equal(opened, pressed);
         Assert.Equal(("Caller.cs", 0, 0), Where(workbench));
     }
@@ -182,23 +183,23 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => workbench.StatusBar.DisplayedText.EndsWith("C# ◌ loading", StringComparison.Ordinal),
-            () => { loading = workbench.StatusBar.DisplayedText; Execute(host); },
+            () => workbench.StatusBar.DisplayedState.Contains("C# ◌ loading", StringComparison.Ordinal),
+            () => { loading = workbench.StatusBar.DisplayedState; Execute(host); },
             () => { pressed = workbench.StatusBar.Message; host.App.InjectKey(Key.G.WithAlt); },
             () => workbench.MenuBar.IsOpen(),
             () => { dimmedWhileLoading = Item(host).Dimmed; host.App.InjectKey(Key.Esc); },
             () => !workbench.MenuBar.IsOpen(),
             () => { _server.FinishLoading(); },
             () => Ready(workbench),
-            () => { ready = workbench.StatusBar.DisplayedText; host.App.InjectKey(Key.G.WithAlt); },
+            () => { ready = workbench.StatusBar.DisplayedState; host.App.InjectKey(Key.G.WithAlt); },
             () => workbench.MenuBar.IsOpen(),
             () => { dimmedWhenReady = Item(host).Dimmed; host.App.InjectKey(Key.Esc); },
             () => !workbench.MenuBar.IsOpen());
 
-        Assert.EndsWith("C# ◌ loading", loading, StringComparison.Ordinal);
+        Assert.Contains("C# ◌ loading", loading, StringComparison.Ordinal);
         Assert.Equal("The C# language server is still loading", pressed);
         Assert.True(dimmedWhileLoading);
-        Assert.EndsWith("C# ● ready", ready, StringComparison.Ordinal);
+        Assert.Contains("C# ● ready", ready, StringComparison.Ordinal);
         Assert.False(dimmedWhenReady);
     }
 
@@ -213,12 +214,36 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
             () => { OpenFile(workbench, "Caller.cs"); },
             () => Ready(workbench),
             () => { _server.Crash(); },
-            () => workbench.StatusBar.DisplayedText.EndsWith("C# stopped", StringComparison.Ordinal),
+            () => workbench.StatusBar.DisplayedState.Contains("C# stopped", StringComparison.Ordinal),
             () => { OpenFile(workbench, "Diff.cs"); },
-            () => { shown = workbench.StatusBar.DisplayedText; });
+            () => { shown = workbench.StatusBar.DisplayedState; });
 
-        Assert.EndsWith("C# stopped", shown, StringComparison.Ordinal);
+        Assert.Contains("C# stopped", shown, StringComparison.Ordinal);
         Assert.Single(_server.Launches);
+    }
+
+    [Fact]
+    public async Task A_server_that_fails_says_so_once_and_the_message_comes_off_when_it_restarts()
+    {
+        _server.InitializeError = "no solution found";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var said = "";
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => workbench.StatusBar.ShowsError,
+            () => { said = workbench.StatusBar.DisplayedText; OpenFile(workbench, "Diff.cs"); },
+            () =>
+            {
+                _server.InitializeError = null;
+                workbench.Languages!.Configure(new Dictionary<string, LanguageServerSetting> { ["csharp"] = new("csharp-ls", ["--loglevel", "error"]) });
+            },
+            () => Ready(workbench));
+
+        Assert.StartsWith("C# language server stopped: ", said, StringComparison.Ordinal);
+        Assert.Single(workbench.StatusBar.Bar.History, message => message.Text == said);
+        Assert.Null(workbench.StatusBar.Bar.Current);
     }
 
     [Fact]
@@ -230,10 +255,10 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "README.md"); },
-            () => { opened = workbench.StatusBar.DisplayedText; Execute(host); },
+            () => { opened = workbench.StatusBar.DisplayedState; Execute(host); },
             () => { pressed = workbench.StatusBar.Message; });
 
-        Assert.EndsWith("  •  Markdown  •  Wrap", opened, StringComparison.Ordinal);
+        Assert.StartsWith("Markdown  •  Wrap", opened, StringComparison.Ordinal);
         Assert.Equal("No language server for Markdown", pressed);
         Assert.Empty(_server.Launches);
     }
@@ -262,7 +287,7 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
     }
 
     private static bool Ready(Workbench.Workbench workbench) =>
-        workbench.StatusBar.DisplayedText.EndsWith("C# ● ready", StringComparison.Ordinal);
+        workbench.StatusBar.DisplayedState.Contains("C# ● ready", StringComparison.Ordinal);
 
     private static void Execute(WorkbenchHost host)
     {

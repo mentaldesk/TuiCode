@@ -39,6 +39,7 @@ public static class CommandMnemonics
             [CommandIds.SaveAll] = "saf",
             [CommandIds.ShowDiagnostics] = "sd",
             [CommandIds.ShowLog] = "sl",
+            [CommandIds.ShowMessages] = "sm",
             [CommandIds.ShowAbout] = "tui",
             [CommandIds.WatchTutorials] = "wt",
             [CommandIds.New] = "nf",

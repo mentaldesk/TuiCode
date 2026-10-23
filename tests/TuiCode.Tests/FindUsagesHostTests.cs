@@ -155,7 +155,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => workbench.StatusBar.DisplayedText.EndsWith("C# ◌ loading", StringComparison.Ordinal),
+            () => workbench.StatusBar.DisplayedState.Contains("C# ◌ loading", StringComparison.Ordinal),
             () => host.App.InjectKey(Key.G.WithAlt),
             () => workbench.MenuBar.IsOpen(),
             () => { dimmedWhileLoading = Item(host).Dimmed; host.App.InjectKey(Key.Esc); },
@@ -187,7 +187,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => { workbench.StatusBar.SetMessage("elsewhere"); Tab(workbench).MoveCursor(4, 26); Execute(host); },
+            () => { workbench.StatusBar.ShowMessage("elsewhere"); Tab(workbench).MoveCursor(4, 26); Execute(host); },
             () => { shown = workbench.StatusBar.Message; });
 
         Assert.Equal("No C# language server. Install: dotnet tool install -g csharp-ls", shown);
@@ -261,7 +261,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
     }
 
     private static bool Ready(Workbench.Workbench workbench) =>
-        workbench.StatusBar.DisplayedText.EndsWith("C# ● ready", StringComparison.Ordinal);
+        workbench.StatusBar.DisplayedState.Contains("C# ● ready", StringComparison.Ordinal);
 
     private static void Execute(WorkbenchHost host)
     {

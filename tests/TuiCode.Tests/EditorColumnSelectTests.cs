@@ -160,7 +160,7 @@ public class EditorColumnSelectHostTests : StaticConfigurationTest
             },
             () => host.App.InjectKey(Key.T.WithCtrl),
             () => host.App.InjectKey(Key.C),
-            () => { whileOn = statusBar.DisplayedText; },
+            () => { whileOn = statusBar.DisplayedState; },
             () => host.App.InjectKey(Key.CursorRight.WithShift),
             () => host.App.InjectKey(Key.CursorRight.WithShift),
             () => host.App.InjectKey(Key.CursorDown.WithShift),
