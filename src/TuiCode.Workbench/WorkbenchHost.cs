@@ -612,6 +612,8 @@ public sealed class WorkbenchHost : IDisposable
             () => Group.Value is not null);
         _commands.Register(CommandIds.CloseAllTabs, "Close all tabs", CloseAllTabs, CommandScope.Global,
             () => Group.Value is not null);
+        _commands.Register(CommandIds.ReopenClosedEditor, "Undo close tab", _workbench.ReopenClosedTab, CommandScope.Global,
+            () => _workbench.Editor.Groups.CanReopen);
         _commands.Register(CommandIds.NextEditor, "Next tab", () => CycleTabs(1));
         _commands.Register(CommandIds.PreviousEditor, "Previous tab", () => CycleTabs(-1));
         _commands.Register(CommandIds.MoveToOtherGroup, "Move to other group", MoveToOtherGroup, CommandScope.Global,
@@ -864,6 +866,7 @@ public sealed class WorkbenchHost : IDisposable
         .. KeyRowOf(CommandIds.CloseActiveEditor, "Close tab"),
         .. KeyRowOf(CommandIds.CloseOtherTabs, "Close other tabs"),
         .. KeyRowOf(CommandIds.CloseAllTabs, "Close all tabs"),
+        .. KeyRowOf(CommandIds.ReopenClosedEditor, "Undo close tab"),
         .. GroupHelp(),
     ]);
 
@@ -991,6 +994,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+S", CommandIds.SaveActiveEditor);
         keybindings.Bind("Ctrl+Shift+S", CommandIds.SaveAll);
         keybindings.Bind("Ctrl+W", CommandIds.CloseActiveEditor);
+        keybindings.Bind("Ctrl+Shift+T", CommandIds.ReopenClosedEditor);
         // Not Ctrl+Tab, which Terminal.app and iTerm2 keep (#254), nor Alt+Tab, Windows' app switcher (#459).
         keybindings.Bind("Ctrl+PageDown", CommandIds.NextEditor);
         keybindings.Bind("Ctrl+PageUp", CommandIds.PreviousEditor);

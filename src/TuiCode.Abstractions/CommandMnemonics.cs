@@ -66,6 +66,7 @@ public static class CommandMnemonics
             [CommandIds.CloseActiveEditor] = "cf",
             [CommandIds.CloseOtherTabs] = "cot",
             [CommandIds.CloseAllTabs] = "cat",
+            [CommandIds.ReopenClosedEditor] = "uct",
             [CommandIds.ChangeGrammar] = "cg",
             [CommandIds.CompareToSaved] = "cts",
             [CommandIds.NextChange] = "nc",

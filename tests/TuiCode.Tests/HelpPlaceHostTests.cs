@@ -171,6 +171,24 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task The_tabs_column_lists_undo_close_tab_once_a_tab_has_closed()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("one"));
+        _fs.AddFile("/work/b.txt", new MockFileData("two"));
+        var help = await HelpFrom(() =>
+        {
+            Built.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+            Built.OpenFile(_fs.FileInfo.New("/work/b.txt"));
+            _commands.TryExecute(CommandIds.CloseActiveEditor);
+            _commands.TryExecute(CommandIds.FocusEditorTabStrip);
+        }, "Tabs");
+
+        var rows = help.Rows().ToList();
+        var close = rows.IndexOf(new("Ctrl+W", "Close tab"));
+        Assert.Equal(new KeyRow("Ctrl+Shift+T", "Undo close tab"), rows[close + 1]);
+    }
+
+    [Fact]
     public async Task The_tabs_column_follows_a_rebind_of_next_tab()
     {
         var help = await TabStripHelp(Override("Ctrl+PageDown", "-" + CommandIds.NextEditor), Override("F6", CommandIds.NextEditor));

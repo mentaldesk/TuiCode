@@ -391,6 +391,8 @@ public sealed class EditorTab : FrameView
 
     internal CodeEditor Code => _text;
 
+    internal CodeEditor.UndoHistory History => _text.History;
+
     /// <summary>A screen row while wrapped.</summary>
     public int TopRow => _text.Viewport.Y;
 
