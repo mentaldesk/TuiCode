@@ -585,17 +585,17 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
             },
             () => host.App.InjectKey(Key.T.WithCtrl),
             () => host.App.InjectKey(Key.W),
-            () => { whileWrapped = statusBar.DisplayedText; },
+            () => { whileWrapped = statusBar.DisplayedState; },
             () => { workbench.Editor.Group.Focus(b!.File.FullName); },
-            () => { onTheOtherTab = statusBar.DisplayedText; },
+            () => { onTheOtherTab = statusBar.DisplayedState; },
             () => { workbench.Editor.Group.Focus(a!.File.FullName); },
-            () => { backAgain = statusBar.DisplayedText; });
+            () => { backAgain = statusBar.DisplayedState; });
 
         Assert.True(a!.WordWrap);
         Assert.False(b!.WordWrap);
-        Assert.EndsWith("  •  Wrap", whileWrapped);
+        Assert.Contains("Wrap", whileWrapped);
         Assert.DoesNotContain("Wrap", onTheOtherTab);
-        Assert.EndsWith("  •  Wrap", backAgain);
+        Assert.Contains("Wrap", backAgain);
     }
 
     [Fact]
@@ -618,7 +618,7 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.W));
 
         Assert.False(tab!.WordWrap);
-        Assert.DoesNotContain("Wrap", statusBar.DisplayedText);
+        Assert.DoesNotContain("Wrap", statusBar.DisplayedState);
     }
 
     [Fact]
@@ -640,12 +640,12 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.W),
             () => host.App.InjectKey(Key.T.WithCtrl),
             () => host.App.InjectKey(Key.C),
-            () => { afterColumnSelect = statusBar.DisplayedText; },
+            () => { afterColumnSelect = statusBar.DisplayedState; },
             () => host.App.InjectKey(Key.CursorDown.WithCtrl.WithAlt),
             () => { afterAddCursor = statusBar.DisplayedText; });
 
         Assert.True(workbench.Editor.Group.ColumnSelect);
-        Assert.EndsWith("  •  Column select  •  Wrap", afterColumnSelect);
+        Assert.Contains("Column select  •  Wrap", afterColumnSelect);
         Assert.True(tab!.HasSecondaryCursors);
         Assert.DoesNotContain("Not available", afterAddCursor);
     }
@@ -665,13 +665,13 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
                 tab = workbench.Editor.Open(fs.FileInfo.New("/work/a.txt"));
                 tab.FocusContent();
             },
-            () => { opened = statusBar.DisplayedText; },
+            () => { opened = statusBar.DisplayedState; },
             () => host.App.InjectKey(Key.T.WithCtrl),
             () => host.App.InjectKey(Key.W));
 
-        Assert.EndsWith("  •  Wrap", opened);
+        Assert.Contains("Wrap", opened);
         Assert.False(tab!.WordWrap);
-        Assert.DoesNotContain("Wrap", statusBar.DisplayedText);
+        Assert.DoesNotContain("Wrap", statusBar.DisplayedState);
     }
 
     [Fact]
@@ -682,7 +682,7 @@ public class EditorWordWrapHostTests : StaticConfigurationTest
         statusBar.SetGrammar("Markdown");
         statusBar.SetWrap(true);
 
-        Assert.EndsWith("Markdown  •  Wrap", statusBar.DisplayedText);
+        Assert.Equal("Markdown  •  Wrap", statusBar.DisplayedState);
     }
 
     private static (MockFileSystem Fs, StatusBarPart StatusBar, Workbench.Workbench Workbench, WorkbenchHost Host) Start(

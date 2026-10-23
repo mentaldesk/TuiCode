@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Chrome;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using TuiCode.Editor;
@@ -13,11 +14,12 @@ namespace TuiCode.Tests;
 public class CopyStatusHostTests : StaticConfigurationTest
 {
     [Fact]
-    public async Task A_copy_says_what_it_copied_and_the_file_path_comes_back_afterwards()
+    public async Task A_copy_says_what_it_copied_and_the_file_path_comes_back_after_five_seconds()
     {
         using var workbench = Workbench();
         using var host = Host(workbench);
-        workbench.CopyMessageDuration = TimeSpan.Zero;
+        var clock = new FakeClock();
+        workbench.StatusBar.Bar.Clock = clock;
         string said = "", after = "";
         var error = true;
 
@@ -28,8 +30,8 @@ public class CopyStatusHostTests : StaticConfigurationTest
                 Copy(workbench)();
                 said = workbench.StatusBar.DisplayedText;
                 error = workbench.StatusBar.ShowsError;
+                clock.Advance(AppStatusBar.Lifetime);
             },
-            () => workbench.StatusBar.DisplayedText != said,
             () => { after = workbench.StatusBar.DisplayedText; });
 
         Assert.Equal("Copied 2 lines  •  1,001 characters", said);
@@ -38,11 +40,10 @@ public class CopyStatusHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task A_copy_that_did_not_land_says_so_in_the_error_colours_until_the_next_message()
+    public async Task A_copy_that_did_not_land_says_so_in_the_error_colours()
     {
         using var workbench = Workbench();
         using var host = Host(workbench);
-        workbench.CopyMessageDuration = TimeSpan.Zero;
         var said = "";
         var error = false;
 

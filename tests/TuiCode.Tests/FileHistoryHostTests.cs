@@ -216,7 +216,7 @@ public class FileHistoryHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => workbench.Editor.Group.ActiveDiffTab is { History.Index: 2 },
-            () => { workbench.ShowCursorPosition(); commitStatus = workbench.StatusBar.DisplayedText; });
+            () => { workbench.ShowCursorPosition(); commitStatus = workbench.StatusBar.DisplayedState; });
 
         var diffs = workbench.Editor.Group.TabCollection.OfType<DiffTab>().ToList();
         var diff = Assert.Single(diffs);

@@ -104,10 +104,10 @@ public class ViewedDiffHostTests : StaticConfigurationTest
         [
             .. OpenDiff(host, workbench, commands, rowsDown: 2),
             () => group.ActiveDiffTab?.File.Name == "c.txt" && group.ActiveDiffTab.IsFocused,
-            () => workbench.StatusBar.DisplayedText.Contains("File 3 of 4  •  Viewed  •  +1 −1", StringComparison.Ordinal),
+            () => workbench.StatusBar.DisplayedState.Contains("File 3 of 4  •  Viewed  •  +1 −1", StringComparison.Ordinal),
             () => commands.TryExecute(CommandIds.ToggleViewed),
             () => workbench.Sidebar.Review.ViewedText == "Viewed 0 of 4",
-            () => workbench.StatusBar.DisplayedText.Contains("File 3 of 4  •  +1 −1", StringComparison.Ordinal),
+            () => workbench.StatusBar.DisplayedState.Contains("File 3 of 4  •  +1 −1", StringComparison.Ordinal),
         ]);
 
         Assert.Equal(("PR_kw398", "c.txt", false), _gitHub.ViewedChanges.Single());

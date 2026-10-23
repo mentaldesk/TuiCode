@@ -230,7 +230,8 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.R.WithCtrl));
 
-        Assert.Equal($"Reverted 1 line from saved  •  +2 −2  •  Change 1 of 2", workbench.StatusBar.DisplayedText);
+        Assert.Equal("Reverted 1 line from saved", workbench.StatusBar.DisplayedText);
+        Assert.StartsWith("+2 −2  •  Change 1 of 2", workbench.StatusBar.DisplayedState);
         Assert.Equal(40, workbench.Editor.Group.Tabs[0].Lines.Count);
         Assert.Equal("line 15", workbench.Editor.Group.Tabs[0].Lines[14]);
     }
@@ -290,7 +291,8 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => OpenThreeChanges(workbench, commands),
             () => host.App.InjectKey(Key.R.WithCtrl));
 
-        Assert.Equal($"Reverted 1 line from saved  •  +1 −2  •  2 changes", workbench.StatusBar.DisplayedText);
+        Assert.Equal("Reverted 1 line from saved", workbench.StatusBar.DisplayedText);
+        Assert.StartsWith("+1 −2  •  2 changes", workbench.StatusBar.DisplayedState);
         Assert.Equal("line 5", workbench.Editor.Group.Tabs[0].Lines[4]);
     }
 
@@ -311,7 +313,8 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.R.WithCtrl),
             () => host.App.InjectKey(Key.R.WithCtrl));
 
-        Assert.StartsWith("No changes  •  No changes", workbench.StatusBar.DisplayedText);
+        Assert.Equal("No changes", workbench.StatusBar.DisplayedText);
+        Assert.StartsWith("No changes", workbench.StatusBar.DisplayedState);
     }
 
     [Fact]
@@ -333,8 +336,8 @@ public class RevertChangeHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.F9));
 
-        Assert.Equal("Reverted 1 line from saved  •  +1 −2  •  2 changes",
-            workbench.StatusBar.DisplayedText);
+        Assert.Equal("Reverted 1 line from saved", workbench.StatusBar.DisplayedText);
+        Assert.StartsWith("+1 −2  •  2 changes", workbench.StatusBar.DisplayedState);
     }
 
     // Changes at rows 4 (modified), 14 (line 15 removed) and 30 (modified).
@@ -514,7 +517,7 @@ public class RestoreDeletedHostTests : StaticConfigurationTest
             () => workbench.Sidebar.Review.ListHasFocus,
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is { IsFocused: true },
-            () => { status = workbench.StatusBar.DisplayedText; },
+            () => { status = workbench.StatusBar.DisplayedState; },
             () => host.App.InjectKey(Key.F1),
             () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));

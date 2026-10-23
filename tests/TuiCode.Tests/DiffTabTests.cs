@@ -841,7 +841,8 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         Assert.Equal("a.txt ↔ saved", diff.Title);
         Assert.Same(diff, group.ActiveDiffTab);
         Assert.Equal(1, diff.CurrentRow);
-        Assert.StartsWith("a.txt ↔ saved  •  +1 −1  •  Change 1 of 1", workbench.StatusBar.DisplayedText);
+        Assert.Equal("a.txt ↔ saved", workbench.StatusBar.DisplayedText);
+        Assert.StartsWith("+1 −1  •  Change 1 of 1", workbench.StatusBar.DisplayedState);
     }
 
     [Fact]
@@ -904,7 +905,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var statuses = new List<string>();
-        void Record() => statuses.Add(workbench.StatusBar.DisplayedText);
+        void Record() => statuses.Add($"{workbench.StatusBar.DisplayedText}  •  {workbench.StatusBar.DisplayedState}");
 
         await HostSteps.Run(host,
             () => OpenThreeChanges(workbench, commands),
@@ -960,9 +961,9 @@ public class CompareToSavedHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenThreeChanges(workbench, commands),
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
-            () => { focused = workbench.StatusBar.DisplayedText; },
+            () => { focused = $"{workbench.StatusBar.DisplayedText}  •  {workbench.StatusBar.DisplayedState}"; },
             () => commands.TryExecute(CommandIds.FocusSidebar),
-            () => workbench.StatusBar.DisplayedText == "a.txt ↔ saved");
+            () => workbench.StatusBar.DisplayedState == "");
 
         Assert.Equal("a.txt ↔ saved  •  +2 −3  •  Change 1 of 3", focused);
     }
@@ -1061,7 +1062,7 @@ public class CompareToSavedHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.F.WithCtrl),
             () => { foreach (var c in "line") host.App.InjectKey(new Key(c)); },
             () => workbench.Editor.Group.ActiveDiffTab!.CurrentMatch is not null,
-            () => { status = workbench.StatusBar.DisplayedText; host.App.InjectKey(Key.F1); },
+            () => { status = workbench.StatusBar.DisplayedState; host.App.InjectKey(Key.F1); },
             () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
