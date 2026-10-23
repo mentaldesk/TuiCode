@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using TuiCode.Abstractions;
 using TuiCode.Syntax;
 
@@ -58,10 +59,9 @@ public sealed class EditorSettingsView : View
             X = ControlColumn,
             Y = 4,
             Orientation = Orientation.Horizontal,
-            TabBehavior = TabBehavior.NoStop,
             Labels = ["Keep each file's", "LF", "CRLF"],
             Value = settings.LineEnding,
-        };
+        }.SelectOnArrows();
 
         _insertFinalNewline = new CheckBox
         {

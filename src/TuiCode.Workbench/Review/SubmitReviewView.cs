@@ -1,4 +1,5 @@
 using ButtonKind = MentalDesk.Tui.Dialogs.ButtonKind;
+using MentalDesk.Tui.Fields;
 using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
@@ -51,10 +52,9 @@ public sealed class SubmitReviewView : Window
             X = 1,
             Y = 0,
             Orientation = Orientation.Horizontal,
-            TabBehavior = TabBehavior.NoStop,
             Labels = ["Comment", "Approve", "Request changes"],
             Value = GitHubReviewVerdict.Comment,
-        };
+        }.SelectOnArrows();
 
         _drafts = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(2), Text = string.Empty, Visible = false };
 

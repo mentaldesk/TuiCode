@@ -1373,22 +1373,14 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         var view = new GrammarPickerView(syntax.Languages, $"Grammar for {tab.File.Name}", tab.Grammar);
-        view.Chosen += (_, grammar) => tab.SetGrammar(grammar);
-        view.Closed += (_, _) => CloseGrammarPicker(view);
         _activeGrammarPicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusSearch();
-    }
-
-    private void CloseGrammarPicker(GrammarPickerView view)
-    {
-        if (!ReferenceEquals(_activeGrammarPicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeGrammarPicker = null;
-        FocusCallingRegion();
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeGrammarPicker = null;
+            if (view.Confirmed) tab.SetGrammar(view.Grammar);
+            FocusCallingRegion();
+        });
+        view.FilterField.SetFocus();
     }
 
     private void OpenActions()
@@ -1498,10 +1490,13 @@ public sealed class WorkbenchHost : IDisposable
 
         var totalLines = CountLines(tab.Content);
         var view = new GoToLineView(totalLines, tab.CursorRow + 1);
-        view.Cancelled += (_, _) => CloseGoToLine(view);
-        view.Submitted += (_, target) =>
+        _activeGoToLine = view;
+        HostedDialog.Show(_workbench, _scopes, view, () =>
         {
-            CloseGoToLine(view);
+            _activeGoToLine = null;
+            FocusCallingRegion();
+            if (!view.Confirmed) return;
+            var target = view.Target;
             // Drive the move ourselves and record it as an explicit jump, so even a short
             // hop lands in history (it's a deliberate navigation) without the move event
             // overwriting the pre-jump origin we want Back to return to.
@@ -1510,11 +1505,7 @@ public sealed class WorkbenchHost : IDisposable
             finally { _suppressHistory = false; }
             tab.RevealLines(target.Row, target.Row);
             _history.Visit(new CursorLocation(tab.File.FullName, target.Row, target.Column), explicitJump: true);
-        };
-
-        _activeGoToLine = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
+        });
         view.FocusInput();
     }
 
@@ -1529,16 +1520,6 @@ public sealed class WorkbenchHost : IDisposable
         }
         _history.Follow(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
         FocusEditorBody();
-    }
-
-    private void CloseGoToLine(GoToLineView view)
-    {
-        if (!ReferenceEquals(_activeGoToLine, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeGoToLine = null;
-        FocusCallingRegion();
     }
 
     /// <summary>
@@ -1780,16 +1761,14 @@ public sealed class WorkbenchHost : IDisposable
         var root = _workbench.Sidebar.Explorer.Root?.FullName;
         var rows = locations.Select(l => new DefinitionRow(l, $"{DisplayPath(l.Path, root)}:{l.Line + 1}", LineAt(fileSystem, l).Trim())).ToList();
         var view = new DefinitionPickerView(symbol ?? "symbol", rows);
-        view.Cancelled += (_, _) => CloseDefinitionPicker(view);
-        view.Submitted += (_, location) =>
-        {
-            CloseDefinitionPicker(view);
-            JumpToDefinition(origin, location);
-        };
         _activeDefinitionPicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusFilter();
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeDefinitionPicker = null;
+            FocusCallingRegion();
+            if (view.Confirmed && view.Chosen is { } chosen) JumpToDefinition(origin, chosen.Location);
+        });
+        view.FilterField.SetFocus();
     }
 
     private static string DisplayPath(string path, string? root) =>
@@ -1800,16 +1779,6 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == location.Path) is { } open)
             return open.Lines.ElementAtOrDefault(location.Line) ?? "";
         return fileSystem.File.ReadLines(location.Path).Skip(location.Line).FirstOrDefault() ?? "";
-    }
-
-    private void CloseDefinitionPicker(DefinitionPickerView view)
-    {
-        if (!ReferenceEquals(_activeDefinitionPicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeDefinitionPicker = null;
-        FocusCallingRegion();
     }
 
     private void JumpToDefinition(EditorTab origin, SourceLocation location) => JumpTo(origin.File.FileSystem, origin, location);
@@ -3882,17 +3851,14 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         var view = new RecentFolderPickerView(folders);
-        view.Cancelled += (_, _) => CloseRecentFolderPicker(view);
-        view.Submitted += (_, folder) =>
-        {
-            CloseRecentFolderPicker(view);
-            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(folder.Path));
-        };
-
         _activeRecentFolderPicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusFilter();
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeRecentFolderPicker = null;
+            FocusCallingRegion();
+            if (view.Confirmed && view.Chosen is { } folder) _workbench.OpenFolder(fileSystem.DirectoryInfo.New(folder.Path));
+        });
+        view.FilterField.SetFocus();
     }
 
     private void OpenFilePath()
@@ -3915,16 +3881,6 @@ public sealed class WorkbenchHost : IDisposable
         };
 
         ShowPathPrompt(view);
-    }
-
-    private void CloseRecentFolderPicker(RecentFolderPickerView view)
-    {
-        if (!ReferenceEquals(_activeRecentFolderPicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeRecentFolderPicker = null;
-        FocusCallingRegion();
     }
 
     private void ClosePullRequestPicker(PullRequestPickerView view)

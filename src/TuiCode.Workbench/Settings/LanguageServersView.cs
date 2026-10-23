@@ -1,5 +1,6 @@
 using TuiCode.Abstractions;
 using TuiCode.Syntax;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Languages;
 
 namespace TuiCode.Workbench.Settings;
@@ -89,24 +90,15 @@ public sealed class LanguageServersView : View
     {
         if (Dialog is not null || SelectedRow is not { } row) return;
         var dialog = new LanguageServerDialog(row.Language, row.Setting, _isInstalled);
-        dialog.Saved += (_, setting) => Choose(row.Language.Id, setting);
-        dialog.Closed += (_, _) => CloseDialog(dialog);
-
-        // Hosted by the settings window rather than this narrower pane, so the dialog isn't clipped.
-        var host = SuperView ?? this;
         Dialog = dialog;
-        host.Add(dialog);
-        _scopes.Push(dialog.Scope);
+        // Hosted by the settings window rather than this narrower pane, so the dialog isn't clipped.
+        HostedDialog.Show(SuperView ?? this, _scopes, dialog, () =>
+        {
+            Dialog = null;
+            if (dialog.Confirmed) Choose(row.Language.Id, dialog.Setting);
+            _list.SetFocus();
+        });
         dialog.FocusServer();
-    }
-
-    private void CloseDialog(LanguageServerDialog dialog)
-    {
-        _scopes.Pop(dialog.Scope);
-        dialog.SuperView?.Remove(dialog);
-        dialog.Dispose();
-        Dialog = null;
-        _list.SetFocus();
     }
 
     internal void Choose(string languageId, LanguageServerSetting setting)

@@ -54,26 +54,6 @@ public class RecentFolderListTests
         Assert.Equal(@"~\code", row.Parent);
     }
 
-    [Theory]
-    [InlineData("SIDE", "sidebar-arrows")]
-    [InlineData("tuicode", "sidebar-arrows,save-conflict")]
-    [InlineData("~/code/key", "vault")]
-    [InlineData("", "sidebar-arrows,save-conflict,vault")]
-    [InlineData("nothing", "")]
-    public void Filter_matches_the_name_or_the_parent_case_insensitively(string filter, string expected)
-    {
-        IReadOnlyList<RecentFolder> rows =
-        [
-            RecentFolderList.Row("/Users/me/code/TuiCode/sidebar-arrows", Home),
-            RecentFolderList.Row("/Users/me/code/TuiCode/save-conflict", Home),
-            RecentFolderList.Row("/Users/me/code/keyboards/vault", Home),
-        ];
-
-        var names = RecentFolderList.Filter(rows, filter).Select(r => r.Name);
-
-        Assert.Equal(expected, string.Join(",", names));
-    }
-
     [Fact]
     public void Display_lines_the_parents_up_in_a_column_after_the_names()
     {
