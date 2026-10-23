@@ -128,6 +128,7 @@ public sealed class LanguageServer : IDisposable
                     ["synchronization"] = new JsonObject { ["didSave"] = true },
                     ["definition"] = new JsonObject { ["linkSupport"] = true },
                     ["documentSymbol"] = new JsonObject { ["hierarchicalDocumentSymbolSupport"] = true },
+                    ["hover"] = new JsonObject { ["contentFormat"] = new JsonArray("markdown", "plaintext") },
                 },
             },
         };
@@ -239,6 +240,10 @@ public sealed class LanguageServer : IDisposable
     /// <summary>Where the symbol at <paramref name="line"/> and UTF-16 <paramref name="character"/> is defined.</summary>
     public async Task<IReadOnlyList<SourceLocation>> DefinitionAsync(string path, int line, int character) =>
         LspLocations.Parse(await RequestAsync("textDocument/definition", Position(path, line, character)).ConfigureAwait(false));
+
+    /// <summary>What the server says the symbol at <paramref name="line"/> and UTF-16 <paramref name="character"/> is.</summary>
+    public async Task<IReadOnlyList<HoverPart>> HoverAsync(string path, int line, int character) =>
+        LspHover.Parse(await RequestAsync("textDocument/hover", Position(path, line, character)).ConfigureAwait(false));
 
     /// <summary>Where the symbol at <paramref name="line"/> and UTF-16 <paramref name="character"/> is used, leaving out its declaration.</summary>
     public async Task<IReadOnlyList<SourceLocation>> ReferencesAsync(string path, int line, int character)

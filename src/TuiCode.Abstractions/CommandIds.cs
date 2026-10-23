@@ -97,6 +97,13 @@ public static class CommandIds
     public const string DefinitionPickerDown = "definitionPicker.action.down";
     public const string DefinitionPickerPageUp = "definitionPicker.action.pageUp";
     public const string DefinitionPickerPageDown = "definitionPicker.action.pageDown";
+    public const string QuickInfo = "workbench.action.quickInfo";
+    public const string QuickInfoClose = "quickInfo.action.close";
+    public const string QuickInfoGoToDefinition = "quickInfo.action.goToDefinition";
+    public const string QuickInfoUp = "quickInfo.action.up";
+    public const string QuickInfoDown = "quickInfo.action.down";
+    public const string QuickInfoPageUp = "quickInfo.action.pageUp";
+    public const string QuickInfoPageDown = "quickInfo.action.pageDown";
     public const string FindUsages = "workbench.action.findUsages";
     public const string AiAssistance = "workbench.action.aiAssistance";
     public const string AssistantSend = "assistant.action.send";

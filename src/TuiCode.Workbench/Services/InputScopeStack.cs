@@ -23,6 +23,8 @@ public sealed class InputScopeStack : IInputScopeStack
         _stack.Pop();
     }
 
+    public IKeybindingService? Top => _stack.Count > 0 ? _stack.Peek() : null;
+
     public KeyHandlingResult Handle(Key key) =>
         _stack.Count == 0 ? KeyHandlingResult.Pass : _stack.Peek().Handle(key);
 }

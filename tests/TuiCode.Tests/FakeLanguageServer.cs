@@ -36,6 +36,14 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
     /// <summary>Holds every references request until it's set.</summary>
     public ManualResetEventSlim? HoldReferences { get; set; }
 
+    /// <summary>Holds hover requests on <see cref="HoldHoverOf"/> until it's set, while answering the rest.</summary>
+    public ManualResetEventSlim? HoldHover { get; set; }
+
+    public string? HoldHoverOf { get; set; }
+
+    /// <summary>What hover answers for a word; by default its declaration as C# and a line about it, or null for no declaration.</summary>
+    public Func<string, string?, JsonNode?>? Hover { get; set; }
+
     /// <summary>Files the server has loaded from the solution, by path.</summary>
     public ConcurrentDictionary<string, string> Files { get; } = new(StringComparer.Ordinal);
 
@@ -57,6 +65,15 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
         if (Missing) return null;
         var server = new InProcessServer();
         server.Connection.RequestHandler = (method, parameters) => Answer(server, method, parameters);
+        if (HoldHover is { } hold)
+            server.Connection.AsyncRequestHandler = (method, parameters) =>
+                method == "textDocument/hover" && WordAt(parameters!) == HoldHoverOf
+                    ? Task.Run(() =>
+                    {
+                        hold.Wait(TimeSpan.FromSeconds(30));
+                        return Answer(server, method, parameters);
+                    })
+                    : Task.FromResult(Answer(server, method, parameters));
         server.Connection.NotificationReceived += (method, parameters) => OnNotification(server, method, parameters);
         server.Connection.Start();
         Servers.Add(server);
@@ -90,6 +107,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             "textDocument/definition" => Definitions(parameters!),
             "textDocument/references" => References(parameters!),
             "textDocument/documentSymbol" => Symbols(parameters!),
+            "textDocument/hover" => HoverAt(parameters!),
             _ => null,
         };
     }
@@ -166,6 +184,19 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             }
         }
         return found;
+    }
+
+    private JsonNode? HoverAt(JsonNode parameters)
+    {
+        if (WordAt(parameters) is not { } word) return null;
+        var declaration = Sources().Values.SelectMany(Lines).Select(l => l.Trim())
+            .FirstOrDefault(l => Regex.IsMatch(l, $@"\b(?:class|struct|interface|void|int|string)\s+{Regex.Escape(word)}\b"));
+        if (Hover is { } hover) return hover(word, declaration);
+        if (declaration is null) return null;
+        return new JsonObject
+        {
+            ["contents"] = new JsonObject { ["kind"] = "markdown", ["value"] = $"```csharp\n{declaration}\n```\n\nAbout {word}." },
+        };
     }
 
     private JsonArray Symbols(JsonNode parameters)
