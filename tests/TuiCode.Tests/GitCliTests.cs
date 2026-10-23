@@ -388,6 +388,7 @@ public class GitCliTests
             new GitChange(GitChangeKind.Modified, "src/mod.cs"),
             new GitChange(GitChangeKind.Added, "src/new.cs"),
             new GitChange(GitChangeKind.Added, "staged.cs"),
+            new GitChange(GitChangeKind.Added, "untracked.cs"),
         ], changes.OrderBy(c => c.Path, StringComparer.Ordinal));
         Assert.Equal("a file long enough for git to spot the rename\n", (await git.ShowRepoFileAsync(repo.Path, "old/moved.cs", mergeBase, ct)).Value);
         Assert.Null((await git.ShowRepoFileAsync(repo.Path, "src/new.cs", mergeBase, ct)).Value);
@@ -417,6 +418,67 @@ public class GitCliTests
         Assert.Equal(new GitLineCount(0, 2), counts["gone.cs"]);
         Assert.Equal(new GitLineCount(0, 0), counts["new.cs"]);
         Assert.True(counts["img.bin"].Binary);
+    }
+
+    [Fact]
+    public async Task Untracked_files_are_compared_with_the_base_like_tracked_ones()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Write(".gitignore", "*.log\n");
+        repo.Commit("restored.cs", "back again\n", "Base");
+        repo.Commit("still-gone.cs", "bye\n", "Add still gone");
+        repo.Commit("differs.cs", "old\n", "Add differs");
+        repo.Git("checkout", "-q", "-b", "feature");
+        repo.Git("rm", "-q", "restored.cs", "still-gone.cs", "differs.cs");
+        repo.Git("-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false",
+            "commit", "-q", "-m", "Delete them");
+        repo.Write("restored.cs", "back again\n");
+        repo.Write("differs.cs", "new\nlines\n");
+        repo.Write("sub dir/new file.cs", "one\ntwo\nthree\n");
+        repo.Write("ünïcode.cs", "é\n");
+        repo.Write("debug.log", "ignored\n");
+        System.IO.File.WriteAllBytes(repo.File("img.bin"), [0, 1, 2, 0]);
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+        var mergeBase = (await git.GetMergeBaseAsync(repo.Path, "HEAD", "main", ct)).Value!;
+
+        var changes = (await git.GetChangedFilesAsync(repo.Path, mergeBase, ct)).Value;
+        var counts = (await git.GetLineCountsAsync(repo.Path, mergeBase, ct)).Value;
+
+        Assert.Equal(
+        [
+            new GitChange(GitChangeKind.Added, ".gitignore"),
+            new GitChange(GitChangeKind.Modified, "differs.cs"),
+            new GitChange(GitChangeKind.Added, "img.bin"),
+            new GitChange(GitChangeKind.Deleted, "still-gone.cs"),
+            new GitChange(GitChangeKind.Added, "sub dir/new file.cs"),
+            new GitChange(GitChangeKind.Added, "ünïcode.cs"),
+        ], changes.OrderBy(c => c.Path, StringComparer.Ordinal));
+        Assert.Equal(new GitLineCount(2, 1), counts["differs.cs"]);
+        Assert.Equal(new GitLineCount(3, 0), counts["sub dir/new file.cs"]);
+        Assert.Equal(new GitLineCount(1, 0), counts["ünïcode.cs"]);
+        Assert.True(counts["img.bin"].Binary);
+
+        repo.Git("add", "-A");
+        Assert.Equal(counts, (await git.GetLineCountsAsync(repo.Path, mergeBase, ct)).Value);
+    }
+
+    [Fact]
+    public async Task Listing_untracked_files_leaves_the_index_alone()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "a\n", "Base");
+        repo.Git("checkout", "-q", "-b", "feature");
+        repo.Write("new.cs", "new\n");
+        var index = repo.File(".git/index");
+        var before = System.IO.File.ReadAllBytes(index);
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.Single((await git.GetChangedFilesAsync(repo.Path, "main", ct)).Value);
+        Assert.Single((await git.GetLineCountsAsync(repo.Path, "main", ct)).Value);
+
+        Assert.Equal(before, System.IO.File.ReadAllBytes(index));
     }
 
     [Fact]

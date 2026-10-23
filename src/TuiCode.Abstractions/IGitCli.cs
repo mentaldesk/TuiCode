@@ -49,7 +49,7 @@ public interface IGitCli
     /// <summary>The full hash of the best common ancestor of two revisions, or null when they share no history.</summary>
     Task<GitResult<string?>> GetMergeBaseAsync(string path, string first, string second, CancellationToken cancellationToken = default);
 
-    /// <summary>Files that differ between <paramref name="revision"/> and the working copy, staged or not, with repo-relative paths.</summary>
+    /// <summary>Files that differ between <paramref name="revision"/> and the working copy, staged, unstaged or untracked and not ignored, with repo-relative paths.</summary>
     Task<GitResult<IReadOnlyList<GitChange>>> GetChangedFilesAsync(string path, string revision, CancellationToken cancellationToken = default);
 
     /// <summary>The lines each file in <see cref="GetChangedFilesAsync"/> adds and removes, keyed by its (new) repo-relative path.</summary>
