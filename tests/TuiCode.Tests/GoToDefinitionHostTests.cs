@@ -55,7 +55,7 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
             () => { languageShown = workbench.StatusBar.DisplayedText; Tab(workbench).MoveCursor(4, 26); },
             () => host.App.InjectKey(Key.G.WithCtrl),
             () => host.App.InjectKey(Key.D),
-            () => Tab(workbench).File.Name == "Diff.cs",
+            () => Tab(workbench) is { File.Name: "Diff.cs", StickyScan.Done: true },
             () => { jumped = Where(workbench); topRow = Tab(workbench).TopRow; host.App.InjectKey(Key.G.WithCtrl); },
             () => host.App.InjectKey(Key.P),
             () => { back = Where(workbench); host.App.InjectKey(Key.G.WithCtrl); },
@@ -65,7 +65,8 @@ public class GoToDefinitionHostTests : StaticConfigurationTest
 
         Assert.EndsWith("C# ● ready", languageShown, StringComparison.Ordinal);
         Assert.Equal(("Diff.cs", 42, 8), jumped);
-        Assert.Equal(42 - 2, topRow);
+        // Two rows below `class Diff`, pinned over the top row.
+        Assert.Equal(42 - 1 - 2, topRow);
         Assert.Equal(("Caller.cs", 4, 26), back);
         Assert.Equal(jumped, forward);
         Assert.True(_server.Current.Exited.IsCompleted);
