@@ -107,7 +107,13 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     [Fact]
     public async Task F1_in_the_AI_assistance_tab_ends_with_the_keys_that_switch_the_panels_tabs()
     {
-        var help = await HelpFrom(() => { Built.ShowAssistant(true); Built.Panel.Assistant.FocusInput(); }, "AI assistance");
+        _fs.AddFile("/work/a.txt", new MockFileData("one"));
+        var help = await HelpFrom(() =>
+        {
+            Built.OpenFile(_fs.FileInfo.New("/work/a.txt"));
+            Built.ShowAssistant(true);
+            Built.Panel.Assistant.FocusInput();
+        }, "AI assistance");
 
         Assert.Equal(
         [
@@ -266,7 +272,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     {
         var view = await ExplorerDialog();
 
-        Assert.DoesNotContain(Everywhere(view), row => row.Label is "Find in file" or "Replace in file");
+        Assert.DoesNotContain(Everywhere(view), row => row.Label is "Find in file" or "Replace in file" or "Show or hide file history");
         Assert.Contains(new KeyRow("Ctrl+Shift+H", "Replace globally"), Everywhere(view));
     }
 
@@ -282,6 +288,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
 
         Assert.Contains(new KeyRow("Ctrl+F", "Find in file"), Everywhere(view));
         Assert.Contains(new KeyRow("Ctrl+H", "Replace in file"), Everywhere(view));
+        Assert.Contains(Everywhere(view), row => row.Label == "Show or hide file history");
     }
 
     [Fact]

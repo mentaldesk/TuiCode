@@ -737,7 +737,8 @@ public sealed class WorkbenchHost : IDisposable
             CommandScope.Editor, () => GitRepository.Contains(Group.ActiveTab?.File.Directory));
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.GitBlame, "Git blame", GitBlame, CommandScope.Editor, FileOpen);
-        _commands.Register(CommandIds.ToggleFileHistory, "Show or hide file history", () => _fileHistory.Toggle(), CommandScope.Global, null,
+        _commands.Register(CommandIds.ToggleFileHistory, "Show or hide file history", () => _fileHistory.Toggle(), CommandScope.Global,
+            () => FileOpen() || _workbench.IsHistoryOn,
             () => _workbench.IsHistoryOn ? "Hide file history" : "Show file history");
         // No default key (#272).
         _commands.Register(CommandIds.ReloadFromDisk, "Reload from disk", ReloadFromDisk, CommandScope.Editor, FileOpen);
