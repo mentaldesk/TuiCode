@@ -1,12 +1,14 @@
+using MentalDesk.Tui.Dialogs;
+using MentalDesk.Tui.Fields;
 using TuiCode.Abstractions;
 using TuiCode.Syntax;
-using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Settings;
 
-/// <summary>Chooses one language's server (#456). The owner pushes <see cref="Scope"/> and removes it on <see cref="Closed"/>.</summary>
-public sealed class LanguageServerDialog : Window
+/// <summary>Chooses one language's server (#456).</summary>
+public sealed class LanguageServerDialog : AppDialog
 {
+    private const string SaveId = "languageServer.save";
     private const int FieldColumn = 12;
 
     private readonly LanguageServerForm _form;
@@ -14,28 +16,17 @@ public sealed class LanguageServerDialog : Window
     private readonly TextField _command;
     private readonly TextField _arguments;
     private readonly VerbatimLabel _status;
-    private readonly ICommandService _scopeCommands = new CommandService();
     private bool _filling;
 
-    public IKeybindingService Scope { get; }
-
-    /// <summary>Raised with the server to save.</summary>
-    public event EventHandler<LanguageServerSetting>? Saved;
-
-    /// <summary>Raised when the dialog should be removed: after a save, or on Esc.</summary>
-    public event EventHandler? Closed;
-
     internal LanguageServerDialog(SyntaxLanguage language, LanguageServerSetting current, Func<string, bool> isInstalled)
+        : this(new LanguageServerForm(language.Id, current, isInstalled), language.Name)
     {
-        _form = new LanguageServerForm(language.Id, current, isInstalled);
+    }
 
-        Title = $"{language.Name} language server";
-        BorderStyle = LineStyle.Single;
-        X = Pos.Center();
-        Y = Pos.Center();
-        Width = 64;
-        Height = _form.Options.Count + 10;
-        CanFocus = true;
+    private LanguageServerDialog(LanguageServerForm form, string languageName)
+        : base($"{languageName} language server", 64, form.Options.Count + 8)
+    {
+        _form = form;
 
         var serverLabel = new VerbatimLabel { X = 1, Y = 0, Text = "Server:" };
         _server = new OptionSelector
@@ -44,9 +35,8 @@ public sealed class LanguageServerDialog : Window
             Y = 0,
             Labels = [.. _form.Options],
             Value = _form.Selected,
-        };
+        }.SelectOnArrows();
         _server.ValueChanged += (_, _) => OnServerChanged();
-        _server.FocusedChanged += (_, e) => FollowFocus(e);
 
         var fieldsTop = _form.Options.Count + 1;
         var commandLabel = new VerbatimLabel { X = 1, Y = fieldsTop, Text = "Command:" };
@@ -57,18 +47,18 @@ public sealed class LanguageServerDialog : Window
         _arguments.TextChanged += (_, _) => OnFieldsChanged();
 
         _status = new VerbatimLabel { X = 1, Y = fieldsTop + 3, Width = Dim.Fill(1), Height = 2 };
-        var hint = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(1), Text = "Ctrl+Enter: Save   Esc: Cancel" };
 
-        Add(serverLabel, _server, commandLabel, _command, argumentsLabel, _arguments, _status, hint);
+        Add(serverLabel, _server, commandLabel, _command, argumentsLabel, _arguments, _status);
 
-        Scope = new KeybindingService(_scopeCommands);
-        _scopeCommands.Register(CommandIds.LanguageServerSave, Save);
-        _scopeCommands.Register(CommandIds.LanguageServerCancel, () => Closed?.Invoke(this, EventArgs.Empty));
-        Scope.Bind("Ctrl+Enter", CommandIds.LanguageServerSave);
-        Scope.Bind("Esc", CommandIds.LanguageServerCancel);
+        Commands.Register(SaveId, "Save", Accept);
+        Keys.Bind("Ctrl+Enter", SaveId);
+        AddButtonRow(fieldsTop + 6, CommandButton(ButtonKind.Primary, SaveId), CommandButton(ButtonKind.Secondary, CancelId));
 
         ShowStatus();
     }
+
+    /// <summary>The server to save, once <see cref="AppDialog.Confirmed"/>.</summary>
+    public LanguageServerSetting Setting => _form.Setting;
 
     internal LanguageServerForm Form => _form;
 
@@ -85,17 +75,6 @@ public sealed class LanguageServerDialog : Window
         ShowStatus();
     }
 
-    private void FollowFocus(HasFocusEventArgs e)
-    {
-        if (e.CurrentFocused?.SuperView == _server) _server.Value = _server.FocusedItem;
-        // TG throws if focus moves again while it's still being set.
-        else App?.AddTimeout(TimeSpan.Zero, () =>
-        {
-            if (_server.HasFocus) _server.FocusedItem = _form.Selected;
-            return false;
-        });
-    }
-
     private void OnFieldsChanged()
     {
         if (_filling) return;
@@ -107,10 +86,4 @@ public sealed class LanguageServerDialog : Window
     }
 
     private void ShowStatus() => _status.Text = string.Join('\n', _form.Status());
-
-    private void Save()
-    {
-        Saved?.Invoke(this, _form.Setting);
-        Closed?.Invoke(this, EventArgs.Empty);
-    }
 }

@@ -91,6 +91,30 @@ public class SubmitReviewHostTests : StaticConfigurationTest
         Assert.Equal([(_git.Root, 187, GitHubReviewVerdict.Approve, "")], _gitHub.Reviews);
     }
 
+    [Fact]
+    public async Task Tabbing_back_into_the_verdict_lands_on_the_chosen_one_and_one_Tab_leaves()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var summaryFocused = false;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is { Loaded: true },
+            () => Choose(host, GitHubReviewVerdict.Approve),
+            () => host.App.InjectKey(Key.Tab.WithShift),
+            () => host.App.InjectKey(Key.CursorRight),
+            () => Dialog(workbench)!.Verdict == GitHubReviewVerdict.RequestChanges,
+            () => host.App.InjectKey(Key.Tab),
+            () => { summaryFocused = Dialog(workbench)!.SubViews.SelectMany(Descendants).OfType<InputView>().Single().HasFocus; },
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.True(summaryFocused);
+    }
+
+    private static IEnumerable<View> Descendants(View view) => view.SubViews.SelectMany(Descendants).Prepend(view);
+
     [Theory]
     [InlineData(GitHubReviewVerdict.Comment)]
     [InlineData(GitHubReviewVerdict.RequestChanges)]
@@ -355,7 +379,6 @@ public class SubmitReviewHostTests : StaticConfigurationTest
     {
         host.App.InjectKey(Key.Tab.WithShift);
         for (var i = 0; i < (int)verdict; i++) host.App.InjectKey(Key.CursorRight);
-        host.App.InjectKey(Key.Space);
         host.App.InjectKey(Key.Tab);
     }
 
