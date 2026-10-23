@@ -25,6 +25,8 @@ public sealed class EditorTab : FrameView
     private SymbolScan? _stickyFrom;
     // Scrolling waits for the first draw: TG doesn't size the content to the text until then.
     private ViewPosition? _pendingView;
+    // A jump made before the pins were known, made again once they are unless the view or the text has moved since (#588).
+    private (int First, int Last, (System.Drawing.Point View, int Row, int Column, int Edits) At)? _revealOnPins;
 
     public IFileInfo File { get; private set; }
     public bool IsDirty => _dirty;
@@ -210,6 +212,7 @@ public sealed class EditorTab : FrameView
             _text.Sticky = StickyLines.None;
             _stickyScan = null;
             _stickyFrom = null;
+            _revealOnPins = null;
             return;
         }
         var stale = _stickyScan is not var (edits, grammar, _) || edits != _edits || !Equals(grammar, Grammar);
@@ -218,6 +221,7 @@ public sealed class EditorTab : FrameView
         if (_stickyScan?.Scan is not { } scan)
         {
             _text.Sticky = StickyLines.None;
+            _revealOnPins = null;
             return;
         }
         if (!scan.Advance(StickyBudget))
@@ -228,6 +232,8 @@ public sealed class EditorTab : FrameView
         if (ReferenceEquals(scan, _stickyFrom)) return;
         _stickyFrom = scan;
         _text.Sticky = StickyLines.From(scan.Symbols, scan.Lines);
+        if (_revealOnPins is { } jump && jump.At == Where) Scroll(jump.First, jump.Last);
+        _revealOnPins = null;
         if (stale) DrawAgainSoon();
     }
 
@@ -376,7 +382,7 @@ public sealed class EditorTab : FrameView
         if (_pendingView is not { } view || _text.Viewport.Height <= 0) return;
         _pendingView = null;
         _text.ScrollToLine(view.TopLine, view.LeftColumn);
-        if (CursorRow < _text.TopLine || CursorRow >= _text.TopLine + _text.Viewport.Height) RevealLines(CursorRow, CursorRow);
+        if (CursorRow < _text.TopLine || CursorRow >= _text.TopLine + _text.Viewport.Height) Scroll(CursorRow, CursorRow);
     }
 
     /// <summary>The cursor's column in UTF-16 chars, as language servers count them.</summary>
@@ -405,6 +411,17 @@ public sealed class EditorTab : FrameView
     public void RevealLines(int first, int last)
     {
         _pendingView = null;
+        Scroll(first, last);
+        _revealOnPins = PinsKnown ? null : (first, last, Where);
+    }
+
+    private bool PinsKnown => !Settings.StickyLines || Grammar is null
+        || _stickyScan is (var edits, var grammar, { Done: true } scan) && edits == _edits && Equals(grammar, Grammar) && ReferenceEquals(scan, _stickyFrom);
+
+    private (System.Drawing.Point View, int Row, int Column, int Edits) Where => (_text.Viewport.Location, CursorRow, CursorColumn, _edits);
+
+    private void Scroll(int first, int last)
+    {
         if (WordWrap)
         {
             _text.RevealWrappedLines(first, last);

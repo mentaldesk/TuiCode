@@ -207,6 +207,24 @@ public class EditorStickyLinesTests : StaticConfigurationTest
         Assert.DoesNotContain("label", screen[2]);
     }
 
+    [Fact]
+    public void A_jump_into_a_file_scanned_in_one_frame_lands_below_the_pins_on_its_first_draw()
+    {
+        using var warm = Tab("Warm.cs", Code);
+        _fs.AddFile("/work/Widget.cs", new MockFileData(Code));
+        using var tab = new EditorTab(_fs.FileInfo.New("/work/Widget.cs"), Syntax) { App = _app, Width = Width, Height = Height };
+        tab.BeginInit();
+        tab.EndInit();
+        tab.Layout();
+
+        tab.MoveCursor(20, 0);
+        tab.RevealLines(20, 20);
+        Render(tab);
+
+        Assert.Equal([Class, Run], tab.PinnedLines);
+        Assert.Equal(20 - 2 - Reveal.Margin, tab.TopRow);
+    }
+
     private EditorTab Tab(string name, string content, int height = Height)
     {
         _fs.AddFile($"/work/{name}", new MockFileData(content));
