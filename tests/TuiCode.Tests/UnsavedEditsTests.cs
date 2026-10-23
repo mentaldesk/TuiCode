@@ -273,6 +273,7 @@ public class UnsavedEditsTests
 
         using var next = Session(Next);
         next.OpenFile(File("/work/renamed.txt"));
+        next.UnsavedEdits!.Wait();
         Assert.Equal(["mine", ""], next.Editor.Group.ActiveTab!.Lines);
         Assert.Single(Copies());
     }

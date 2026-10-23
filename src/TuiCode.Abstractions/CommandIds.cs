@@ -9,6 +9,7 @@ public static class CommandIds
     public const string CloseActiveEditor = "workbench.action.closeActiveEditor";
     public const string CloseOtherTabs = "workbench.action.closeOtherEditors";
     public const string CloseAllTabs = "workbench.action.closeAllEditors";
+    public const string ReopenClosedEditor = "workbench.action.reopenClosedEditor";
     public const string NextEditor = "workbench.action.nextEditor";
     public const string PreviousEditor = "workbench.action.previousEditor";
     public const string MoveToOtherGroup = "workbench.action.moveEditorToOtherGroup";

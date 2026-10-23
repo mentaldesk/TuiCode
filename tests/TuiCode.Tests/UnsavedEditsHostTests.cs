@@ -87,20 +87,11 @@ public class UnsavedEditsHostTests : StaticConfigurationTest
                 workbench.UnsavedEdits!.Flush();
             },
             () => host.App.InjectKey(Key.Q.WithCtrl),
-            () => Confirm(workbench) is not null,
-            () =>
-            {
-                if (Confirm(workbench)?.FocusedChoice == "Don't save") return true;
-                host.App.InjectKey(Key.Tab);
-                return false;
-            },
-            () => host.App.InjectKey(Key.Enter));
+            () => ConfirmDialogs.Of(workbench) is not null,
+            ConfirmDialogs.Choose(host, workbench, "Don't save"));
 
         Assert.Empty(_fs.Directory.GetFiles(Recovery));
     }
-
-    private static ConfirmView? Confirm(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<ConfirmView>().SingleOrDefault();
 
     private Workbench.Workbench BuildWorkbench(RecoveryOwner owner) =>
         new(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart(), _workspaces,

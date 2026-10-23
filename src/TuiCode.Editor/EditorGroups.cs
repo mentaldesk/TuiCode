@@ -10,6 +10,7 @@ namespace TuiCode.Editor;
 public sealed class EditorGroups
 {
     private readonly EditorGroup[] _all;
+    private readonly ClosedTabs _closed = new();
 
     public event EventHandler<IFileInfo>? FileSaved;
     public event EventHandler<CopyOutcome>? Copied;
@@ -40,7 +41,11 @@ public sealed class EditorGroups
             group.CursorMoved += (_, e) => CursorMoved?.Invoke(this, e);
             group.PinnedLineClicked += (_, e) => PinnedLineClicked?.Invoke(this, e);
             group.EditorOpening += (_, tab) => EditorOpening?.Invoke(this, tab);
-            group.EditorClosing += (_, tab) => EditorClosing?.Invoke(this, tab);
+            group.EditorClosing += (sender, tab) =>
+            {
+                Remember((EditorGroup)sender!, tab);
+                EditorClosing?.Invoke(this, tab);
+            };
             group.ActiveTabChanged += (_, _) =>
             {
                 // A tab opened into the second group lands after its TabsChanged, so the split shows up here.
@@ -180,6 +185,29 @@ public sealed class EditorGroups
         Second.CloseAll();
         First.CloseAll();
         Focused = First;
+        _closed.Clear();
+    }
+
+    /// <summary>Whether a closed file tab can come back: one that isn't open again and still exists.</summary>
+    public bool CanReopen => _closed.Any(Reopenable);
+
+    /// <summary>Reopens the newest closed file tab that can come back, in its place, or at the end of the first group once its own has gone; null when none can.</summary>
+    public EditorTab? ReopenClosed()
+    {
+        if (_closed.Take(Reopenable) is not { } closed) return null;
+        var stillThere = closed.Group == 0 || IsSplit;
+        Focused = stillThere ? _all[closed.Group] : First;
+        return Focused.Reopen(closed, stillThere ? closed.Index : null);
+    }
+
+    private bool Reopenable(IFileInfo file) =>
+        Holding(file.FullName) is null && file.FileSystem.File.Exists(file.FullName);
+
+    private void Remember(EditorGroup group, EditorTab tab)
+    {
+        var strip = group.TabCollection.ToList();
+        var index = strip.Take(strip.IndexOf(tab)).Count(t => t is not DiffTab diff || diff.Source != tab);
+        _closed.Push(new ClosedTab(tab.File, Array.IndexOf(_all, group), index, tab.ViewPosition, tab.History));
     }
 
     public void InferGrammars()
