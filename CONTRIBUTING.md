@@ -13,7 +13,7 @@ For code-level conventions (branch names, key handling, AOT gotchas, test framew
 
 ## Releases
 
-A release is a `v*` git tag, a GitHub Release attaching native single-file binaries for every supported runtime plus `.deb` and `.rpm` packages for Linux x64 and arm64, and a Homebrew formula and Scoop manifest pointing at them. It all happens from the Actions tab — nothing is done locally, and no tag is pushed by hand.
+A release is a `v*` git tag, a GitHub Release attaching native single-file binaries for every supported runtime plus `.deb` and `.rpm` packages for Linux x64 and arm64, a Homebrew formula and Scoop manifest pointing at them, and a signed apt repository serving the `.deb`s. It all happens from the Actions tab — nothing is done locally, and no tag is pushed by hand.
 
 Version-picking and publishing are [a-team's reusable workflows](https://github.com/mentaldesk/a-team), pinned to a released tag. `release.yml` keeps TuiCode's own build matrix — five RIDs, AOT, macOS signing and notarisation — and calls the shared ones on either side of it, so there's one release flow to maintain rather than two that drift.
 
@@ -57,10 +57,14 @@ flowchart TD
     TapPR -->|tap CI goes green| Brew[("brew install<br/>mentaldesk/tap/tuicode")]
     Render --> Bucket["commit to scoop-bucket<br/>bucket/tuicode.json"]
     Bucket --> Scoop[("scoop install<br/>mentaldesk/tuicode")]
+    Tag --> Apt["sign + push mentaldesk/apt<br/>with APT_GPG_PRIVATE_KEY"]
+    Apt --> AptCheck["apt-check job: apt install<br/>in debian:12, ubuntu:22.04"]
+    AptCheck --> AptUser[("apt install tuicode")]
 
     style Public fill:#e0ffe0
     style Brew fill:#e0ffe0
     style Scoop fill:#e0ffe0
+    style AptUser fill:#e0ffe0
 ```
 
 The shared publish job creates the tag, so a build that fails on any platform (the matrix is `fail-fast`) leaves no tag behind and nothing to clean up. `concurrency: release` keeps two dispatches from racing for the same version. Re-running the workflow after a successful publish picks the *next* version — tags are immutable; never delete and re-push one.
@@ -71,13 +75,19 @@ The release is published outright rather than as a draft: draft assets 404 for u
 
 `packaging/tuicode.rb` is the tap's formula and `packaging/tuicode.json` the bucket's Scoop manifest, each with the version and its SHA256s replaced by `{{version}}` and `{{sha_<rid>}}`. The shared publish job renders both from the archives it downloaded and fails the job on a placeholder nothing filled — `PackagingTemplateTests` catches a typo'd one before the release rather than during it, and checks the manifest still parses as JSON once rendered. The formula has no `version` line: `brew audit --strict` rejects one that duplicates the URL.
 
-Both are pushed with `PACKAGES_TOKEN`, a fine-grained PAT with Contents + Pull requests write on `mentaldesk/homebrew-tap` and Contents write on `mentaldesk/scoop-bucket`, stored in the `release` environment, which only `main` can deploy to. Without that secret the release still publishes and the job warns.
+Both are pushed with `PACKAGES_TOKEN`, a fine-grained PAT with Contents + Pull requests write on `mentaldesk/homebrew-tap` and Contents write on `mentaldesk/scoop-bucket` and `mentaldesk/apt`, stored in the `release` environment, which only `main` can deploy to. Without that secret the release still publishes and the job warns.
 
 The tap gets a PR its own CI gates. The bucket has no CI, so the manifest is committed straight to its default branch — a mistake in the template is live for Windows users immediately, which is what the placeholder and JSON checks are there to prevent.
 
 ### The Linux packages
 
 `packaging/nfpm.yaml` describes the `.deb` and `.rpm`: the binary as `/usr/bin/tuicode`, the licence and both notices files, a dependency on glibc 2.35 or newer (the binary links nothing else), and a suggestion of `wl-clipboard` or `xclip`, which apt and dnf don't install by default. On the Linux legs, `packaging/build.sh` builds both formats from the binary the tarball holds, with [nfpm](https://nfpm.goreleaser.com/), and `packaging/test-install.sh` installs each in a clean `debian:12`, `ubuntu:22.04` and `fedora` container, runs `tuicode --smoke`, then removes it and checks nothing is left. A failure there fails the build, so nothing is published. CI's `aot` job does the same on every push, at two versions so the second install checks the upgrade.
+
+### The apt repository
+
+With `apt: true`, the shared publish job puts the release's `.deb`s in [mentaldesk/apt](https://github.com/mentaldesk/apt), replacing the previous version, regenerates its `Packages` and `Release` files, signs them and pushes. GitHub Pages serves it at `https://mentaldesk.github.io/apt`, with the public key at `key.asc`. The signing key is `APT_GPG_PRIVATE_KEY` and `APT_GPG_PASSPHRASE` in the `release` environment (fingerprint `BEC853B1FD1C68F3D381CE6B55B0C01199016EA6`); without it the release still publishes and the job warns. Every repo publishing to `mentaldesk/apt` signs with that same key, since users trust the one `key.asc`.
+
+Once it's pushed, `release.yml`'s `apt-check` job runs `packaging/test-apt-repo.sh` on amd64 and arm64: in clean `debian:12` and `ubuntu:22.04` containers it follows the README's setup, waits up to ten minutes for Pages to serve the new version, installs it and runs `tuicode --smoke-syntax`, failing on any warning from `apt update`. The release is already out by then, so a failure there means fixing the repo, not the release.
 
 ### Distribution
 
@@ -94,7 +104,9 @@ flowchart LR
 
     Release -.->|future: #75| Winget["winget"]
     Release -->|"download .deb / .rpm"| Linux["Debian, Ubuntu, Fedora<br/>/usr/bin/tuicode"]
-    Release -.->|future: #44| LinuxRepos["apt repo / AUR / Flatpak"]
+    Release -->|"signed .debs"| Apt["mentaldesk/apt<br/>on GitHub Pages"]
+    Apt -->|apt install / upgrade| AptUser["Debian, Ubuntu<br/>/usr/bin/tuicode"]
+    Release -.->|future: #383| LinuxRepos["AUR"]
 ```
 
 The Homebrew formula points at the release tarball URL with a pinned SHA256. Both the PR and its merge are automatic; `brew upgrade tuicode` picks up the new version once it lands, and `tuicode`'s About dialog reports the same number.

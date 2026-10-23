@@ -18,7 +18,7 @@ concurrency: release
 
 jobs:
   version:
-    uses: mentaldesk/a-team/.github/workflows/release-version.yml@v0.1.3
+    uses: mentaldesk/a-team/.github/workflows/release-version.yml@v0.1.95
     # A called workflow doesn't inherit the caller's permissions.
     permissions:
       contents: read
@@ -189,7 +189,7 @@ jobs:
   publish:
     needs: [version, build]
     if: github.ref == 'refs/heads/main'
-    uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.1.3
+    uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.1.95
     permissions:
       contents: write
     with:
@@ -198,7 +198,33 @@ jobs:
       tag: ${{ needs.version.outputs.tag }}
       formula: packaging/tuicode.rb
       scoop: packaging/tuicode.json
+      apt: true
       artifacts: tuicode-*
       environment: release
     # The only way an environment's secrets reach a called workflow: actions/runner#4453.
     secrets: inherit
+
+  apt-check:
+    name: apt install ${{ matrix.arch }}
+    needs: [version, publish]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install from the apt repository
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          for image in debian:12 ubuntu:22.04; do
+            echo "::group::$image"
+            packaging/test-apt-repo.sh "$image" "$VERSION"
+            echo "::endgroup::"
+          done
