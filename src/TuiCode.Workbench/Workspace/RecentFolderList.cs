@@ -3,7 +3,7 @@ namespace TuiCode.Workbench.Workspace;
 /// <summary>A row of the <c>or</c> picker: the folder, its name, and its parent with the home directory as <c>~</c>.</summary>
 public sealed record RecentFolder(string Path, string Name, string Parent);
 
-/// <summary>The rows of the <c>or</c> picker: which remembered folders to offer, filtering, and how each reads.</summary>
+/// <summary>The rows of the <c>or</c> picker: which remembered folders to offer and how each reads.</summary>
 internal static class RecentFolderList
 {
     private const int Gap = 2;
@@ -21,16 +21,6 @@ internal static class RecentFolderList
         if (cut < 0 || cut == path.Length - 1) return new RecentFolder(folder, path, "");
         var parent = cut == 0 || path[cut - 1] == ':' ? path[..(cut + 1)] : path[..cut];
         return new RecentFolder(folder, path[(cut + 1)..], ShortenHome(parent, TrimEnd(home)));
-    }
-
-    /// <summary>Case-insensitive substring of the name or the parent.</summary>
-    public static IReadOnlyList<RecentFolder> Filter(IReadOnlyList<RecentFolder> rows, string filter)
-    {
-        filter = filter.Trim();
-        return filter.Length == 0
-            ? rows
-            : [.. rows.Where(r => r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
-                || r.Parent.Contains(filter, StringComparison.OrdinalIgnoreCase))];
     }
 
     /// <summary>The name in a column <paramref name="nameWidth"/> wide, then the parent.</summary>
