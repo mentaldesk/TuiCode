@@ -97,6 +97,7 @@ public static class CommandMnemonics
             [CommandIds.GoToSymbol] = "gs",
             [CommandIds.GoToMatchingBracket] = "gm",
             [CommandIds.GoToDefinition] = "gd",
+            [CommandIds.QuickInfo] = "gi",
             [CommandIds.FindUsages] = "gu",
             [CommandIds.AiAssistance] = "ai",
             [CommandIds.NavigateBack] = "gp",

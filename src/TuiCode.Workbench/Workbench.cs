@@ -6,6 +6,7 @@ using TuiCode.Workbench.Configuration;
 using TuiCode.Workbench.Find;
 using TuiCode.Workbench.History;
 using TuiCode.Workbench.Languages;
+using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Workspace;
@@ -24,7 +25,7 @@ public sealed class Workbench : Window
     public HistoryView History => Panel.History;
 
     /// <summary>A dialog is open over the workbench: every view the host adds beside the five parts is one.</summary>
-    public bool HasDialog => SubViews.Any(view => view != MenuBar && view != Sidebar && view != Editor && view != Panel && view != StatusBar);
+    public bool HasDialog => SubViews.Any(view => view != MenuBar && view != Sidebar && view != Editor && view != Panel && view != StatusBar && view is not QuickInfoView);
 
     /// <summary>The user has the History panel on (#534); it shows only while the active tab has history.</summary>
     public bool IsHistoryOn { get; private set; }

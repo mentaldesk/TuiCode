@@ -273,6 +273,8 @@ public class SaveConflictHostTests : StaticConfigurationTest
 
         public void Pop(IKeybindingService scope) { _inner.Pop(scope); Depth--; }
 
+        public IKeybindingService? Top => _inner.Top;
+
         public KeyHandlingResult Handle(Key key) => _inner.Handle(key);
     }
 }

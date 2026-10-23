@@ -402,6 +402,12 @@ public sealed class EditorTab : FrameView
     /// <summary>A screen row while wrapped.</summary>
     public int TopRow => _text.Viewport.Y;
 
+    /// <summary>The primary caret's screen cell, or null while it's out of view.</summary>
+    public System.Drawing.Point? CaretOnScreen => _text.CaretOnScreen;
+
+    /// <summary>Where the text shows on screen, less the gutter and scroll bars.</summary>
+    public System.Drawing.Rectangle TextOnScreen => _text.ViewportToScreen(new System.Drawing.Rectangle(System.Drawing.Point.Empty, _text.Viewport.Size));
+
     public int VisibleRows => _text.Viewport.Height;
 
     /// <summary>

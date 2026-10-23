@@ -54,7 +54,7 @@ public sealed class CommandMenu
         [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i',
         [CommandIds.AiAssistance] = 'a',
 
-        [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd',
+        [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.QuickInfo] = 'i',
         [CommandIds.FindUsages] = 'f', [CommandIds.FollowLink] = 'l', [CommandIds.NavigateBack] = 'p',
         [CommandIds.NavigateForward] = 'n', [CommandIds.NextEditor] = 't', [CommandIds.PreviousEditor] = 'r',
 
@@ -117,7 +117,7 @@ public sealed class CommandMenu
         ]),
         ("_Go",
         [
-            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToMatchingBracket, CommandIds.GoToDefinition, CommandIds.FindUsages, CommandIds.FollowLink,
+            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToMatchingBracket, CommandIds.GoToDefinition, CommandIds.QuickInfo, CommandIds.FindUsages, CommandIds.FollowLink,
             Separator,
             CommandIds.NavigateBack, CommandIds.NavigateForward,
             Separator,
