@@ -284,6 +284,7 @@ public class MenuBarHostTests : StaticConfigurationTest
         Assert.True(Item(host, CommandIds.ChangeGrammar).Dimmed);
         Assert.True(Item(host, CommandIds.AddCursorAbove).Dimmed);
         Assert.True(Item(host, CommandIds.NextChange).Dimmed);
+        Assert.True(Item(host, CommandIds.ToggleFileHistory).Dimmed);
         Assert.False(Item(host, CommandIds.FindInFile).Dimmed);
         Assert.False(Item(host, CommandIds.ToggleSidebar).Dimmed);
         Assert.Equal("Move line up", first);

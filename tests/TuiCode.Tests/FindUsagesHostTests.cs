@@ -199,7 +199,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        HelpView? help = null;
+        KeysDialog? help = null;
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
@@ -207,17 +207,17 @@ public class FindUsagesHostTests : StaticConfigurationTest
             () => { Tab(workbench).MoveCursor(4, 26); Execute(host); },
             () => workbench.Sidebar.Usages.ResultsHaveFocus,
             () => host.App.InjectKey(Key.F1),
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal("Usages", help!.Place!.Title);
+        Assert.Equal("Usages", help!.Sheet.Here!.Heading);
         Assert.Equal(
         [
             new("Enter", "Go to the usage"),
             new("↑ ↓", "Step through usages"),
             new("→ ←", "Expand or collapse"),
             .. SidebarHelp.TabKeys,
-        ], help.Place.Rows);
+        ], help.Sheet.Here!.Rows());
     }
 
     [Fact]

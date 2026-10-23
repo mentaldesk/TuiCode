@@ -2,6 +2,9 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using MentalDesk.Tui.Dialogs;
+using KeyColumn = MentalDesk.Tui.Keys.KeyColumn;
+using KeyRow = MentalDesk.Tui.Keys.KeyRow;
+using KeysDialog = MentalDesk.Tui.Keys.KeysDialog;
 using MentalDesk.Tui.Shell;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Time;
@@ -92,7 +95,8 @@ public sealed class WorkbenchHost : IDisposable
     private bool _suppressHistory;
     private SettingsView? _activeSettings;
     private ActionView? _activeActions;
-    private HelpView? _activeHelp;
+    private KeysDialog? _activeHelp;
+    private LibraryScope? _helpScope;
     private GoToLineView? _activeGoToLine;
     private SymbolPickerView? _activeSymbolPicker;
     private DefinitionPickerView? _activeDefinitionPicker;
@@ -692,7 +696,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowMenu, "Show menu", () => _menu.Open());
-        _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
+        _commands.Register(CommandIds.ShowHelp, "Show keys", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Editor, FileOpen);
         // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
         _commands.Register(CommandIds.GoToSymbol, "Go to symbol in file", OpenSymbolPicker, CommandScope.Editor);
@@ -733,7 +737,8 @@ public sealed class WorkbenchHost : IDisposable
             CommandScope.Editor, () => GitRepository.Contains(Group.ActiveTab?.File.Directory));
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.GitBlame, "Git blame", GitBlame, CommandScope.Editor, FileOpen);
-        _commands.Register(CommandIds.ToggleFileHistory, "Show or hide file history", () => _fileHistory.Toggle(), CommandScope.Global, null,
+        _commands.Register(CommandIds.ToggleFileHistory, "Show or hide file history", () => _fileHistory.Toggle(), CommandScope.Global,
+            () => FileOpen() || _workbench.IsHistoryOn,
             () => _workbench.IsHistoryOn ? "Hide file history" : "Show file history");
         // No default key (#272).
         _commands.Register(CommandIds.ReloadFromDisk, "Reload from disk", ReloadFromDisk, CommandScope.Editor, FileOpen);
@@ -797,12 +802,10 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         _menu.Refresh();
-        var help = KeyOf(CommandIds.ShowHelp);
-        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help} for help");
-        _workbench.StatusBar.SetHelpKey(help);
+        _workbench.StatusBar.SetHelpKey(KeyOf(CommandIds.ShowHelp));
     }
 
-    private HelpColumn? PlaceHelp()
+    private KeyColumn? PlaceHelp()
     {
         Reconcile();
         var help = _focus.Region switch
@@ -813,124 +816,123 @@ public sealed class WorkbenchHost : IDisposable
             FocusRegion.Find => FindPaneHelp(),
             FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, GroupHelp()),
             FocusRegion.Review => ReviewHelp(),
-            FocusRegion.Usages => new HelpColumn("Usages", UsagesKeys),
+            FocusRegion.Usages => HelpSheet.Place("Usages", UsagesKeys),
             FocusRegion.Assistant => ScopeHelp("AI assistance", CommandScope.Assistant, AssistantKeys),
-            FocusRegion.History => new HelpColumn("History", HistoryKeys),
+            FocusRegion.History => HelpSheet.Place("History", HistoryKeys),
             FocusRegion.Tabs => TabsHelp(),
             _ => null,
         };
-        HelpRow[] switching = InSidebar(_focus.Region) ? SidebarTabKeys() : InPanel(_focus.Region) ? PanelTabKeys() : [];
-        return help is null ? null : help with { Rows = [.. help.Rows, .. switching] };
+        KeyRow[] switching = InSidebar(_focus.Region) ? SidebarTabKeys() : InPanel(_focus.Region) ? PanelTabKeys() : [];
+        return help is null ? null : HelpSheet.Place(help.Heading, [.. help.Rows(), .. switching]);
     }
 
-    private HelpRow[] SidebarTabKeys() =>
+    private KeyRow[] SidebarTabKeys() =>
     [
-        .. HelpRowOf(CommandIds.ShowExplorer, "Show explorer"),
-        .. HelpRowOf(CommandIds.FindGlobally, "Show find"),
-        .. HelpRowOf(CommandIds.FocusUsages, "Show usages"),
-        .. HelpRowOf(CommandIds.FocusReview, "Show review"),
-        .. HelpRowOf(CommandIds.NextEditor, "Next sidebar tab"),
-        .. HelpRowOf(CommandIds.PreviousEditor, "Previous sidebar tab"),
+        .. KeyRowOf(CommandIds.ShowExplorer, "Show explorer"),
+        .. KeyRowOf(CommandIds.FindGlobally, "Show find"),
+        .. KeyRowOf(CommandIds.FocusUsages, "Show usages"),
+        .. KeyRowOf(CommandIds.FocusReview, "Show review"),
+        .. KeyRowOf(CommandIds.NextEditor, "Next sidebar tab"),
+        .. KeyRowOf(CommandIds.PreviousEditor, "Previous sidebar tab"),
     ];
 
-    private HelpRow[] PanelTabKeys() =>
+    private KeyRow[] PanelTabKeys() =>
     [
-        .. HelpRowOf(CommandIds.ToggleFileHistory, "Show or hide file history"),
-        .. HelpRowOf(CommandIds.AiAssistance, "AI assistance"),
-        .. HelpRowOf(CommandIds.NextEditor, "Next panel tab"),
-        .. HelpRowOf(CommandIds.PreviousEditor, "Previous panel tab"),
+        .. KeyRowOf(CommandIds.ToggleFileHistory, "Show or hide file history"),
+        .. KeyRowOf(CommandIds.AiAssistance, "AI assistance"),
+        .. KeyRowOf(CommandIds.NextEditor, "Next panel tab"),
+        .. KeyRowOf(CommandIds.PreviousEditor, "Previous panel tab"),
     ];
 
-    private HelpColumn ReviewHelp()
+    private KeyColumn ReviewHelp()
     {
         var review = _workbench.Sidebar.Review;
-        HelpRow[] keys = review.OverviewHasFocus
+        KeyRow[] keys = review.OverviewHasFocus
             ? [new("Enter", "Open the Overview"), new("↓", "To the files")]
             :
             [
                 new("Enter", "Open the file's diff"),
-                .. review.HasOverview ? new HelpRow[] { new("↑", "To Overview") } : [],
-                .. HelpRowOf(CommandIds.ToggleViewed, "Mark viewed or not"),
+                .. review.HasOverview ? new KeyRow[] { new("↑", "To Overview") } : [],
+                .. KeyRowOf(CommandIds.ToggleViewed, "Mark viewed or not"),
             ];
         return ScopeHelp("Review", CommandScope.Review, keys);
     }
 
-    private HelpColumn TabsHelp() => new("Tabs",
+    private KeyColumn TabsHelp() => HelpSheet.Place("Tabs",
     [
         new("← →", "Switch tab"),
         new("Enter", "Go to the file"),
-        .. HelpRowOf(CommandIds.NextEditor, "Next tab"),
-        .. HelpRowOf(CommandIds.PreviousEditor, "Previous tab"),
-        .. HelpRowOf(CommandIds.CloseActiveEditor, "Close tab"),
-        .. HelpRowOf(CommandIds.CloseOtherTabs, "Close other tabs"),
-        .. HelpRowOf(CommandIds.CloseAllTabs, "Close all tabs"),
-        .. HelpRowOf(CommandIds.ReopenClosedEditor, "Undo close tab"),
+        .. KeyRowOf(CommandIds.NextEditor, "Next tab"),
+        .. KeyRowOf(CommandIds.PreviousEditor, "Previous tab"),
+        .. KeyRowOf(CommandIds.CloseActiveEditor, "Close tab"),
+        .. KeyRowOf(CommandIds.CloseOtherTabs, "Close other tabs"),
+        .. KeyRowOf(CommandIds.CloseAllTabs, "Close all tabs"),
+        .. KeyRowOf(CommandIds.ReopenClosedEditor, "Undo close tab"),
         .. GroupHelp(),
     ]);
 
-    private HelpRow[] GroupHelp() =>
+    private KeyRow[] GroupHelp() =>
     [
-        .. HelpRowOf(CommandIds.MoveToOtherGroup, "Move to other group"),
-        .. HelpRowOf(CommandIds.FocusOtherGroup, "Focus other group"),
+        .. KeyRowOf(CommandIds.MoveToOtherGroup, "Move to other group"),
+        .. KeyRowOf(CommandIds.FocusOtherGroup, "Focus other group"),
     ];
 
-    private IEnumerable<HelpRow> HelpRowOf(string commandId, string description) =>
-        _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
+    private IEnumerable<KeyRow> KeyRowOf(string commandId, string description) =>
+        _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new KeyRow(key, description)] : [];
 
-    private static readonly HelpRow[] ExplorerKeys = [new("Enter", "Open"), new("→ ←", "Expand or collapse")];
+    private static readonly KeyRow[] ExplorerKeys = [new("Enter", "Open"), new("→ ←", "Expand or collapse")];
 
-    private HelpColumn FindPaneHelp()
+    private KeyColumn FindPaneHelp()
     {
         if (!_workbench.Sidebar.Search.InputsHaveFocus) return ScopeHelp("Find", CommandScope.Find, FindResultKeys);
-        var help = ScopeHelp("Find", CommandScope.Find, []);
-        return help with { Rows = [.. help.Rows, .. FindOptionKeys()] };
+        return ScopeHelp("Find", CommandScope.Find, FindOptionKeys(), fixedFirst: false);
     }
 
-    private HelpRow[] FindOptionKeys() =>
+    private KeyRow[] FindOptionKeys() =>
     [
-        .. HelpRowOf(CommandIds.ToggleMatchCase, "Match case on or off"),
-        .. HelpRowOf(CommandIds.ToggleWholeWord, "Match whole word on or off"),
-        .. HelpRowOf(CommandIds.ToggleIgnoredFiles, "Ignored files on or off"),
+        .. KeyRowOf(CommandIds.ToggleMatchCase, "Match case on or off"),
+        .. KeyRowOf(CommandIds.ToggleWholeWord, "Match whole word on or off"),
+        .. KeyRowOf(CommandIds.ToggleIgnoredFiles, "Ignored files on or off"),
     ];
 
-    private static readonly HelpRow[] FindResultKeys = [new("Enter", "Open result")];
+    private static readonly KeyRow[] FindResultKeys = [new("Enter", "Open result")];
 
-    private static readonly HelpRow[] HistoryKeys =
+    private static readonly KeyRow[] HistoryKeys =
         [new("Enter", "Open the commit's change"), new("↑ ↓", "Choose a commit"), new("Type", "Filter the commits"), new("Esc", "Back to the editor")];
 
-    private static readonly HelpRow[] AssistantKeys = [new("↑ ↓ PgUp PgDn", "Scroll the chat")];
+    private static readonly KeyRow[] AssistantKeys = [new("↑ ↓ PgUp PgDn", "Scroll the chat")];
 
-    private static readonly HelpRow[] UsagesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
+    private static readonly KeyRow[] UsagesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
 
     /// <summary>A region's keys for F1: its fixed keys, then each command in its scope that's bound and can run now.</summary>
-    private HelpColumn ScopeHelp(string title, CommandScope scope, IEnumerable<HelpRow> fixedKeys)
+    private KeyColumn ScopeHelp(string title, CommandScope scope, IEnumerable<KeyRow> fixedKeys, bool fixedFirst = true)
     {
         var commands = _commands.Registered
             .Where(command => command.Scope == scope && _commands.IsEnabled(command.Id))
             .Select(command => (command.Label, Keys: _keybindings.Bindings.Where(b => b.CommandId == command.Id).Select(b => b.Display).ToList()))
             .Where(command => command.Keys.Count > 0)
-            .Select(command => new HelpRow(string.Join(", ", command.Keys), command.Label));
-        return new HelpColumn(title, [.. fixedKeys, .. commands]);
+            .Select(command => new KeyRow(string.Join(", ", command.Keys), command.Label));
+        return HelpSheet.Place(title, fixedFirst ? [.. fixedKeys, .. commands] : [.. commands, .. fixedKeys]);
     }
 
     /// <summary>The focused diff's keys for F1, from the live bindings, leaving out what's unbound or can't run there.</summary>
-    private HelpColumn? DiffHelp()
+    private KeyColumn? DiffHelp()
     {
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return null;
-        HelpRow[] rows =
+        KeyRow[] rows =
         [
-            .. HelpRowOf(CommandIds.NextChange, "Next change"),
-            .. HelpRowOf(CommandIds.PreviousChange, "Previous change"),
-            .. HelpRowOf(CommandIds.RevertChange, diff.IsDeleted ? "Restore file" : "Revert change"),
-            .. HelpRowOf(CommandIds.GoToChangeLine, "Go to this line"),
+            .. KeyRowOf(CommandIds.NextChange, "Next change"),
+            .. KeyRowOf(CommandIds.PreviousChange, "Previous change"),
+            .. KeyRowOf(CommandIds.RevertChange, diff.IsDeleted ? "Restore file" : "Revert change"),
+            .. KeyRowOf(CommandIds.GoToChangeLine, "Go to this line"),
             .. PairRow(CommandIds.ScrollDiffLeft, CommandIds.ScrollDiffRight, "Scroll sideways"),
             .. PairRow(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "Page sideways"),
             .. GroupHelp(),
         ];
-        return rows.Length == 0 ? null : new HelpColumn("Diff", rows);
+        return rows.Length == 0 ? null : HelpSheet.Place("Diff", rows);
 
-        IEnumerable<HelpRow> PairRow(string backId, string forwardId, string description) =>
-            KeyPair(backId, forwardId) is { } keys ? [new HelpRow(keys, description)] : [];
+        IEnumerable<KeyRow> PairRow(string backId, string forwardId, string description) =>
+            KeyPair(backId, forwardId) is { } keys ? [new KeyRow(keys, description)] : [];
     }
 
     /// <summary><c>Shift+← →</c>: both keys, sharing their modifiers when they have the same ones.</summary>
@@ -2494,21 +2496,31 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeHelp is not null) return;
 
-        var view = new HelpView(PlaceHelp(), _workbench.Frame.Width, _workbench.Viewport.Height);
+        var view = new KeysDialog(HelpSheet.For(PlaceHelp(), _commands, _keybindings, CanRunNow), _workbench.Viewport.Size);
         view.Closed += (_, _) => CloseHelp(view);
         _activeHelp = view;
+        _helpScope = new LibraryScope(view.Scope);
         _workbench.Add(view);
-        _scopes.Push(view.Scope);
+        _scopes.Push(_helpScope);
         view.SetFocus();
     }
 
-    private void CloseHelp(HelpView view)
+    // With no file tab, Ctrl+F and Ctrl+H open the Find pane, which Find globally and Replace globally already list.
+    private bool CanRunNow(string id) => _commands.IsEnabled(id) && id switch
+    {
+        CommandIds.FindInFile => Group.ActiveTab is not null || Group.ActiveDiffTab is not null,
+        CommandIds.ReplaceInFile => Group.ActiveTab is not null,
+        _ => true,
+    };
+
+    private void CloseHelp(KeysDialog view)
     {
         if (!ReferenceEquals(_activeHelp, view)) return;
-        _scopes.Pop(view.Scope);
+        _scopes.Pop(_helpScope!);
         _workbench.Remove(view);
         view.Dispose();
         _activeHelp = null;
+        _helpScope = null;
         FocusCallingRegion();
     }
 

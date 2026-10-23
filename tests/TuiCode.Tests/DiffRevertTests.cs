@@ -502,7 +502,7 @@ public class RestoreDeletedHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench, out var commands);
         var group = workbench.Editor.Group;
         string? status = null;
-        HelpView? help = null;
+        KeysDialog? help = null;
 
         await HostSteps.Run(host,
             () => host.ApplyKeybindings(
@@ -516,11 +516,11 @@ public class RestoreDeletedHostTests : StaticConfigurationTest
             () => group.ActiveDiffTab is { IsFocused: true },
             () => { status = workbench.StatusBar.DisplayedText; },
             () => host.App.InjectKey(Key.F1),
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Contains(new HelpRow("F9", "Restore file"), help!.Place!.Rows);
-        Assert.DoesNotContain(help.Place.Rows, row => row.Description == "Revert change");
+        Assert.Contains(new KeyRow("F9", "Restore file"), help!.Sheet.Here!.Rows());
+        Assert.DoesNotContain(help.Sheet.Here!.Rows(), row => row.Label == "Revert change");
         Assert.DoesNotContain("F9", status);
         Assert.DoesNotContain("Alt+↓", status);
     }

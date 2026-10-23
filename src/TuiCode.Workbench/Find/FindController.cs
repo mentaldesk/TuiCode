@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Keys;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Search;
@@ -89,11 +90,11 @@ internal sealed class FindController : IDisposable
         _bar.ReplaceVisible && _bar.KeysInReplacement ? _bar.FocusReplacement() : _bar.FocusQuery();
 
     /// <summary>The bar's keys for F1, for whichever field has them.</summary>
-    internal HelpColumn Help(IEnumerable<HelpRow> options)
+    internal KeyColumn Help(IEnumerable<KeyRow> options)
     {
         var inReplacement = _bar.ReplaceVisible && _bar.KeysInReplacement;
-        HelpRow[] replaceRows = [new("Ctrl+Enter", "Replace all"), new("Tab", inReplacement ? "Find field" : "Replace field")];
-        HelpRow[] rows =
+        KeyRow[] replaceRows = [new("Ctrl+Enter", "Replace all"), new("Tab", inReplacement ? "Find field" : "Replace field")];
+        KeyRow[] rows =
         [
             new("Enter", inReplacement ? "Replace and go to next" : "Next match"),
             new("Shift+Enter", "Previous match"),
@@ -101,7 +102,7 @@ internal sealed class FindController : IDisposable
             .. options,
             new("Esc", "Close"),
         ];
-        return new HelpColumn("Find bar", rows);
+        return HelpSheet.Place("Find bar", rows);
     }
 
     public void Close()

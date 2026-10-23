@@ -8,6 +8,7 @@ public sealed class StatusBarPart : View
 {
     private readonly VerbatimLabel _label;
     private readonly VerbatimLabel _position;
+    private readonly VerbatimLabel _help;
     private readonly VerbatimLabel _focus;
     private readonly Button _warnings;
     private int _unseenWarnings;
@@ -20,7 +21,6 @@ public sealed class StatusBarPart : View
     private string? _mode;
     private (int Row, int Column)? _cursor;
     private (int Carets, int? Selected) _selection = (1, null);
-    private string? _idleHint;
 
     public StatusBarPart()
     {
@@ -29,7 +29,9 @@ public sealed class StatusBarPart : View
         CanFocus = false;
         SchemeName = "StatusBar";
 
-        _position = new VerbatimLabel { X = Pos.AnchorEnd() - 1, Y = 0 };
+        _help = new VerbatimLabel { X = Pos.AnchorEnd() - 1, Y = 0, Text = HelpHintFor("F1") };
+        _position = new VerbatimLabel { Y = 0 };
+        PlacePosition();
         _focus = new VerbatimLabel { X = 1, Y = 0 };
         _warnings = new Button
         {
@@ -60,7 +62,7 @@ public sealed class StatusBarPart : View
             Width = Dim.Fill(2, _warnings),
             Text = _message
         };
-        Add(_focus, _label, _warnings, _position);
+        Add(_focus, _label, _warnings, _position, _help);
     }
 
     /// <summary>The <c>⚠ n</c> item was clicked.</summary>
@@ -106,18 +108,19 @@ public sealed class StatusBarPart : View
 
     internal string Message => _message;
 
-    /// <summary>What the bar says when nothing else has: the name and the help key, if it has one.</summary>
-    public string DefaultMessage { get; private set; } = DefaultMessageFor("F1");
+    /// <summary>What the bar says when nothing else has.</summary>
+    public string DefaultMessage => "TuiCode";
 
-    /// <summary>Name <paramref name="key"/> as the help key in the default message; null leaves the name alone.</summary>
+    /// <summary>Ends the bar with <c>Press {key} for help</c>; null leaves nothing there.</summary>
     public void SetHelpKey(string? key)
     {
-        var previous = DefaultMessage;
-        DefaultMessage = DefaultMessageFor(key);
-        if (_message == previous) SetMessage(DefaultMessage);
+        _help.Text = HelpHintFor(key);
+        PlacePosition();
     }
 
-    private static string DefaultMessageFor(string? helpKey) => helpKey is null ? "TuiCode" : $"TuiCode  •  {helpKey} help";
+    private static string HelpHintFor(string? key) => key is null ? string.Empty : $"Press {key} for help";
+
+    internal string DisplayedHelp => _help.Text;
 
     internal bool ShowsError => _label.SchemeName == "Error";
 
@@ -172,24 +175,22 @@ public sealed class StatusBarPart : View
         ShowPosition();
     }
 
-    /// <summary>Shown in the position's place while no file is open; null for nothing.</summary>
-    public void SetIdleHint(string? hint)
-    {
-        _idleHint = hint;
-        ShowPosition();
-    }
-
     private void ShowPosition()
     {
         if (_cursor is not var (row, column))
         {
-            _position.Text = _idleHint ?? string.Empty;
+            _position.Text = string.Empty;
+            PlacePosition();
             return;
         }
         var (carets, selected) = _selection;
         var where = carets > 1 ? $"{carets} selections" : $"Ln {row + 1}, Col {column + 1}";
         _position.Text = selected is { } count ? $"{where} ({count:N0} selected)" : where;
+        PlacePosition();
     }
+
+    private void PlacePosition() =>
+        _position.X = Pos.Left(_help) - _position.Text.GetColumns(false) - (_help.Text.Length > 0 && _position.Text.Length > 0 ? 3 : 0);
 
     internal string DisplayedText => _label.Text;
 
