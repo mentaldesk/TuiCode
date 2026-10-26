@@ -1614,8 +1614,8 @@ public sealed class WorkbenchHost : IDisposable
         server.HoverAsync(tab.File.FullName, row, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
         {
             if (_disposed || request != _quickInfoRequest) return;
-            if (answer.Exception?.InnerException is { } error) status.SetMessage($"Quick info failed: {error.Message}");
-            else if (answer.Result is []) status.SetMessage("Nothing to show here");
+            if (answer.Exception?.InnerException is { } error) status.ShowMessage($"Quick info failed: {error.Message}", Severity.Error);
+            else if (answer.Result is []) status.ShowMessage("Nothing to show here");
             else if (_workbench.Editor.Group.ActiveTab == tab && (tab.CursorRow, tab.CursorColumn) == (row, column)) OpenQuickInfo(tab, answer.Result);
         }), TaskScheduler.Default);
     }

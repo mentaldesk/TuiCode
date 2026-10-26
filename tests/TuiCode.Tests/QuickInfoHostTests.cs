@@ -292,7 +292,7 @@ public class QuickInfoHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => { workbench.StatusBar.SetMessage("elsewhere"); Execute(host); },
+            () => { workbench.StatusBar.ShowMessage("elsewhere"); Execute(host); },
             () => { pressed = workbench.StatusBar.Message; });
 
         Assert.Equal("No C# language server. Install: dotnet tool install -g csharp-ls", pressed);
