@@ -1,5 +1,6 @@
+using MentalDesk.Tui;
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
-using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Navigation;
 
@@ -7,32 +8,19 @@ namespace TuiCode.Workbench.Navigation;
 /// Modal "Go to line:column" prompt. Single text field — accepts either
 /// <c>LINE</c> or <c>LINE:COL</c> (1-based, matching VS Code / IntelliJ).
 /// </summary>
-public sealed class GoToLineView : Window
+public sealed class GoToLineView : AppDialog
 {
+    private const string GoId = "goToLine.go";
+    private const int ContentRows = 4;
+
     private readonly TextField _input;
-    private readonly VerbatimLabel _error;
     private readonly int _totalLines;
 
-    private readonly ICommandService _scopeCommands;
-    private readonly IKeybindingService _scopeKeybindings;
-
-    public IKeybindingService Scope => _scopeKeybindings;
-
-    public event EventHandler? Cancelled;
-    public event EventHandler<(int Row, int Column)>? Submitted;
-
     public GoToLineView(int totalLines, int currentLine)
+        : base("Go to Line:Column", 50, ContentRows)
     {
         if (totalLines < 1) totalLines = 1;
         _totalLines = totalLines;
-
-        Title = "Go to Line:Column";
-        BorderStyle = LineStyle.Single;
-        X = Pos.Center();
-        Y = Pos.Center();
-        Width = 50;
-        Height = 7;
-        CanFocus = true;
 
         var hint = new VerbatimLabel
         {
@@ -41,63 +29,42 @@ public sealed class GoToLineView : Window
             Width = Dim.Fill(1),
             Text = $"Line[:Col]  (1-{totalLines}, current: {currentLine})",
         };
+        _input = new TextField { X = 1, Y = 1, Width = Dim.Fill(1) };
+        Add(hint, _input);
 
-        _input = new TextField
-        {
-            X = 1,
-            Y = 1,
-            Width = Dim.Fill(1),
-        };
-
-        _error = new VerbatimLabel
-        {
-            X = 1,
-            Y = 3,
-            Width = Dim.Fill(1),
-            Text = string.Empty,
-        };
-
-        Add(hint, _input, _error);
-
-        _scopeCommands = new CommandService();
-        _scopeKeybindings = new KeybindingService(_scopeCommands);
-        RegisterScopeBindings();
+        Commands.Register(GoId, "Go to", OnConfirm);
+        Keys.Bind("Enter", GoId);
+        AddButtonRow(ContentRows - 1, CommandButton(ButtonKind.Primary, GoId), CommandButton(ButtonKind.Secondary, CancelId));
     }
+
+    /// <summary>Zero-based, for <c>EditorTab.MoveCursor</c>; set once <see cref="AppDialog.Confirmed"/>.</summary>
+    public (int Row, int Column) Target { get; private set; }
 
     public bool FocusInput() => _input.SetFocus();
 
-    private void RegisterScopeBindings()
-    {
-        _scopeCommands.Register(CommandIds.GoToLineCancel, () => Cancelled?.Invoke(this, EventArgs.Empty));
-        _scopeCommands.Register(CommandIds.GoToLineConfirm, OnConfirm);
-
-        _scopeKeybindings.Bind("Esc", CommandIds.GoToLineCancel);
-        _scopeKeybindings.Bind("Enter", CommandIds.GoToLineConfirm);
-    }
-
     private void OnConfirm()
     {
-        var raw = _input.Text?.ToString()?.Trim() ?? string.Empty;
+        var raw = _input.Text?.Trim() ?? string.Empty;
         if (raw.Length == 0)
         {
-            Cancelled?.Invoke(this, EventArgs.Empty);
+            Cancel();
             return;
         }
 
         if (!TryParse(raw, out var line, out var col))
         {
-            _error.Text = "Expected: LINE or LINE:COL";
+            ShowAlert("Expected: LINE or LINE:COL", Severity.Error);
             return;
         }
 
         if (line < 1 || line > _totalLines)
         {
-            _error.Text = $"Line out of range (1-{_totalLines})";
+            ShowAlert($"Line out of range (1-{_totalLines})", Severity.Error);
             return;
         }
 
-        // Convert to zero-based for EditorTab.MoveCursor.
-        Submitted?.Invoke(this, (line - 1, Math.Max(0, col - 1)));
+        Target = (line - 1, Math.Max(0, col - 1));
+        Accept();
     }
 
     internal static bool TryParse(string raw, out int line, out int column)

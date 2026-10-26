@@ -77,6 +77,21 @@ public class FileHistoryHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task With_no_file_open_it_cannot_be_shown()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var before = true;
+
+        await HostSteps.Run(host,
+            () => { before = _commands.IsEnabled(CommandIds.ToggleFileHistory); Open(workbench, "/work/a.txt"); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor");
+
+        Assert.False(before);
+        Assert.True(_commands.IsEnabled(CommandIds.ToggleFileHistory));
+    }
+
+    [Fact]
     public async Task Hiding_it_gives_the_rows_back_to_the_editor_and_Esc_leaves_it_showing()
     {
         using var workbench = BuildWorkbench();
@@ -124,6 +139,7 @@ public class FileHistoryHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var showing = new List<bool>();
+        var hideable = false;
 
         await HostSteps.Run(host,
             () => Open(workbench, "/work/a.txt"),
@@ -135,10 +151,11 @@ public class FileHistoryHostTests : StaticConfigurationTest
             () => { showing.Add(workbench.IsHistoryShowing); Open(workbench, "/work/b.txt"); },
             () => workbench.IsHistoryShowing && workbench.History.Listed.Count == 1,
             () => { workbench.CloseAllTabs(); return true; },
-            () => { showing.Add(workbench.IsHistoryShowing); Open(workbench, "/work/a.txt"); },
+            () => { showing.Add(workbench.IsHistoryShowing); hideable = _commands.IsEnabled(CommandIds.ToggleFileHistory); Open(workbench, "/work/a.txt"); },
             () => workbench.IsHistoryShowing && workbench.History.Listed.Count == 4);
 
         Assert.Equal([false, false], showing);
+        Assert.True(hideable);
         Assert.Equal("History: a.txt", workbench.History.Title);
     }
 
@@ -199,7 +216,7 @@ public class FileHistoryHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => host.App.InjectKey(Key.CursorDown.WithAlt),
             () => workbench.Editor.Group.ActiveDiffTab is { History.Index: 2 },
-            () => { workbench.ShowCursorPosition(); commitStatus = workbench.StatusBar.DisplayedText; });
+            () => { workbench.ShowCursorPosition(); commitStatus = workbench.StatusBar.DisplayedState; });
 
         var diffs = workbench.Editor.Group.TabCollection.OfType<DiffTab>().ToList();
         var diff = Assert.Single(diffs);

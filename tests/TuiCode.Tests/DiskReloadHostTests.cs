@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Chrome;
 using Terminal.Gui.Drivers;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -21,15 +22,22 @@ public class DiskReloadHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
         var said = "";
         var position = "";
+        MessageKind? kind = null;
 
         await HostSteps.Run(host,
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
             () => workbench.Editor.Group.ActiveTab is not null,
             () => { workbench.Editor.Group.ActiveTab!.MoveCursor(1, 2); Change("/work/a.txt", "alpha\nbravo\ncharlie\n"); },
             () => workbench.StatusBar.DisplayedText.StartsWith(Note, StringComparison.Ordinal),
-            () => { said = workbench.StatusBar.DisplayedText; position = workbench.StatusBar.DisplayedPosition; });
+            () =>
+            {
+                said = workbench.StatusBar.DisplayedText;
+                position = workbench.StatusBar.DisplayedPosition;
+                kind = workbench.StatusBar.Bar.Current?.Kind;
+            });
 
         Assert.StartsWith(Note, said);
+        Assert.Equal(MessageKind.News, kind);
         Assert.Equal("Ln 2, Col 3", position);
         Assert.Equal("alpha\nbravo\ncharlie\n", workbench.Editor.Group.ActiveTab!.Content.ReplaceLineEndings("\n"));
     }

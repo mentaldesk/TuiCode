@@ -29,14 +29,14 @@ public class HelpReviewHostTests : StaticConfigurationTest
     {
         var help = await HelpFrom(review => review.ListHasFocus && review.ViewedText.Length > 0);
 
-        Assert.Equal("Review", help.Title);
+        Assert.Equal("Review", help.Heading);
         Assert.Equal(
         [
             new("Enter", "Open the file's diff"),
             new("↑", "To Overview"),
             new("Space", "Mark viewed or not"),
             .. SidebarHelp.TabKeys,
-        ], help.Rows);
+        ], help.Rows());
     }
 
     [Fact]
@@ -45,8 +45,8 @@ public class HelpReviewHostTests : StaticConfigurationTest
         _gitHub.PullRequest = null;
         var help = await HelpFrom(review => review.ListHasFocus && review.ViewedText.Length > 0);
 
-        Assert.DoesNotContain(help.Rows, row => row.Description == "To Overview");
-        Assert.Contains(new HelpRow("Enter", "Open the file's diff"), help.Rows);
+        Assert.DoesNotContain(help.Rows(), row => row.Label == "To Overview");
+        Assert.Contains(new KeyRow("Enter", "Open the file's diff"), help.Rows());
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class HelpReviewHostTests : StaticConfigurationTest
                 new(TestKeys.Chord("F6"), CommandIds.ToggleViewed),
             ]));
 
-        Assert.Contains(new HelpRow("F6", "Mark viewed or not"), help.Rows);
+        Assert.Contains(new KeyRow("F6", "Mark viewed or not"), help.Rows());
     }
 
     [Fact]
@@ -66,11 +66,11 @@ public class HelpReviewHostTests : StaticConfigurationTest
     {
         var help = await HelpFrom(review => review.TitleText.Length > 0, onOverview: true);
 
-        Assert.Equal("Review", help.Title);
-        Assert.Equal([new HelpRow("Enter", "Open the Overview"), new HelpRow("↓", "To the files"), .. SidebarHelp.TabKeys], help.Rows);
+        Assert.Equal("Review", help.Heading);
+        Assert.Equal([new KeyRow("Enter", "Open the Overview"), new KeyRow("↓", "To the files"), .. SidebarHelp.TabKeys], help.Rows());
     }
 
-    private async Task<HelpColumn> HelpFrom(Func<ReviewView, bool> ready, bool onOverview = false, Action<InMemorySettingsService>? settings = null)
+    private async Task<KeyColumn> HelpFrom(Func<ReviewView, bool> ready, bool onOverview = false, Action<InMemorySettingsService>? settings = null)
     {
         var sidebar = new SidebarPart(new FileExplorerView(), review: new ReviewView(_git, _gitHub));
         using var workbench = new Workbench.Workbench(sidebar, new EditorPart(), new StatusBarPart());
@@ -80,7 +80,7 @@ public class HelpReviewHostTests : StaticConfigurationTest
         using var host = new WorkbenchHost(workbench, _commands, new KeybindingService(_commands), new InputScopeStack(),
             inMemory, driverName: DriverRegistry.Names.ANSI, git: _git, gitHub: _gitHub);
         var review = workbench.Sidebar.Review;
-        HelpView? view = null;
+        KeysDialog? view = null;
 
         await HostSteps.Run(host,
             () => _commands.TryExecute(CommandIds.FocusReview),
@@ -88,9 +88,9 @@ public class HelpReviewHostTests : StaticConfigurationTest
             () => { if (onOverview) host.App.InjectKey(Key.CursorUp); },
             () => review.OverviewHasFocus == onOverview,
             () => host.App.InjectKey(Key.F1),
-            () => (view = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (view = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        return view!.Place!;
+        return view!.Sheet.Here!;
     }
 }

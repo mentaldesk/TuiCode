@@ -1,7 +1,12 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using MentalDesk.Tui;
+using MentalDesk.Tui.Chrome;
 using MentalDesk.Tui.Dialogs;
+using KeyColumn = MentalDesk.Tui.Keys.KeyColumn;
+using KeyRow = MentalDesk.Tui.Keys.KeyRow;
+using KeysDialog = MentalDesk.Tui.Keys.KeysDialog;
 using MentalDesk.Tui.Shell;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Time;
@@ -92,13 +97,21 @@ public sealed class WorkbenchHost : IDisposable
     private bool _suppressHistory;
     private SettingsView? _activeSettings;
     private ActionView? _activeActions;
-    private HelpView? _activeHelp;
+    private KeysDialog? _activeHelp;
+    private LibraryScope? _helpScope;
     private GoToLineView? _activeGoToLine;
+    private MessagesDialog? _activeMessages;
+    private StatusMessage? _cutMessage;
+    private StatusMessage? _answeringMessage;
     private SymbolPickerView? _activeSymbolPicker;
     private DefinitionPickerView? _activeDefinitionPicker;
     // Only the latest Go to definition jumps, however the answers come back.
     private int _definitionRequest;
     private int _usagesRequest;
+    private QuickInfoView? _activeQuickInfo;
+    private LayeredScope? _quickInfoScope;
+    private (EditorTab Tab, System.Drawing.Point? Caret, System.Drawing.Rectangle Text) _quickInfoAt;
+    private int _quickInfoRequest;
     private IFileSystem? _usagesFileSystem;
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
@@ -222,12 +235,12 @@ public sealed class WorkbenchHost : IDisposable
         _diskChanges = new DiskChanges(
             _workbench.Editor.Groups,
             _workbench.Sidebar.Explorer,
-            _workbench.StatusBar.SetMessage,
+            message => _workbench.StatusBar.ShowNews(message),
             new DiskWatcher(fileSystem, ScheduleFlush, _logger));
         _baselines = new CommittedBaselines(
             _workbench.Editor.Groups, _git, action => _app.Invoke(action), new HeadWatcher(fileSystem, ScheduleFlush, _logger));
         _fileHistory = new FileHistoryPanel(_workbench, _git, action => _app.Invoke(action));
-        _fileHistory.NothingToShow += (_, reason) => _workbench.StatusBar.SetMessage(reason);
+        _fileHistory.NothingToShow += (_, reason) => _workbench.StatusBar.ShowMessage(reason);
         _fileHistory.ShownOnRequest += (_, _) => MoveFocus(FocusRegion.History);
         _workbench.HistoryShowingChanged += (_, _) =>
         {
@@ -251,7 +264,8 @@ public sealed class WorkbenchHost : IDisposable
             _assistant = new AssistantController(agents, fileSystem, assistantSessions, action => _app.Invoke(action), _workbench.Panel.Assistant.Conversation)
             {
                 OpenBuffer = OpenBufferLines,
-                AskPermission = AskAgentPermission,
+                WriteBuffer = WriteAgentText,
+                ReviewKey = () => KeyOf(CommandIds.FocusReview),
             };
             _assistant.Changed += (_, _) => ShowAssistant();
             _assistant.Configure(AgentPresets.Resolve(_settings.Assistant));
@@ -287,7 +301,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Editor.Groups.CursorMoved += OnEditorCursorMoved;
         _workbench.Editor.Groups.PinnedLineClicked += (_, pinned) => JumpToLine(pinned.Tab, pinned.Line);
         _workbench.Editor.Groups.ActiveTabChanged += OnActiveTabChanged;
-        _workbench.StatusBar.WarningsClicked += (_, _) => ShowLog();
+        _workbench.StatusBar.MessagesRequested += (_, _) => ShowMessages();
         _workbench.Sidebar.Review.FileActivated += (_, e) => OpenReviewDiff(e.Review, e.Change);
         _workbench.Sidebar.Review.PullRequestActivated += (_, review) => OpenOverview(review);
         _workbench.Sidebar.Review.OutdatedThreadsActivated += (_, e) => OpenOutdatedThreads(e.Review, e.Node);
@@ -469,7 +483,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             _app.Iteration -= Open;
             _workbench.OpenStartupTarget(target);
-            if (_settings.SettingsFileInvalid) _workbench.StatusBar.SetMessage(SettingsErrorMessage);
+            if (_settings.SettingsFileInvalid) _workbench.StatusBar.ShowNews(SettingsErrorMessage, Severity.Error);
         }
     }
 
@@ -481,9 +495,14 @@ public sealed class WorkbenchHost : IDisposable
         // Diagnostics shows the raw key as delivered by the driver, so feed it the unnormalized key.
         _activeDiagnostics?.UpdateLastKey(key);
 
+        var shown = _workbench.StatusBar.Bar.Current;
+        var chording = _keybindings.CurrentChord is not null;
         // Look the binding up under the normalized chord, but consume the original event object so
         // the Win32 LF (0x0A) never falls through to the editor when a binding claimed it.
         var result = _scopes.Handle(NormalizeLegacyCtrlSlash(NormalizeWindowsCtrlEnter(key)));
+        // After handling, so a key whose command says something doesn't take its own message.
+        if (!chording && _keybindings.CurrentChord is null && _workbench.StatusBar.Bar.Current == shown)
+            _workbench.StatusBar.Bar.KeyPressed();
         if (result != KeyHandlingResult.Pass)
         {
             key.Handled = true;
@@ -667,7 +686,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.CancelCut, "Cancel cut", explorer.ClearCut, CommandScope.Explorer, () => explorer.PendingCut is not null);
         // No default key (#332).
         _commands.Register(CommandIds.RefreshExplorer, "Refresh explorer", RefreshExplorer, CommandScope.Global, () => explorer.Root is not null);
-        explorer.CutCleared += (_, item) => _workbench.StatusBar.ClearMessage(CutMessage(item));
+        explorer.CutCleared += (_, _) => _workbench.StatusBar.Withdraw(_cutMessage);
         var search = _workbench.Sidebar.Search;
         // Find covers the whole pane, results list included; these keys belong to the query/replace inputs only.
         _commands.Register(CommandIds.SearchFocusResults, "Focus find results", () => search.FocusResults(),
@@ -692,13 +711,14 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ShowActions, "Show all commands", OpenActions);
         _commands.Register(CommandIds.ShowMnemonics, "Show mnemonics", OpenMnemonics);
         _commands.Register(CommandIds.ShowMenu, "Show menu", () => _menu.Open());
-        _commands.Register(CommandIds.ShowHelp, "Getting Started (help)", OpenHelp);
+        _commands.Register(CommandIds.ShowHelp, "Show keys", OpenHelp);
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Editor, FileOpen);
         // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
         _commands.Register(CommandIds.GoToSymbol, "Go to symbol in file", OpenSymbolPicker, CommandScope.Editor);
         _commands.Register(CommandIds.GoToMatchingBracket, "Go to matching bracket", GoToMatchingBracket, CommandScope.Editor, FileOpen);
         // Enabled without a ready server, so the key can say what's missing; the menu dims it (IsAvailableFrom).
         _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.QuickInfo, "Quick info", ShowQuickInfo, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
         // Global and ungated, so with no agent installed it can say so (#566).
         _commands.Register(CommandIds.AiAssistance, "AI assistance", AskAssistant);
@@ -715,6 +735,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.NavigateForward, "Next cursor position", NavigateForward, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.ShowDiagnostics, "Show diagnostics", OpenDiagnostics);
         _commands.Register(CommandIds.ShowLog, "Show log", ShowLog);
+        _commands.Register(CommandIds.ShowMessages, "Show messages", ShowMessages);
         _commands.Register(CommandIds.ShowAbout, "About TuiCode", OpenAbout);
         _commands.Register(CommandIds.WatchTutorials, "Watch tutorials", WatchTutorials);
         _commands.Register(CommandIds.ShowDocumentInfo, "Show document info", OpenDocumentInfo, CommandScope.Editor, FileOpen);
@@ -733,7 +754,8 @@ public sealed class WorkbenchHost : IDisposable
             CommandScope.Editor, () => GitRepository.Contains(Group.ActiveTab?.File.Directory));
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.GitBlame, "Git blame", GitBlame, CommandScope.Editor, FileOpen);
-        _commands.Register(CommandIds.ToggleFileHistory, "Show or hide file history", () => _fileHistory.Toggle(), CommandScope.Global, null,
+        _commands.Register(CommandIds.ToggleFileHistory, "Show or hide file history", () => _fileHistory.Toggle(), CommandScope.Global,
+            () => FileOpen() || _workbench.IsHistoryOn,
             () => _workbench.IsHistoryOn ? "Hide file history" : "Show file history");
         // No default key (#272).
         _commands.Register(CommandIds.ReloadFromDisk, "Reload from disk", ReloadFromDisk, CommandScope.Editor, FileOpen);
@@ -744,6 +766,11 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.IndentLines, "Indent lines", () => EditActiveTab(tab => tab.IndentLines()), CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.OutdentLines, "Outdent lines", () => EditActiveTab(tab => tab.OutdentLines()), CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.ToggleLineComment, "Toggle line comment", () => EditActiveTab(ToggleLineComment), CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.ToggleFold, "Toggle block fold", () => EditActiveTab(ToggleFold), CommandScope.Editor, FileOpen,
+            () => Group.ActiveTab?.CursorOnFold == true ? "Unfold block" : "Fold block");
+        // No default keys (#477).
+        _commands.Register(CommandIds.FoldAll, "Fold all", () => EditActiveTab(FoldAll), CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.UnfoldAll, "Unfold all", () => EditActiveTab(UnfoldAll), CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => AddCursor(LineDirection.Up), CommandScope.Editor);
         _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => AddCursor(LineDirection.Down), CommandScope.Editor);
         _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => Group.ActiveTab?.RemoveSecondaryCursors(),
@@ -797,15 +824,13 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         _menu.Refresh();
-        var help = KeyOf(CommandIds.ShowHelp);
-        _workbench.StatusBar.SetIdleHint(help is null ? null : $"Press {help} for help");
-        _workbench.StatusBar.SetHelpKey(help);
+        _workbench.StatusBar.SetHelpKey(KeyOf(CommandIds.ShowHelp));
     }
 
-    private HelpColumn? PlaceHelp()
+    private KeyColumn? PlaceHelp()
     {
         Reconcile();
-        var help = _focus.Region switch
+        var help = _activeQuickInfo is not null ? HelpSheet.Place("Quick info", QuickInfoKeys) : _focus.Region switch
         {
             FocusRegion.FindBar => _find.Help(FindOptionKeys()),
             FocusRegion.Diff => DiffHelp(),
@@ -813,124 +838,129 @@ public sealed class WorkbenchHost : IDisposable
             FocusRegion.Find => FindPaneHelp(),
             FocusRegion.Editor => _workbench.Editor.Group.Value is null ? null : ScopeHelp("Editor", CommandScope.Editor, GroupHelp()),
             FocusRegion.Review => ReviewHelp(),
-            FocusRegion.Usages => new HelpColumn("Usages", UsagesKeys),
+            FocusRegion.Usages => HelpSheet.Place("Usages", UsagesKeys),
             FocusRegion.Assistant => ScopeHelp("AI assistance", CommandScope.Assistant, AssistantKeys),
-            FocusRegion.History => new HelpColumn("History", HistoryKeys),
+            FocusRegion.History => HelpSheet.Place("History", HistoryKeys),
             FocusRegion.Tabs => TabsHelp(),
             _ => null,
         };
-        HelpRow[] switching = InSidebar(_focus.Region) ? SidebarTabKeys() : InPanel(_focus.Region) ? PanelTabKeys() : [];
-        return help is null ? null : help with { Rows = [.. help.Rows, .. switching] };
+        KeyRow[] switching = InSidebar(_focus.Region) ? SidebarTabKeys() : InPanel(_focus.Region) ? PanelTabKeys() : [];
+        return help is null ? null : HelpSheet.Place(help.Heading, [.. help.Rows(), .. switching]);
     }
 
-    private HelpRow[] SidebarTabKeys() =>
+    private KeyRow[] SidebarTabKeys() =>
     [
-        .. HelpRowOf(CommandIds.ShowExplorer, "Show explorer"),
-        .. HelpRowOf(CommandIds.FindGlobally, "Show find"),
-        .. HelpRowOf(CommandIds.FocusUsages, "Show usages"),
-        .. HelpRowOf(CommandIds.FocusReview, "Show review"),
-        .. HelpRowOf(CommandIds.NextEditor, "Next sidebar tab"),
-        .. HelpRowOf(CommandIds.PreviousEditor, "Previous sidebar tab"),
+        .. KeyRowOf(CommandIds.ShowExplorer, "Show explorer"),
+        .. KeyRowOf(CommandIds.FindGlobally, "Show find"),
+        .. KeyRowOf(CommandIds.FocusUsages, "Show usages"),
+        .. KeyRowOf(CommandIds.FocusReview, "Show review"),
+        .. KeyRowOf(CommandIds.NextEditor, "Next sidebar tab"),
+        .. KeyRowOf(CommandIds.PreviousEditor, "Previous sidebar tab"),
     ];
 
-    private HelpRow[] PanelTabKeys() =>
+    private KeyRow[] PanelTabKeys() =>
     [
-        .. HelpRowOf(CommandIds.ToggleFileHistory, "Show or hide file history"),
-        .. HelpRowOf(CommandIds.AiAssistance, "AI assistance"),
-        .. HelpRowOf(CommandIds.NextEditor, "Next panel tab"),
-        .. HelpRowOf(CommandIds.PreviousEditor, "Previous panel tab"),
+        .. KeyRowOf(CommandIds.ToggleFileHistory, "Show or hide file history"),
+        .. KeyRowOf(CommandIds.AiAssistance, "AI assistance"),
+        .. KeyRowOf(CommandIds.NextEditor, "Next panel tab"),
+        .. KeyRowOf(CommandIds.PreviousEditor, "Previous panel tab"),
     ];
 
-    private HelpColumn ReviewHelp()
+    private KeyColumn ReviewHelp()
     {
         var review = _workbench.Sidebar.Review;
-        HelpRow[] keys = review.OverviewHasFocus
+        KeyRow[] keys = review.OverviewHasFocus
             ? [new("Enter", "Open the Overview"), new("↓", "To the files")]
             :
             [
                 new("Enter", "Open the file's diff"),
-                .. review.HasOverview ? new HelpRow[] { new("↑", "To Overview") } : [],
-                .. HelpRowOf(CommandIds.ToggleViewed, "Mark viewed or not"),
+                .. review.HasOverview ? new KeyRow[] { new("↑", "To Overview") } : [],
+                .. KeyRowOf(CommandIds.ToggleViewed, "Mark viewed or not"),
             ];
         return ScopeHelp("Review", CommandScope.Review, keys);
     }
 
-    private HelpColumn TabsHelp() => new("Tabs",
+    private KeyColumn TabsHelp() => HelpSheet.Place("Tabs",
     [
         new("← →", "Switch tab"),
         new("Enter", "Go to the file"),
-        .. HelpRowOf(CommandIds.NextEditor, "Next tab"),
-        .. HelpRowOf(CommandIds.PreviousEditor, "Previous tab"),
-        .. HelpRowOf(CommandIds.CloseActiveEditor, "Close tab"),
-        .. HelpRowOf(CommandIds.CloseOtherTabs, "Close other tabs"),
-        .. HelpRowOf(CommandIds.CloseAllTabs, "Close all tabs"),
-        .. HelpRowOf(CommandIds.ReopenClosedEditor, "Undo close tab"),
+        .. KeyRowOf(CommandIds.NextEditor, "Next tab"),
+        .. KeyRowOf(CommandIds.PreviousEditor, "Previous tab"),
+        .. KeyRowOf(CommandIds.CloseActiveEditor, "Close tab"),
+        .. KeyRowOf(CommandIds.CloseOtherTabs, "Close other tabs"),
+        .. KeyRowOf(CommandIds.CloseAllTabs, "Close all tabs"),
+        .. KeyRowOf(CommandIds.ReopenClosedEditor, "Undo close tab"),
         .. GroupHelp(),
     ]);
 
-    private HelpRow[] GroupHelp() =>
+    private KeyRow[] GroupHelp() =>
     [
-        .. HelpRowOf(CommandIds.MoveToOtherGroup, "Move to other group"),
-        .. HelpRowOf(CommandIds.FocusOtherGroup, "Focus other group"),
+        .. KeyRowOf(CommandIds.MoveToOtherGroup, "Move to other group"),
+        .. KeyRowOf(CommandIds.FocusOtherGroup, "Focus other group"),
     ];
 
-    private IEnumerable<HelpRow> HelpRowOf(string commandId, string description) =>
-        _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new HelpRow(key, description)] : [];
+    private IEnumerable<KeyRow> KeyRowOf(string commandId, string description) =>
+        _commands.IsEnabled(commandId) && KeyOf(commandId) is { } key ? [new KeyRow(key, description)] : [];
 
-    private static readonly HelpRow[] ExplorerKeys = [new("Enter", "Open"), new("→ ←", "Expand or collapse")];
+    private static readonly KeyRow[] ExplorerKeys = [new("Enter", "Open"), new("→ ←", "Expand or collapse")];
 
-    private HelpColumn FindPaneHelp()
+    private KeyColumn FindPaneHelp()
     {
         if (!_workbench.Sidebar.Search.InputsHaveFocus) return ScopeHelp("Find", CommandScope.Find, FindResultKeys);
-        var help = ScopeHelp("Find", CommandScope.Find, []);
-        return help with { Rows = [.. help.Rows, .. FindOptionKeys()] };
+        return ScopeHelp("Find", CommandScope.Find, FindOptionKeys(), fixedFirst: false);
     }
 
-    private HelpRow[] FindOptionKeys() =>
+    private KeyRow[] FindOptionKeys() =>
     [
-        .. HelpRowOf(CommandIds.ToggleMatchCase, "Match case on or off"),
-        .. HelpRowOf(CommandIds.ToggleWholeWord, "Match whole word on or off"),
-        .. HelpRowOf(CommandIds.ToggleIgnoredFiles, "Ignored files on or off"),
+        .. KeyRowOf(CommandIds.ToggleMatchCase, "Match case on or off"),
+        .. KeyRowOf(CommandIds.ToggleWholeWord, "Match whole word on or off"),
+        .. KeyRowOf(CommandIds.ToggleIgnoredFiles, "Ignored files on or off"),
     ];
 
-    private static readonly HelpRow[] FindResultKeys = [new("Enter", "Open result")];
+    private static readonly KeyRow[] FindResultKeys = [new("Enter", "Open result")];
 
-    private static readonly HelpRow[] HistoryKeys =
+    private static readonly KeyRow[] HistoryKeys =
         [new("Enter", "Open the commit's change"), new("↑ ↓", "Choose a commit"), new("Type", "Filter the commits"), new("Esc", "Back to the editor")];
 
-    private static readonly HelpRow[] AssistantKeys = [new("↑ ↓ PgUp PgDn", "Scroll the chat")];
+    private static readonly KeyRow[] AssistantKeys = [new("↑ ↓ PgUp PgDn", "Scroll the chat")];
 
-    private static readonly HelpRow[] UsagesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
+    private static readonly KeyRow[] QuickInfoKeys =
+    [
+        new("Esc", "Close"), new("Enter", "Go to definition"), new("↑ ↓ PgUp PgDn", "Scroll"),
+        new("Any other key", "Close, then act in the editor"),
+    ];
+
+    private static readonly KeyRow[] UsagesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
 
     /// <summary>A region's keys for F1: its fixed keys, then each command in its scope that's bound and can run now.</summary>
-    private HelpColumn ScopeHelp(string title, CommandScope scope, IEnumerable<HelpRow> fixedKeys)
+    private KeyColumn ScopeHelp(string title, CommandScope scope, IEnumerable<KeyRow> fixedKeys, bool fixedFirst = true)
     {
         var commands = _commands.Registered
             .Where(command => command.Scope == scope && _commands.IsEnabled(command.Id))
             .Select(command => (command.Label, Keys: _keybindings.Bindings.Where(b => b.CommandId == command.Id).Select(b => b.Display).ToList()))
             .Where(command => command.Keys.Count > 0)
-            .Select(command => new HelpRow(string.Join(", ", command.Keys), command.Label));
-        return new HelpColumn(title, [.. fixedKeys, .. commands]);
+            .Select(command => new KeyRow(string.Join(", ", command.Keys), command.Label));
+        return HelpSheet.Place(title, fixedFirst ? [.. fixedKeys, .. commands] : [.. commands, .. fixedKeys]);
     }
 
     /// <summary>The focused diff's keys for F1, from the live bindings, leaving out what's unbound or can't run there.</summary>
-    private HelpColumn? DiffHelp()
+    private KeyColumn? DiffHelp()
     {
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return null;
-        HelpRow[] rows =
+        KeyRow[] rows =
         [
-            .. HelpRowOf(CommandIds.NextChange, "Next change"),
-            .. HelpRowOf(CommandIds.PreviousChange, "Previous change"),
-            .. HelpRowOf(CommandIds.RevertChange, diff.IsDeleted ? "Restore file" : "Revert change"),
-            .. HelpRowOf(CommandIds.GoToChangeLine, "Go to this line"),
+            .. KeyRowOf(CommandIds.NextChange, "Next change"),
+            .. KeyRowOf(CommandIds.PreviousChange, "Previous change"),
+            .. KeyRowOf(CommandIds.RevertChange, diff.IsDeleted ? "Restore file" : "Revert change"),
+            .. KeyRowOf(CommandIds.GoToChangeLine, "Go to this line"),
             .. PairRow(CommandIds.ScrollDiffLeft, CommandIds.ScrollDiffRight, "Scroll sideways"),
             .. PairRow(CommandIds.ScrollDiffPageLeft, CommandIds.ScrollDiffPageRight, "Page sideways"),
             .. GroupHelp(),
         ];
-        return rows.Length == 0 ? null : new HelpColumn("Diff", rows);
+        return rows.Length == 0 ? null : HelpSheet.Place("Diff", rows);
 
-        IEnumerable<HelpRow> PairRow(string backId, string forwardId, string description) =>
-            KeyPair(backId, forwardId) is { } keys ? [new HelpRow(keys, description)] : [];
+        IEnumerable<KeyRow> PairRow(string backId, string forwardId, string description) =>
+            KeyPair(backId, forwardId) is { } keys ? [new KeyRow(keys, description)] : [];
     }
 
     /// <summary><c>Shift+← →</c>: both keys, sharing their modifiers when they have the same ones.</summary>
@@ -1022,6 +1052,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G H", CommandIds.ToggleFileHistory);
         keybindings.Bind("Ctrl+G A", CommandIds.AiAssistance);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
+        keybindings.Bind("Ctrl+G I", CommandIds.QuickInfo);
         keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
         keybindings.Bind("Enter", CommandIds.AssistantSend);
         keybindings.Bind("Esc", CommandIds.AssistantStop);
@@ -1038,6 +1069,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Alt+CursorDown", CommandIds.AddCursorBelow);
         keybindings.Bind("Ctrl+T C", CommandIds.ToggleColumnSelect);
         keybindings.Bind("Ctrl+T W", CommandIds.ToggleWordWrap);
+        keybindings.Bind("Ctrl+T F", CommandIds.ToggleFold);
         keybindings.Bind("Ctrl+F", CommandIds.FindInFile);
         keybindings.Bind("Ctrl+H", CommandIds.ReplaceInFile);
         // Ctrl+Shift+letter needs a terminal that doesn't collapse it onto Ctrl+letter (see AGENTS.md).
@@ -1100,7 +1132,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (!_workbench.IsSidebarVisible)
         {
-            _workbench.StatusBar.SetMessage($"Sidebar is hidden — use {CommandMnemonics.For(CommandIds.ToggleSidebar)} to show it");
+            _workbench.StatusBar.ShowMessage($"Sidebar is hidden — use {CommandMnemonics.For(CommandIds.ToggleSidebar)} to show it");
             return;
         }
 
@@ -1111,7 +1143,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         _settings.SidebarWidth = width;
         _settings.Save();
-        _workbench.StatusBar.SetMessage($"Sidebar width: {width}{LimitSuffix(width)}");
+        _workbench.StatusBar.ShowMessage($"Sidebar width: {width}{LimitSuffix(width)}");
     }
 
     private string LimitSuffix(int width) =>
@@ -1218,7 +1250,7 @@ public sealed class WorkbenchHost : IDisposable
                 return;
             }
             var what = group.ActiveDiffTab is null ? "a document" : "a diff";
-            _workbench.StatusBar.SetMessage(replace
+            _workbench.StatusBar.ShowMessage(replace
                 ? $"Nothing to replace in {what} — Ctrl+H needs a file tab"
                 : $"Nothing to find in {what} — Ctrl+F needs a file tab");
             return;
@@ -1231,7 +1263,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (!_workbench.Editor.Groups.MoveActiveToOther())
         {
-            _workbench.StatusBar.SetMessage("Open another file to split with");
+            _workbench.StatusBar.ShowMessage("Open another file to split with");
             return;
         }
         FocusEditorBody();
@@ -1255,7 +1287,7 @@ public sealed class WorkbenchHost : IDisposable
     private bool MoveFocus(FocusRegion region)
     {
         if (_focus.Focus(region)) return true;
-        _workbench.StatusBar.SetMessage($"Nothing to focus in {FocusService.Label(region)}");
+        _workbench.StatusBar.ShowMessage($"Nothing to focus in {FocusService.Label(region)}");
         return false;
     }
 
@@ -1292,8 +1324,27 @@ public sealed class WorkbenchHost : IDisposable
     private void ToggleLineComment(EditorTab tab)
     {
         if (!tab.ToggleLineComment())
-            _workbench.StatusBar.SetMessage($"{tab.Grammar?.Name ?? Workbench.PlainTextName} has no comment syntax");
+            _workbench.StatusBar.ShowMessage($"{tab.Grammar?.Name ?? Workbench.PlainTextName} has no comment syntax");
     }
+
+    private void ToggleFold(EditorTab tab)
+    {
+        if (!tab.ToggleFold()) _workbench.StatusBar.ShowMessage("No block to fold here");
+    }
+
+    private void FoldAll(EditorTab tab)
+    {
+        var folded = tab.FoldAll();
+        _workbench.StatusBar.ShowMessage(folded == 0 ? "No blocks to fold" : $"Folded {Blocks(folded)}");
+    }
+
+    private void UnfoldAll(EditorTab tab)
+    {
+        var unfolded = tab.UnfoldAll();
+        _workbench.StatusBar.ShowMessage(unfolded == 0 ? "Nothing is folded" : $"Unfolded {Blocks(unfolded)}");
+    }
+
+    private static string Blocks(int count) => count == 1 ? "1 block" : $"{count} blocks";
 
     private void FocusEditorTabStrip()
     {
@@ -1354,27 +1405,19 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
         if (!tab.HasSyntax || _workbench.Editor.Group.Syntax is not { } syntax)
         {
-            _workbench.StatusBar.SetMessage($"{tab.File.Name} has no grammar");
+            _workbench.StatusBar.ShowMessage($"{tab.File.Name} has no grammar");
             return;
         }
 
         var view = new GrammarPickerView(syntax.Languages, $"Grammar for {tab.File.Name}", tab.Grammar);
-        view.Chosen += (_, grammar) => tab.SetGrammar(grammar);
-        view.Closed += (_, _) => CloseGrammarPicker(view);
         _activeGrammarPicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusSearch();
-    }
-
-    private void CloseGrammarPicker(GrammarPickerView view)
-    {
-        if (!ReferenceEquals(_activeGrammarPicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeGrammarPicker = null;
-        FocusCallingRegion();
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeGrammarPicker = null;
+            if (view.Confirmed) tab.SetGrammar(view.Grammar);
+            FocusCallingRegion();
+        });
+        view.FilterField.SetFocus();
     }
 
     private void OpenActions()
@@ -1420,7 +1463,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         var scope = _commands.ScopeOf(id);
         return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id)
-            && (id is not (CommandIds.GoToDefinition or CommandIds.FindUsages) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
+            && (id is not (CommandIds.GoToDefinition or CommandIds.QuickInfo or CommandIds.FindUsages) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
     }
 
     private LanguageServer? ActiveLanguageServer() =>
@@ -1484,10 +1527,13 @@ public sealed class WorkbenchHost : IDisposable
 
         var totalLines = CountLines(tab.Content);
         var view = new GoToLineView(totalLines, tab.CursorRow + 1);
-        view.Cancelled += (_, _) => CloseGoToLine(view);
-        view.Submitted += (_, target) =>
+        _activeGoToLine = view;
+        HostedDialog.Show(_workbench, _scopes, view, () =>
         {
-            CloseGoToLine(view);
+            _activeGoToLine = null;
+            FocusCallingRegion();
+            if (!view.Confirmed) return;
+            var target = view.Target;
             // Drive the move ourselves and record it as an explicit jump, so even a short
             // hop lands in history (it's a deliberate navigation) without the move event
             // overwriting the pre-jump origin we want Back to return to.
@@ -1496,11 +1542,7 @@ public sealed class WorkbenchHost : IDisposable
             finally { _suppressHistory = false; }
             tab.RevealLines(target.Row, target.Row);
             _history.Visit(new CursorLocation(tab.File.FullName, target.Row, target.Column), explicitJump: true);
-        };
-
-        _activeGoToLine = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
+        });
         view.FocusInput();
     }
 
@@ -1510,21 +1552,11 @@ public sealed class WorkbenchHost : IDisposable
         if (Group.ActiveTab is not { } tab) return;
         if (!tab.GoToMatchingBracket())
         {
-            _workbench.StatusBar.SetMessage("No matching bracket");
+            _workbench.StatusBar.ShowMessage("No matching bracket");
             return;
         }
         _history.Follow(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
         FocusEditorBody();
-    }
-
-    private void CloseGoToLine(GoToLineView view)
-    {
-        if (!ReferenceEquals(_activeGoToLine, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeGoToLine = null;
-        FocusCallingRegion();
     }
 
     /// <summary>
@@ -1537,12 +1569,12 @@ public sealed class WorkbenchHost : IDisposable
         if (_activeSymbolPicker is not null) return;
         if (_workbench.Editor.Group.ActiveTab is not { } tab)
         {
-            _workbench.StatusBar.SetMessage("No file open");
+            _workbench.StatusBar.ShowMessage("No file open");
             return;
         }
         if (tab.ScanSymbols() is not { } scan)
         {
-            _workbench.StatusBar.SetMessage(SymbolPickerView.NoSymbols);
+            _workbench.StatusBar.ShowMessage(SymbolPickerView.NoSymbols);
             return;
         }
 
@@ -1593,9 +1625,79 @@ public sealed class WorkbenchHost : IDisposable
         server.DefinitionAsync(tab.File.FullName, tab.CursorRow, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
         {
             if (_disposed || request != _definitionRequest) return;
-            if (answer.Exception?.InnerException is { } error) status.SetMessage($"Go to definition failed: {error.Message}");
+            if (answer.Exception?.InnerException is { } error) status.ShowMessage($"Go to definition failed: {error.Message}", Severity.Error);
             else ShowDefinitions(tab, symbol, answer.Result);
         }), TaskScheduler.Default);
+    }
+
+    /// <summary>Quick info (<c>gi</c>): what the language server says the name under the caret is, in a box under its line.</summary>
+    private void ShowQuickInfo()
+    {
+        if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
+        var status = _workbench.StatusBar;
+        var (row, column) = (tab.CursorRow, tab.CursorColumn);
+        var request = ++_quickInfoRequest;
+        server.HoverAsync(tab.File.FullName, row, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
+        {
+            if (_disposed || request != _quickInfoRequest) return;
+            if (answer.Exception?.InnerException is { } error) status.ShowMessage($"Quick info failed: {error.Message}", Severity.Error);
+            else if (answer.Result is []) status.ShowMessage("Nothing to show here");
+            else if (_workbench.Editor.Group.ActiveTab == tab && (tab.CursorRow, tab.CursorColumn) == (row, column)) OpenQuickInfo(tab, answer.Result);
+        }), TaskScheduler.Default);
+    }
+
+    private void OpenQuickInfo(EditorTab tab, IReadOnlyList<HoverPart> answer)
+    {
+        CloseQuickInfo();
+        if (_workbench.HasDialog || _menu.IsOpen || _focus.Region != FocusRegion.Editor || tab.CaretOnScreen is not { } caret
+            || _scopes.Top is not { } below) return;
+        var text = tab.TextOnScreen;
+        var info = QuickInfo.Lay(answer, text.Width - QuickInfo.Frame - 1);
+        var view = new QuickInfoView(info, _workbench.Editor.Group.Syntax, tab.Grammar);
+        var (width, height) = view.Wanted;
+        var box = QuickInfo.Place(text, caret, width, height);
+        if (box.Height < height) box = QuickInfo.Place(text, caret, width + 1, height);
+        view.FitButtons(box.Width);
+        var origin = _workbench.ScreenToViewport(box.Location);
+        (view.X, view.Y, view.Width, view.Height) = (origin.X, origin.Y, box.Width, box.Height);
+        // A click on a button can come while a dialog over the box has the keys.
+        view.Cancelled += (_, _) =>
+        {
+            if (ReferenceEquals(_scopes.Top, _quickInfoScope)) CloseQuickInfo();
+        };
+        view.Submitted += (_, _) =>
+        {
+            if (!ReferenceEquals(_scopes.Top, _quickInfoScope)) return;
+            CloseQuickInfo();
+            GoToDefinition();
+        };
+        _activeQuickInfo = view;
+        _quickInfoScope = new LayeredScope(view.Scope, below, _ => true, key =>
+        {
+            if (!IsHelpKey(key)) CloseQuickInfo();
+        });
+        _quickInfoAt = (tab, caret, text);
+        _workbench.Add(view);
+        _scopes.Push(_quickInfoScope);
+    }
+
+    private bool IsHelpKey(Key key) =>
+        _keybindings.Bindings.Any(b => b.CommandId == CommandIds.ShowHelp && b.CanonicalId == KeyChord.Canonical([key]));
+
+    // A click, a scroll or a resize moves what the box was pointing at.
+    private bool QuickInfoStillFits() =>
+        _quickInfoAt.Tab == _workbench.Editor.Group.ActiveTab && _focus.Region == FocusRegion.Editor
+        && _quickInfoAt.Caret == _quickInfoAt.Tab.CaretOnScreen && _quickInfoAt.Text == _quickInfoAt.Tab.TextOnScreen;
+
+    private void CloseQuickInfo()
+    {
+        if (_activeQuickInfo is not { } view) return;
+        _scopes.Pop(_quickInfoScope!);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeQuickInfo = null;
+        _quickInfoScope = null;
+        _quickInfoAt = default;
     }
 
     /// <summary>The active file's language server, flushed of edits, or null once the status bar has said why there isn't one.</summary>
@@ -1604,7 +1706,7 @@ public sealed class WorkbenchHost : IDisposable
         var status = _workbench.StatusBar;
         if (ActiveLanguageServer() is not { } server)
         {
-            status.SetMessage(_workbench.Languages?.SpecFor(tab) is { } spec
+            status.ShowMessage(_workbench.Languages?.SpecFor(tab) is { } spec
                 ? spec.NotInstalled
                 : $"No language server for {(tab.HasSyntax ? tab.Grammar?.Name : null) ?? Workbench.PlainTextName}");
             return null;
@@ -1612,13 +1714,13 @@ public sealed class WorkbenchHost : IDisposable
         switch (server.State)
         {
             case LanguageServerState.Missing:
-                status.SetMessage(server.Spec.NotInstalled);
+                status.ShowMessage(server.Spec.NotInstalled);
                 return null;
             case LanguageServerState.Loading:
-                status.SetMessage($"The {server.Spec.Name} language server is still loading");
+                status.ShowMessage($"The {server.Spec.Name} language server is still loading");
                 return null;
             case LanguageServerState.Stopped:
-                status.SetMessage($"The {server.Spec.Name} language server stopped");
+                status.ShowMessage($"The {server.Spec.Name} language server stopped");
                 return null;
         }
         _workbench.Languages!.Flush();
@@ -1631,7 +1733,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
         if (IdentifierAt(tab.Lines[tab.CursorRow], tab.CursorCharacter) is not { } symbol)
         {
-            _workbench.StatusBar.SetMessage("No symbol here to find usages of");
+            _workbench.StatusBar.ShowMessage("No symbol here to find usages of");
             return;
         }
         var (path, row, character) = (tab.File.FullName, tab.CursorRow, tab.CursorCharacter);
@@ -1645,7 +1747,7 @@ public sealed class WorkbenchHost : IDisposable
             if (answer.Exception?.InnerException is { } error)
             {
                 pane.ShowFailed(symbol);
-                _workbench.StatusBar.SetMessage($"Find usages failed: {error.Message}");
+                _workbench.StatusBar.ShowMessage($"Find usages failed: {error.Message}", Severity.Error);
                 return;
             }
             var (name, usages) = answer.Result;
@@ -1685,7 +1787,7 @@ public sealed class WorkbenchHost : IDisposable
         switch (locations)
         {
             case []:
-                _workbench.StatusBar.SetMessage(symbol is null ? "Nothing to go to here" : $"No definition found for {symbol}");
+                _workbench.StatusBar.ShowMessage(symbol is null ? "Nothing to go to here" : $"No definition found for {symbol}");
                 return;
             case [var only]:
                 JumpToDefinition(origin, only);
@@ -1696,16 +1798,14 @@ public sealed class WorkbenchHost : IDisposable
         var root = _workbench.Sidebar.Explorer.Root?.FullName;
         var rows = locations.Select(l => new DefinitionRow(l, $"{DisplayPath(l.Path, root)}:{l.Line + 1}", LineAt(fileSystem, l).Trim())).ToList();
         var view = new DefinitionPickerView(symbol ?? "symbol", rows);
-        view.Cancelled += (_, _) => CloseDefinitionPicker(view);
-        view.Submitted += (_, location) =>
-        {
-            CloseDefinitionPicker(view);
-            JumpToDefinition(origin, location);
-        };
         _activeDefinitionPicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusFilter();
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeDefinitionPicker = null;
+            FocusCallingRegion();
+            if (view.Confirmed && view.Chosen is { } chosen) JumpToDefinition(origin, chosen.Location);
+        });
+        view.FilterField.SetFocus();
     }
 
     private static string DisplayPath(string path, string? root) =>
@@ -1716,16 +1816,6 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == location.Path) is { } open)
             return open.Lines.ElementAtOrDefault(location.Line) ?? "";
         return fileSystem.File.ReadLines(location.Path).Skip(location.Line).FirstOrDefault() ?? "";
-    }
-
-    private void CloseDefinitionPicker(DefinitionPickerView view)
-    {
-        if (!ReferenceEquals(_activeDefinitionPicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeDefinitionPicker = null;
-        FocusCallingRegion();
     }
 
     private void JumpToDefinition(EditorTab origin, SourceLocation location) => JumpTo(origin.File.FileSystem, origin, location);
@@ -1764,11 +1854,13 @@ public sealed class WorkbenchHost : IDisposable
     private void OnIteration(object? sender, EventArgs<IApplication?> e)
     {
         _workbench.ShowCursorPosition();
-        // Warnings can be logged from any thread, so the count is read here rather than pushed.
-        _workbench.StatusBar.SetWarnings(_log?.Unseen ?? 0);
+        // Warnings can be logged from any thread, so they're collected here rather than pushed.
+        foreach (var warning in _log?.TakeWarnings() ?? [])
+            _workbench.StatusBar.Bar.Record(warning, Severity.Error);
         // Picks up focus Terminal.Gui moved on its own, and any move that didn't land where it was asked to.
         Reconcile();
         _activeSymbolPicker?.Advance();
+        if (_activeQuickInfo is not null && ReferenceEquals(_scopes.Top, _quickInfoScope) && !QuickInfoStillFits()) CloseQuickInfo();
         if (_workbench.Panel.ActiveTab == PanelTab.Assistant) ShowingAssistant();
         // Some isEnabled checks touch the disk, so not on every iteration.
         if (Environment.TickCount64 - _menuShownAt >= 250) ShowAvailableMenus();
@@ -1783,7 +1875,6 @@ public sealed class WorkbenchHost : IDisposable
     private void OnActiveTabChanged(object? sender, TuiCode.Editor.EditorTab? tab)
     {
         _find.OnActiveTabChanged();
-        if (_log is not null && tab?.File.FullName == _log.File.FullName) _log.MarkSeen();
         if (_suppressHistory || tab is null) return;
         _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn));
     }
@@ -1798,11 +1889,11 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Group.ActiveTab is not { } tab || LinkUnderCursor() is not { } url) return;
         if (_environment.IsOverSsh)
         {
-            if (tab.CopyText(url) is CopyOutcome.Failed(var reason)) _workbench.StatusBar.SetError($"Couldn't copy the link: {reason}");
-            else _workbench.StatusBar.SetMessage($"Copied {url} (no browser over SSH)");
+            if (tab.CopyText(url) is CopyOutcome.Failed(var reason)) _workbench.StatusBar.ShowMessage($"Couldn't copy the link: {reason}", Severity.Error);
+            else _workbench.StatusBar.ShowMessage($"Copied {url} (no browser over SSH)");
         }
-        else if (Browser.Open(url) is { } failure) _workbench.StatusBar.SetError($"Couldn't open the link: {failure}");
-        else _workbench.StatusBar.SetMessage($"Opened {url}");
+        else if (Browser.Open(url) is { } failure) _workbench.StatusBar.ShowMessage($"Couldn't open the link: {failure}", Severity.Error);
+        else _workbench.StatusBar.ShowMessage($"Opened {url}");
     }
 
     internal const string TutorialsUrl = "https://www.youtube.com/playlist?list=PLGokw8JfNpWE";
@@ -1813,11 +1904,11 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_environment.IsOverSsh)
         {
-            if (CopyToClipboard(TutorialsUrl) is CopyOutcome.Failed(var reason)) _workbench.StatusBar.SetError($"Couldn't copy the link: {reason}");
-            else _workbench.StatusBar.SetMessage("Copied the tutorials link (no browser over SSH)");
+            if (CopyToClipboard(TutorialsUrl) is CopyOutcome.Failed(var reason)) _workbench.StatusBar.ShowMessage($"Couldn't copy the link: {reason}", Severity.Error);
+            else _workbench.StatusBar.ShowMessage("Copied the tutorials link (no browser over SSH)");
         }
-        else if (Browser.Open(TutorialsUrl) is { } failure) _workbench.StatusBar.SetError($"Couldn't open the link: {failure}");
-        else _workbench.StatusBar.SetMessage("Opened TuiCode tutorials in your browser");
+        else if (Browser.Open(TutorialsUrl) is { } failure) _workbench.StatusBar.ShowMessage($"Couldn't open the link: {failure}", Severity.Error);
+        else _workbench.StatusBar.ShowMessage("Opened TuiCode tutorials in your browser");
     }
 
     internal const string SettingsErrorMessage = "TuiCode.settings.json has an error, so defaults are in use. sl shows the log";
@@ -1827,18 +1918,30 @@ public sealed class WorkbenchHost : IDisposable
         if (_log is null) return;
         _log.Start();
         _workbench.OpenFile(_log.File);
-        _log.MarkSeen();
+    }
+
+    private void ShowMessages()
+    {
+        if (_activeMessages is not null) return;
+        var view = new MessagesDialog(_workbench.StatusBar.Bar);
+        _activeMessages = view;
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeMessages = null;
+            FocusCallingRegion();
+        });
+        view.List.SetFocus();
     }
 
     private void NavigateBack()
     {
-        if (!_history.CanGoBack) _workbench.StatusBar.SetMessage("No previous cursor position");
+        if (!_history.CanGoBack) _workbench.StatusBar.ShowMessage("No previous cursor position");
         else GoToHistory(_history.GoBack());
     }
 
     private void NavigateForward()
     {
-        if (!_history.CanGoForward) _workbench.StatusBar.SetMessage("No next cursor position");
+        if (!_history.CanGoForward) _workbench.StatusBar.ShowMessage("No next cursor position");
         else GoToHistory(_history.GoForward());
     }
 
@@ -1981,7 +2084,7 @@ public sealed class WorkbenchHost : IDisposable
         var fromExplorer = ExplorerIsContext;
         if (FileCommandTarget(fromExplorer, "cut") is not { } item) return;
         _workbench.Sidebar.Explorer.Cut(item);
-        _workbench.StatusBar.SetMessage(CutMessage(item));
+        _cutMessage = _workbench.StatusBar.ShowMessage(CutMessage(item));
         if (fromExplorer) FocusSidebar();
     }
 
@@ -2000,12 +2103,12 @@ public sealed class WorkbenchHost : IDisposable
             if (!ReferenceEquals(moved, item))
             {
                 _history.Rebase(item.FullName, moved.FullName);
-                _workbench.StatusBar.SetMessage($"Moved: {moved.FullName}");
+                _workbench.StatusBar.ShowMessage($"Moved: {moved.FullName}");
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            _workbench.StatusBar.SetMessage(ex.Message);
+            _workbench.StatusBar.ShowMessage(ex.Message, Severity.Error);
         }
         if (fromExplorer) FocusSidebar();
     }
@@ -2056,9 +2159,9 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         if (saved > 0)
-            _workbench.StatusBar.SetMessage($"Saved {saved} {Plural.Of(saved, "file")}");
+            _workbench.StatusBar.ShowMessage($"Saved {saved} {Plural.Of(saved, "file")}");
         else if (conflict is null)
-            _workbench.StatusBar.SetMessage("No unsaved changes");
+            _workbench.StatusBar.ShowMessage("No unsaved changes");
         if (conflict is not null) ConfirmOverwrite(conflict);
     }
 
@@ -2102,7 +2205,7 @@ public sealed class WorkbenchHost : IDisposable
             _cursorColour);
         if (ShellSuspend.Run(modes) is { } refusal)
         {
-            _workbench.StatusBar.SetMessage(refusal);
+            _workbench.StatusBar.ShowMessage(refusal);
             return;
         }
         _terminalCursors.Forget();
@@ -2181,7 +2284,7 @@ public sealed class WorkbenchHost : IDisposable
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                _workbench.StatusBar.SetMessage(ex.Message);
+                _workbench.StatusBar.ShowMessage(ex.Message, Severity.Error);
             }
         }
 
@@ -2227,7 +2330,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
         if (tab.DiskNow == DiskState.Gone)
         {
-            _workbench.StatusBar.SetMessage($"{tab.File.Name} no longer exists on disk — nothing to reload");
+            _workbench.StatusBar.ShowMessage($"{tab.File.Name} no longer exists on disk — nothing to reload");
             return;
         }
         if (!tab.IsDirty)
@@ -2240,7 +2343,7 @@ public sealed class WorkbenchHost : IDisposable
             $"Reload '{tab.File.Name}' from disk?\nYour unsaved changes will be lost.",
             [Main("Reload", ButtonKind.Danger, Reload)]);
 
-        void Reload() => _workbench.StatusBar.SetMessage(_diskChanges.Reload(tab, evenIfUnchanged: true)
+        void Reload() => _workbench.StatusBar.ShowMessage(_diskChanges.Reload(tab, evenIfUnchanged: true)
             ? $"⟳ Reloaded {tab.File.Name} from disk"
             : $"{tab.File.Name} no longer exists on disk — nothing to reload");
     }
@@ -2298,7 +2401,7 @@ public sealed class WorkbenchHost : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _workbench.StatusBar.SetMessage(ex.Message);
+            _workbench.StatusBar.ShowMessage(ex.Message, Severity.Error);
         }
     }
 
@@ -2359,7 +2462,7 @@ public sealed class WorkbenchHost : IDisposable
         var item = fromExplorer ? explorer.SelectedObject : _workbench.Editor.Group.ActiveTab?.File;
         if (item is null || explorer.Root is null) return null;
         if (!explorer.IsRoot(item)) return item;
-        _workbench.StatusBar.SetMessage($"The workspace root can't be {verb}.");
+        _workbench.StatusBar.ShowMessage($"The workspace root can't be {verb}.");
         return null;
     }
 
@@ -2375,7 +2478,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_assistant is null || agent is null || !CommandInstalled(agent.Program))
         {
             var missing = agent is null ? "No AI agent is set up" : $"No AI agent found: {agent.Program} isn't on PATH";
-            _workbench.StatusBar.SetMessage($"{missing}. Choose one in Settings › AI Assistance ({CommandMnemonics.For(CommandIds.OpenSettings)})");
+            _workbench.StatusBar.ShowMessage($"{missing}. Choose one in Settings › AI Assistance ({CommandMnemonics.For(CommandIds.OpenSettings)})");
             return;
         }
         _assistant.Configure(agent);
@@ -2441,8 +2544,8 @@ public sealed class WorkbenchHost : IDisposable
         var answering = _assistant?.IsAnswering == true;
         if (answering == _answering) return;
         _answering = answering;
-        if (answering) _workbench.StatusBar.SetMessage(AnsweringMessage);
-        else _workbench.StatusBar.ClearMessage(AnsweringMessage);
+        if (answering) _answeringMessage = _workbench.StatusBar.ShowNews(AnsweringMessage);
+        else _workbench.StatusBar.Withdraw(_answeringMessage);
     }
 
     private const string AnsweringMessage = "AI assistance: answering…";
@@ -2450,20 +2553,12 @@ public sealed class WorkbenchHost : IDisposable
     private IReadOnlyList<string>? OpenBufferLines(string path) =>
         _workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path)?.Lines;
 
-    // Edits are refused and reads allowed before it gets here; anything else, such as a command, is the user's call.
-    private Task<bool> AskAgentPermission(PermissionRequest request)
+    private bool WriteAgentText(string path, string content)
     {
-        var answer = new TaskCompletionSource<bool>();
-        if (_activeConfirm is not null || _assistant?.Agent is not { } agent)
-        {
-            answer.SetResult(false);
-            return answer.Task;
-        }
-        var title = request.Command is not null || request.Kind == "execute" ? $"{agent.Name} wants to run a command" : $"{agent.Name} wants to use a tool";
-        Confirm(title, request.Command ?? request.Title,
-            [Main("Allow once", ButtonKind.Primary, () => answer.TrySetResult(true))],
-            cancelled: () => answer.TrySetResult(false), cancel: "Deny");
-        return answer.Task;
+        if (_workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path) is not { } tab) return false;
+        tab.ReplaceLines(0, tab.Lines.Count, content.Replace("\r\n", "\n").Split('\n'));
+        tab.Save();
+        return true;
     }
 
     // Show the sidebar and focus its active tab: the explorer tree, or the search query input.
@@ -2494,21 +2589,31 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeHelp is not null) return;
 
-        var view = new HelpView(PlaceHelp(), _workbench.Frame.Width, _workbench.Viewport.Height);
+        var view = new KeysDialog(HelpSheet.For(PlaceHelp(), _commands, _keybindings, CanRunNow), _workbench.Viewport.Size);
         view.Closed += (_, _) => CloseHelp(view);
         _activeHelp = view;
+        _helpScope = new LibraryScope(view.Scope);
         _workbench.Add(view);
-        _scopes.Push(view.Scope);
+        _scopes.Push(_helpScope);
         view.SetFocus();
     }
 
-    private void CloseHelp(HelpView view)
+    // With no file tab, Ctrl+F and Ctrl+H open the Find pane, which Find globally and Replace globally already list.
+    private bool CanRunNow(string id) => _commands.IsEnabled(id) && id switch
+    {
+        CommandIds.FindInFile => Group.ActiveTab is not null || Group.ActiveDiffTab is not null,
+        CommandIds.ReplaceInFile => Group.ActiveTab is not null,
+        _ => true,
+    };
+
+    private void CloseHelp(KeysDialog view)
     {
         if (!ReferenceEquals(_activeHelp, view)) return;
-        _scopes.Pop(view.Scope);
+        _scopes.Pop(_helpScope!);
         _workbench.Remove(view);
         view.Dispose();
         _activeHelp = null;
+        _helpScope = null;
         FocusCallingRegion();
     }
 
@@ -2569,7 +2674,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_activeDocumentInfo is not null) return;
         if (_workbench.Editor.Group.ActiveTab is not { } tab)
         {
-            _workbench.StatusBar.SetMessage("No file is open.");
+            _workbench.StatusBar.ShowMessage("No file is open.");
             return;
         }
 
@@ -2599,17 +2704,17 @@ public sealed class WorkbenchHost : IDisposable
         var group = _workbench.Editor.Group;
         if ((group.ActiveTab ?? group.ActiveDiffTab?.Source) is not { } tab)
         {
-            _workbench.StatusBar.SetMessage("No file is open.");
+            _workbench.StatusBar.ShowMessage("No file is open.");
             return;
         }
         if (!tab.File.FileSystem.File.Exists(tab.File.FullName))
         {
-            _workbench.StatusBar.SetMessage($"{tab.File.Name} has never been saved.");
+            _workbench.StatusBar.ShowMessage($"{tab.File.Name} has never been saved.");
             return;
         }
         if (group.CompareToSaved(tab) is null)
         {
-            _workbench.StatusBar.SetMessage("No changes against saved");
+            _workbench.StatusBar.ShowMessage("No changes against saved");
             return;
         }
         FocusEditorBody();
@@ -2627,7 +2732,7 @@ public sealed class WorkbenchHost : IDisposable
         if (diff.ToggleThread()) return;
         if (diff.Source is not { } tab)
         {
-            _workbench.StatusBar.SetMessage("Deleted in this branch");
+            _workbench.StatusBar.ShowMessage("Deleted in this branch");
             return;
         }
         var line = diff.CurrentBufferLine;
@@ -2659,11 +2764,11 @@ public sealed class WorkbenchHost : IDisposable
         }
         if (diff.RevertChange() is not { } lines)
         {
-            _workbench.StatusBar.SetMessage("No changes");
+            _workbench.StatusBar.ShowMessage("No changes");
             return;
         }
         var undo = lines > LargeRevert ? " — Ctrl+Z to undo" : string.Empty;
-        _workbench.StatusBar.SetMessage($"Reverted {Plural.Count(lines, "line")} from {diff.LeftLabel}{undo}");
+        _workbench.StatusBar.ShowMessage($"Reverted {Plural.Count(lines, "line")} from {diff.LeftLabel}{undo}");
     }
 
     /// <summary>
@@ -2676,13 +2781,13 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Group.ActiveDiffTab is not { } diff) return;
         if (diff.IsDeleted)
         {
-            _workbench.StatusBar.SetMessage($"{diff.File.Name} is deleted in this branch — use rc to restore it");
+            _workbench.StatusBar.ShowMessage($"{diff.File.Name} is deleted in this branch — use rc to restore it");
             return;
         }
         var changes = diff.ChangeCount;
         if (changes == 0)
         {
-            _workbench.StatusBar.SetMessage("No changes");
+            _workbench.StatusBar.ShowMessage("No changes");
             return;
         }
 
@@ -2691,7 +2796,7 @@ public sealed class WorkbenchHost : IDisposable
             [Main("Revert", ButtonKind.Danger, () =>
             {
                 if (diff.RevertAll() is not { } reverted) return;
-                _workbench.StatusBar.SetMessage(
+                _workbench.StatusBar.ShowMessage(
                     $"Reverted {Plural.Count(reverted, "change")} in {diff.File.Name} — Ctrl+Z to undo");
             })]);
     }
@@ -2704,7 +2809,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         _workbench.Editor.Groups.Restore(diff.File, diff.LeftLines);
         FocusEditorBody();
-        _workbench.StatusBar.SetMessage($"{diff.File.Name} restored — Ctrl+S to write it back");
+        _workbench.StatusBar.ShowMessage($"{diff.File.Name} restored — Ctrl+S to write it back");
     }
 
     private void CompareToRevision()
@@ -2713,12 +2818,12 @@ public sealed class WorkbenchHost : IDisposable
         var group = _workbench.Editor.Group;
         if ((group.ActiveTab ?? group.ActiveDiffTab?.Source) is not { } tab)
         {
-            _workbench.StatusBar.SetMessage("No file is open.");
+            _workbench.StatusBar.ShowMessage("No file is open.");
             return;
         }
         if (!tab.File.FileSystem.File.Exists(tab.File.FullName))
         {
-            _workbench.StatusBar.SetMessage($"{tab.File.Name} has never been saved.");
+            _workbench.StatusBar.ShowMessage($"{tab.File.Name} has never been saved.");
             return;
         }
 
@@ -2730,13 +2835,13 @@ public sealed class WorkbenchHost : IDisposable
         if (_activeBlame is not null) return;
         if (_workbench.Editor.Group.ActiveTab is not { } tab)
         {
-            _workbench.StatusBar.SetMessage("No file is open.");
+            _workbench.StatusBar.ShowMessage("No file is open.");
             return;
         }
         var name = tab.File.Name;
         if (!tab.File.FileSystem.File.Exists(tab.File.FullName))
         {
-            _workbench.StatusBar.SetMessage($"{name} has never been saved.");
+            _workbench.StatusBar.ShowMessage($"{name} has never been saved.");
             return;
         }
         var lines = tab.Lines;
@@ -2744,7 +2849,7 @@ public sealed class WorkbenchHost : IDisposable
         // The row after a final line break has no line of its own for git to blame.
         if (row > 0 && row == lines.Count - 1 && lines[row].Length == 0)
         {
-            _workbench.StatusBar.SetMessage("Nothing to blame on the empty last line.");
+            _workbench.StatusBar.ShowMessage("Nothing to blame on the empty last line.");
             return;
         }
 
@@ -2756,21 +2861,21 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (root.Result.Error is { } error)
             {
-                _workbench.StatusBar.SetMessage(error);
+                _workbench.StatusBar.ShowMessage(error, Severity.Error);
                 return;
             }
             if (root.Result.Value is null)
             {
-                _workbench.StatusBar.SetMessage($"{name} isn't in a git repository.");
+                _workbench.StatusBar.ShowMessage($"{name} isn't in a git repository.");
                 return;
             }
             var blame = Task.Run(() => _git.BlameAsync(path, number, contents));
             WhenDone(blame, () =>
             {
                 if (blame.Result.Error is { } failure)
-                    _workbench.StatusBar.SetMessage(failure);
+                    _workbench.StatusBar.ShowMessage(failure, Severity.Error);
                 else if (blame.Result.Value is not { } line)
-                    _workbench.StatusBar.SetMessage($"{name} isn't tracked by git.");
+                    _workbench.StatusBar.ShowMessage($"{name} isn't tracked by git.");
                 else
                     OpenBlame(name, number, line, tab.File.FileSystem, root.Result.Value);
             });
@@ -2817,12 +2922,12 @@ public sealed class WorkbenchHost : IDisposable
         {
             if ((after.Result.Error ?? before.Result.Error) is { } error)
             {
-                _workbench.StatusBar.SetMessage(error);
+                _workbench.StatusBar.ShowMessage(error, Severity.Error);
                 return;
             }
             if (after.Result.Value is not { } text)
             {
-                _workbench.StatusBar.SetMessage($"{line.Path} isn't in {line.ShortHash}");
+                _workbench.StatusBar.ShowMessage($"{line.Path} isn't in {line.ShortHash}");
                 return;
             }
             var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(repoRoot, line.Path));
@@ -2838,7 +2943,7 @@ public sealed class WorkbenchHost : IDisposable
         var group = _workbench.Editor.Group;
         if ((group.ActiveTab ?? group.ActiveDiffTab?.Source) is not { } tab)
         {
-            _workbench.StatusBar.SetMessage("No file is open.");
+            _workbench.StatusBar.ShowMessage("No file is open.");
             return;
         }
         var start = tab.File.Directory is { Exists: true } folder ? folder : _workbench.Sidebar.Explorer.Root;
@@ -2862,19 +2967,19 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (string.Equals(other.FullName, tab.File.FullName, StringComparison.Ordinal))
         {
-            _workbench.StatusBar.SetMessage($"Can't compare {tab.File.Name} with itself");
+            _workbench.StatusBar.ShowMessage($"Can't compare {tab.File.Name} with itself");
             return;
         }
         try
         {
             if (_workbench.Editor.Group.Compare(tab, other.Name, () => DiffTab.ReadLines(other), other.FullName) is null)
-                _workbench.StatusBar.SetMessage($"No changes against {other.Name}");
+                _workbench.StatusBar.ShowMessage($"No changes against {other.Name}");
             else
                 FocusEditorBody();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _workbench.StatusBar.SetMessage($"Can't read {other.Name}: {ex.Message}");
+            _workbench.StatusBar.ShowMessage($"Can't read {other.Name}: {ex.Message}", Severity.Error);
         }
     }
 
@@ -2911,7 +3016,7 @@ public sealed class WorkbenchHost : IDisposable
                 var lines = DiffTab.SplitLines(content.Result.Value);
                 CloseRevisionPicker(view);
                 if (group.Compare(tab, revision, () => lines) is null)
-                    _workbench.StatusBar.SetMessage($"No changes against {revision}");
+                    _workbench.StatusBar.ShowMessage($"No changes against {revision}");
                 else
                     FocusEditorBody();
             });
@@ -2980,7 +3085,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (index < 0 || index >= commits.Count)
             {
-                _workbench.StatusBar.SetMessage(direction > 0 ? "Oldest commit in the history" : "Newest commit in the history");
+                _workbench.StatusBar.ShowMessage(direction > 0 ? "Oldest commit in the history" : "Newest commit in the history");
                 return;
             }
 
@@ -3015,7 +3120,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             if ((after.Result.Error ?? before.Result.Error) is { } error)
             {
-                _workbench.StatusBar.SetMessage(error);
+                _workbench.StatusBar.ShowMessage(error, Severity.Error);
                 return;
             }
             var left = before.Result.Value is { } old ? DiffTab.SplitLines(old) : [];
@@ -3050,7 +3155,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (index < 0 || index >= files.Count)
             {
-                _workbench.StatusBar.SetMessage(direction > 0 ? "Last change in the review" : "First change in the review");
+                _workbench.StatusBar.ShowMessage(direction > 0 ? "Last change in the review" : "First change in the review");
                 return;
             }
 
@@ -3084,7 +3189,7 @@ public sealed class WorkbenchHost : IDisposable
         WhenDone(review.Refresh(), () =>
         {
             if (review.Review is { PullRequest: not null } reloaded) OpenOverview(reloaded);
-            else _workbench.StatusBar.SetMessage("No pull request for this branch.");
+            else _workbench.StatusBar.ShowMessage("No pull request for this branch.");
         });
     }
 
@@ -3106,13 +3211,13 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
-        _workbench.StatusBar.SetMessage($"Loading #{pullRequest.Number}…");
+        _workbench.StatusBar.ShowMessage($"Loading #{pullRequest.Number}…");
         var loading = Task.Run(() => _gitHub.GetConversationAsync(review.RepoRoot, pullRequest.Number));
         WhenDone(loading, () =>
         {
             var text = loading.Result.Error ?? PullRequestOverview.Build(loading.Result.Value);
             group.OpenDocument(file, text);
-            _workbench.StatusBar.SetMessage(title);
+            _workbench.StatusBar.ShowMessage(title);
             FocusEditorBody();
         });
     }
@@ -3172,7 +3277,7 @@ public sealed class WorkbenchHost : IDisposable
         while (index < files.Count && files[index].Path != change.Path) index++;
         ShowReviewDiff(review, change, index, files.Count, diff =>
         {
-            if (diff is null) _workbench.StatusBar.SetMessage($"No changes against {review.Base}");
+            if (diff is null) _workbench.StatusBar.ShowMessage($"No changes against {review.Base}");
         });
     }
 
@@ -3204,7 +3309,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (content.Result.Error is { } error)
             {
-                _workbench.StatusBar.SetMessage(error);
+                _workbench.StatusBar.ShowMessage(error, Severity.Error);
                 return;
             }
             var lines = content.Result.Value is { } text ? DiffTab.SplitLines(text) : [];
@@ -3320,7 +3425,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_activeWorktreePicker is not null) return;
         if (_workbench.Sidebar.Explorer.Root is not { } root)
         {
-            _workbench.StatusBar.SetMessage("Not in a git repository.");
+            _workbench.StatusBar.ShowMessage("Not in a git repository.");
             return;
         }
 
@@ -3339,9 +3444,9 @@ public sealed class WorkbenchHost : IDisposable
         {
             var (error, rows) = listing.Result;
             if (error is not null)
-                _workbench.StatusBar.SetMessage(error);
+                _workbench.StatusBar.ShowMessage(error, Severity.Error);
             else if (rows.Count == 0)
-                _workbench.StatusBar.SetMessage("This repo has no other worktrees.");
+                _workbench.StatusBar.ShowMessage("This repo has no other worktrees.");
             else
                 OpenWorktreePicker(root.FileSystem, rows);
         });
@@ -3424,7 +3529,7 @@ public sealed class WorkbenchHost : IDisposable
                 }
                 ClearDrafts();
                 CloseSubmitReview(view);
-                _workbench.StatusBar.SetMessage($"Review submitted on #{number}");
+                _workbench.StatusBar.ShowMessage($"Review submitted on #{number}");
             });
         };
 
@@ -3525,7 +3630,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (setting.Result.Error is { } error)
             {
-                _workbench.StatusBar.SetMessage(error);
+                _workbench.StatusBar.ShowMessage(error, Severity.Error);
                 return;
             }
             Marked();
@@ -3561,7 +3666,7 @@ public sealed class WorkbenchHost : IDisposable
         {
             tab.SetViewed(targets.Where((_, i) => results[i].Error is null), viewed);
             if (results.Select(r => r.Error).FirstOrDefault(e => e is not null) is not { } error) return;
-            _workbench.StatusBar.SetMessage(error);
+            _workbench.StatusBar.ShowMessage(error, Severity.Error);
             _ = tab.Refresh();
         });
     }
@@ -3585,7 +3690,7 @@ public sealed class WorkbenchHost : IDisposable
             if (next >= unviewed.Count)
             {
                 group.CloseDiff(from);
-                _workbench.StatusBar.SetMessage(unviewed.Count == 0 ? "All files viewed" : "No unviewed file has changes to show");
+                _workbench.StatusBar.ShowMessage(unviewed.Count == 0 ? "All files viewed" : "No unviewed file has changes to show");
                 return;
             }
 
@@ -3626,12 +3731,12 @@ public sealed class WorkbenchHost : IDisposable
             || _workbench.Sidebar.Review.Review is not { PullRequest: { } pullRequest } review
             || spot.Key != review.MergeBase)
         {
-            _workbench.StatusBar.SetMessage("Open a file from the Review tab to comment");
+            _workbench.StatusBar.ShowMessage("Open a file from the Review tab to comment");
             return;
         }
         if (diff.CurrentHeadLine is not { } line)
         {
-            _workbench.StatusBar.SetMessage("Comment on a line on the right");
+            _workbench.StatusBar.ShowMessage("Comment on a line on the right");
             return;
         }
 
@@ -3642,12 +3747,12 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (head.Result.Error is { } error)
             {
-                _workbench.StatusBar.SetMessage(error);
+                _workbench.StatusBar.ShowMessage(error, Severity.Error);
                 return;
             }
             if (!MatchesHead(head.Result.Value, diff))
             {
-                _workbench.StatusBar.SetMessage(
+                _workbench.StatusBar.ShowMessage(
                     $"This file differs from #{pullRequest.Number}'s head: comments would land on the wrong lines");
                 return;
             }
@@ -3665,7 +3770,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Sidebar.Review.Review is not { PullRequest: { } pullRequest } review) return;
         if (thread.ReplyToId == 0)
         {
-            _workbench.StatusBar.SetMessage("GitHub didn't say what to reply to on this thread");
+            _workbench.StatusBar.ShowMessage("GitHub didn't say what to reply to on this thread");
             return;
         }
 
@@ -3687,7 +3792,7 @@ public sealed class WorkbenchHost : IDisposable
                 // editor's Tabs then makes whichever tab takes it active (#191).
                 CloseComment(view, fromReviewTab);
                 ShowReply(thread, posting.Result.Value);
-                _workbench.StatusBar.SetMessage($"Replied on #{pullRequest.Number}");
+                _workbench.StatusBar.ShowMessage($"Replied on #{pullRequest.Number}");
             });
         };
 
@@ -3782,22 +3887,19 @@ public sealed class WorkbenchHost : IDisposable
             _environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         if (folders.Count == 0)
         {
-            _workbench.StatusBar.SetMessage("No other folders in your history yet.");
+            _workbench.StatusBar.ShowMessage("No other folders in your history yet.");
             return;
         }
 
         var view = new RecentFolderPickerView(folders);
-        view.Cancelled += (_, _) => CloseRecentFolderPicker(view);
-        view.Submitted += (_, folder) =>
-        {
-            CloseRecentFolderPicker(view);
-            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(folder.Path));
-        };
-
         _activeRecentFolderPicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusFilter();
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeRecentFolderPicker = null;
+            FocusCallingRegion();
+            if (view.Confirmed && view.Chosen is { } folder) _workbench.OpenFolder(fileSystem.DirectoryInfo.New(folder.Path));
+        });
+        view.FilterField.SetFocus();
     }
 
     private void OpenFilePath()
@@ -3820,16 +3922,6 @@ public sealed class WorkbenchHost : IDisposable
         };
 
         ShowPathPrompt(view);
-    }
-
-    private void CloseRecentFolderPicker(RecentFolderPickerView view)
-    {
-        if (!ReferenceEquals(_activeRecentFolderPicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeRecentFolderPicker = null;
-        FocusCallingRegion();
     }
 
     private void ClosePullRequestPicker(PullRequestPickerView view)

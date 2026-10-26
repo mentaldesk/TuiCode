@@ -1,162 +1,115 @@
-using System.Text;
-using Terminal.Gui.Text;
-using TuiCode.Abstractions;
+using MentalDesk.Tui;
+using MentalDesk.Tui.Chrome;
 
 namespace TuiCode.Workbench.Parts;
 
+/// <summary>The library's <see cref="AppStatusBar"/>, fed the active file's path, grammar, modes, diff status and position.</summary>
 public sealed class StatusBarPart : View
 {
-    private readonly VerbatimLabel _label;
-    private readonly VerbatimLabel _position;
-    private readonly VerbatimLabel _focus;
-    private readonly Button _warnings;
-    private int _unseenWarnings;
-    private string _region = string.Empty;
-    private string _message;
-    private string? _chord;
+    private string? _help;
     private string? _grammar;
     private string? _diff;
     private string? _wrap;
     private string? _mode;
     private (int Row, int Column)? _cursor;
     private (int Carets, int? Selected) _selection = (1, null);
-    private string? _idleHint;
+    private string _position = string.Empty;
 
     public StatusBarPart()
     {
-        _message = DefaultMessage;
         Height = 1;
         CanFocus = false;
         SchemeName = "StatusBar";
-
-        _position = new VerbatimLabel { X = Pos.AnchorEnd() - 1, Y = 0 };
-        _focus = new VerbatimLabel { X = 1, Y = 0 };
-        _warnings = new Button
-        {
-            X = Pos.Left(_position),
-            Y = 0,
-            Visible = false,
-            CanFocus = false,
-            NoDecorations = true,
-            NoPadding = true,
-            ShadowStyle = ShadowStyles.None,
-            HotKeySpecifier = (Rune)0xffff,
-            MouseHighlightStates = MouseState.None,
-        };
-        _warnings.Accepting += (_, e) =>
-        {
-            e.Handled = true;
-            WarningsClicked?.Invoke(this, EventArgs.Empty);
-        };
-        _warnings.GettingAttributeForRole += (_, e) =>
-        {
-            e.Result = WarningColour.On(e.Result ?? GetAttributeForRole(e.Role));
-            e.Handled = true;
-        };
-        _label = new VerbatimLabel
-        {
-            X = Pos.Right(_focus),
-            Y = 0,
-            Width = Dim.Fill(2, _warnings),
-            Text = _message
-        };
-        Add(_focus, _label, _warnings, _position);
+        Bar = new AppStatusBar { Y = 0, RestingText = DefaultMessage };
+        Add(Bar);
+        SetHelpKey("F1");
     }
+
+    public AppStatusBar Bar { get; }
 
     /// <summary>The <c>⚠ n</c> item was clicked.</summary>
-    public event EventHandler? WarningsClicked;
-
-    /// <summary>Warnings logged since the log was last opened, shown as <c>⚠ n</c> before the position; 0 hides it.</summary>
-    public void SetWarnings(int unseen)
+    public event EventHandler? MessagesRequested
     {
-        if (unseen == _unseenWarnings) return;
-        _unseenWarnings = unseen;
-        _warnings.Text = unseen > 0 ? $"⚠ {unseen}" : string.Empty;
-        _warnings.Visible = unseen > 0;
-        _warnings.X = Pos.Left(_position) - (unseen > 0 ? _warnings.Text.GetColumns(false) + 3 : 0);
+        add => Bar.MessagesRequested += value;
+        remove => Bar.MessagesRequested -= value;
     }
 
-    internal string DisplayedWarnings => _warnings.Visible ? _warnings.Text : string.Empty;
+    internal string DisplayedWarnings => Bar.UnreadButton.Visible ? Bar.UnreadButton.Text : string.Empty;
 
-    internal View WarningsView => _warnings;
+    internal View WarningsView => Bar.UnreadButton;
 
     /// <summary>The one word for where keys will go, shown at the far left; always present (#227).</summary>
     public void SetFocusRegion(string region)
     {
-        if (region == _region) return;
-        _region = region;
-        _focus.Text = $"{region}  •  ";
+        if (region != Bar.FocusWord) Bar.SetFocusWord(region);
     }
 
-    internal string DisplayedFocus => _region;
+    internal string DisplayedFocus => Bar.FocusWord;
 
-    public void SetMessage(string message)
+    /// <summary>A reply to what the user just did: it goes at their next key, or after five seconds.</summary>
+    public StatusMessage ShowMessage(string message, Severity severity = Severity.Info) => Bar.ShowMessage(message, severity);
+
+    /// <summary>Something that happened by itself: it stays five seconds, or for an error until a key after that.</summary>
+    public StatusMessage ShowNews(string message, Severity severity = Severity.Info) => Bar.ShowNews(message, severity);
+
+    public void Withdraw(StatusMessage? message)
     {
-        _message = message;
-        _label.SchemeName = null;
-        UpdateLabel();
+        if (message is not null) Bar.Withdraw(message);
     }
 
-    /// <summary>Show <paramref name="message"/> in the error colours until the next message replaces it.</summary>
-    public void SetError(string message)
-    {
-        SetMessage(message);
-        _label.SchemeName = "Error";
-    }
+    /// <summary>What the bar shows while no message is: the active file's path, or <see cref="DefaultMessage"/>.</summary>
+    public void SetResting(string? text) => Bar.RestingText = text ?? DefaultMessage;
 
-    internal string Message => _message;
+    /// <summary>The message showing, or the resting text when none is.</summary>
+    internal string Message => Bar.Message ?? Bar.RestingText;
 
-    /// <summary>What the bar says when nothing else has: the name and the help key, if it has one.</summary>
-    public string DefaultMessage { get; private set; } = DefaultMessageFor("F1");
+    public string DefaultMessage => "TuiCode";
 
-    /// <summary>Name <paramref name="key"/> as the help key in the default message; null leaves the name alone.</summary>
+    /// <summary>Ends the bar with <c>Press {key} for help</c>; null leaves nothing there.</summary>
     public void SetHelpKey(string? key)
     {
-        var previous = DefaultMessage;
-        DefaultMessage = DefaultMessageFor(key);
-        if (_message == previous) SetMessage(DefaultMessage);
+        _help = key is null ? null : $"Press {key} for help";
+        ShowState();
     }
 
-    private static string DefaultMessageFor(string? helpKey) => helpKey is null ? "TuiCode" : $"TuiCode  •  {helpKey} help";
+    internal string DisplayedHelp => _help ?? string.Empty;
 
-    internal bool ShowsError => _label.SchemeName == "Error";
+    internal bool ShowsError => Bar.MessageSeverity == Severity.Error;
 
-    /// <summary>Revert to the default message, unless something else has replaced <paramref name="message"/> since.</summary>
-    public void ClearMessage(string message)
-    {
-        if (_message == message) SetMessage(DefaultMessage);
-    }
-
-    /// <summary>Where the focused diff tab is, shown after the message; null hides it.</summary>
+    /// <summary>Where the focused diff tab is; null hides it.</summary>
     public void SetDiffStatus(string? status)
     {
         if (status == _diff) return;
         _diff = status;
-        UpdateLabel();
+        ShowState();
     }
 
-    /// <summary>The active file's grammar, shown after the message; null hides it.</summary>
+    /// <summary>The active file's grammar; null hides it.</summary>
     public void SetGrammar(string? grammar)
     {
+        if (grammar == _grammar) return;
         _grammar = grammar;
-        UpdateLabel();
+        ShowState();
     }
 
     /// <summary>Whether the active tab wraps long lines, shown as <c>Wrap</c> after the grammar.</summary>
     public void SetWrap(bool wraps)
     {
-        _wrap = wraps ? "Wrap" : null;
-        UpdateLabel();
+        var wrap = wraps ? "Wrap" : null;
+        if (wrap == _wrap) return;
+        _wrap = wrap;
+        ShowState();
     }
 
     /// <summary>An editor mode to flag after the grammar, e.g. column select; null hides it.</summary>
     public void SetMode(string? mode)
     {
+        if (mode == _mode) return;
         _mode = mode;
-        UpdateLabel();
+        ShowState();
     }
 
-    /// <summary>The active cursor's zero-based position, shown 1-based at the right; null hides it.</summary>
+    /// <summary>The active cursor's zero-based position, shown 1-based; null hides it.</summary>
     public void SetPosition((int Row, int Column)? position)
     {
         if (position == _cursor) return;
@@ -172,37 +125,33 @@ public sealed class StatusBarPart : View
         ShowPosition();
     }
 
-    /// <summary>Shown in the position's place while no file is open; null for nothing.</summary>
-    public void SetIdleHint(string? hint)
-    {
-        _idleHint = hint;
-        ShowPosition();
-    }
-
     private void ShowPosition()
     {
-        if (_cursor is not var (row, column))
+        var position = string.Empty;
+        if (_cursor is var (row, column))
         {
-            _position.Text = _idleHint ?? string.Empty;
-            return;
+            var (carets, selected) = _selection;
+            var where = carets > 1 ? $"{carets} selections" : $"Ln {row + 1}, Col {column + 1}";
+            position = selected is { } count ? $"{where} ({count:N0} selected)" : where;
         }
-        var (carets, selected) = _selection;
-        var where = carets > 1 ? $"{carets} selections" : $"Ln {row + 1}, Col {column + 1}";
-        _position.Text = selected is { } count ? $"{where} ({count:N0} selected)" : where;
+        if (position == _position) return;
+        _position = position;
+        ShowState();
     }
 
-    internal string DisplayedText => _label.Text;
+    internal string DisplayedPosition => _position;
 
-    internal string DisplayedPosition => _position.Text;
+    /// <summary>The chord, message or resting text at the left.</summary>
+    internal string DisplayedText => Bar.Says;
 
-    public void SetChord(string? chord)
-    {
-        _chord = chord;
-        UpdateLabel();
-    }
+    /// <summary>What sits together at the right end, before the help hint.</summary>
+    internal string DisplayedState => string.Join(HintRow.Separator, StateParts());
 
-    private void UpdateLabel() =>
-        _label.Text = _chord is not null
-            ? $"{_chord}…"
-            : string.Join("  •  ", new[] { _message, _diff, _grammar, _mode, _wrap }.Where(part => part is not null));
+    public void SetChord(string? chord) => Bar.SetChord(chord);
+
+    private IEnumerable<string> StateParts() =>
+        new[] { _grammar, _mode, _wrap, _diff, _position }.Where(part => !string.IsNullOrEmpty(part)).OfType<string>();
+
+    private void ShowState() =>
+        Bar.Hints.Show(StateParts().Append(_help).OfType<string>().Select(text => (text, (Action?)null)));
 }

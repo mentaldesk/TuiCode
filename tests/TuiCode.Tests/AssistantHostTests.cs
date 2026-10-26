@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
@@ -115,16 +116,14 @@ public class AssistantHostTests : StaticConfigurationTest
         Assert.Equal(2, _agent.Received("session/new").Count());
     }
 
-    [Theory]
-    [InlineData("Esc", "reject")]
-    [InlineData("Ctrl+Enter", "allow")]
-    public async Task A_command_the_agent_wants_to_run_asks_with_Deny_focused_and_Enter_does_nothing(string key, string expected)
+    [Fact]
+    public async Task A_command_the_agent_wants_to_run_is_allowed_with_no_dialog()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         var view = workbench.Panel.Assistant;
         string? answer = "unset";
-        (string? Title, string[]? Buttons, string[]? Kinds, string? Focused) dialog = default;
+        var dialogs = 0;
         _agent.OnPrompt = async (agent, _) =>
         {
             answer = await agent.AskPermission("execute", "git log", "git log --oneline -5");
@@ -136,17 +135,41 @@ public class AssistantHostTests : StaticConfigurationTest
             () => view.InputHasFocus,
             () => Type(host, "Go"),
             () => host.App.InjectKey(Key.Enter),
-            () => Confirm(workbench)?.FocusedButton() is not null,
-            () => { dialog = (Confirm(workbench)!.Title, Confirm(workbench)!.Buttons(), Confirm(workbench)!.Kinds(), Confirm(workbench)!.FocusedButton()); },
-            () => host.App.InjectKey(Key.Enter),
-            () => host.App.InjectKey(Key.TryParse(key, out var k) ? k : throw new ArgumentException(key)),
-            () => Chat(view).Contains("Carrying on."));
+            () => { if (Confirm(workbench) is not null) dialogs++; return Chat(view).Contains("Carrying on."); });
 
-        Assert.Equal("Claude Code wants to run a command", dialog.Title);
-        Assert.Equal(["Ctrl+Enter Allow once", "Esc Deny"], dialog.Buttons);
-        Assert.Equal(["Primary", "Secondary"], dialog.Kinds);
-        Assert.Equal("Esc Deny", dialog.Focused);
-        Assert.Equal(expected, answer);
+        Assert.Equal(("always", 0), (answer, dialogs));
+    }
+
+    [Fact]
+    public async Task A_write_to_an_open_tab_replaces_its_text_saves_it_and_one_Ctrl_Z_brings_back_the_unsaved_edits()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Panel.Assistant;
+        _agent.OnPrompt = async (agent, _) =>
+        {
+            await agent.Ask("fs/write_text_file", new JsonObject { ["path"] = _fs.Path.GetFullPath("/work/A.cs"), ["content"] = "class A { }\nclass B { }" });
+            agent.Tool("e", "Edit A.cs", "completed", "edit", _fs.Path.GetFullPath("/work/A.cs"));
+            agent.Say("Rewritten.");
+        };
+        string[]? written = null;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => { Tab(workbench).ReplaceLines(0, 1, ["// mine"]); },
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Go"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("Changed 1 file"),
+            () => { written = [.. Tab(workbench).Lines]; Tab(workbench).FocusContent(); },
+            () => host.App.InjectKey(Key.Z.WithCtrl),
+            () => Tab(workbench).Lines[0] == "// mine");
+
+        Assert.Equal(["class A { }", "class B { }"], written);
+        Assert.StartsWith("class A { }\nclass B { }", _fs.File.ReadAllText("/work/A.cs"));
+        Assert.Equal("// line 2", Tab(workbench).Lines[1]);
+        Assert.EndsWith("Rewritten.\n\nChanged 1 file · Ctrl+Shift+R to review", Chat(view));
         Assert.Null(Confirm(workbench));
     }
 

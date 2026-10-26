@@ -26,7 +26,6 @@ public class EditorSettingsViewTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Space),
             () => host.App.InjectKey(Key.Tab),
             () => host.App.InjectKey(Key.CursorRight),
-            () => host.App.InjectKey(Key.Space),
             () => host.App.InjectKey(Key.Tab),
             () => host.App.InjectKey(Key.Space),
             () => host.App.InjectKey(Key.Tab),

@@ -284,6 +284,7 @@ public class MenuBarHostTests : StaticConfigurationTest
         Assert.True(Item(host, CommandIds.ChangeGrammar).Dimmed);
         Assert.True(Item(host, CommandIds.AddCursorAbove).Dimmed);
         Assert.True(Item(host, CommandIds.NextChange).Dimmed);
+        Assert.True(Item(host, CommandIds.ToggleFileHistory).Dimmed);
         Assert.False(Item(host, CommandIds.FindInFile).Dimmed);
         Assert.False(Item(host, CommandIds.ToggleSidebar).Dimmed);
         Assert.Equal("Move line up", first);
@@ -379,7 +380,7 @@ public class MenuBarHostTests : StaticConfigurationTest
             () => !workbench.MenuBar.IsOpen()]);
 
         // The exceptions: the palette keeps the language server's commands to say why they can't run, the menu dims them until a server is ready (#454).
-        var offered = MenuIds().Where(id => id is not (CommandIds.GoToDefinition or CommandIds.FindUsages) && palette.Contains(commands.Registered.Single(c => c.Id == id).Title));
+        var offered = MenuIds().Where(id => id is not (CommandIds.GoToDefinition or CommandIds.QuickInfo or CommandIds.FindUsages) && palette.Contains(commands.Registered.Single(c => c.Id == id).Title));
         Assert.Equal(offered.Order(), undimmed.Order());
         if (context == "pull request") Assert.Contains(CommandIds.SubmitReview, undimmed);
         if (context == "diff") Assert.Contains(CommandIds.RevertChange, undimmed);

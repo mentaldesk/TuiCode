@@ -494,7 +494,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
 
         Assert.Null(workbench.Sidebar.Explorer.PendingCut);
         Assert.True(workbench.Sidebar.Explorer.HasFocus);
-        Assert.Equal(workbench.StatusBar.DefaultMessage, workbench.StatusBar.DisplayedText);
+        Assert.Equal(_fs.Path.GetFullPath("/work/a.txt"), workbench.StatusBar.DisplayedText);
     }
 
     [Fact]
@@ -507,7 +507,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => SelectInExplorer(workbench, "a.txt"),
             () => host.App.InjectKey(Key.X.WithCtrl),
-            () => workbench.StatusBar.SetMessage("Saved: /work/b.txt"),
+            () => { workbench.StatusBar.ShowNews("Saved: /work/b.txt"); },
             () => SelectInExplorer(workbench, "a.txt"),
             () => host.App.InjectKey(Key.Esc),
             () => { });

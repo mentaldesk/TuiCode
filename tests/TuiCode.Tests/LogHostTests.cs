@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Chrome;
 using Microsoft.Extensions.Logging;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
@@ -27,22 +28,49 @@ public class LogHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Show_log_opens_the_log_and_clears_the_count_until_the_next_warning()
+    public async Task Log_warnings_count_in_the_bar_and_list_in_messages_without_showing()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         List<string> shown = [];
+        var message = "";
+        IReadOnlyList<string> listed = [];
 
         await HostSteps.Run(host,
             () => _logger.LogWarning("one"),
             () => _logger.LogWarning("two"),
-            () => shown.Add(workbench.StatusBar.DisplayedWarnings),
+            () =>
+            {
+                shown.Add(workbench.StatusBar.DisplayedWarnings);
+                message = workbench.StatusBar.DisplayedText;
+            },
             () => _commands.TryExecute(CommandIds.ShowLog),
             () => shown.Add(workbench.StatusBar.DisplayedWarnings),
+            () => _commands.TryExecute(CommandIds.ShowMessages),
+            () =>
+            {
+                shown.Add(workbench.StatusBar.DisplayedWarnings);
+                listed = [.. Messages(workbench).Rows.Select(row => row.Text)];
+            },
+            () => host.App.InjectKey(Key.Esc),
             () => _logger.LogWarning("three"),
             () => shown.Add(workbench.StatusBar.DisplayedWarnings));
 
-        Assert.Equal(["⚠ 2", "", "⚠ 1"], shown);
+        Assert.Equal(["⚠ 2", "⚠ 2", "", "⚠ 1"], shown);
+        Assert.Equal(workbench.StatusBar.DefaultMessage, message);
+        Assert.Equal(["two", "one"], listed);
+    }
+
+    [Fact]
+    public async Task Show_log_opens_the_log()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => _logger.LogWarning("two"),
+            () => _commands.TryExecute(CommandIds.ShowLog));
+
         Assert.Equal(_log.File.FullName, workbench.Editor.Group.ActiveTab?.File.FullName);
         Assert.Contains("WARN  two", workbench.Editor.Group.ActiveTab!.Content);
     }
@@ -63,7 +91,7 @@ public class LogHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Clicking_the_count_opens_the_log_and_clears_it()
+    public async Task Clicking_the_count_opens_messages_and_clears_it()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
@@ -82,7 +110,7 @@ public class LogHostTests : StaticConfigurationTest
             () => { shown = workbench.StatusBar.DisplayedWarnings; });
 
         Assert.Equal("", shown);
-        Assert.Equal(_log.File.FullName, workbench.Editor.Group.ActiveTab?.File.FullName);
+        Assert.NotNull(Messages(workbench));
     }
 
     [Theory]
@@ -110,6 +138,22 @@ public class LogHostTests : StaticConfigurationTest
 
         Assert.Equal(Array.IndexOf(help, CommandIds.ShowDiagnostics) + 1, Array.IndexOf(help, CommandIds.ShowLog));
     }
+
+    [Fact]
+    public void Show_messages_sits_below_show_log_in_the_help_menu()
+    {
+        var help = CommandMenu.Layout.Single(menu => menu.Title == "_Help").Ids;
+
+        Assert.Equal(Array.IndexOf(help, CommandIds.ShowLog) + 1, Array.IndexOf(help, CommandIds.ShowMessages));
+    }
+
+    [Fact]
+    public void Show_messages_is_sm()
+    {
+        Assert.Equal("sm", CommandMnemonics.For(CommandIds.ShowMessages));
+    }
+
+    private static MessagesDialog Messages(Workbench.Workbench workbench) => workbench.SubViews.OfType<MessagesDialog>().Single();
 
     private Workbench.Workbench BuildWorkbench()
     {

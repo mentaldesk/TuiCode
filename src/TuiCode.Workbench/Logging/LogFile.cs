@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -6,7 +7,7 @@ namespace TuiCode.Workbench.Logging;
 
 /// <summary>
 /// Writes Warning and above to <c>~/.tui/logs/TuiCode.log</c>, one file per session with the previous kept as
-/// <c>TuiCode.1.log</c> (#473), and counts the warnings written since the log was last opened.
+/// <c>TuiCode.1.log</c> (#473), and keeps each warning for the status bar's Messages.
 /// </summary>
 public sealed class LogFile : ILoggerProvider
 {
@@ -18,7 +19,7 @@ public sealed class LogFile : ILoggerProvider
     private readonly Func<DateTimeOffset> _now;
     private readonly Lock _lock = new();
     private bool _started;
-    private int _unseen;
+    private readonly ConcurrentQueue<string> _warnings = new();
 
     public LogFile(IFileSystem fs, string directory, Func<DateTimeOffset>? now = null)
     {
@@ -45,10 +46,13 @@ public sealed class LogFile : ILoggerProvider
         }
     }
 
-    /// <summary>Warnings written since the log was last opened.</summary>
-    public int Unseen => Volatile.Read(ref _unseen);
-
-    public void MarkSeen() => Interlocked.Exchange(ref _unseen, 0);
+    /// <summary>The warnings written since the last call, oldest first.</summary>
+    public IReadOnlyList<string> TakeWarnings()
+    {
+        var taken = new List<string>();
+        while (_warnings.TryDequeue(out var warning)) taken.Add(warning);
+        return taken;
+    }
 
     /// <summary>Start this session's log, keeping the last one as <see cref="PreviousFileName"/>. The first write starts it too.</summary>
     public void Start()
@@ -84,7 +88,7 @@ public sealed class LogFile : ILoggerProvider
             {
             }
         }
-        Interlocked.Increment(ref _unseen);
+        _warnings.Enqueue(exception is null ? message : $"{message}: {exception.Message}");
     }
 
     internal static string Format(DateTimeOffset time, LogLevel level, string message, Exception? exception)

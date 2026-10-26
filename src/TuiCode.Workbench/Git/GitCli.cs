@@ -209,7 +209,7 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         if (!IsSafeRevision(revision))
             return GitResult<IReadOnlyList<GitChange>>.Failure($"Unknown revision '{revision}'");
 
-        var run = await RunAsync(DirectoryOf(path),
+        var run = await DiffWithUntrackedAsync(DirectoryOf(path),
             ["diff", "--name-status", "-z", "-M", "--no-ext-diff", revision, "--"], cancellationToken);
         return run.Failure is null && run.ExitCode == 0
             ? GitResult<IReadOnlyList<GitChange>>.Success(ParseChanges(run.Output))
@@ -221,11 +221,34 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         if (!IsSafeRevision(revision))
             return GitResult<IReadOnlyDictionary<string, GitLineCount>>.Failure($"Unknown revision '{revision}'");
 
-        var run = await RunAsync(DirectoryOf(path),
+        var run = await DiffWithUntrackedAsync(DirectoryOf(path),
             ["diff", "--numstat", "-z", "-M", "--no-ext-diff", revision, "--"], cancellationToken);
         return run.Failure is null && run.ExitCode == 0
             ? GitResult<IReadOnlyDictionary<string, GitLineCount>>.Success(ParseLineCounts(run.Output))
             : GitResult<IReadOnlyDictionary<string, GitLineCount>>.Failure(ErrorMessage(run));
+    }
+
+    /// <summary>Diffs with untracked, not-ignored files added as intent-to-add to a throwaway copy of the index.</summary>
+    private async Task<CliRun> DiffWithUntrackedAsync(string directory, string[] diff, CancellationToken cancellationToken)
+    {
+        var located = await RunAsync(directory, ["rev-parse", "--git-path", "index"], cancellationToken);
+        if (located.Failure is not null || located.ExitCode != 0)
+            return located;
+
+        var index = fileSystem.Path.GetFullPath(fileSystem.Path.Combine(directory, located.Output.TrimEnd('\r', '\n')));
+        var scratch = fileSystem.Path.Combine(fileSystem.Path.GetTempPath(), $"tuicode-index-{Guid.NewGuid():N}");
+        try
+        {
+            if (fileSystem.File.Exists(index))
+                fileSystem.File.Copy(index, scratch);
+            await RunAsync(directory, ["add", "--intent-to-add", "--ignore-errors", "--", ":/"], cancellationToken, indexFile: scratch);
+            return await RunAsync(directory, diff, cancellationToken, indexFile: scratch);
+        }
+        finally
+        {
+            fileSystem.File.Delete(scratch);
+            fileSystem.File.Delete(scratch + ".lock");
+        }
     }
 
     public async Task<GitResult<bool>> AddWorktreeAsync(string repoRoot, string worktreePath, CancellationToken cancellationToken = default)
@@ -486,7 +509,8 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
     }
 
     private Task<CliRun> RunAsync(
-        string workingDirectory, IEnumerable<string> arguments, CancellationToken cancellationToken, TimeSpan? timeout = null, string? input = null)
+        string workingDirectory, IEnumerable<string> arguments, CancellationToken cancellationToken, TimeSpan? timeout = null, string? input = null,
+        string? indexFile = null)
     {
         var info = new ProcessStartInfo(executable)
         {
@@ -506,6 +530,8 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         // English messages, so "not a git repository" can be recognised.
         info.Environment["LC_ALL"] = "C";
         info.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+        if (indexFile is not null)
+            info.Environment["GIT_INDEX_FILE"] = indexFile;
 
         return CliProcess.RunAsync("git", info, timeout ?? _timeout, cancellationToken, input);
     }

@@ -44,8 +44,8 @@ public class WatchTutorialsHostTests : StaticConfigurationTest
 
         Assert.Equal(
         [
-            "_Getting Started (help)", "_Show all commands", "Show _mnemonics",
-            "Watch _tutorials", "Show _diagnostics", "Show _log", "_About TuiCode",
+            "Show _keys", "_Show all commands", "Show _mnemonics",
+            "Watch _tutorials", "Show _diagnostics", "Show _log", "Show m_essages", "_About TuiCode",
         ], help.Select(i => i.Title));
     }
 

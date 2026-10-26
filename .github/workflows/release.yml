@@ -10,6 +10,10 @@ on:
         type: choice
         options: [auto, patch, minor, major]
         default: auto
+      version:
+        description: Exact version to release, like 1.0.0. Overrides Bump. Leave it empty to bump.
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -18,13 +22,14 @@ concurrency: release
 
 jobs:
   version:
-    uses: mentaldesk/a-team/.github/workflows/release-version.yml@v0.1.95
+    uses: mentaldesk/a-team/.github/workflows/release-version.yml@v0.1.101
     # A called workflow doesn't inherit the caller's permissions.
     permissions:
       contents: read
       pull-requests: read
     with:
       bump: ${{ inputs.bump }}
+      version: ${{ inputs.version }}
 
   build:
     name: Build ${{ matrix.rid }}
@@ -189,7 +194,7 @@ jobs:
   publish:
     needs: [version, build]
     if: github.ref == 'refs/heads/main'
-    uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.1.95
+    uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.1.101
     permissions:
       contents: write
     with:

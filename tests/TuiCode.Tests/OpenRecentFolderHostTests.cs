@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Keys;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -101,6 +102,32 @@ public class OpenRecentFolderHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task F1_lists_the_picker_keys_and_Esc_returns_with_the_filter_and_selection_as_they_were()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string? heading = null;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.OpenRecentFolder),
+            () => Picker(workbench) is not null,
+            () => Type(host, "a"),
+            () => Picker(workbench)!.VisibleItems.Count == 1,
+            () => host.App.InjectKey(Key.F1),
+            () => Help(workbench) is not null,
+            () => { heading = Help(workbench)!.Sheet.Here?.Heading; host.App.InjectKey(Key.Esc); },
+            () => Help(workbench) is null,
+            () => Picker(workbench)!.FilterField.HasFocus,
+            () => Type(host, "u"),
+            () => Picker(workbench)!.FilterField.Text == "au",
+            () => host.App.InjectKey(Key.Enter),
+            () => Picker(workbench) is null);
+
+        Assert.Equal("Open recent folder", heading);
+        Assert.Equal(Full("/code/vault"), workbench.Sidebar.Explorer.Root?.FullName);
+    }
+
+    [Fact]
     public async Task With_no_other_folders_it_says_so_rather_than_opening_an_empty_picker()
     {
         _fs.File.Delete(StatePath);
@@ -120,6 +147,9 @@ public class OpenRecentFolderHostTests : StaticConfigurationTest
 
     private static RecentFolderPickerView? Picker(Workbench.Workbench workbench) =>
         workbench.SubViews.OfType<RecentFolderPickerView>().SingleOrDefault();
+
+    private static KeysDialog? Help(Workbench.Workbench workbench) =>
+        workbench.SubViews.OfType<KeysDialog>().SingleOrDefault();
 
     private static void Type(WorkbenchHost host, string text)
     {

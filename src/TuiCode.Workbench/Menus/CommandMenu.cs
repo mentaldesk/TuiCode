@@ -50,11 +50,11 @@ public sealed class CommandMenu
         [CommandIds.ShowExplorer] = 'e', [CommandIds.FindGlobally] = 'f', [CommandIds.FocusUsages] = 'u',
         [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
         [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'h', [CommandIds.ToggleGutter] = 'g',
-        [CommandIds.ToggleWordWrap] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
+        [CommandIds.ToggleWordWrap] = 't', [CommandIds.ToggleFold] = 'b', [CommandIds.FoldAll] = 'l', [CommandIds.UnfoldAll] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
         [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i',
         [CommandIds.AiAssistance] = 'a',
 
-        [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd',
+        [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.QuickInfo] = 'i',
         [CommandIds.FindUsages] = 'f', [CommandIds.FollowLink] = 'l', [CommandIds.NavigateBack] = 'p',
         [CommandIds.NavigateForward] = 'n', [CommandIds.NextEditor] = 't', [CommandIds.PreviousEditor] = 'r',
 
@@ -65,8 +65,8 @@ public sealed class CommandMenu
         [CommandIds.OpenPullRequest] = 'o', [CommandIds.PullRequestOverview] = 'p', [CommandIds.CreateComment] = 'c',
         [CommandIds.ToggleViewed] = 'v', [CommandIds.SubmitReview] = 's',
 
-        [CommandIds.ShowHelp] = 'g', [CommandIds.ShowActions] = 's', [CommandIds.ShowMnemonics] = 'm',
-        [CommandIds.WatchTutorials] = 't', [CommandIds.ShowDiagnostics] = 'd', [CommandIds.ShowLog] = 'l', [CommandIds.ShowAbout] = 'a',
+        [CommandIds.ShowHelp] = 'k', [CommandIds.ShowActions] = 's', [CommandIds.ShowMnemonics] = 'm',
+        [CommandIds.WatchTutorials] = 't', [CommandIds.ShowDiagnostics] = 'd', [CommandIds.ShowLog] = 'l', [CommandIds.ShowMessages] = 'e', [CommandIds.ShowAbout] = 'a',
     };
 
     public static readonly (string Title, string[] Ids)[] Layout =
@@ -113,11 +113,13 @@ public sealed class CommandMenu
             Separator,
             CommandIds.ToggleGutter, CommandIds.ToggleWordWrap,
             Separator,
+            CommandIds.ToggleFold, CommandIds.FoldAll, CommandIds.UnfoldAll,
+            Separator,
             CommandIds.MoveToOtherGroup, CommandIds.FocusOtherGroup, CommandIds.JoinGroups,
         ]),
         ("_Go",
         [
-            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToMatchingBracket, CommandIds.GoToDefinition, CommandIds.FindUsages, CommandIds.FollowLink,
+            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToMatchingBracket, CommandIds.GoToDefinition, CommandIds.QuickInfo, CommandIds.FindUsages, CommandIds.FollowLink,
             Separator,
             CommandIds.NavigateBack, CommandIds.NavigateForward,
             Separator,
@@ -143,7 +145,7 @@ public sealed class CommandMenu
         [
             CommandIds.ShowHelp, CommandIds.ShowActions, CommandIds.ShowMnemonics,
             Separator,
-            CommandIds.WatchTutorials, CommandIds.ShowDiagnostics, CommandIds.ShowLog, CommandIds.ShowAbout,
+            CommandIds.WatchTutorials, CommandIds.ShowDiagnostics, CommandIds.ShowLog, CommandIds.ShowMessages, CommandIds.ShowAbout,
         ]),
     ];
 

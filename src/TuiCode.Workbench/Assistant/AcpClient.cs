@@ -12,10 +12,6 @@ public sealed record PermissionOption(string Id, string Name, string Kind);
 /// <param name="Command">The command line, for a tool that runs one.</param>
 public sealed record PermissionRequest(string Title, string? Kind, string? Command, IReadOnlyList<PermissionOption> Options)
 {
-    public bool IsEdit => Kind is "edit" or "delete" or "move";
-
-    public bool IsRead => Kind is "read" or "search" or "think";
-
     /// <summary>The first option of <paramref name="kind"/> (<c>allow_once</c>, <c>reject_once</c>…), or null.</summary>
     public string? Option(string kind) => Options.FirstOrDefault(o => o.Kind == kind)?.Id;
 
@@ -39,11 +35,11 @@ public interface IAgentRequests
     /// <summary>The file's text, from its open tab where it has one; <paramref name="line"/> is 1-based.</summary>
     Task<string> ReadTextFileAsync(string path, int? line, int? limit);
 
-    /// <summary>The option the user, or the read-only rule, chose; null to cancel.</summary>
+    /// <summary>The option chosen; null to cancel.</summary>
     Task<string?> RequestPermissionAsync(PermissionRequest request);
 
-    /// <summary>The agent tried to write <paramref name="path"/>, and was refused.</summary>
-    void WriteRefused(string path);
+    /// <summary>Writes <paramref name="content"/> to <paramref name="path"/>, through its open tab where it has one.</summary>
+    Task WriteTextFileAsync(string path, string content);
 }
 
 public sealed class AgentMissingException(string program) : Exception($"{program} isn't on PATH")
@@ -107,7 +103,7 @@ public sealed class AcpClient : IDisposable
             ["protocolVersion"] = ProtocolVersion,
             ["clientCapabilities"] = new JsonObject
             {
-                ["fs"] = new JsonObject { ["readTextFile"] = true, ["writeTextFile"] = false },
+                ["fs"] = new JsonObject { ["readTextFile"] = true, ["writeTextFile"] = true },
                 ["terminal"] = false,
             },
             ["clientInfo"] = new JsonObject { ["name"] = "TuiCode", ["version"] = AppVersionText() },
@@ -124,6 +120,7 @@ public sealed class AcpClient : IDisposable
     {
         var answer = await Connection.RequestAsync("session/new", SessionParams()).ConfigureAwait(false);
         SessionId = SessionUpdate.StringOf(answer?["sessionId"]) ?? throw new JsonRpcException(JsonRpcConnection.InternalError, "The agent didn't open a session.");
+        await UseAutoModeAsync(answer?["modes"]).ConfigureAwait(false);
     }
 
     /// <summary>Reopens <paramref name="sessionId"/>, whose history arrives as updates first; false when the agent can't.</summary>
@@ -135,13 +132,31 @@ public sealed class AcpClient : IDisposable
         parameters["sessionId"] = sessionId;
         try
         {
-            await Connection.RequestAsync("session/load", parameters).ConfigureAwait(false);
+            var answer = await Connection.RequestAsync("session/load", parameters).ConfigureAwait(false);
+            await UseAutoModeAsync(answer?["modes"]).ConfigureAwait(false);
             return true;
         }
         catch (JsonRpcException)
         {
             SessionId = null;
             return false;
+        }
+    }
+
+    /// <summary>The agent's own mode that runs without asking, as Claude Code's <c>--permission-mode auto</c> does (#600).</summary>
+    private const string AutoMode = "auto";
+
+    private async Task UseAutoModeAsync(JsonNode? modes)
+    {
+        var offered = (modes?["availableModes"] as JsonArray ?? []).Any(m => SessionUpdate.StringOf(m?["id"]) == AutoMode);
+        if (!offered || SessionUpdate.StringOf(modes?["currentModeId"]) == AutoMode) return;
+        try
+        {
+            await Connection.RequestAsync("session/set_mode", new JsonObject { ["sessionId"] = SessionId, ["modeId"] = AutoMode }).ConfigureAwait(false);
+        }
+        catch (JsonRpcException)
+        {
+            // Every permission request is allowed anyway.
         }
     }
 
@@ -181,8 +196,9 @@ public sealed class AcpClient : IDisposable
                 var text = await _requests.ReadTextFileAsync(path, Int(parameters!["line"]), Int(parameters["limit"])).ConfigureAwait(false);
                 return new JsonObject { ["content"] = text };
             case "fs/write_text_file":
-                _requests.WriteRefused(SessionUpdate.StringOf(parameters?["path"]) ?? "");
-                throw new JsonRpcException(-32000, "TuiCode is read-only: it doesn't let agents edit files.");
+                var target = SessionUpdate.StringOf(parameters?["path"]) ?? throw new JsonRpcException(-32602, "No path");
+                await _requests.WriteTextFileAsync(target, SessionUpdate.StringOf(parameters!["content"]) ?? "").ConfigureAwait(false);
+                return null;
             case "session/request_permission":
                 var chosen = await _requests.RequestPermissionAsync(PermissionRequest.Parse(parameters)).ConfigureAwait(false);
                 return new JsonObject

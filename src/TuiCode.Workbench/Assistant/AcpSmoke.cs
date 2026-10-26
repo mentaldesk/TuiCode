@@ -68,7 +68,7 @@ public static class AcpSmoke
     {
         public Task<string> ReadTextFileAsync(string path, int? line, int? limit) => Task.FromResult("class Widget { }");
         public Task<string?> RequestPermissionAsync(PermissionRequest request) => Task.FromResult<string?>(null);
-        public void WriteRefused(string path) { }
+        public Task WriteTextFileAsync(string path, string content) => Task.CompletedTask;
     }
 
     private sealed class Launcher(InProcessServer server) : ILanguageServerLauncher

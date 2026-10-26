@@ -1,3 +1,5 @@
+using MentalDesk.Tui;
+using MentalDesk.Tui.Chrome;
 using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
@@ -279,6 +281,34 @@ public class ReviewHostTests : StaticConfigurationTest
 
         Assert.Equal(3, review.ChangedFiles.Count);
         Assert.False(review.LoadState!.Reloading);
+    }
+
+    [Fact]
+    public async Task A_failed_refresh_is_an_error_that_comes_off_when_a_refresh_works()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var error = false;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusReview),
+            () => workbench.Sidebar.Review.ChangedFiles.Count == 3,
+            () =>
+            {
+                _git.Missing = true;
+                commands.TryExecute(CommandIds.FocusReview);
+            },
+            () => workbench.StatusBar.ShowsError,
+            () =>
+            {
+                error = workbench.StatusBar.Bar.Current is { Kind: MessageKind.News, Severity: Severity.Error };
+                _git.Missing = false;
+                commands.TryExecute(CommandIds.FocusReview);
+            },
+            () => workbench.StatusBar.Bar.Current is null);
+
+        Assert.True(error);
+        Assert.Equal("⚠ 1", workbench.StatusBar.DisplayedWarnings);
     }
 
     private Workbench.Workbench BuildWorkbench()

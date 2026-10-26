@@ -46,6 +46,7 @@ public static class CommandIds
     public const string ShowHelp = "workbench.action.showHelp";
     public const string ShowDiagnostics = "workbench.action.showDiagnostics";
     public const string ShowLog = "workbench.action.showLog";
+    public const string ShowMessages = "workbench.action.showMessages";
     public const string ShowAbout = "workbench.action.showAbout";
     public const string WatchTutorials = "workbench.action.watchTutorials";
     public const string ShowDocumentInfo = "workbench.action.showDocumentInfo";
@@ -66,11 +67,6 @@ public static class CommandIds
     public const string ScrollDiffPageLeft = "diff.action.scrollPageLeft";
     public const string ScrollDiffPageRight = "diff.action.scrollPageRight";
 
-    public const string HelpClose = "help.action.close";
-    public const string HelpScrollUp = "help.action.scrollUp";
-    public const string HelpScrollDown = "help.action.scrollDown";
-    public const string HelpPageUp = "help.action.pageUp";
-    public const string HelpPageDown = "help.action.pageDown";
     public const string DiagnosticsClose = "diagnostics.action.close";
     public const string AboutClose = "about.action.close";
     public const string DocumentInfoClose = "documentInfo.action.close";
@@ -83,8 +79,6 @@ public static class CommandIds
     public const string ActionsFocusSearch = "actions.action.focusSearch";
 
     public const string GoToLine = "workbench.action.goToLine";
-    public const string GoToLineConfirm = "goToLine.action.confirm";
-    public const string GoToLineCancel = "goToLine.action.cancel";
 
     public const string GoToSymbol = "workbench.action.goToSymbol";
     public const string GoToMatchingBracket = "workbench.action.goToMatchingBracket";
@@ -96,12 +90,13 @@ public static class CommandIds
     public const string SymbolPickerPageDown = "symbolPicker.action.pageDown";
 
     public const string GoToDefinition = "workbench.action.goToDefinition";
-    public const string DefinitionPickerConfirm = "definitionPicker.action.confirm";
-    public const string DefinitionPickerCancel = "definitionPicker.action.cancel";
-    public const string DefinitionPickerUp = "definitionPicker.action.up";
-    public const string DefinitionPickerDown = "definitionPicker.action.down";
-    public const string DefinitionPickerPageUp = "definitionPicker.action.pageUp";
-    public const string DefinitionPickerPageDown = "definitionPicker.action.pageDown";
+    public const string QuickInfo = "workbench.action.quickInfo";
+    public const string QuickInfoClose = "quickInfo.action.close";
+    public const string QuickInfoGoToDefinition = "quickInfo.action.goToDefinition";
+    public const string QuickInfoUp = "quickInfo.action.up";
+    public const string QuickInfoDown = "quickInfo.action.down";
+    public const string QuickInfoPageUp = "quickInfo.action.pageUp";
+    public const string QuickInfoPageDown = "quickInfo.action.pageDown";
     public const string FindUsages = "workbench.action.findUsages";
     public const string AiAssistance = "workbench.action.aiAssistance";
     public const string AssistantSend = "assistant.action.send";
@@ -149,12 +144,6 @@ public static class CommandIds
     public const string PullRequestPickerPageDown = "pullRequestPicker.action.pageDown";
     public const string PullRequestPickerRetry = "pullRequestPicker.action.retry";
 
-    public const string RecentFolderPickerConfirm = "recentFolderPicker.action.confirm";
-    public const string RecentFolderPickerCancel = "recentFolderPicker.action.cancel";
-    public const string RecentFolderPickerUp = "recentFolderPicker.action.up";
-    public const string RecentFolderPickerDown = "recentFolderPicker.action.down";
-    public const string RecentFolderPickerPageUp = "recentFolderPicker.action.pageUp";
-    public const string RecentFolderPickerPageDown = "recentFolderPicker.action.pageDown";
 
     public const string WorktreePickerConfirm = "worktreePicker.action.confirm";
     public const string WorktreePickerCancel = "worktreePicker.action.cancel";
@@ -201,13 +190,12 @@ public static class CommandIds
     public const string ClearSelection = "editor.action.clearSelection";
     public const string ToggleColumnSelect = "editor.action.toggleColumnSelection";
     public const string ToggleWordWrap = "editor.action.toggleWordWrap";
+    public const string ToggleFold = "editor.toggleFold";
+    public const string FoldAll = "editor.foldAll";
+    public const string UnfoldAll = "editor.unfoldAll";
 
     public const string ChangeGrammar = "workbench.action.changeGrammar";
-    public const string GrammarPickerConfirm = "grammarPicker.action.confirm";
-    public const string GrammarPickerCancel = "grammarPicker.action.cancel";
 
-    public const string LanguageServerSave = "languageServer.action.save";
-    public const string LanguageServerCancel = "languageServer.action.cancel";
 
     public static string FocusEditorByIndex(int oneBasedIndex) =>
         $"workbench.action.focusEditor{oneBasedIndex}";

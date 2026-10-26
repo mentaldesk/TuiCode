@@ -402,6 +402,12 @@ public sealed class EditorTab : FrameView
     /// <summary>A screen row while wrapped.</summary>
     public int TopRow => _text.Viewport.Y;
 
+    /// <summary>The primary caret's screen cell, or null while it's out of view.</summary>
+    public System.Drawing.Point? CaretOnScreen => _text.CaretOnScreen;
+
+    /// <summary>Where the text shows on screen, less the gutter and scroll bars.</summary>
+    public System.Drawing.Rectangle TextOnScreen => _text.ViewportToScreen(new System.Drawing.Rectangle(System.Drawing.Point.Empty, _text.Viewport.Size));
+
     public int VisibleRows => _text.Viewport.Height;
 
     /// <summary>
@@ -411,6 +417,7 @@ public sealed class EditorTab : FrameView
     public void RevealLines(int first, int last)
     {
         _pendingView = null;
+        _text.RevealFolded(first, last);
         Scroll(first, last);
         _revealOnPins = PinsKnown ? null : (first, last, Where);
     }
@@ -422,7 +429,7 @@ public sealed class EditorTab : FrameView
 
     private void Scroll(int first, int last)
     {
-        if (WordWrap)
+        if (_text.RowMapped)
         {
             _text.RevealWrappedLines(first, last);
             return;
@@ -509,6 +516,18 @@ public sealed class EditorTab : FrameView
     public void ReplaceLines(int start, int count, IReadOnlyList<string> lines) => _text.ReplaceLines(start, count, lines);
 
     public bool HasSecondaryCursors => _text.HasSecondaryCarets;
+
+    /// <summary>Whether the cursor is on a folded row (#477), so Toggle fold would unfold it.</summary>
+    public bool CursorOnFold => _text.IsFoldedAt(CursorRow);
+
+    /// <summary>Unfolds the folded row the cursor is on, or folds the block around it; false when there's no block there.</summary>
+    public bool ToggleFold() => _text.ToggleFold();
+
+    /// <summary>Folds every block but those around the cursor; how many it folded.</summary>
+    public int FoldAll() => _text.FoldAll();
+
+    /// <summary>Unfolds every block; how many it unfolded.</summary>
+    public int UnfoldAll() => _text.UnfoldAll();
 
     public bool WordWrap
     {

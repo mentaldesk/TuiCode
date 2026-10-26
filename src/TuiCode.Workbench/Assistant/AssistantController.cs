@@ -5,8 +5,8 @@ namespace TuiCode.Workbench.Assistant;
 
 /// <summary>
 /// Runs the AI assistance tab's agent for the open folder (#566): starts it on the first need, reopens the folder's last
-/// conversation, sends questions and keeps <see cref="Conversation"/> in step. Read-only: edits are refused, reads
-/// allowed, and anything else is put to the user. Raises <see cref="Changed"/> on the UI thread.
+/// conversation, sends questions and keeps <see cref="Conversation"/> in step. The agent works without asking (#600): it
+/// runs in its own auto mode where it has one, and every permission request is allowed. Raises <see cref="Changed"/> on the UI thread.
 /// </summary>
 public sealed class AssistantController : IAgentRequests, IDisposable
 {
@@ -18,6 +18,8 @@ public sealed class AssistantController : IAgentRequests, IDisposable
     private Task? _starting;
     private bool _newSession;
     private string? _root;
+    private HashSet<string>? _touched;
+    private readonly Dictionary<string, ToolCallUpdate> _edits = [];
 
     /// <param name="post">Runs an action on the UI thread.</param>
     public AssistantController(ILanguageServerLauncher launcher, IFileSystem fs, AssistantSessions? sessions, Action<Action> post, Conversation conversation)
@@ -41,8 +43,11 @@ public sealed class AssistantController : IAgentRequests, IDisposable
     /// <summary>The open tab's lines for a path, read on the UI thread, so the agent sees unsaved edits.</summary>
     public Func<string, IReadOnlyList<string>?> OpenBuffer { get; set; } = _ => null;
 
-    /// <summary>Asks the user whether the agent may make a tool call that isn't a read or an edit; true to allow it once.</summary>
-    public Func<PermissionRequest, Task<bool>> AskPermission { get; set; } = _ => Task.FromResult(false);
+    /// <summary>Puts the agent's text into the open tab for a path as one undoable edit and saves it, on the UI thread; false when it isn't open.</summary>
+    public Func<string, string, bool> WriteBuffer { get; set; } = (_, _) => false;
+
+    /// <summary>The key that shows the Review tab, or null when it has none.</summary>
+    public Func<string?> ReviewKey { get; set; } = () => null;
 
     public event EventHandler? Changed;
 
@@ -78,6 +83,7 @@ public sealed class AssistantController : IAgentRequests, IDisposable
         client.Updated += update => _post(() =>
         {
             if (!ReferenceEquals(client, _client)) return;
+            if (_touched is not null && update is ToolCallUpdate call) Track(call);
             Conversation.Apply(update);
             Raise();
         });
@@ -176,6 +182,11 @@ public sealed class AssistantController : IAgentRequests, IDisposable
             _post(Answered);
             return;
         }
+        _post(() =>
+        {
+            _touched = new HashSet<string>(StringComparer.Ordinal);
+            _edits.Clear();
+        });
         try
         {
             var reason = await client.PromptAsync(Blocks(question, context, client.Info?.EmbeddedContext == true)).ConfigureAwait(false);
@@ -207,6 +218,13 @@ public sealed class AssistantController : IAgentRequests, IDisposable
 
     private void Answered()
     {
+        if (ChangedFiles() is { Count: > 0 and var count })
+        {
+            var files = count == 1 ? "1 file" : $"{count} files";
+            Conversation.AddNote(ReviewKey() is { } key ? $"Changed {files} · {key} to review" : $"Changed {files}");
+        }
+        _touched = null;
+        _edits.Clear();
         IsAnswering = false;
         Conversation.EndTurn();
         Raise();
@@ -231,6 +249,28 @@ public sealed class AssistantController : IAgentRequests, IDisposable
             ["resource"] = new JsonObject { ["uri"] = context.Uri, ["mimeType"] = "text/plain", ["text"] = context.Text },
         };
     }
+
+    private void Track(ToolCallUpdate call)
+    {
+        var known = _edits.GetValueOrDefault(call.Id);
+        if (!call.IsEdit && known is null) return;
+        _edits[call.Id] = known is null ? call : known with
+        {
+            Status = call.Status ?? known.Status,
+            Paths = [.. known.Paths ?? [], .. call.Paths ?? []],
+        };
+    }
+
+    private HashSet<string>? ChangedFiles()
+    {
+        if (_touched is null) return null;
+        var changed = new HashSet<string>(_touched, StringComparer.Ordinal);
+        foreach (var edit in _edits.Values.Where(e => e.Status != "failed"))
+            foreach (var path in edit.Paths ?? []) changed.Add(FullPath(path));
+        return changed;
+    }
+
+    private string FullPath(string path) => _fs.Path.GetFullPath(_root is null ? path : _fs.Path.Combine(_root, path));
 
     private static JsonObject Text(string text) => new() { ["type"] = "text", ["text"] = text };
 
@@ -269,6 +309,8 @@ public sealed class AssistantController : IAgentRequests, IDisposable
         _starting = null;
         IsStarting = false;
         IsAnswering = false;
+        _touched = null;
+        _edits.Clear();
         client?.Dispose();
     }
 
@@ -297,28 +339,32 @@ public sealed class AssistantController : IAgentRequests, IDisposable
         }
     }
 
-    public async Task<string?> RequestPermissionAsync(PermissionRequest request)
+    public Task<string?> RequestPermissionAsync(PermissionRequest request) =>
+        Task.FromResult(request.Option("allow_always") ?? request.Option("allow_once"));
+
+    public async Task WriteTextFileAsync(string path, string content)
     {
-        if (request.IsEdit)
+        var written = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _post(() =>
         {
-            _post(() => Declined(request.Title));
-            return request.Option("reject_once") ?? request.Option("reject_always");
-        }
-        if (request.IsRead) return request.Option("allow_once") ?? request.Option("allow_always");
-        var asked = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _post(() => AskPermission(request).ContinueWith(t => asked.TrySetResult(t is { IsCompletedSuccessfully: true, Result: true }), TaskScheduler.Default));
-        var allowed = await asked.Task.ConfigureAwait(false);
-        return allowed
-            ? request.Option("allow_once") ?? request.Option("allow_always")
-            : request.Option("reject_once") ?? request.Option("reject_always");
+            try
+            {
+                if (!WriteBuffer(path, content)) WriteDisk(path, content);
+                _touched?.Add(FullPath(path));
+                written.TrySetResult();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                written.TrySetException(new JsonRpcException(-32002, $"Couldn't write {path}: {e.Message}"));
+            }
+        });
+        await written.Task.ConfigureAwait(false);
     }
 
-    public void WriteRefused(string path) => _post(() => Declined(Path.GetFileName(path)));
-
-    private void Declined(string what)
+    private void WriteDisk(string path, string content)
     {
-        Conversation.AddNote($"TuiCode declined the edit ({what}): it's read-only.");
-        Raise();
+        if (_fs.Path.GetDirectoryName(path) is { Length: > 0 } directory) _fs.Directory.CreateDirectory(directory);
+        _fs.File.WriteAllText(path, content);
     }
 
     public void Dispose() => StopAgent();

@@ -23,11 +23,13 @@ Actions → **Release** → *Run workflow* → *Run workflow*. That's it. It pub
 
 The **Bump** dropdown defaults to `auto`, which reads the labels of PRs merged since the last release: `breaking` → major, `enhancement` → minor, otherwise patch. Choose `patch`, `minor` or `major` to override it.
 
+To release an exact version, like `1.0.0`, type it in **Version**. It overrides **Bump**, and has to be higher than the last release. Left empty, the release bumps as above.
+
 ### End-to-end flow
 
 ```mermaid
 flowchart TD
-    Click["Actions → Release → Run workflow<br/>bump: auto | patch | minor | major"]
+    Click["Actions → Release → Run workflow<br/>bump: auto | patch | minor | major<br/>or version: x.y.z"]
     Click -->|workflow_dispatch| Version["version job<br/>a-team/release-version.yml"]
     Version -->|"next version, e.g. 0.1.0"| Matrix{{"matrix per RID"}}
 

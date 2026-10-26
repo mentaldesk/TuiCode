@@ -17,6 +17,9 @@ public interface IInputScopeStack
     /// </summary>
     void Pop(IKeybindingService scope);
 
+    /// <summary>The scope receiving keys, or null while the stack is empty.</summary>
+    IKeybindingService? Top { get; }
+
     /// <summary>Delegate handling to the top-of-stack scope.</summary>
     KeyHandlingResult Handle(Key key);
 }

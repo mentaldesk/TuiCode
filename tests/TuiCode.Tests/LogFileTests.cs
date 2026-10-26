@@ -57,7 +57,7 @@ public class LogFileTests
         logger.LogDebug("Detail");
 
         Assert.False(_fs.File.Exists(log.Path));
-        Assert.Equal(0, log.Unseen);
+        Assert.Empty(log.TakeWarnings());
     }
 
     [Fact]
@@ -88,18 +88,17 @@ public class LogFileTests
     }
 
     [Fact]
-    public void Unseen_counts_each_warning_clears_when_seen_and_counts_again_after()
+    public void TakeWarnings_hands_each_warning_over_once_with_its_exception()
     {
         var log = Log();
         var logger = log.CreateLogger("test");
 
         logger.LogWarning("one");
-        logger.LogWarning("two");
-        var before = log.Unseen;
-        log.MarkSeen();
-        var seen = log.Unseen;
+        logger.LogWarning(new IOException("too many open files"), "Not watching /work");
+        var first = log.TakeWarnings();
         logger.LogWarning("three");
 
-        Assert.Equal((2, 0, 1), (before, seen, log.Unseen));
+        Assert.Equal(["one", "Not watching /work: too many open files"], first);
+        Assert.Equal(["three"], log.TakeWarnings());
     }
 }

@@ -18,6 +18,9 @@ internal sealed class FakeAgent : ILanguageServerLauncher
 
     public bool LoadSession { get; set; } = true;
 
+    /// <summary>The session modes it offers on session/new and session/load, starting in the first; none when null.</summary>
+    public string[]? Modes { get; set; }
+
     /// <summary>Answers session/new with this error, as an agent that isn't signed in does.</summary>
     public (int Code, string Message)? NewSessionError { get; set; }
 
@@ -80,11 +83,13 @@ internal sealed class FakeAgent : ILanguageServerLauncher
             case "session/new":
                 if (NewSessionError is { } error) throw new JsonRpcException(error.Code, error.Message);
                 SessionId = $"session-{Interlocked.Increment(ref _sessions)}";
-                return new JsonObject { ["sessionId"] = SessionId };
+                return WithModes(new JsonObject { ["sessionId"] = SessionId });
             case "session/load":
                 SessionId = parameters!["sessionId"]!.GetValue<string>();
                 foreach (var (user, text) in History) Update(user ? "user_message_chunk" : "agent_message_chunk", Text(text));
-                return null;
+                return WithModes(new JsonObject());
+            case "session/set_mode":
+                return new JsonObject();
             case "session/prompt":
                 Cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 await OnPrompt(this, parameters);
@@ -94,13 +99,32 @@ internal sealed class FakeAgent : ILanguageServerLauncher
         }
     }
 
+    private JsonObject WithModes(JsonObject answer)
+    {
+        if (Modes is { } modes)
+            answer["modes"] = new JsonObject
+            {
+                ["currentModeId"] = modes[0],
+                ["availableModes"] = new JsonArray([.. modes.Select(id => (JsonNode)new JsonObject { ["id"] = id, ["name"] = id })]),
+            };
+        return answer;
+    }
+
     public void Say(string text) => Update("agent_message_chunk", Text(text));
 
-    public void Tool(string id, string title, string status = "pending") =>
+    public void Tool(string id, string title, string status = "pending", string? kind = null, params string[] paths)
+    {
+        var update = new JsonObject { ["sessionUpdate"] = "tool_call", ["toolCallId"] = id, ["title"] = title, ["status"] = status };
+        if (kind is not null) update["kind"] = kind;
+        if (paths.Length > 0) update["locations"] = new JsonArray([.. paths.Select(p => (JsonNode)new JsonObject { ["path"] = p })]);
+        Current.Connection.Notify("session/update", new JsonObject { ["sessionId"] = SessionId, ["update"] = update });
+    }
+
+    public void ToolUpdate(string id, string status) =>
         Current.Connection.Notify("session/update", new JsonObject
         {
             ["sessionId"] = SessionId,
-            ["update"] = new JsonObject { ["sessionUpdate"] = "tool_call", ["toolCallId"] = id, ["title"] = title, ["status"] = status },
+            ["update"] = new JsonObject { ["sessionUpdate"] = "tool_call_update", ["toolCallId"] = id, ["status"] = status },
         });
 
     public Task<JsonNode?> Ask(string method, JsonObject parameters)
@@ -110,17 +134,17 @@ internal sealed class FakeAgent : ILanguageServerLauncher
     }
 
     /// <summary>Asks permission for a tool call of <paramref name="kind"/>; the answer's option id, or null when cancelled.</summary>
-    public async Task<string?> AskPermission(string kind, string title, string? command = null)
+    public async Task<string?> AskPermission(string kind, string title, string? command = null, bool offerAlways = true)
     {
         var call = new JsonObject { ["toolCallId"] = "perm", ["title"] = title, ["kind"] = kind };
         if (command is not null) call["rawInput"] = new JsonObject { ["command"] = command };
         var answer = await Ask("session/request_permission", new JsonObject
         {
             ["toolCall"] = call,
-            ["options"] = new JsonArray(
+            ["options"] = new JsonArray([
                 new JsonObject { ["optionId"] = "allow", ["name"] = "Allow", ["kind"] = "allow_once" },
-                new JsonObject { ["optionId"] = "always", ["name"] = "Always allow", ["kind"] = "allow_always" },
-                new JsonObject { ["optionId"] = "reject", ["name"] = "Reject", ["kind"] = "reject_once" }),
+                .. offerAlways ? [new JsonObject { ["optionId"] = "always", ["name"] = "Always allow", ["kind"] = "allow_always" }] : Array.Empty<JsonNode>(),
+                new JsonObject { ["optionId"] = "reject", ["name"] = "Reject", ["kind"] = "reject_once" }]),
         });
         var outcome = answer!["outcome"]!;
         return outcome["outcome"]!.GetValue<string>() == "selected" ? outcome["optionId"]!.GetValue<string>() : null;

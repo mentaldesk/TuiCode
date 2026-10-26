@@ -1,5 +1,6 @@
 using TuiCode.Abstractions;
 using TuiCode.Syntax;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Grammars;
 
 namespace TuiCode.Workbench.Settings;
@@ -117,24 +118,15 @@ public sealed class GrammarAssociationsView : View
             ? _syntax.LanguageById(id)
             : _syntax.DefaultAssociations.GetValueOrDefault(row.Pattern);
         var picker = new GrammarPickerView(_syntax.Languages, $"Grammar for {row.Pattern}", current);
-        picker.Chosen += (_, grammar) => SetAssociation(row.Pattern, grammar);
-        picker.Closed += (_, _) => ClosePicker(picker);
-
-        // Hosted by the settings window rather than this narrower pane, so the picker isn't clipped.
-        var host = SuperView ?? this;
         _picker = picker;
-        host.Add(picker);
-        _scopes.Push(picker.Scope);
-        picker.FocusSearch();
-    }
-
-    private void ClosePicker(GrammarPickerView picker)
-    {
-        _scopes.Pop(picker.Scope);
-        picker.SuperView?.Remove(picker);
-        picker.Dispose();
-        _picker = null;
-        _list.SetFocus();
+        // Hosted by the settings window rather than this narrower pane, so the picker isn't clipped.
+        HostedDialog.Show(SuperView ?? this, _scopes, picker, () =>
+        {
+            _picker = null;
+            if (picker.Confirmed) SetAssociation(row.Pattern, picker.Grammar);
+            _list.SetFocus();
+        });
+        picker.FilterField.SetFocus();
     }
 
     internal void SetAssociation(string pattern, SyntaxLanguage? grammar)

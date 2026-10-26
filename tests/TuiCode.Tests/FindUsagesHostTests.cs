@@ -155,7 +155,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => workbench.StatusBar.DisplayedText.EndsWith("C# ◌ loading", StringComparison.Ordinal),
+            () => workbench.StatusBar.DisplayedState.Contains("C# ◌ loading", StringComparison.Ordinal),
             () => host.App.InjectKey(Key.G.WithAlt),
             () => workbench.MenuBar.IsOpen(),
             () => { dimmedWhileLoading = Item(host).Dimmed; host.App.InjectKey(Key.Esc); },
@@ -187,7 +187,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => { workbench.StatusBar.SetMessage("elsewhere"); Tab(workbench).MoveCursor(4, 26); Execute(host); },
+            () => { workbench.StatusBar.ShowMessage("elsewhere"); Tab(workbench).MoveCursor(4, 26); Execute(host); },
             () => { shown = workbench.StatusBar.Message; });
 
         Assert.Equal("No C# language server. Install: dotnet tool install -g csharp-ls", shown);
@@ -199,7 +199,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        HelpView? help = null;
+        KeysDialog? help = null;
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
@@ -207,21 +207,21 @@ public class FindUsagesHostTests : StaticConfigurationTest
             () => { Tab(workbench).MoveCursor(4, 26); Execute(host); },
             () => workbench.Sidebar.Usages.ResultsHaveFocus,
             () => host.App.InjectKey(Key.F1),
-            () => (help = workbench.SubViews.OfType<HelpView>().SingleOrDefault()) is not null,
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal("Usages", help!.Place!.Title);
+        Assert.Equal("Usages", help!.Sheet.Here!.Heading);
         Assert.Equal(
         [
             new("Enter", "Go to the usage"),
             new("↑ ↓", "Step through usages"),
             new("→ ←", "Expand or collapse"),
             .. SidebarHelp.TabKeys,
-        ], help.Place.Rows);
+        ], help.Sheet.Here!.Rows());
     }
 
     [Fact]
-    public void Gu_is_on_Ctrl_G_U_in_the_editor_with_a_mnemonic_and_a_place_in_the_Go_menu_after_Go_to_definition()
+    public void Gu_is_on_Ctrl_G_U_in_the_editor_with_a_mnemonic_and_a_place_in_the_Go_menu_after_Quick_info()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -234,7 +234,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
         Assert.Equal("gu", CommandMnemonics.For(CommandIds.FindUsages));
         Assert.Equal("Ctrl+G u", keybindings.Bindings.Single(b => b.CommandId == CommandIds.FindUsages).Display);
         var go = host.Menu.Items.Select(i => i.Id).ToList();
-        Assert.Equal(go.IndexOf(CommandIds.GoToDefinition) + 1, go.IndexOf(CommandIds.FindUsages));
+        Assert.Equal(go.IndexOf(CommandIds.QuickInfo) + 1, go.IndexOf(CommandIds.FindUsages));
     }
 
     [Fact]
@@ -261,7 +261,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
     }
 
     private static bool Ready(Workbench.Workbench workbench) =>
-        workbench.StatusBar.DisplayedText.EndsWith("C# ● ready", StringComparison.Ordinal);
+        workbench.StatusBar.DisplayedState.Contains("C# ● ready", StringComparison.Ordinal);
 
     private static void Execute(WorkbenchHost host)
     {

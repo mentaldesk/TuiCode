@@ -1,6 +1,7 @@
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Find;
+using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Services;
 
 namespace TuiCode.Tests;
@@ -99,13 +100,13 @@ public class FindControllerTests : IDisposable
 
         var help = _find.Help([]);
 
-        Assert.Equal("Find bar", help.Title);
+        Assert.Equal("Find bar", help.Heading);
         Assert.Equal(
         [
             new("Enter", "Next match"),
             new("Shift+Enter", "Previous match"),
             new("Esc", "Close"),
-        ], help.Rows);
+        ], help.Rows());
     }
 
     [Fact]
@@ -121,7 +122,7 @@ public class FindControllerTests : IDisposable
             new("Ctrl+Enter", "Replace all"),
             new("Tab", "Replace field"),
             new("Esc", "Close"),
-        ], _find.Help([]).Rows);
+        ], _find.Help([]).Rows());
     }
 
     [Fact]
@@ -138,7 +139,7 @@ public class FindControllerTests : IDisposable
             new("Ctrl+Enter", "Replace all"),
             new("Tab", "Find field"),
             new("Esc", "Close"),
-        ], _find.Help([]).Rows);
+        ], _find.Help([]).Rows());
     }
 
     [Fact]

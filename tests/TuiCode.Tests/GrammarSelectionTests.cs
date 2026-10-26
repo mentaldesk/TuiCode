@@ -171,7 +171,7 @@ public class GrammarHostTests : StaticConfigurationTest
             () =>
             {
                 tab = workbench.Editor.Group.ActiveTab;
-                before = workbench.StatusBar.DisplayedText;
+                before = $"{workbench.StatusBar.DisplayedText} | {workbench.StatusBar.DisplayedState}";
                 _commands.TryExecute(CommandIds.ChangeGrammar);
             },
             () => workbench.SubViews.OfType<GrammarPickerView>().Any(),
@@ -179,9 +179,9 @@ public class GrammarHostTests : StaticConfigurationTest
             () => { host.App.InjectKey(Key.Enter); },
             () => !workbench.SubViews.OfType<GrammarPickerView>().Any());
 
-        Assert.Equal($"{_fs.Path.GetFullPath("/work/notes.txt")}  •  Plain Text  •  Wrap", before);
+        Assert.StartsWith($"{_fs.Path.GetFullPath("/work/notes.txt")} | Plain Text  •  Wrap", before);
         Assert.Equal("json", tab!.Grammar?.Id);
-        Assert.EndsWith("  •  JSON  •  Wrap", workbench.StatusBar.DisplayedText);
+        Assert.StartsWith("JSON  •  Wrap", workbench.StatusBar.DisplayedState);
     }
 
     [Fact]

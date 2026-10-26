@@ -5,7 +5,7 @@ namespace TuiCode.Tests;
 internal static class SidebarHelp
 {
     /// <summary>The rows every sidebar tab's F1 column ends with: the keys that show the other tabs.</summary>
-    public static readonly HelpRow[] TabKeys =
+    public static readonly KeyRow[] TabKeys =
     [
         new("Ctrl+Shift+E", "Show explorer"),
         new("Ctrl+Shift+F", "Show find"),
