@@ -4,6 +4,10 @@ A minimalist terminal code editor inspired by VS Code.
 
 https://github.com/user-attachments/assets/d82fcaac-9485-4ab7-ab44-fed66f45650c
 
+## Status
+
+TuiCode is at 0.9. It's the maintainer's daily editor, and it's ready to be yours. 1.0 comes once it has been tried on every supported OS and terminal: that testing is tracked in [#607](https://github.com/mentaldesk/TuiCode/issues/607).
+
 ## Installing
 
 Linux, on any distro (x64 or arm64, no `sudo`):
