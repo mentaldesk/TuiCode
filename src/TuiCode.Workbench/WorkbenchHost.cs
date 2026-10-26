@@ -231,6 +231,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_icons is not null) _icons.Changed += (_, _) => ApplyIconStyle();
 
         fileSystem ??= new FileSystem();
+        _workbench.Decompiled = new DecompiledFiles(fileSystem);
         // Tell a tab its file changed the moment it happens, rather than at the save it would lose (#268).
         _diskChanges = new DiskChanges(
             _workbench.Editor.Groups,
@@ -1622,12 +1623,56 @@ public sealed class WorkbenchHost : IDisposable
         var status = _workbench.StatusBar;
         var symbol = IdentifierAt(tab.Lines[tab.CursorRow], tab.CursorCharacter);
         var request = ++_definitionRequest;
-        server.DefinitionAsync(tab.File.FullName, tab.CursorRow, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
+        DefinitionsAsync(server, tab.File.FullName, tab.CursorRow, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
         {
             if (_disposed || request != _definitionRequest) return;
             if (answer.Exception?.InnerException is { } error) status.ShowMessage($"Go to definition failed: {error.Message}", Severity.Error);
-            else ShowDefinitions(tab, symbol, answer.Result);
+            else
+            {
+                var (locations, sources, called) = answer.Result;
+                ShowDefinitions(tab, symbol, Overload(tab.File.FileSystem, Decompile(server, locations, sources), called));
+            }
         }), TaskScheduler.Default);
+    }
+
+    /// <summary>The definitions, csharp-ls's decompiled source for each <c>csharp:/</c> one (#610), and which overload was called.</summary>
+    private static async Task<(IReadOnlyList<SourceLocation> Locations, Dictionary<string, DecompiledSource?> Sources, string? Called)> DefinitionsAsync(
+        LanguageServer server, string path, int row, int character)
+    {
+        var locations = await server.DefinitionAsync(path, row, character).ConfigureAwait(false);
+        var sources = new Dictionary<string, DecompiledSource?>(StringComparer.Ordinal);
+        foreach (var uri in locations.Select(l => l.Path).Where(LspLocations.IsDecompiled).Distinct())
+            sources[uri] = await server.DecompiledAsync(uri).ConfigureAwait(false);
+        string? called = null;
+        if (locations is [_, _, ..] && sources.Count == 1 && locations.All(l => sources.ContainsKey(l.Path)))
+        {
+            try
+            {
+                called = DecompiledFiles.Called(await server.HoverAsync(path, row, character).ConfigureAwait(false));
+            }
+            catch (Exception e) when (e is JsonRpcException or IOException) { }
+        }
+        return (locations, sources, called);
+    }
+
+    // csharp-ls answers with every overload, so hover's signature picks one out.
+    private List<SourceLocation> Overload(IFileSystem fileSystem, List<SourceLocation> locations, string? called) =>
+        called is not null && locations.Where(l => LineAt(fileSystem, l).Contains(called, StringComparison.Ordinal)).ToList() is [var only]
+            ? [only]
+            : locations;
+
+    private List<SourceLocation> Decompile(LanguageServer server, IReadOnlyList<SourceLocation> locations, Dictionary<string, DecompiledSource?> sources)
+    {
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (uri, source) in sources)
+        {
+            if (source is null || _workbench.Decompiled is not { } decompiled) continue;
+            files[uri] = decompiled.Write(uri, source).Path;
+            server.Alias(files[uri], uri);
+        }
+        return [.. locations
+            .Where(l => !sources.ContainsKey(l.Path) || files.ContainsKey(l.Path))
+            .Select(l => files.TryGetValue(l.Path, out var file) ? l with { Path = file } : l)];
     }
 
     /// <summary>Quick info (<c>gi</c>): what the language server says the name under the caret is, in a box under its line.</summary>
@@ -1796,7 +1841,7 @@ public sealed class WorkbenchHost : IDisposable
         if (_activeDefinitionPicker is not null) return;
 
         var root = _workbench.Sidebar.Explorer.Root?.FullName;
-        var rows = locations.Select(l => new DefinitionRow(l, $"{DisplayPath(l.Path, root)}:{l.Line + 1}", LineAt(fileSystem, l).Trim())).ToList();
+        var rows = locations.Select(l => new DefinitionRow(l, $"{_workbench.Decompiled?.At(l.Path)?.Place ?? DisplayPath(l.Path, root)}:{l.Line + 1}", LineAt(fileSystem, l).Trim())).ToList();
         var view = new DefinitionPickerView(symbol ?? "symbol", rows);
         _activeDefinitionPicker = view;
         HostedDialog.Show(_workbench, _scopes, view, () =>
@@ -1818,7 +1863,11 @@ public sealed class WorkbenchHost : IDisposable
         return fileSystem.File.ReadLines(location.Path).Skip(location.Line).FirstOrDefault() ?? "";
     }
 
-    private void JumpToDefinition(EditorTab origin, SourceLocation location) => JumpTo(origin.File.FileSystem, origin, location);
+    private void JumpToDefinition(EditorTab origin, SourceLocation location)
+    {
+        JumpTo(origin.File.FileSystem, origin, location);
+        if (_workbench.Decompiled?.At(location.Path) is { } decompiled) _workbench.StatusBar.ShowMessage(decompiled.Origin);
+    }
 
     /// <summary>Opens <paramref name="location"/> with the caret on it, recorded as an explicit jump from <paramref name="origin"/>.</summary>
     private void JumpTo(IFileSystem fileSystem, EditorTab? origin, SourceLocation location)
@@ -2556,6 +2605,7 @@ public sealed class WorkbenchHost : IDisposable
     private bool WriteAgentText(string path, string content)
     {
         if (_workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path) is not { } tab) return false;
+        if (tab.ReadOnly) throw new UnauthorizedAccessException(DecompiledFiles.Refusal);
         tab.ReplaceLines(0, tab.Lines.Count, content.Replace("\r\n", "\n").Split('\n'));
         tab.Save();
         return true;

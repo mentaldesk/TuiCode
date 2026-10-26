@@ -108,6 +108,15 @@ internal sealed partial class CodeEditor : TextEditor
     /// <summary>Raised once for each edit, typed, pasted, replaced, undone or set through <see cref="Text"/>.</summary>
     public event EventHandler? Edited;
 
+    /// <summary>Raised when something tried to edit the text while it's <see cref="TextEditor.ReadOnly"/>.</summary>
+    public event EventHandler? EditRefused;
+
+    private bool Refused()
+    {
+        if (ReadOnly) EditRefused?.Invoke(this, EventArgs.Empty);
+        return ReadOnly;
+    }
+
     /// <summary>Raised when a key or the mouse moves the primary caret, with where it went (column X, row Y).</summary>
     public event EventHandler<Point>? CursorMoved;
 
@@ -321,6 +330,7 @@ internal sealed partial class CodeEditor : TextEditor
         // Anything else ends the box, so the next extend starts one from where the caret now is.
         _box = null;
         if (!bound) return false;
+        if (binding.Commands.Any(EditCommands.Contains) && Refused()) return true;
         var before = InsertionPoint;
         if (_mapped && MoveByRows(binding.Commands)) return true;
         if (HasSecondaryCarets) return InvokeAtCarets(binding);
@@ -384,7 +394,7 @@ internal sealed partial class CodeEditor : TextEditor
     // Editor's deletes nothing when the clipboard refuses the text.
     private bool? CutToEndOfLine()
     {
-        if (ReadOnly) return true;
+        if (Refused()) return true;
         var line = Document!.GetLineByOffset(CaretOffset);
         var end = line.Offset + line.Length;
         var (start, length) = CaretOffset < end ? (CaretOffset, end - CaretOffset) : (end, line.DelimiterLength);
@@ -614,7 +624,7 @@ internal sealed partial class CodeEditor : TextEditor
     // Editor places the cursor only in its own draw, which this replaces.
     private void PlaceCursor()
     {
-        if (!CanFocus || !Enabled || ReadOnly || ViewportPosition(new Caret(InsertionPoint)) is not { } point)
+        if (!CanFocus || !Enabled || ViewportPosition(new Caret(InsertionPoint)) is not { } point)
         {
             Cursor = Cursor with { Position = null };
             return;

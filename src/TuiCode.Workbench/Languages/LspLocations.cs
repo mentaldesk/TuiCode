@@ -7,7 +7,11 @@ public readonly record struct SourceLocation(string Path, int Line, int Characte
 
 public static class LspLocations
 {
-    public static string ToUri(string path) => new Uri(path).AbsoluteUri;
+    public static string ToUri(string path) => IsDecompiled(path) ? path : new Uri(path).AbsoluteUri;
+
+    /// <summary>Whether <paramref name="path"/> is csharp-ls's <c>csharp:/…/decompiled/…</c> URI for a library type, kept as it came (#610).</summary>
+    public static bool IsDecompiled(string path) =>
+        path.StartsWith("csharp:/", StringComparison.Ordinal) && path.Contains("/decompiled/", StringComparison.Ordinal);
 
     public static string? ToPath(string uri) =>
         Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && parsed.IsFile ? parsed.LocalPath : null;
@@ -33,7 +37,7 @@ public static class LspLocations
         if (node is not JsonObject location) return null;
         var uri = (location["targetUri"] ?? location["uri"])?.GetValue<string>();
         var start = (location["targetSelectionRange"] ?? location["targetRange"] ?? location["range"])?["start"];
-        if (uri is null || ToPath(uri) is not { } path || start is null) return null;
+        if (uri is null || (IsDecompiled(uri) ? uri : ToPath(uri)) is not { } path || start is null) return null;
         return new SourceLocation(path, start["line"]?.GetValue<int>() ?? 0, start["character"]?.GetValue<int>() ?? 0);
     }
 }

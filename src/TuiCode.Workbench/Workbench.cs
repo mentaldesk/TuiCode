@@ -112,6 +112,7 @@ public sealed class Workbench : Window
         };
 
         editor.Groups.Copied += (_, outcome) => ShowCopy(outcome);
+        editor.Groups.EditRefused += (_, _) => statusBar.ShowMessage(DecompiledFiles.Refusal);
 
         if (recovery is not null)
         {
@@ -121,6 +122,12 @@ public sealed class Workbench : Window
 
         editor.Groups.EditorOpening += (_, tab) =>
         {
+            if (Decompiled?.At(tab.File.FullName) is { } decompiled)
+            {
+                tab.ReadOnly = true;
+                tab.DisplayName = decompiled.Title;
+                return;
+            }
             if (tab.IsRecovered) return;
             if (_positions?.Load(tab.File.FullName) is { } position) tab.RestoreViewPosition(position);
         };
@@ -157,6 +164,9 @@ public sealed class Workbench : Window
         });
     }
 
+    /// <summary>The library sources Go to definition has decompiled; null opens none read-only.</summary>
+    public DecompiledFiles? Decompiled { get; set; }
+
     /// <summary>The language servers for the open folder; null runs none.</summary>
     public LanguageServers? Languages
     {
@@ -188,7 +198,8 @@ public sealed class Workbench : Window
 
     private void ShowActiveFile(EditorTab? tab)
     {
-        StatusBar.SetResting(tab?.File.FullName ?? Editor.Group.ActiveDiffTab?.Title ?? Editor.Group.ActiveDocumentTab?.Title);
+        StatusBar.SetResting((tab is { ReadOnly: true } ? Decompiled?.At(tab.File.FullName)?.Origin : null)
+            ?? tab?.File.FullName ?? Editor.Group.ActiveDiffTab?.Title ?? Editor.Group.ActiveDocumentTab?.Title);
         ShowLanguage(tab);
         ShowLanguageTrouble(tab);
         StatusBar.SetWrap(tab is { WordWrap: true });
@@ -421,12 +432,12 @@ public sealed class Workbench : Window
             History = IsHistoryOn,
         });
 
-        static List<string> Files(EditorGroup group) => [.. group.Tabs.Select(t => t.File.FullName)];
-        static string? ActiveFile(EditorGroup group) => (group.ActiveTab ?? group.ActiveDiffTab?.Source)?.File.FullName;
+        static List<string> Files(EditorGroup group) => [.. group.Tabs.Where(t => !t.ReadOnly).Select(t => t.File.FullName)];
+        static string? ActiveFile(EditorGroup group) => (group.ActiveTab ?? group.ActiveDiffTab?.Source) is { ReadOnly: false } tab ? tab.File.FullName : null;
     }
 
     private void RememberPositions(IEnumerable<EditorTab> tabs) =>
-        _positions?.Save(tabs.Select(tab => (tab.File.FullName, tab.ViewPosition)));
+        _positions?.Save(tabs.Where(tab => !tab.ReadOnly).Select(tab => (tab.File.FullName, tab.ViewPosition)));
 
     protected override void Dispose(bool disposing)
     {

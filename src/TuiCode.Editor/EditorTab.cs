@@ -60,11 +60,30 @@ public sealed class EditorTab : FrameView
         }
     } = FileIconStyle.Off;
 
+    /// <summary>Text that can be read but not changed, like a library's decompiled source (#610); every edit raises <see cref="EditRefused"/>.</summary>
+    public bool ReadOnly
+    {
+        get => _text.ReadOnly;
+        set => _text.ReadOnly = value;
+    }
+
+    /// <summary>The tab's title in place of the file's name.</summary>
+    public string? DisplayName
+    {
+        get;
+        set
+        {
+            field = value;
+            UpdateTitle();
+        }
+    }
+
     public string Content
     {
         get => _text.Text;
         set
         {
+            if (Refused()) return;
             _text.Text = value;
             OnEdited();
         }
@@ -82,6 +101,7 @@ public sealed class EditorTab : FrameView
     /// <summary>Raised when the buffer is taken as the file again, by a save or a reload, so its <c>HEAD</c> baseline can be re-read.</summary>
     public event EventHandler? BaselineReset;
     public event EventHandler<CopyOutcome>? Copied;
+    public event EventHandler? EditRefused;
 
     /// <summary>
     /// Raised whenever the insertion point moves, carrying the position in the file's own
@@ -155,6 +175,7 @@ public sealed class EditorTab : FrameView
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
         _text.Edited += (_, _) => OnEdited();
         _text.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
+        _text.EditRefused += (_, _) => EditRefused?.Invoke(this, EventArgs.Empty);
         _text.RefreshingSticky = RefreshSticky;
         _text.Drawing = ScrollToPendingView;
         _text.PinnedLineClicked += (_, line) => PinnedLineClicked?.Invoke(this, line);
@@ -642,6 +663,7 @@ public sealed class EditorTab : FrameView
     /// <summary>Replace the text covered by <paramref name="match"/>, as one undo step.</summary>
     public void Replace(TextMatch match, string replacement)
     {
+        if (Refused()) return;
         Select(match);
         _text.EditAtPrimary(() =>
         {
@@ -658,6 +680,7 @@ public sealed class EditorTab : FrameView
 
     public void Save()
     {
+        if (Refused()) return;
         var content = SaveContent();
         // A deleted file's directory can have gone with it (#271), and a tab opened on a file that never
         // existed (#247) has nothing above it either; recreate the path rather than throwing.
@@ -739,6 +762,12 @@ public sealed class EditorTab : FrameView
         base.Dispose(disposing);
     }
 
+    private bool Refused()
+    {
+        if (ReadOnly) EditRefused?.Invoke(this, EventArgs.Empty);
+        return ReadOnly;
+    }
+
     private void OnEdited()
     {
         if (_loading) return;
@@ -760,7 +789,7 @@ public sealed class EditorTab : FrameView
     {
         // The trailing space keeps the marker off the tab's right border.
         var mark = DiskMark.For(_disk, IconStyle);
-        Title = $"{(_dirty ? "● " : "")}{File.Name}{(mark.Length > 0 ? $" {mark} " : "")}";
+        Title = $"{(_dirty ? "● " : "")}{DisplayName ?? File.Name}{(mark.Length > 0 ? $" {mark} " : "")}";
         PaneTabs.ShowTitle(this);
         if (Border.View is BorderView { TitleView: { } view })
             ColourWhileMarked(view);

@@ -6,6 +6,7 @@ using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Assistant;
 using TuiCode.Workbench.Files;
+using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 
@@ -171,6 +172,41 @@ public class AssistantHostTests : StaticConfigurationTest
         Assert.Equal("// line 2", Tab(workbench).Lines[1]);
         Assert.EndsWith("Rewritten.\n\nChanged 1 file · Ctrl+Shift+R to review", Chat(view));
         Assert.Null(Confirm(workbench));
+    }
+
+    [Fact]
+    public async Task A_write_to_a_decompiled_tab_is_refused_and_leaves_it_as_it_was()
+    {
+        var path = _fs.Path.Combine(_fs.Path.GetTempPath(), "MetadataAsSource", "a28", "Console.cs");
+        _fs.AddFile(path, new MockFileData("#region Assembly System.Console\npublic static class Console { }\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Panel.Assistant;
+        _agent.OnPrompt = async (agent, _) =>
+        {
+            try
+            {
+                await agent.Ask("fs/write_text_file", new JsonObject { ["path"] = path, ["content"] = "class Mine { }" });
+            }
+            catch (JsonRpcException e)
+            {
+                agent.Say(e.Message);
+            }
+        };
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New(path)),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Go"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("read-only"));
+
+        Assert.True(Tab(workbench).ReadOnly);
+        Assert.Equal("public static class Console { }", Tab(workbench).Lines[1]);
+        Assert.False(Tab(workbench).IsDirty);
+        Assert.Equal("#region Assembly System.Console\npublic static class Console { }\n", _fs.File.ReadAllText(path));
+        Assert.EndsWith("Decompiled source is read-only", Chat(view));
     }
 
     [Fact]
