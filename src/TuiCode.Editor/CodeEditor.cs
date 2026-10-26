@@ -588,6 +588,9 @@ internal sealed partial class CodeEditor : TextEditor
         return columns;
     }
 
+    /// <summary>The primary caret's screen cell, or null while it's out of view.</summary>
+    public Point? CaretOnScreen => ViewportPosition(new Caret(InsertionPoint)) is { } point ? ViewportToScreen(point) : null;
+
     // Editor places the cursor only in its own draw, which this replaces.
     private void PlaceCursor()
     {

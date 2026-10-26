@@ -13,8 +13,10 @@ internal sealed class LayeredScope : IKeybindingService
     private readonly IKeybindingService _own;
     private readonly IKeybindingService _below;
     private readonly Func<Key, bool> _accepts;
+    private readonly Action<Key>? _passing;
 
-    public LayeredScope(IKeybindingService own, IKeybindingService below, Func<Key, bool> accepts)
+    /// <param name="passing">Called with each key the layer lets through, before the scope beneath sees it.</param>
+    public LayeredScope(IKeybindingService own, IKeybindingService below, Func<Key, bool> accepts, Action<Key>? passing = null)
     {
         ArgumentNullException.ThrowIfNull(own);
         ArgumentNullException.ThrowIfNull(below);
@@ -22,6 +24,7 @@ internal sealed class LayeredScope : IKeybindingService
         _own = own;
         _below = below;
         _accepts = accepts;
+        _passing = passing;
     }
 
     public KeyHandlingResult Handle(Key key)
@@ -31,6 +34,7 @@ internal sealed class LayeredScope : IKeybindingService
             var result = _own.Handle(key);
             if (result != KeyHandlingResult.Pass) return result;
         }
+        _passing?.Invoke(key);
         return _below.Handle(key);
     }
 

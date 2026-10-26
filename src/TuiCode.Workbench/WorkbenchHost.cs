@@ -108,6 +108,10 @@ public sealed class WorkbenchHost : IDisposable
     // Only the latest Go to definition jumps, however the answers come back.
     private int _definitionRequest;
     private int _usagesRequest;
+    private QuickInfoView? _activeQuickInfo;
+    private LayeredScope? _quickInfoScope;
+    private (EditorTab Tab, System.Drawing.Point? Caret, System.Drawing.Rectangle Text) _quickInfoAt;
+    private int _quickInfoRequest;
     private IFileSystem? _usagesFileSystem;
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
@@ -713,6 +717,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.GoToMatchingBracket, "Go to matching bracket", GoToMatchingBracket, CommandScope.Editor, FileOpen);
         // Enabled without a ready server, so the key can say what's missing; the menu dims it (IsAvailableFrom).
         _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.QuickInfo, "Quick info", ShowQuickInfo, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
         // Global and ungated, so with no agent installed it can say so (#566).
         _commands.Register(CommandIds.AiAssistance, "AI assistance", AskAssistant);
@@ -819,7 +824,7 @@ public sealed class WorkbenchHost : IDisposable
     private KeyColumn? PlaceHelp()
     {
         Reconcile();
-        var help = _focus.Region switch
+        var help = _activeQuickInfo is not null ? HelpSheet.Place("Quick info", QuickInfoKeys) : _focus.Region switch
         {
             FocusRegion.FindBar => _find.Help(FindOptionKeys()),
             FocusRegion.Diff => DiffHelp(),
@@ -912,6 +917,12 @@ public sealed class WorkbenchHost : IDisposable
         [new("Enter", "Open the commit's change"), new("↑ ↓", "Choose a commit"), new("Type", "Filter the commits"), new("Esc", "Back to the editor")];
 
     private static readonly KeyRow[] AssistantKeys = [new("↑ ↓ PgUp PgDn", "Scroll the chat")];
+
+    private static readonly KeyRow[] QuickInfoKeys =
+    [
+        new("Esc", "Close"), new("Enter", "Go to definition"), new("↑ ↓ PgUp PgDn", "Scroll"),
+        new("Any other key", "Close, then act in the editor"),
+    ];
 
     private static readonly KeyRow[] UsagesKeys = [new("Enter", "Go to the usage"), new("↑ ↓", "Step through usages"), new("→ ←", "Expand or collapse")];
 
@@ -1035,6 +1046,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G H", CommandIds.ToggleFileHistory);
         keybindings.Bind("Ctrl+G A", CommandIds.AiAssistance);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
+        keybindings.Bind("Ctrl+G I", CommandIds.QuickInfo);
         keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
         keybindings.Bind("Enter", CommandIds.AssistantSend);
         keybindings.Bind("Esc", CommandIds.AssistantStop);
@@ -1425,7 +1437,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         var scope = _commands.ScopeOf(id);
         return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id)
-            && (id is not (CommandIds.GoToDefinition or CommandIds.FindUsages) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
+            && (id is not (CommandIds.GoToDefinition or CommandIds.QuickInfo or CommandIds.FindUsages) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
     }
 
     private LanguageServer? ActiveLanguageServer() =>
@@ -1592,6 +1604,76 @@ public sealed class WorkbenchHost : IDisposable
         }), TaskScheduler.Default);
     }
 
+    /// <summary>Quick info (<c>gi</c>): what the language server says the name under the caret is, in a box under its line.</summary>
+    private void ShowQuickInfo()
+    {
+        if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
+        var status = _workbench.StatusBar;
+        var (row, column) = (tab.CursorRow, tab.CursorColumn);
+        var request = ++_quickInfoRequest;
+        server.HoverAsync(tab.File.FullName, row, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
+        {
+            if (_disposed || request != _quickInfoRequest) return;
+            if (answer.Exception?.InnerException is { } error) status.SetMessage($"Quick info failed: {error.Message}");
+            else if (answer.Result is []) status.SetMessage("Nothing to show here");
+            else if (_workbench.Editor.Group.ActiveTab == tab && (tab.CursorRow, tab.CursorColumn) == (row, column)) OpenQuickInfo(tab, answer.Result);
+        }), TaskScheduler.Default);
+    }
+
+    private void OpenQuickInfo(EditorTab tab, IReadOnlyList<HoverPart> answer)
+    {
+        CloseQuickInfo();
+        if (_workbench.HasDialog || _menu.IsOpen || _focus.Region != FocusRegion.Editor || tab.CaretOnScreen is not { } caret
+            || _scopes.Top is not { } below) return;
+        var text = tab.TextOnScreen;
+        var info = QuickInfo.Lay(answer, text.Width - QuickInfo.Frame - 1);
+        var view = new QuickInfoView(info, _workbench.Editor.Group.Syntax, tab.Grammar);
+        var (width, height) = view.Wanted;
+        var box = QuickInfo.Place(text, caret, width, height);
+        if (box.Height < height) box = QuickInfo.Place(text, caret, width + 1, height);
+        view.FitButtons(box.Width);
+        var origin = _workbench.ScreenToViewport(box.Location);
+        (view.X, view.Y, view.Width, view.Height) = (origin.X, origin.Y, box.Width, box.Height);
+        // A click on a button can come while a dialog over the box has the keys.
+        view.Cancelled += (_, _) =>
+        {
+            if (ReferenceEquals(_scopes.Top, _quickInfoScope)) CloseQuickInfo();
+        };
+        view.Submitted += (_, _) =>
+        {
+            if (!ReferenceEquals(_scopes.Top, _quickInfoScope)) return;
+            CloseQuickInfo();
+            GoToDefinition();
+        };
+        _activeQuickInfo = view;
+        _quickInfoScope = new LayeredScope(view.Scope, below, _ => true, key =>
+        {
+            if (!IsHelpKey(key)) CloseQuickInfo();
+        });
+        _quickInfoAt = (tab, caret, text);
+        _workbench.Add(view);
+        _scopes.Push(_quickInfoScope);
+    }
+
+    private bool IsHelpKey(Key key) =>
+        _keybindings.Bindings.Any(b => b.CommandId == CommandIds.ShowHelp && b.CanonicalId == KeyChord.Canonical([key]));
+
+    // A click, a scroll or a resize moves what the box was pointing at.
+    private bool QuickInfoStillFits() =>
+        _quickInfoAt.Tab == _workbench.Editor.Group.ActiveTab && _focus.Region == FocusRegion.Editor
+        && _quickInfoAt.Caret == _quickInfoAt.Tab.CaretOnScreen && _quickInfoAt.Text == _quickInfoAt.Tab.TextOnScreen;
+
+    private void CloseQuickInfo()
+    {
+        if (_activeQuickInfo is not { } view) return;
+        _scopes.Pop(_quickInfoScope!);
+        _workbench.Remove(view);
+        view.Dispose();
+        _activeQuickInfo = null;
+        _quickInfoScope = null;
+        _quickInfoAt = default;
+    }
+
     /// <summary>The active file's language server, flushed of edits, or null once the status bar has said why there isn't one.</summary>
     private LanguageServer? ReadyLanguageServer(EditorTab tab)
     {
@@ -1752,6 +1834,7 @@ public sealed class WorkbenchHost : IDisposable
         // Picks up focus Terminal.Gui moved on its own, and any move that didn't land where it was asked to.
         Reconcile();
         _activeSymbolPicker?.Advance();
+        if (_activeQuickInfo is not null && ReferenceEquals(_scopes.Top, _quickInfoScope) && !QuickInfoStillFits()) CloseQuickInfo();
         if (_workbench.Panel.ActiveTab == PanelTab.Assistant) ShowingAssistant();
         // Some isEnabled checks touch the disk, so not on every iteration.
         if (Environment.TickCount64 - _menuShownAt >= 250) ShowAvailableMenus();

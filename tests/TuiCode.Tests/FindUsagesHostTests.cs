@@ -221,7 +221,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Gu_is_on_Ctrl_G_U_in_the_editor_with_a_mnemonic_and_a_place_in_the_Go_menu_after_Go_to_definition()
+    public void Gu_is_on_Ctrl_G_U_in_the_editor_with_a_mnemonic_and_a_place_in_the_Go_menu_after_Quick_info()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -234,7 +234,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
         Assert.Equal("gu", CommandMnemonics.For(CommandIds.FindUsages));
         Assert.Equal("Ctrl+G u", keybindings.Bindings.Single(b => b.CommandId == CommandIds.FindUsages).Display);
         var go = host.Menu.Items.Select(i => i.Id).ToList();
-        Assert.Equal(go.IndexOf(CommandIds.GoToDefinition) + 1, go.IndexOf(CommandIds.FindUsages));
+        Assert.Equal(go.IndexOf(CommandIds.QuickInfo) + 1, go.IndexOf(CommandIds.FindUsages));
     }
 
     [Fact]
