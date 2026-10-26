@@ -5,7 +5,7 @@ namespace TuiCode.Workbench.Git;
 /// <summary>A row of the <c>ow</c> picker: the worktree's folder, its branch, its name, and its parent with the home directory as <c>~</c>.</summary>
 public sealed record WorktreeRow(string Path, string Branch, string Name, string Parent);
 
-/// <summary>The rows of the <c>ow</c> picker: which worktrees to offer, filtering, and how each reads.</summary>
+/// <summary>The rows of the <c>ow</c> picker: which worktrees to offer, and how each reads.</summary>
 internal static class WorktreeList
 {
     private const int Gap = 2;
@@ -28,16 +28,10 @@ internal static class WorktreeList
         return new WorktreeRow(worktree.Path, branch, path[(cut + 1)..], ShortenHome(parent, TrimEnd(home)));
     }
 
-    /// <summary>Case-insensitive substring of the branch, the name or the parent.</summary>
-    public static IReadOnlyList<WorktreeRow> Filter(IReadOnlyList<WorktreeRow> rows, string filter)
-    {
-        filter = filter.Trim();
-        return filter.Length == 0
-            ? rows
-            : [.. rows.Where(r => r.Branch.Contains(filter, StringComparison.OrdinalIgnoreCase)
-                || r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
-                || r.Parent.Contains(filter, StringComparison.OrdinalIgnoreCase))];
-    }
+    public static string Display(WorktreeRow row, IReadOnlyList<WorktreeRow> rows, int width) =>
+        Display(row, BranchWidth(rows), NameWidth(rows), width);
+
+    public static string Header(IReadOnlyList<WorktreeRow> rows, int width) => Display(Headings, rows, width);
 
     /// <summary>The branch and the name in columns as wide as their longest, each capped at a third of the row, then the parent.</summary>
     public static string Display(WorktreeRow row, int branchWidth, int nameWidth, int width)
@@ -52,6 +46,10 @@ internal static class WorktreeList
     }
 
     public static string Header(int branchWidth, int nameWidth, int width) => Display(Headings, branchWidth, nameWidth, width);
+
+    private static int BranchWidth(IReadOnlyList<WorktreeRow> rows) => rows.Append(Headings).Max(w => w.Branch.Length);
+
+    private static int NameWidth(IReadOnlyList<WorktreeRow> rows) => rows.Append(Headings).Max(w => w.Name.Length);
 
     private static string ShortenHome(string parent, string home)
     {

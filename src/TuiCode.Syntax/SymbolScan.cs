@@ -18,7 +18,7 @@ public enum SymbolKind
 }
 
 /// <summary>A definition in the file: its name, what it is, the row it's on, and how many types enclose it.</summary>
-public readonly record struct FileSymbol(string Name, SymbolKind Kind, int Line, int Depth);
+public sealed record FileSymbol(string Name, SymbolKind Kind, int Line, int Depth);
 
 /// <summary>
 /// One buffer's definitions, read from TextMate scopes (#137) and scanned in budgeted slices so a big

@@ -1,12 +1,13 @@
 using TuiCode.Abstractions;
-using TuiCode.Workbench.Navigation;
 
 namespace TuiCode.Workbench.Git;
 
 /// <summary>A row of the <c>ctr</c> picker. <see cref="Revision"/> is what git is asked for; the diff tab is titled with it too.</summary>
-internal sealed record RevisionEntry(string Revision, string Text, string Kind, string? Subject = null)
+public sealed record RevisionEntry(string Revision, string Text, string Kind, string? Subject = null)
 {
     private const int Gap = 2;
+
+    public static RevisionEntry Typed(string revision) => new(revision, revision, "");
 
     public string Display(int width)
     {
@@ -30,13 +31,6 @@ internal static class RevisionList
         .. commits.Select(c => new RevisionEntry(c.ShortHash, $"{c.ShortHash}  {c.Subject.Replace('\t', ' ')}", "commit", c.Subject)),
     ];
 
-    /// <summary>Branches and tags by <see cref="CamelHumps"/>, commits by hash prefix or subject. The order stays as built.</summary>
-    public static IReadOnlyList<RevisionEntry> Filter(IReadOnlyList<RevisionEntry> entries, string filter)
-    {
-        filter = filter.Trim();
-        return filter.Length == 0 ? entries : entries.Where(e => Matches(e, filter)).ToList();
-    }
-
     /// <summary>The first row <paramref name="filter"/> names exactly (<c>HEAD</c> in any case), else the first row.</summary>
     public static int? Selected(IReadOnlyList<RevisionEntry> visible, string filter)
     {
@@ -51,10 +45,4 @@ internal static class RevisionList
         }
         return 0;
     }
-
-    private static bool Matches(RevisionEntry entry, string filter) =>
-        entry.Subject is null
-            ? CamelHumps.Score(filter, entry.Revision) is not null
-            : entry.Revision.StartsWith(filter, StringComparison.OrdinalIgnoreCase)
-              || entry.Subject.Contains(filter, StringComparison.OrdinalIgnoreCase);
 }

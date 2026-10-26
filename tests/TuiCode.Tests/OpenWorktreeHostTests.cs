@@ -63,7 +63,7 @@ public class OpenWorktreeHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.OpenWorktree),
             () => Picker(workbench) is not null,
             () => Type(host, "DETACHED"),
-            () => Picker(workbench)!.VisibleItems is ["pr-7"] && Picker(workbench)!.SelectedItem == 0,
+            () => Picker(workbench)!.VisibleItems is ["pr-7"] && Picker(workbench)!.SelectedIndex == 0,
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench) is null);
 

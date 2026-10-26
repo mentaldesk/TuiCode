@@ -11,6 +11,4 @@ public sealed class RecentFolderPickerView(IReadOnlyList<RecentFolder> folders) 
     private const int DialogWidth = 78;
 
     internal IReadOnlyList<string> VisibleItems => [.. Shown.Select(f => f.Name)];
-
-    internal int? SelectedItem => this.SelectedIndex();
 }

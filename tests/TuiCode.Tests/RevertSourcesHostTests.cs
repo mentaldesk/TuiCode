@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -38,7 +39,7 @@ public class RevertSourcesHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => RevisionPicker(workbench) is { Loaded: true },
+            () => RevisionPicker(workbench) is { State: LoadState.Loaded },
             () => Type(host, "v1.2"),
             () => RevisionPicker(workbench)!.VisibleItems.Count == 1,
             () => host.App.InjectKey(Key.Enter),
@@ -107,7 +108,7 @@ public class RevertSourcesHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
         [
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => PullRequestPicker(workbench) is { Loaded: true },
+            () => PullRequestPicker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Enter),
             () => PullRequestPicker(workbench) is null,
             .. OpenReviewDiff(host, commands, workbench),

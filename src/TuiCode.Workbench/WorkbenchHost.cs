@@ -1553,17 +1553,14 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         var view = new SymbolPickerView(tab.File.Name, scan, _icons);
-        view.Cancelled += (_, _) => CloseSymbolPicker(view);
-        view.Submitted += (_, symbol) =>
-        {
-            CloseSymbolPicker(view);
-            JumpToLine(tab, symbol.Line);
-        };
-
         _activeSymbolPicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusFilter();
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeSymbolPicker = null;
+            FocusCallingRegion();
+            if (view.Confirmed && view.Chosen is { } symbol) JumpToLine(tab, symbol.Line);
+        });
+        view.FilterField.SetFocus();
     }
 
     // As in Go to line: drive the move ourselves so even a short hop records as a deliberate jump.
@@ -1577,16 +1574,6 @@ public sealed class WorkbenchHost : IDisposable
         }
         finally { _suppressHistory = false; }
         _history.Visit(new CursorLocation(tab.File.FullName, line, 0), explicitJump: true);
-    }
-
-    private void CloseSymbolPicker(SymbolPickerView view)
-    {
-        if (!ReferenceEquals(_activeSymbolPicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeSymbolPicker = null;
-        FocusCallingRegion();
     }
 
     /// <summary>Go to definition (<c>gd</c>): where the language server says the symbol under the cursor is defined.</summary>
@@ -1614,8 +1601,8 @@ public sealed class WorkbenchHost : IDisposable
         server.HoverAsync(tab.File.FullName, row, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
         {
             if (_disposed || request != _quickInfoRequest) return;
-            if (answer.Exception?.InnerException is { } error) status.SetMessage($"Quick info failed: {error.Message}");
-            else if (answer.Result is []) status.SetMessage("Nothing to show here");
+            if (answer.Exception?.InnerException is { } error) status.ShowMessage($"Quick info failed: {error.Message}", Severity.Error);
+            else if (answer.Result is []) status.ShowMessage("Nothing to show here");
             else if (_workbench.Editor.Group.ActiveTab == tab && (tab.CursorRow, tab.CursorColumn) == (row, column)) OpenQuickInfo(tab, answer.Result);
         }), TaskScheduler.Default);
     }
@@ -2971,21 +2958,17 @@ public sealed class WorkbenchHost : IDisposable
         var path = tab.File.FullName;
         var view = new RevisionPickerView(tab.File.Name);
         var lookingUp = false;
-        view.Cancelled += (_, _) => CloseRevisionPicker(view);
-        view.Submitted += (_, revision) =>
+        IReadOnlyList<string>? lines = null;
+        view.Comparing += (_, entry) =>
         {
             if (lookingUp) return;
-            var group = _workbench.Editor.Group;
-            // Close first: removing the picker hands focus back to a tab, switching away from the diff.
-            if (group.HasDiff(tab, revision))
+            if (_workbench.Editor.Group.HasDiff(tab, entry.Revision))
             {
-                CloseRevisionPicker(view);
-                group.FocusDiff(tab, revision);
-                FocusEditorBody();
+                view.Choose(entry);
                 return;
             }
             lookingUp = true;
-            var content = Task.Run(() => ReadRevisionAsync(tab.File.Name, path, revision));
+            var content = Task.Run(() => ReadRevisionAsync(tab.File.Name, path, entry.Revision));
             WhenDone(content, () =>
             {
                 lookingUp = false;
@@ -2995,19 +2978,30 @@ public sealed class WorkbenchHost : IDisposable
                     view.ShowError(error);
                     return;
                 }
-                var lines = DiffTab.SplitLines(content.Result.Value);
-                CloseRevisionPicker(view);
-                if (group.Compare(tab, revision, () => lines) is null)
-                    _workbench.StatusBar.ShowMessage($"No changes against {revision}");
-                else
-                    FocusEditorBody();
+                lines = DiffTab.SplitLines(content.Result.Value);
+                view.Choose(entry);
             });
         };
 
         _activeRevisionPicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusFilter();
+        // Runs once the picker has gone, so the diff it focuses stays active (#191).
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeRevisionPicker = null;
+            FocusCallingRegion();
+            if (!view.Confirmed || view.Chosen is not { Revision: var revision }) return;
+            var group = _workbench.Editor.Group;
+            if (lines is null)
+            {
+                group.FocusDiff(tab, revision);
+                FocusEditorBody();
+            }
+            else if (group.Compare(tab, revision, () => lines) is null)
+                _workbench.StatusBar.ShowMessage($"No changes against {revision}");
+            else
+                FocusEditorBody();
+        });
+        view.FilterField.SetFocus();
 
         void Load()
         {
@@ -3337,12 +3331,14 @@ public sealed class WorkbenchHost : IDisposable
         var fileSystem = root.FileSystem;
         var view = new PullRequestPickerView();
         string? repoRoot = null;
+        string? checkedOut = null;
         var checkingOut = false;
-        view.Cancelled += (_, _) => ClosePullRequestPicker(view);
-        view.Submitted += (_, pullRequest) =>
+        view.Picking += (_, picking) =>
         {
+            picking.Cancel = true;
             if (checkingOut || repoRoot is null) return;
             checkingOut = true;
+            var pullRequest = picking.Row;
             view.ShowBusy(pullRequest.Number);
 
             var checkout = Task.Run(() => PullRequestWorktreeAsync(fileSystem, repoRoot, pullRequest));
@@ -3355,16 +3351,21 @@ public sealed class WorkbenchHost : IDisposable
                     view.ShowError(error);
                     return;
                 }
-                ClosePullRequestPicker(view);
-                _workbench.OpenFolder(fileSystem.DirectoryInfo.New(checkout.Result.Value));
-                FocusReview();
+                checkedOut = checkout.Result.Value;
+                view.Choose(pullRequest);
             });
         };
 
         _activePullRequestPicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusFilter();
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activePullRequestPicker = null;
+            FocusCallingRegion();
+            if (!view.Confirmed || checkedOut is null) return;
+            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(checkedOut));
+            FocusReview();
+        });
+        view.FilterField.SetFocus();
 
         void Load()
         {
@@ -3438,27 +3439,14 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeWorktreePicker is not null) return;
         var view = new WorktreePickerView(worktrees);
-        view.Cancelled += (_, _) => CloseWorktreePicker(view);
-        view.Submitted += (_, worktree) =>
-        {
-            CloseWorktreePicker(view);
-            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(worktree.Path));
-        };
-
         _activeWorktreePicker = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusFilter();
-    }
-
-    private void CloseWorktreePicker(WorktreePickerView view)
-    {
-        if (!ReferenceEquals(_activeWorktreePicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeWorktreePicker = null;
-        FocusCallingRegion();
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeWorktreePicker = null;
+            FocusCallingRegion();
+            if (view.Confirmed && view.Chosen is { } worktree) _workbench.OpenFolder(fileSystem.DirectoryInfo.New(worktree.Path));
+        });
+        view.FilterField.SetFocus();
     }
 
     /// <summary>
@@ -3904,26 +3892,6 @@ public sealed class WorkbenchHost : IDisposable
         };
 
         ShowPathPrompt(view);
-    }
-
-    private void ClosePullRequestPicker(PullRequestPickerView view)
-    {
-        if (!ReferenceEquals(_activePullRequestPicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activePullRequestPicker = null;
-        FocusCallingRegion();
-    }
-
-    private void CloseRevisionPicker(RevisionPickerView view)
-    {
-        if (!ReferenceEquals(_activeRevisionPicker, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeRevisionPicker = null;
-        FocusCallingRegion();
     }
 
     /// <summary>Runs <paramref name="then"/> on the UI thread once <paramref name="task"/> has succeeded.</summary>
