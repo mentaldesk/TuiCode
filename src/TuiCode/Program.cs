@@ -85,6 +85,7 @@ services.AddTransient<ReviewView>();
 services.AddTransient(sp => new AssistantView(new Conversation(), sp.GetRequiredService<SyntaxHighlighter>()));
 services.AddTransient<SidebarPart>();
 services.AddTransient<PanelPart>();
+services.AddTransient<AssistantPart>();
 services.AddTransient<EditorPart>();
 services.AddTransient<StatusBarPart>();
 services.AddSingleton(sp => WorkspaceStateStore.ForUser(sp.GetRequiredService<IFileSystem>(), sp.GetRequiredService<ILogger<WorkspaceStateStore>>()));

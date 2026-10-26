@@ -16,6 +16,9 @@ public class AssistantHostTests : StaticConfigurationTest
 {
     private static readonly SyntaxHighlighter Syntax = new(GrammarBundle.Load());
 
+    // Wide enough for the chat's 50 columns beside the explorer and the editor.
+    private const int Columns = 140;
+
     private readonly MockFileSystem _fs = new();
     private readonly FakeAgent _agent = new();
     private readonly CommandService _commands = new();
@@ -30,7 +33,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -41,7 +44,7 @@ public class AssistantHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter),
             () => Chat(view).Contains("Hello"));
 
-        Assert.Equal(PanelTab.Assistant, workbench.Panel.ActiveTab);
+        Assert.True(workbench.IsAssistantShowing);
         Assert.StartsWith("● Claude Code · ", view.HeaderText);
         var prompt = _agent.Received("session/prompt").Single()!["prompt"]!.AsArray();
         Assert.Equal("// line 41\n// line 42\n// line 43", prompt[1]!["resource"]!["text"]!.GetValue<string>());
@@ -54,7 +57,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -70,7 +73,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
         string? whileAnswering = null;
         _agent.OnPrompt = async (agent, _) =>
         {
@@ -98,7 +101,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
 
         await HostSteps.Run(host,
             () => _commands.TryExecute(CommandIds.AiAssistance),
@@ -121,7 +124,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
         string? answer = "unset";
         var dialogs = 0;
         _agent.OnPrompt = async (agent, _) =>
@@ -145,7 +148,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
         _agent.OnPrompt = async (agent, _) =>
         {
             await agent.Ask("fs/write_text_file", new JsonObject { ["path"] = _fs.Path.GetFullPath("/work/A.cs"), ["content"] = "class A { }\nclass B { }" });
@@ -188,20 +191,22 @@ public class AssistantHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Ctrl_G_A_opens_the_tab_in_the_panel_under_the_editor_with_the_question_box_focused()
+    public async Task Ctrl_G_A_opens_the_sidebar_on_the_right_the_full_height_of_the_window_with_the_question_box_focused()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => host.App.InjectKey(Key.G.WithCtrl),
             () => host.App.InjectKey(Key.A),
-            () => view.InputHasFocus);
+            () => view.InputHasFocus && workbench.AssistantSidebar.Frame.Width == workbench.DrawnAssistantWidth);
 
-        Assert.True(workbench.Panel.Visible);
-        Assert.Equal(PanelTab.Assistant, workbench.Panel.ActiveTab);
+        var frame = workbench.AssistantSidebar.Frame;
+        Assert.Equal((Columns - frame.Width, 1, 30 - 2), (frame.X, frame.Y, frame.Height));
+        Assert.Equal(frame.X, workbench.Editor.Frame.Right);
+        Assert.False(workbench.Panel.Visible);
         Assert.Equal("AI assistance", workbench.StatusBar.DisplayedFocus);
     }
 
@@ -214,12 +219,13 @@ public class AssistantHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => _commands.TryExecute(CommandIds.AiAssistance),
-            () => workbench.Panel.Assistant.InputHasFocus,
+            () => workbench.Assistant.InputHasFocus,
             () => _commands.TryExecute(CommandIds.AiAssistance),
             () => workbench.StatusBar.DisplayedFocus == "Editor");
 
         Assert.False(workbench.IsAssistantShowing);
-        Assert.False(workbench.Panel.Visible);
+        Assert.False(workbench.AssistantSidebar.Visible);
+        Assert.Equal(Columns - SidebarSizing.Default, workbench.Editor.Frame.Width);
     }
 
     [Fact]
@@ -231,20 +237,41 @@ public class AssistantHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => _commands.TryExecute(CommandIds.AiAssistance),
-            () => workbench.Panel.Assistant.InputHasFocus,
+            () => workbench.Assistant.InputHasFocus,
             () => host.App.InjectKey(Key.G.WithCtrl),
             () => host.App.InjectKey(Key.A),
             () => !workbench.IsAssistantShowing && workbench.StatusBar.DisplayedFocus == "Editor",
             () => host.App.InjectKey(Key.G.WithCtrl),
             () => host.App.InjectKey(Key.A),
-            () => workbench.Panel.Assistant.InputHasFocus);
+            () => workbench.Assistant.InputHasFocus);
 
         Assert.True(workbench.IsAssistantShowing);
-        Assert.Equal("", workbench.Panel.Assistant.Question);
+        Assert.Equal("", workbench.Assistant.Question);
     }
 
     [Fact]
-    public async Task Ctrl_PageDown_in_the_panel_switches_its_tab_and_leaves_the_editor_tabs_alone()
+    public async Task With_History_open_too_it_stays_under_the_editor_and_the_chat_keeps_the_full_height()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => workbench.Assistant.InputHasFocus,
+            () => workbench.ShowHistory(true),
+            () => workbench.Panel.Frame.Height > 0);
+
+        var chat = workbench.AssistantSidebar.Frame;
+        var history = workbench.Panel.Frame;
+        Assert.Equal(30 - 2, chat.Height);
+        Assert.Equal((workbench.Editor.Frame.X, workbench.Editor.Frame.Bottom, workbench.Editor.Frame.Width), (history.X, history.Y, history.Width));
+        Assert.Equal(chat.X, history.Right);
+        Assert.Equal([workbench.History], workbench.Panel.SubViews.OfType<PaneTabs>().Single().TabCollection);
+    }
+
+    [Fact]
+    public async Task Ctrl_PageDown_in_the_chat_leaves_the_editor_tabs_alone()
     {
         _fs.AddFile("/work/B.cs", new MockFileData("b"));
         using var workbench = BuildWorkbench();
@@ -253,13 +280,11 @@ public class AssistantHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => workbench.OpenFile(_fs.FileInfo.New("/work/B.cs")),
-            () => workbench.ShowHistory(true),
             () => _commands.TryExecute(CommandIds.AiAssistance),
-            () => workbench.Panel.Assistant.InputHasFocus,
-            () => host.App.InjectKey(Key.PageDown.WithCtrl),
-            () => workbench.StatusBar.DisplayedFocus == "History");
+            () => workbench.Assistant.InputHasFocus,
+            () => host.App.InjectKey(Key.PageDown.WithCtrl));
 
-        Assert.Equal(PanelTab.History, workbench.Panel.ActiveTab);
+        Assert.Equal("AI assistance", workbench.StatusBar.DisplayedFocus);
         Assert.Equal("B.cs", Tab(workbench).File.Name);
     }
 
@@ -296,7 +321,7 @@ public class AssistantHostTests : StaticConfigurationTest
         {
             CommandInstalled = _ => installed,
         };
-        HostSteps.PinScreenSize(host, 100, 30);
+        HostSteps.PinScreenSize(host, Columns, 30);
         return host;
     }
 }

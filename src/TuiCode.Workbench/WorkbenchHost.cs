@@ -136,7 +136,8 @@ public sealed class WorkbenchHost : IDisposable
     private AskContext? _askContext;
     private bool _answering;
     private bool _launchedFromExplorer;
-    private bool _sidebarDragging;
+    private Func<int, int>? _dragTo;
+    private Action<int>? _dragReport;
     private bool _userBoundLegacyCtrlSlash;
     private bool _disposed;
 
@@ -218,6 +219,7 @@ public sealed class WorkbenchHost : IDisposable
         ApplyKeybindings(_settings.KeybindingOverrides);
         _workbench.Editor.Groups.Settings = _settings.Editor;
         _workbench.SetSidebarWidth(_settings.SidebarWidth);
+        _workbench.SetAssistantWidth(_settings.AssistantWidth);
         ApplyTokenTheme();
         _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
 
@@ -261,7 +263,7 @@ public sealed class WorkbenchHost : IDisposable
 
         if (agents is not null)
         {
-            _assistant = new AssistantController(agents, fileSystem, assistantSessions, action => _app.Invoke(action), _workbench.Panel.Assistant.Conversation)
+            _assistant = new AssistantController(agents, fileSystem, assistantSessions, action => _app.Invoke(action), _workbench.Assistant.Conversation)
             {
                 OpenBuffer = OpenBufferLines,
                 WriteBuffer = WriteAgentText,
@@ -336,13 +338,15 @@ public sealed class WorkbenchHost : IDisposable
         var groupBorders = editor.Frames.Select(frame => new FocusBorder(frame)).ToList();
         var panel = _workbench.Panel;
         var panelBorder = new FocusBorder(panel);
+        var assistant = _workbench.AssistantSidebar;
+        var assistantBorder = new FocusBorder(assistant);
 
         _focus.Register(FocusRegion.Find, () => Take(sidebar.Search, sidebar.Search.FocusQuery), focused => Owns(sidebar.Search, focused));
         _focus.Register(FocusRegion.Review, () => Take(sidebar.Review, sidebar.Review.FocusList), focused => Owns(sidebar.Review, focused));
         _focus.Register(FocusRegion.Usages, () => Take(sidebar.Usages, sidebar.Usages.FocusResults), focused => Owns(sidebar.Usages, focused));
-        _focus.Register(FocusRegion.Assistant, () => TakePanelTab(PanelTab.Assistant, panel.Assistant.FocusInput),
-            focused => Owns(panel.Assistant, focused));
-        _focus.Register(FocusRegion.History, () => TakePanelTab(PanelTab.History, panel.History.FocusList),
+        _focus.Register(FocusRegion.Assistant, () => _workbench.IsAssistantShowing && Take(assistant.Assistant, assistant.Assistant.FocusInput),
+            focused => Owns(assistant.Assistant, focused));
+        _focus.Register(FocusRegion.History, () => panel.IsOpen && Take(panel.History, panel.History.FocusList),
             focused => Owns(panel.History, focused));
         _focus.Register(FocusRegion.Explorer,
             () => sidebar.IsShowingNoFolder ? Take(sidebar.OpenFolderButton) : Take(sidebar.Explorer),
@@ -360,11 +364,13 @@ public sealed class WorkbenchHost : IDisposable
         void ShowBorders()
         {
             var inSidebar = InSidebar(_focus.Region);
-            var inPanel = InPanel(_focus.Region);
+            var inPanel = _focus.Region == FocusRegion.History;
+            var inAssistant = _focus.Region == FocusRegion.Assistant;
             sidebarBorder.Show(inSidebar);
             panelBorder.Show(inPanel);
+            assistantBorder.Show(inAssistant);
             for (var i = 0; i < groupBorders.Count; i++)
-                groupBorders[i].Show(!inSidebar && !inPanel && ReferenceEquals(editor.Groups.All[i], editor.Group));
+                groupBorders[i].Show(!inSidebar && !inPanel && !inAssistant && ReferenceEquals(editor.Groups.All[i], editor.Group));
         }
 
         _focus.RegionChanged += (_, region) =>
@@ -536,41 +542,47 @@ public sealed class WorkbenchHost : IDisposable
     // the drag off the editor's cursor, the trees' selection and focus (#252, and see AGENTS.md).
     private void OnAppMouseEvent(object? sender, Mouse mouse)
     {
-        if (_sidebarDragging)
+        if (_dragTo is { } dragTo)
         {
             if (mouse.Flags.HasFlag(MouseFlags.LeftButtonReleased))
             {
-                _sidebarDragging = false;
-                ReportSidebarWidth(DragSidebarTo(mouse.ScreenPosition.X));
+                _dragTo = null;
+                _dragReport?.Invoke(dragTo(mouse.ScreenPosition.X));
             }
             else if (mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed))
             {
-                DragSidebarTo(mouse.ScreenPosition.X);
+                dragTo(mouse.ScreenPosition.X);
             }
             else
             {
                 // The button went up out of sight; drop the drag rather than fold the next press into it.
-                _sidebarDragging = false;
+                _dragTo = null;
                 return;
             }
             mouse.Handled = true;
             return;
         }
 
-        if (!mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed) || !StartsSidebarDrag(mouse)) return;
-        _sidebarDragging = true;
+        if (!mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed)) return;
+        var column = mouse.ScreenPosition.X;
+        if (OnBorderOf(mouse, _workbench.Sidebar) && _workbench.IsOnSidebarBorder(column))
+            (_dragTo, _dragReport) = (DragSidebarTo, ReportSidebarWidth);
+        else if (OnBorderOf(mouse, _workbench.AssistantSidebar) && _workbench.IsOnAssistantBorder(column))
+            (_dragTo, _dragReport) = (DragAssistantTo, ReportAssistantWidth);
+        else return;
         mouse.Handled = true;
     }
 
-    // TG reports the deepest view under the pointer, so requiring the sidebar's own border also rules
+    // TG reports the deepest view under the pointer, so requiring the part's own border also rules
     // out a modal covering that column.
-    private bool StartsSidebarDrag(Mouse mouse) =>
-        mouse.View is AdornmentView { Adornment: { } adornment }
-        && ReferenceEquals(adornment.Parent, _workbench.Sidebar)
-        && _workbench.IsOnSidebarBorder(mouse.ScreenPosition.X);
+    private static bool OnBorderOf(Mouse mouse, View part) =>
+        mouse.View is AdornmentView { Adornment: { } adornment } && ReferenceEquals(adornment.Parent, part);
 
     private int DragSidebarTo(int column) =>
         _workbench.ResizeSidebarTo(_workbench.SidebarWidthForBorderAt(column));
+
+    private int DragAssistantTo(int column) =>
+        _workbench.ResizeAssistantTo(_workbench.AssistantWidthForBorderAt(column));
 
     private Key NormalizeWindowsCtrlEnter(Key key) =>
         _environment.IsWindows && key.KeyCode == WindowsCtrlLineFeed ? new Key(CtrlEnter) : key;
@@ -722,7 +734,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
         // Global and ungated, so with no agent installed it can say so (#566).
         _commands.Register(CommandIds.AiAssistance, "AI assistance", AskAssistant);
-        var assistant = _workbench.Panel.Assistant;
+        var assistant = _workbench.Assistant;
         _commands.Register(CommandIds.AssistantSend, "Send question", SendQuestion, CommandScope.Assistant, () => assistant.InputHasFocus);
         _commands.Register(CommandIds.AssistantStop, "Stop answering", () => _assistant?.Stop(), CommandScope.Assistant,
             () => _assistant?.IsAnswering == true);
@@ -844,7 +856,13 @@ public sealed class WorkbenchHost : IDisposable
             FocusRegion.Tabs => TabsHelp(),
             _ => null,
         };
-        KeyRow[] switching = InSidebar(_focus.Region) ? SidebarTabKeys() : InPanel(_focus.Region) ? PanelTabKeys() : [];
+        KeyRow[] switching = _focus.Region switch
+        {
+            _ when InSidebar(_focus.Region) => SidebarTabKeys(),
+            FocusRegion.History => [.. KeyRowOf(CommandIds.ToggleFileHistory, "Show or hide file history")],
+            FocusRegion.Assistant => [.. KeyRowOf(CommandIds.AiAssistance, "Hide AI assistance")],
+            _ => [],
+        };
         return help is null ? null : HelpSheet.Place(help.Heading, [.. help.Rows(), .. switching]);
     }
 
@@ -856,14 +874,6 @@ public sealed class WorkbenchHost : IDisposable
         .. KeyRowOf(CommandIds.FocusReview, "Show review"),
         .. KeyRowOf(CommandIds.NextEditor, "Next sidebar tab"),
         .. KeyRowOf(CommandIds.PreviousEditor, "Previous sidebar tab"),
-    ];
-
-    private KeyRow[] PanelTabKeys() =>
-    [
-        .. KeyRowOf(CommandIds.ToggleFileHistory, "Show or hide file history"),
-        .. KeyRowOf(CommandIds.AiAssistance, "AI assistance"),
-        .. KeyRowOf(CommandIds.NextEditor, "Next panel tab"),
-        .. KeyRowOf(CommandIds.PreviousEditor, "Previous panel tab"),
     ];
 
     private KeyColumn ReviewHelp()
@@ -1143,14 +1153,20 @@ public sealed class WorkbenchHost : IDisposable
     {
         _settings.SidebarWidth = width;
         _settings.Save();
-        _workbench.StatusBar.ShowMessage($"Sidebar width: {width}{LimitSuffix(width)}");
+        _workbench.StatusBar.ShowMessage($"Sidebar width: {width}{LimitSuffix(width, SidebarSizing.Min, _workbench.MaxSidebarWidth)}");
     }
 
-    private string LimitSuffix(int width) =>
-        width <= SidebarSizing.Min ? " (minimum)"
-        : width >= SidebarSizing.MaxFor(_workbench.Viewport.Width)
-            ? $" (maximum — the editor needs {SidebarSizing.EditorFloor} columns)"
-            : string.Empty;
+    private void ReportAssistantWidth(int width)
+    {
+        _settings.AssistantWidth = width;
+        _settings.Save();
+        _workbench.StatusBar.ShowMessage($"AI assistance width: {width}{LimitSuffix(width, AssistantSizing.Min, _workbench.MaxAssistantWidth)}");
+    }
+
+    private static string LimitSuffix(int width, int min, int max) =>
+        width <= min ? " (minimum)"
+        : width >= max ? $" (maximum — the editor needs {SidebarSizing.EditorFloor} columns)"
+        : string.Empty;
 
     private void ToggleGutter()
     {
@@ -1180,28 +1196,16 @@ public sealed class WorkbenchHost : IDisposable
     private static bool InSidebar(FocusRegion region) =>
         region is FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review;
 
-    private static bool InPanel(FocusRegion region) => region is FocusRegion.History or FocusRegion.Assistant;
-
-    private bool TakePanelTab(PanelTab tab, Func<bool> focus)
-    {
-        var panel = _workbench.Panel;
-        if (!panel.IsOpen(tab)) return false;
-        panel.ShowTab(tab);
-        return Take(tab == PanelTab.History ? panel.History : panel.Assistant, focus);
-    }
-
-    // Ctrl+PgUp/PgDn switch the tabs of whichever part has the keys: the sidebar, the panel or the editor.
+    // Ctrl+PgUp/PgDn switch the tabs of whichever part has the keys: the sidebar's, or the editor's.
+    // History and AI assistance each have one tab, so there they do nothing.
     private void CycleTabs(int step)
     {
         Reconcile();
+        if (_focus.Region is FocusRegion.History or FocusRegion.Assistant) return;
         if (InSidebar(_focus.Region))
         {
             _workbench.Sidebar.Cycle(step);
             FocusSidebar();
-        }
-        else if (InPanel(_focus.Region))
-        {
-            if (_workbench.Panel.Cycle(step) is { } tab) MoveFocus(tab == PanelTab.History ? FocusRegion.History : FocusRegion.Assistant);
         }
         else if (step > 0) _workbench.Editor.NextTab();
         else _workbench.Editor.PreviousTab();
@@ -1848,7 +1852,7 @@ public sealed class WorkbenchHost : IDisposable
         Reconcile();
         _activeSymbolPicker?.Advance();
         if (_activeQuickInfo is not null && ReferenceEquals(_scopes.Top, _quickInfoScope) && !QuickInfoStillFits()) CloseQuickInfo();
-        if (_workbench.Panel.ActiveTab == PanelTab.Assistant) ShowingAssistant();
+        if (_workbench.IsAssistantShowing) ShowingAssistant();
         // Some isEnabled checks touch the disk, so not on every iteration.
         if (Environment.TickCount64 - _menuShownAt >= 250) ShowAvailableMenus();
     }
@@ -2472,7 +2476,7 @@ public sealed class WorkbenchHost : IDisposable
         _askContext = _workbench.Editor.Group.ActiveTab is { } tab
             ? AskContext.Of(tab.File.FullName, AssistantRoot(), tab.Lines, tab.SelectedRows, tab.CursorRow)
             : null;
-        _workbench.Panel.Assistant.ShowContext(_askContext?.Label);
+        _workbench.Assistant.ShowContext(_askContext?.Label);
         _workbench.ShowAssistant(true);
         MoveFocus(FocusRegion.Assistant);
         StartAssistant();
@@ -2503,7 +2507,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private void SendQuestion()
     {
-        var view = _workbench.Panel.Assistant;
+        var view = _workbench.Assistant;
         var question = view.Question.Trim();
         if (_assistant is null || question.Length == 0 || _assistant.IsAnswering) return;
         _assistant.Ask(question, _askContext);
@@ -2516,12 +2520,12 @@ public sealed class WorkbenchHost : IDisposable
     {
         _assistant?.Clear();
         _askContext = null;
-        _workbench.Panel.Assistant.ShowContext(null);
+        _workbench.Assistant.ShowContext(null);
     }
 
     private void ShowAssistant()
     {
-        var view = _workbench.Panel.Assistant;
+        var view = _workbench.Assistant;
         var agent = _assistant?.Agent;
         var root = AssistantRoot() is { } folder ? FolderPath.Shorten(folder, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)) : "no folder";
         view.ShowHeader(agent is null

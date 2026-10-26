@@ -43,6 +43,9 @@ public interface ISettingsService
     /// </summary>
     int SidebarWidth { get; set; }
 
+    /// <summary>The AI assistance sidebar's width (#619), null until it's dragged. Stages the change in memory; <see cref="Save"/> persists it.</summary>
+    int? AssistantWidth { get; set; }
+
     /// <summary>Alt + a menu bar letter opens that menu even from a text box (#553). Stages the change in memory; <see cref="Save"/> persists it.</summary>
     bool AltOpensMenuWhileTyping { get; set; }
 

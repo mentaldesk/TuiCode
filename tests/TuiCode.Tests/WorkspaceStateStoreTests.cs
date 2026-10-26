@@ -32,6 +32,17 @@ public class WorkspaceStateStoreTests
     }
 
     [Fact]
+    public void Load_returns_whether_AI_assistance_was_open()
+    {
+        var store = new WorkspaceStateStore(new MockFileSystem(), StatePath);
+        store.Save("/a", new WorkspaceState([], null) { Assistant = true });
+        store.Save("/b", new WorkspaceState([], null));
+
+        Assert.True(store.Load("/a")!.Assistant);
+        Assert.False(store.Load("/b")!.Assistant);
+    }
+
+    [Fact]
     public void Folders_lists_every_saved_folder_most_recently_used_first()
     {
         var store = new WorkspaceStateStore(new MockFileSystem(), StatePath);
