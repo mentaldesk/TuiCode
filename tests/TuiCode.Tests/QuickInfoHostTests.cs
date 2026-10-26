@@ -270,7 +270,7 @@ public class QuickInfoHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => workbench.StatusBar.DisplayedText.EndsWith("C# ◌ loading", StringComparison.Ordinal),
+            () => workbench.StatusBar.DisplayedState.Contains("C# ◌ loading", StringComparison.Ordinal),
             () => { Execute(host); },
             () => { pressed = workbench.StatusBar.Message; host.App.InjectKey(Key.G.WithAlt); },
             () => workbench.MenuBar.IsOpen(),
@@ -337,7 +337,7 @@ public class QuickInfoHostTests : StaticConfigurationTest
     }
 
     private static bool Ready(Workbench.Workbench workbench) =>
-        workbench.StatusBar.DisplayedText.EndsWith("C# ● ready", StringComparison.Ordinal);
+        workbench.StatusBar.DisplayedState.Contains("C# ● ready", StringComparison.Ordinal);
 
     private static void Execute(WorkbenchHost host)
     {
