@@ -270,6 +270,7 @@ public sealed class WorkbenchHost : IDisposable
             _assistant.Changed += (_, _) => ShowAssistant();
             _assistant.Configure(AgentPresets.Resolve(_settings.Assistant));
         }
+        ApplyToolCallsSetting();
         ShowAssistant();
 
         _workbench.Sidebar.Usages.UsageActivated += (_, location) =>
@@ -727,6 +728,8 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.AssistantStop, "Stop answering", () => _assistant?.Stop(), CommandScope.Assistant,
             () => _assistant?.IsAnswering == true);
         _commands.Register(CommandIds.AssistantClear, "Clear conversation", ClearConversation, CommandScope.Assistant);
+        _commands.Register(CommandIds.ToggleToolCalls, "Show tool calls in full", ToggleToolCalls, CommandScope.Assistant, null,
+            () => assistant.Conversation.ToolCallsInFull ? "Fold tool calls" : "Show tool calls in full");
         // No default key (#21): rarely needed, and users can bind one in Settings.
         _commands.Register(CommandIds.ChangeGrammar, "Change grammar", OpenGrammarPicker, CommandScope.Editor, FileOpen);
         // No default key (#466).
@@ -1057,6 +1060,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Enter", CommandIds.AssistantSend);
         keybindings.Bind("Esc", CommandIds.AssistantStop);
         keybindings.Bind("Ctrl+L", CommandIds.AssistantClear);
+        keybindings.Bind("Ctrl+T T", CommandIds.ToggleToolCalls);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);
         keybindings.Bind("Alt+CursorUp", CommandIds.MoveLinesUp);
         keybindings.Bind("Alt+CursorDown", CommandIds.MoveLinesDown);
@@ -1389,6 +1393,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.SetSidebarWidth(_settings.SidebarWidth);
         _workbench.Languages?.Configure(_settings.LanguageServers);
         _assistant?.Configure(AgentPresets.Resolve(_settings.Assistant));
+        ApplyToolCallsSetting();
         FocusCallingRegion();
     }
 
@@ -2523,6 +2528,24 @@ public sealed class WorkbenchHost : IDisposable
         _askContext = null;
         view.Question = "";
         view.ShowContext(null);
+    }
+
+    private void ToggleToolCalls()
+    {
+        var view = _workbench.Panel.Assistant;
+        view.Chat.ShowToolCallsInFull(!view.Conversation.ToolCallsInFull);
+        ShowAssistant();
+    }
+
+    // The setting is what a conversation starts with; changing it in Settings shows the chat that way too.
+    private void ApplyToolCallsSetting()
+    {
+        var view = _workbench.Panel.Assistant;
+        var inFull = _settings.Assistant.ToolCallsInFull;
+        if (view.Conversation.StartsInFull == inFull) return;
+        view.Conversation.StartsInFull = inFull;
+        view.Chat.ShowToolCallsInFull(inFull);
+        ShowAssistant();
     }
 
     private void ClearConversation()

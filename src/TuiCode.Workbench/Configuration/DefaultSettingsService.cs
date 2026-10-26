@@ -160,6 +160,7 @@ public sealed class DefaultSettingsService : ISettingsService
         {
             var assistant = new JsonObject { ["Agent"] = Assistant.Agent };
             if (Assistant.Agent == AssistantSetting.Custom) assistant["Command"] = Assistant.Command;
+            if (Assistant.ToolCallsInFull) assistant["ToolCallsInFull"] = true;
             root["AiAssistance"] = assistant;
         }
 
@@ -270,7 +271,10 @@ public sealed class DefaultSettingsService : ISettingsService
     {
         if (root?["AiAssistance"] is not JsonObject assistant) return AssistantSetting.Default;
         var agent = Read(assistant, "Agent", "");
-        return agent.Length == 0 ? AssistantSetting.Default : new AssistantSetting(agent, Read(assistant, "Command", "").Trim());
+        var inFull = Read(assistant, "ToolCallsInFull", false);
+        return agent.Length == 0
+            ? AssistantSetting.Default with { ToolCallsInFull = inFull }
+            : new AssistantSetting(agent, Read(assistant, "Command", "").Trim(), inFull);
     }
 
     private static Dictionary<string, LanguageServerSetting> ReadLanguageServers(JsonObject? root)

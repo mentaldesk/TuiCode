@@ -125,6 +125,18 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task F1_in_the_AI_assistance_tab_lists_showing_tool_calls_in_full()
+    {
+        var help = await HelpFrom(() =>
+        {
+            Built.ShowAssistant(true);
+            Built.Panel.Assistant.FocusInput();
+        }, "AI assistance");
+
+        Assert.Contains(new KeyRow("Ctrl+T t", "Show tool calls in full"), help.Rows());
+    }
+
+    [Fact]
     public async Task F1_in_the_editor_lists_the_editors_commands_that_can_run()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one\ntwo"));

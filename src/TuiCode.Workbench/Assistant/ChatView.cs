@@ -58,7 +58,33 @@ public sealed class ChatView : View
         SetNeedsDraw();
     }
 
-    private int TextWidth => Math.Max(Viewport.Width - 1, 1);
+    /// <summary>Folds or unfolds the tool calls (#618), keeping the row at the top in view, or the end if it was.</summary>
+    public void ShowToolCallsInFull(bool inFull)
+    {
+        LayOut();
+        var follow = AtBottom;
+        var top = Viewport.Y < _lines.Count ? _lines[Viewport.Y] : null;
+        var within = top is null ? 0 : Viewport.Y - FirstRowOf(top.Source);
+        _conversation.ToolCallsInFull = inFull;
+        LayOut();
+        if (follow || top is null) ScrollTo(int.MaxValue);
+        else
+        {
+            var first = FirstRowOf(top.Source);
+            ScrollTo(first + (first < _lines.Count && _lines[first].Source == top.Source ? within : 0));
+        }
+        SetNeedsDraw();
+    }
+
+    // The first row from the same source or a later one, since a folded call has no row.
+    private int FirstRowOf(int source)
+    {
+        for (var i = 0; i < _lines.Count; i++)
+            if (_lines[i].Source >= source) return i;
+        return _lines.Count;
+    }
+
+    private int TextWidth =>Math.Max(Viewport.Width - 1, 1);
 
     private void LayOut()
     {
