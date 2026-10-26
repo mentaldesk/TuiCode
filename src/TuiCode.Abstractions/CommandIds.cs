@@ -190,6 +190,9 @@ public static class CommandIds
     public const string ClearSelection = "editor.action.clearSelection";
     public const string ToggleColumnSelect = "editor.action.toggleColumnSelection";
     public const string ToggleWordWrap = "editor.action.toggleWordWrap";
+    public const string ToggleFold = "editor.toggleFold";
+    public const string FoldAll = "editor.foldAll";
+    public const string UnfoldAll = "editor.unfoldAll";
 
     public const string ChangeGrammar = "workbench.action.changeGrammar";
 

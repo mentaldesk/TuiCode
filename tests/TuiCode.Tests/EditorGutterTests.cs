@@ -69,10 +69,10 @@ public class EditorGutterTests
     }
 
     [Theory]
-    [InlineData(1, 5)]
-    [InlineData(999, 5)]
-    [InlineData(1000, 6)]
-    public void Gutter_width_fits_the_largest_line_number_plus_the_marker(int lineCount, int width)
+    [InlineData(1, 6)]
+    [InlineData(999, 6)]
+    [InlineData(1000, 7)]
+    public void Gutter_width_fits_the_largest_line_number_plus_the_markers(int lineCount, int width)
     {
         Assert.Equal(width, EditorGutter.WidthFor(lineCount));
     }
@@ -128,9 +128,9 @@ public class EditorGutterHostTests : StaticConfigurationTest
             () => { commands.TryExecute(CommandIds.ToggleGutter); },
             () => { withoutGutter = host.App.Driver!.ToString(); });
 
-        Assert.Contains("  1  alpha", withGutter);
-        Assert.Contains("  2 ▎BRAVO", withGutter);
-        Assert.DoesNotContain("  2 ▎", withoutGutter);
+        Assert.Contains("  1   alpha", withGutter);
+        Assert.Contains("  2  ▎BRAVO", withGutter);
+        Assert.DoesNotContain("  2  ▎", withoutGutter);
         Assert.Contains("BRAVO", withoutGutter);
         Assert.False(tab!.GutterVisible);
     }

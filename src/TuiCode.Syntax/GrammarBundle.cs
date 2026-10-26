@@ -13,7 +13,13 @@ namespace TuiCode.Syntax;
 
 /// <param name="LineComment">The marker that starts a line comment, from the language's VS Code configuration; null when it has none.</param>
 /// <param name="BlockComment">The markers that open and close a block comment, from the same configuration; null when it has none.</param>
-public sealed record SyntaxLanguage(string Id, string Name, string ScopeName, string? LineComment = null, (string Open, string Close)? BlockComment = null);
+/// <param name="Folding">How the same configuration says to fold the language's blocks; null when it says nothing.</param>
+public sealed record SyntaxLanguage(string Id, string Name, string ScopeName, string? LineComment = null, (string Open, string Close)? BlockComment = null, FoldingRules? Folding = null);
+
+/// <param name="OffSide">Whether blank lines at the end of a block belong outside it, as in Python and YAML.</param>
+/// <param name="Start">The pattern of a line that opens a region, such as <c>#region</c>; null when there's none.</param>
+/// <param name="End">The pattern of the line that closes it.</param>
+public sealed record FoldingRules(bool OffSide, string? Start = null, string? End = null);
 
 /// <summary>User grammar packages, then TextMateSharp.Grammars' re-packed as a compressed zip (its own loader embeds 6.7 MB uncompressed).</summary>
 public sealed class GrammarBundle : IRegistryOptions
@@ -203,8 +209,9 @@ public sealed class GrammarBundle : IRegistryOptions
             var name = node["aliases"]?.AsArray().FirstOrDefault()?.GetValue<string>() ?? id;
             if (!_languages.TryGetValue(id, out var language))
             {
-                var comments = Comments(node, configurationAt);
-                _languages[id] = language = new SyntaxLanguage(id, name, scope, LineComment(comments), BlockComment(comments));
+                var configuration = Configuration(node, configurationAt);
+                var comments = configuration?["comments"];
+                _languages[id] = language = new SyntaxLanguage(id, name, scope, LineComment(comments), BlockComment(comments), Folding(configuration?["folding"]));
             }
             foreach (var fileName in node["filenames"]?.AsArray() ?? [])
                 _associations.TryAdd(fileName!.GetValue<string>(), language);
@@ -214,12 +221,22 @@ public sealed class GrammarBundle : IRegistryOptions
         return added;
     }
 
-    private static JsonNode? Comments(JsonNode language, Func<string, StreamReader?>? configurationAt)
+    private static JsonNode? Configuration(JsonNode language, Func<string, StreamReader?>? configurationAt)
     {
         if (configurationAt is null || language["configuration"]?.GetValue<string>() is not { } path) return null;
         using var reader = configurationAt(path.TrimStart('.', '/'));
         if (reader is null) return null;
-        return JsonNode.Parse(reader.ReadToEnd(), documentOptions: JsoncOptions)?["comments"];
+        return JsonNode.Parse(reader.ReadToEnd(), documentOptions: JsoncOptions);
+    }
+
+    private static FoldingRules? Folding(JsonNode? folding)
+    {
+        if (folding is not JsonObject) return null;
+        var offSide = folding["offSide"]?.GetValueKind() == JsonValueKind.True;
+        var markers = folding["markers"];
+        return Marker(markers?["start"]) is { } start && Marker(markers?["end"]) is { } end
+            ? new FoldingRules(offSide, start, end)
+            : new FoldingRules(offSide);
     }
 
     private static string? LineComment(JsonNode? comments) => Marker(comments?["lineComment"]);

@@ -63,6 +63,8 @@ internal sealed partial class CodeEditor : TextEditor
         IndentationStrategy = null;
         Document!.UndoStack.SizeLimit = 0;
         Document.Changed += OnDocumentChanged;
+        // Raised after every Changed handler, the folding manager's too, so the hidden lines are read from where the folds now are.
+        Document.TextChanged += (_, _) => _foldsStale = true;
         CaretChanged += (_, _) => LeaveAutoIndents();
 
         AddCommand(Command.Undo, () => Undo());
@@ -136,6 +138,7 @@ internal sealed partial class CodeEditor : TextEditor
         {
             _secondary.Clear();
             _autoIndents.Clear();
+            ForgetFolds();
             ClearSelection();
             _editing = true;
             try
@@ -174,6 +177,7 @@ internal sealed partial class CodeEditor : TextEditor
     private void OnDocumentChanged(object? sender, DocumentChangeEventArgs e)
     {
         ForgetBrackets();
+        _foldsStale = true;
         var document = Document!;
         var first = document.GetLineByOffset(Math.Min(e.Offset, document.TextLength)).LineNumber - 1;
         var removed = LineBreaks(e.RemovedText.Text) + 1;
@@ -309,15 +313,16 @@ internal sealed partial class CodeEditor : TextEditor
 
     protected override bool OnKeyDown(Key key)
     {
+        SyncRowMapping();
         if (base.OnKeyDown(key)) return true;
-        if (SoftWrap) SetNeedsDraw();
+        if (_mapped) SetNeedsDraw();
         var bound = KeyBindings.TryGet(key, out var binding);
         if (ColumnSelect && bound && ExtendColumnSelection(binding)) return true;
         // Anything else ends the box, so the next extend starts one from where the caret now is.
         _box = null;
         if (!bound) return false;
         var before = InsertionPoint;
-        if (SoftWrap && MoveByRows(binding.Commands)) return true;
+        if (_mapped && MoveByRows(binding.Commands)) return true;
         if (HasSecondaryCarets) return InvokeAtCarets(binding);
         if (!binding.Commands.Any(EditCommands.Contains))
         {
@@ -393,7 +398,9 @@ internal sealed partial class CodeEditor : TextEditor
     {
         Drawing?.Invoke();
         RefreshingSticky?.Invoke();
-        if (SoftWrap) FollowCaret();
+        RevealCaret();
+        SyncRowMapping();
+        if (_mapped) FollowCaret();
         PinForCaret();
         _editable = GetAttributeForRole(VisualRole.Editable);
         _highlight = GetAttributeForRole(VisualRole.Highlight);
@@ -406,9 +413,9 @@ internal sealed partial class CodeEditor : TextEditor
         var right = Viewport.Width;
         var bottom = Viewport.Height;
         var row = 0;
-        if (SoftWrap)
+        if (_mapped)
         {
-            DrawWrappedRows(right, bottom, ref row);
+            DrawMappedRows(right, bottom, ref row);
         }
         else
         {
@@ -436,7 +443,7 @@ internal sealed partial class CodeEditor : TextEditor
         _palette.Sync(Syntax.Highlighter);
 
         Syntax.Update(_lines);
-        var lastVisible = SoftWrap ? _wrap.At(Viewport.Y + Viewport.Height - 1).Line : Math.Min(Viewport.Y + Viewport.Height, Lines) - 1;
+        var lastVisible = _mapped ? _wrap.At(Viewport.Y + Viewport.Height - 1).Line : Math.Min(Viewport.Y + Viewport.Height, Lines) - 1;
         if (!Syntax.TokenizeThrough(lastVisible, SyntaxBudget))
             App?.Invoke(SetNeedsDraw);
     }
@@ -511,6 +518,19 @@ internal sealed partial class CodeEditor : TextEditor
             ClearRegion(col, row, right, row + 1);
         }
         return col;
+    }
+
+    private void DrawFoldSummary(int line, int row, int col, int right)
+    {
+        if (col >= right || FoldSummary(line) is not { } summary) return;
+        SetAttribute(_editable with { Style = _editable.Style | TextStyle.Faint });
+        if (!SoftWrap) col = ColumnsBefore(Graphemes(line), LineLength(line)) - Viewport.X;
+        foreach (var grapheme in Split(summary))
+        {
+            if (col >= right) break;
+            if (col >= 0) AddStr(col, row, grapheme);
+            col += Math.Max(grapheme.GetColumns(), 1);
+        }
     }
 
     // Col is where that glyph starts relative to the viewport, so <= 0 when it straddles the left edge.

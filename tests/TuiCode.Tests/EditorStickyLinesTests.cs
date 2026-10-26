@@ -58,9 +58,9 @@ public class EditorStickyLinesTests : StaticConfigurationTest
         var screen = ScrollTo(tab, 20);
 
         Assert.Equal([Class, Run], tab.PinnedLines);
-        Assert.Equal("  3  public sealed class Widget", screen[0].TrimEnd());
-        Assert.Equal("  5      public void Run(int times)", screen[1].TrimEnd());
-        Assert.Equal(" 23          Step(16);", screen[2].TrimEnd());
+        Assert.Equal("  3   public sealed class Widget", screen[0].TrimEnd());
+        Assert.Equal("  5       public void Run(int times)", screen[1].TrimEnd());
+        Assert.Equal(" 23           Step(16);", screen[2].TrimEnd());
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public class EditorStickyLinesTests : StaticConfigurationTest
         Render(tab);
         var screen = Render(tab);
         Assert.Equal([Class + 1, Run + 1], tab.PinnedLines);
-        Assert.Equal("  4  public sealed class Widget", screen[0].TrimEnd());
+        Assert.Equal("  4   public sealed class Widget", screen[0].TrimEnd());
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class EditorStickyLinesTests : StaticConfigurationTest
         var screen = Render(tab);
 
         Assert.Empty(tab.PinnedLines);
-        Assert.Equal(" 21          Step(14);", screen[0].TrimEnd());
+        Assert.Equal(" 21           Step(14);", screen[0].TrimEnd());
     }
 
     [Fact]
@@ -203,7 +203,7 @@ public class EditorStickyLinesTests : StaticConfigurationTest
         var screen = Render(tab);
 
         Assert.Equal([Class, Run], tab.PinnedLines);
-        Assert.Equal("  5      public void Run(int times, string …", screen[1].TrimEnd());
+        Assert.Equal("  5       public void Run(int times, string …", screen[1].TrimEnd());
         Assert.DoesNotContain("label", screen[2]);
     }
 

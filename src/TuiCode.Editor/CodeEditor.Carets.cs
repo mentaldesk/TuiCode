@@ -87,13 +87,14 @@ internal sealed partial class CodeEditor
         foreach (var caret in carets)
         {
             var row = caret.Position.Y + step;
+            while (IsHidden(row)) row += step;
             if (row < 0 || row >= Lines) continue;
             var track = caret.ColumnTrack >= 0 ? caret.ColumnTrack : caret.Position.X;
             added.Add(new Caret(new Point(Math.Min(track, LineLength(row)), row), ColumnTrack: track));
         }
         SetCarets(added, reveal: false);
 
-        if (SoftWrap)
+        if (_mapped)
         {
             RefreshWrap();
             var edgeCaret = step < 0 ? added.MinBy(c => (c.Position.Y, c.Position.X)) : added.MaxBy(c => (c.Position.Y, c.Position.X));
@@ -430,7 +431,7 @@ internal sealed partial class CodeEditor
         }
         _columnTrack = caret.ColumnTrack;
         if (!reveal) Viewport = viewport;
-        if (SoftWrap) SetNeedsDraw();
+        if (_mapped) SetNeedsDraw();
     }
 
     private static List<Caret> Merge(IReadOnlyList<Caret> carets)
@@ -509,11 +510,12 @@ internal sealed partial class CodeEditor
 
     private Point? ViewportPosition(Caret caret)
     {
-        if (SoftWrap)
+        if (_mapped)
         {
             var (screenRow, column) = Locate(caret.Position);
             var y = screenRow - Viewport.Y;
-            return y < _pinned.Count || y >= Viewport.Height || column >= Viewport.Width ? null : new Point(column, y);
+            if (!SoftWrap) column -= Viewport.X;
+            return y < _pinned.Count || y >= Viewport.Height || column < 0 || column >= Viewport.Width ? null : new Point(column, y);
         }
         var row = caret.Position.Y - Viewport.Y;
         if (row < _pinned.Count || row >= Viewport.Height || caret.Position.Y >= Lines) return null;

@@ -15,8 +15,8 @@ namespace TuiCode.Tests;
 // Soft wrap in an editor tab (#378). Renders through a TG driver — serialised (#77).
 public class EditorWordWrapTests : StaticConfigurationTest
 {
-    // A 20-column tab: a 5-column gutter, 15 for text, of which 13 wrap (a column each for the scroll bar and the caret).
-    private const int Width = 20;
+    // A 21-column tab: a 6-column gutter, 15 for text, of which 13 wrap (a column each for the scroll bar and the caret).
+    private const int Width = 21;
     private const int Height = 6;
     private const string Paragraph = "one two three four five six seven";
 
@@ -40,10 +40,10 @@ public class EditorWordWrapTests : StaticConfigurationTest
 
         Assert.Equal(
         [
-            "  1  one two three",
-            "     four five six",
-            "     seven",
-            "  2  end",
+            "  1   one two three",
+            "      four five six",
+            "      seven",
+            "  2   end",
         ], Render(tab)[..4].Select(row => row.TrimEnd()));
     }
 
@@ -56,7 +56,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
 
         tab.WordWrap = false;
 
-        Assert.Equal(["  1  one two three f", "  2  end"], Render(tab)[..2].Select(row => row.TrimEnd()));
+        Assert.Equal(["  1   one two three f", "  2   end"], Render(tab)[..2].Select(row => row.TrimEnd()));
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.Replace(new TextMatch(0, 0, 3), "ONE");
         var screen = Render(tab);
 
-        Assert.Equal(["▎", "▎", "▎", " "], screen[..4].Select(row => row[4..5]));
+        Assert.Equal(["▎", "▎", "▎", " "], screen[..4].Select(row => row[5..6]));
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
 
         var screen = Render(tab);
 
-        Assert.StartsWith("     // a comment", screen[1]);
+        Assert.StartsWith("      // a comment", screen[1]);
         Assert.Equal("#6A9955", AttributeAt(tab.Code, 1, 0).Foreground.ToString());
         Assert.Equal("#6A9955", AttributeAt(tab.Code, 1, 11).Foreground.ToString());
     }
@@ -129,7 +129,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         var screen = Render(tab);
 
         Assert.Equal("one two three x", tab.Lines[0]);
-        Assert.Equal(["  1 one two three", "    x", "  2 four five six"], screen[..3].Select(row => row.Remove(4, 1).TrimEnd()));
+        Assert.Equal(["  1 one two three", "    x", "  2 four five six"], screen[..3].Select(row => row.Remove(4, 2).TrimEnd()));
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         var screen = Render(tab);
 
         Assert.Equal(14, tab.Code.Viewport.Y + tab.Code.Viewport.Height - 1);
-        Assert.StartsWith("     seven ", screen[Height - 1]);
+        Assert.StartsWith("      seven ", screen[Height - 1]);
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         var screen = Render(tab);
 
         Assert.Equal(4, tab.Code.Viewport.Y);
-        Assert.StartsWith("     four five six", screen[0]);
+        Assert.StartsWith("      four five six", screen[0]);
     }
 
     [Fact]
@@ -236,10 +236,10 @@ public class EditorWordWrapTests : StaticConfigurationTest
         tab.WordWrap = true;
         Render(tab);
 
-        tab.Width = 30;
+        tab.Width = 31;
         var screen = Render(tab);
 
-        Assert.Equal(["  1  one two three four five", "     six seven"], screen[..2].Select(row => row.TrimEnd()));
+        Assert.Equal(["  1   one two three four five", "      six seven"], screen[..2].Select(row => row.TrimEnd()));
     }
 
     [Fact]
@@ -409,7 +409,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
         var editable = tab.Code.GetAttributeForRole(VisualRole.Editable);
         foreach (var row in new[] { 1, 4 })
         {
-            Assert.Equal("u", screen[row][7..8]);
+            Assert.Equal("u", screen[row][8..9]);
             Assert.Equal(new Attribute(editable.Background, editable.Foreground), AttributeAt(tab.Code, row, 2));
         }
     }
@@ -447,7 +447,7 @@ public class EditorWordWrapTests : StaticConfigurationTest
 
         Assert.Equal(["one two three xxfour five six seven", "one two three xxfour five six seven"], typedLines);
         Assert.Equal(["    six seven", "  2 one two three", "    six seven"],
-            new[] { typed[2], typed[3], typed[5] }.Select(row => row.Remove(4, 1).TrimEnd()));
+            new[] { typed[2], typed[3], typed[5] }.Select(row => row.Remove(4, 2).TrimEnd()));
         Assert.Equal(["one two three xfour five six seven", "one two three xfour five six seven"], tab.Lines);
     }
 

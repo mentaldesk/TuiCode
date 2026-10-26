@@ -115,7 +115,7 @@ public class EditorScrollBarHostTests : StaticConfigurationTest
             () => { workbench.Editor.Open(fs.FileInfo.New("/work/a.txt")); },
             () => { screen = host.App.Driver!.ToString(); });
 
-        Assert.Contains("  1  line 1", screen);
+        Assert.Contains("  1   line 1", screen);
         Assert.Contains("▲", screen);
         Assert.Contains("▼", screen);
     }

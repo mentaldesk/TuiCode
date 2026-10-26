@@ -390,7 +390,8 @@ public class QuickInfoHostTests : StaticConfigurationTest
         var commands = new CommandService();
         var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, languageServers: _server);
-        HostSteps.PinScreenSize(host, 80, 25);
+        // Wide enough for the box's buttons to keep their labels beside the gutter.
+        HostSteps.PinScreenSize(host, 81, 25);
         return host;
     }
 }
