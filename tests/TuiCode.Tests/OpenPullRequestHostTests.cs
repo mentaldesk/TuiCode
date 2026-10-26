@@ -2,6 +2,7 @@ using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
@@ -42,7 +43,7 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.O),
             () => host.App.InjectKey(Key.P),
             () => host.App.InjectKey(Key.R),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => { rows = Picker(workbench)!.VisibleItems; },
             () => host.App.InjectKey(Key.Esc));
 
@@ -60,7 +61,7 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => Type(host, "octo"),
             () => Picker(workbench)!.VisibleItems is ["#129"],
             () => host.App.InjectKey(Key.Enter),
@@ -83,7 +84,7 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench) is null);
 
@@ -102,9 +103,9 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Enter),
-            () => Picker(workbench)!.Status == "pr-132 already has local changes",
+            () => Picker(workbench)!.Alert.Message == "pr-132 already has local changes",
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal(_fs.Path.GetFullPath("/work"), workbench.Sidebar.Explorer.Root?.FullName);
@@ -124,12 +125,12 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
             () => Picker(workbench) is not null,
             () =>
             {
-                stateWhileLoading = Picker(workbench)!.State.State;
+                stateWhileLoading = Picker(workbench)!.State;
                 Type(host, "octo");
             },
-            () => Picker(workbench)!.Filter == "octo",
+            () => Picker(workbench)!.FilterField.Text == "octo",
             () => gate.SetResult(),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => Assert.Equal(["#129"], Picker(workbench)!.VisibleItems),
             () => host.App.InjectKey(Key.Esc),
             () => host.App.InjectKey(Key.Esc));
@@ -149,14 +150,14 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench)?.State.State == LoadState.Failed,
+            () => Picker(workbench)?.State == LoadState.Failed,
             () =>
             {
-                failed = Picker(workbench)!.State.Says;
+                failed = Picker(workbench)!.Says();
                 _gitHub.Missing = false;
                 host.App.InjectKey(Key.R);
             },
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => Assert.Equal(["#132", "#129"], Picker(workbench)!.VisibleItems),
             () => host.App.InjectKey(Key.Esc));
 
@@ -172,9 +173,9 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.R),
-            () => Picker(workbench)!.Filter == "r",
+            () => Picker(workbench)!.FilterField.Text == "r",
             () => host.App.InjectKey(Key.Esc),
             () => host.App.InjectKey(Key.Esc));
 
@@ -191,8 +192,8 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench)?.State.State == LoadState.Empty,
-            () => { says = Picker(workbench)!.State.Says; },
+            () => Picker(workbench)?.State == LoadState.Empty,
+            () => { says = Picker(workbench)!.Says(); },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal("No open pull requests", says);
@@ -210,15 +211,15 @@ public class OpenPullRequestHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenPullRequest),
-            () => Picker(workbench)?.State.State is LoadState.Empty,
+            () => Picker(workbench)?.State is LoadState.Empty,
             () =>
             {
-                says = Picker(workbench)!.State.Says;
+                says = Picker(workbench)!.Says();
                 host.App.InjectKey(Key.R);
             },
             () =>
             {
-                state = Picker(workbench)!.State.State;
+                state = Picker(workbench)!.State;
                 host.App.InjectKey(Key.Esc);
                 host.App.InjectKey(Key.Esc);
             });

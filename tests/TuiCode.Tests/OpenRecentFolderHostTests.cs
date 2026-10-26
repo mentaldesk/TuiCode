@@ -75,7 +75,7 @@ public class OpenRecentFolderHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.OpenRecentFolder),
             () => Picker(workbench) is not null,
             () => host.App.InjectKey(Key.CursorDown),
-            () => Picker(workbench)!.SelectedItem == 1,
+            () => Picker(workbench)!.SelectedIndex == 1,
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench) is null);
 

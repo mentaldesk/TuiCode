@@ -1,59 +1,49 @@
+using TuiCode.Abstractions;
 using TuiCode.Syntax;
 
 namespace TuiCode.Workbench.Navigation;
 
-/// <summary>The rows of the <c>gs</c> picker: which definitions a filter leaves, in file order, and how each reads.</summary>
+/// <summary>How each row of the <c>gs</c> picker reads.</summary>
 internal static class SymbolList
 {
     private const int Gap = 2;
     private const int IndentWidth = 2;
 
-    /// <summary>CamelHumps on the name, as in the Open dialog. File order is kept rather than sorted by score.</summary>
-    public static IReadOnlyList<FileSymbol> Filter(IReadOnlyList<FileSymbol> symbols, string filter)
-    {
-        filter = filter.Trim();
-        return filter.Length == 0 ? symbols : symbols.Where(s => CamelHumps.Score(filter, s.Name) is not null).ToList();
-    }
-
     /// <summary>
-    /// One string per symbol: the name, indented by its depth and by the <paramref name="iconWidth"/> columns
-    /// <see cref="SymbolListSource"/> draws the kind icon in, then the kind and the 1-based line right-aligned
-    /// in columns as wide as the widest of each. The name gives up what's left over and is truncated with an
-    /// ellipsis, so the two columns stay aligned whatever the picker's width.
+    /// One string per symbol: the name, indented by its depth and led by its kind icon, then the kind and the
+    /// 1-based line right-aligned in columns as wide as the widest of each. The name gives up what's left over
+    /// and is truncated with an ellipsis, so the two columns stay aligned whatever the picker's width.
     /// </summary>
-    public static IReadOnlyList<string> Render(IReadOnlyList<FileSymbol> symbols, int width, bool indent, int iconWidth = 0)
+    public static IReadOnlyList<string> Render(IReadOnlyList<FileSymbol> symbols, int width, bool indent, FileIconStyle icons = FileIconStyle.Off)
     {
         if (symbols.Count == 0 || width <= 0) return [];
-        var kinds = symbols.Select(s => Label(s.Kind)).ToArray();
-        var lines = symbols.Select(s => (s.Line + 1).ToString()).ToArray();
-        var kindWidth = kinds.Max(k => k.Length);
-        var lineWidth = lines.Max(l => l.Length);
-        var nameWidth = NameWidth(symbols, width);
-
-        var rows = new string[symbols.Count];
-        for (var i = 0; i < symbols.Count; i++)
-        {
-            var name = new string(' ', IconColumn(symbols[i], indent) + iconWidth) + symbols[i].Name;
-            var row = Truncate(name, nameWidth).PadRight(nameWidth)
-                + kinds[i].PadLeft(Gap + kindWidth)
-                + lines[i].PadLeft(Gap + lineWidth);
-            // Narrower than the columns themselves: the line number is the part worth keeping whole.
-            rows[i] = row.Length <= width ? row : Truncate(lines[i], width).PadLeft(width);
-        }
-        return rows;
+        var columns = Columns.Of(symbols);
+        return [.. symbols.Select(s => Row(s, columns, width, indent, icons))];
     }
 
-    /// <summary>What's left of <paramref name="width"/> for the name once the kind and line columns have taken theirs.</summary>
-    public static int NameWidth(IReadOnlyList<FileSymbol> symbols, int width)
+    public static string Row(FileSymbol symbol, Columns columns, int width, bool indent, FileIconStyle icons)
     {
-        if (symbols.Count == 0 || width <= 0) return 0;
-        var kindWidth = symbols.Max(s => Label(s.Kind).Length);
-        var lineWidth = symbols.Max(s => (s.Line + 1).ToString().Length);
-        return Math.Max(0, width - (Gap + kindWidth + Gap + lineWidth));
+        var kind = Label(symbol.Kind);
+        var line = (symbol.Line + 1).ToString();
+        var nameWidth = Math.Max(0, width - (Gap + columns.Kind + Gap + columns.Line));
+        var iconWidth = SymbolIcons.Width(icons);
+        var icon = (SymbolIcons.For(symbol.Kind, icons) ?? "").PadRight(iconWidth);
+        var name = new string(' ', IconColumn(symbol, indent)) + icon + symbol.Name;
+        var row = Truncate(name, nameWidth).PadRight(nameWidth)
+            + kind.PadLeft(Gap + columns.Kind)
+            + line.PadLeft(Gap + columns.Line);
+        // Narrower than the columns themselves: the line number is the part worth keeping whole.
+        return row.Length <= width ? row : Truncate(line, width).PadLeft(width);
     }
 
-    /// <summary>The column a row's icon is drawn in: after its indent, ahead of its name.</summary>
-    public static int IconColumn(FileSymbol symbol, bool indent) => indent ? IndentWidth * symbol.Depth : 0;
+    public sealed record Columns(int Kind, int Line)
+    {
+        public static Columns Of(IReadOnlyList<FileSymbol> symbols) => symbols.Count == 0
+            ? new(0, 0)
+            : new(symbols.Max(s => Label(s.Kind).Length), symbols.Max(s => (s.Line + 1).ToString().Length));
+    }
+
+    private static int IconColumn(FileSymbol symbol, bool indent) => indent ? IndentWidth * symbol.Depth : 0;
 
     private static string Label(SymbolKind kind) => kind switch
     {

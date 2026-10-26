@@ -3,6 +3,7 @@ using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
@@ -60,7 +61,7 @@ public class GoToSymbolHostTests : StaticConfigurationTest
 
         Assert.Equal("Go to symbol in Widget.cs", view!.Title);
         Assert.Equal(["Widget", "Count", "DoWorkAsync", "Other"], rows);
-        Assert.Equal(0, view.SelectedItem);
+        Assert.Equal(0, view.SelectedIndex);
         Assert.Null(Picker(workbench));
     }
 
@@ -149,8 +150,8 @@ public class GoToSymbolHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "data.json"); },
             () => { commands.TryExecute(CommandIds.GoToSymbol); },
-            () => Picker(workbench) is { Scanned: true },
-            () => { status = Picker(workbench)!.Status; },
+            () => Picker(workbench) is { Scanned: true } picker && picker.Says().Length > 0,
+            () => { status = Picker(workbench)!.Says(); },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal(SymbolPickerView.NoSymbols, status);
@@ -258,10 +259,10 @@ public class GoToSymbolHostTests : StaticConfigurationTest
             () => { OpenFile(workbench, "Widget.cs"); },
             () => { commands.TryExecute(CommandIds.GoToSymbol); },
             () => Picker(workbench) is { Scanned: true },
-            () => { outline = Picker(workbench)!.Rows; },
+            () => { outline = Picker(workbench)!.Labels; },
             () => Type(host, "dwa"),
             () => Picker(workbench)!.VisibleItems.SequenceEqual(["DoWorkAsync"]),
-            () => { filtered = Picker(workbench)!.Rows; },
+            () => { filtered = Picker(workbench)!.Labels; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.StartsWith("Widget ", outline[0], StringComparison.Ordinal);
@@ -284,7 +285,7 @@ public class GoToSymbolHostTests : StaticConfigurationTest
             () => { OpenFile(workbench, "AGENTS.md"); },
             () => { commands.TryExecute(CommandIds.GoToSymbol); },
             () => Picker(workbench) is { Scanned: true },
-            () => { outline = Picker(workbench)!.Rows; },
+            () => { outline = Picker(workbench)!.Labels; },
             () => Type(host, "qs"),
             () => Picker(workbench)!.VisibleItems.SequenceEqual(["Quick start"]),
             () => host.App.InjectKey(Key.Enter),

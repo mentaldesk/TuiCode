@@ -13,26 +13,6 @@ public class PullRequestListTests
     ];
 
     [Fact]
-    public void Filter_with_nothing_typed_keeps_every_pull_request()
-    {
-        Assert.Same(Entries, PullRequestList.Filter(Entries, "  "));
-    }
-
-    [Fact]
-    public void Filter_matches_the_number_with_or_without_a_hash()
-    {
-        Assert.Equal([132], PullRequestList.Filter(Entries, "132").Select(pr => pr.Number));
-        Assert.Equal([132], PullRequestList.Filter(Entries, "#132").Select(pr => pr.Number));
-    }
-
-    [Fact]
-    public void Filter_matches_part_of_the_title_or_the_author_whatever_the_case()
-    {
-        Assert.Equal([132, 32], PullRequestList.Filter(Entries, "SCOPE").Select(pr => pr.Number));
-        Assert.Equal([129, 32], PullRequestList.Filter(Entries, "Octocat").Select(pr => pr.Number));
-    }
-
-    [Fact]
     public void Display_ends_a_requested_review_with_the_marker_and_leaves_the_others_without_one()
     {
         Assert.Equal("#132  Command scopes should be fixed    jamescrosswell ●", PullRequestList.Display(Entries[0], 56));

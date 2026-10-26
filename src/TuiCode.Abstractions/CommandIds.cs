@@ -82,12 +82,6 @@ public static class CommandIds
 
     public const string GoToSymbol = "workbench.action.goToSymbol";
     public const string GoToMatchingBracket = "workbench.action.goToMatchingBracket";
-    public const string SymbolPickerConfirm = "symbolPicker.action.confirm";
-    public const string SymbolPickerCancel = "symbolPicker.action.cancel";
-    public const string SymbolPickerUp = "symbolPicker.action.up";
-    public const string SymbolPickerDown = "symbolPicker.action.down";
-    public const string SymbolPickerPageUp = "symbolPicker.action.pageUp";
-    public const string SymbolPickerPageDown = "symbolPicker.action.pageDown";
 
     public const string GoToDefinition = "workbench.action.goToDefinition";
     public const string QuickInfo = "workbench.action.quickInfo";
@@ -127,30 +121,6 @@ public static class CommandIds
 
     public const string OpenConfirm = "open.action.confirm";
     public const string OpenCancel = "open.action.cancel";
-
-    public const string RevisionPickerConfirm = "revisionPicker.action.confirm";
-    public const string RevisionPickerCancel = "revisionPicker.action.cancel";
-    public const string RevisionPickerUp = "revisionPicker.action.up";
-    public const string RevisionPickerDown = "revisionPicker.action.down";
-    public const string RevisionPickerPageUp = "revisionPicker.action.pageUp";
-    public const string RevisionPickerPageDown = "revisionPicker.action.pageDown";
-    public const string RevisionPickerRetry = "revisionPicker.action.retry";
-
-    public const string PullRequestPickerConfirm = "pullRequestPicker.action.confirm";
-    public const string PullRequestPickerCancel = "pullRequestPicker.action.cancel";
-    public const string PullRequestPickerUp = "pullRequestPicker.action.up";
-    public const string PullRequestPickerDown = "pullRequestPicker.action.down";
-    public const string PullRequestPickerPageUp = "pullRequestPicker.action.pageUp";
-    public const string PullRequestPickerPageDown = "pullRequestPicker.action.pageDown";
-    public const string PullRequestPickerRetry = "pullRequestPicker.action.retry";
-
-
-    public const string WorktreePickerConfirm = "worktreePicker.action.confirm";
-    public const string WorktreePickerCancel = "worktreePicker.action.cancel";
-    public const string WorktreePickerUp = "worktreePicker.action.up";
-    public const string WorktreePickerDown = "worktreePicker.action.down";
-    public const string WorktreePickerPageUp = "worktreePicker.action.pageUp";
-    public const string WorktreePickerPageDown = "worktreePicker.action.pageDown";
 
     public const string SubmitReviewConfirm = "submitReview.action.confirm";
     public const string SubmitReviewCancel = "submitReview.action.cancel";
@@ -195,7 +165,6 @@ public static class CommandIds
     public const string UnfoldAll = "editor.unfoldAll";
 
     public const string ChangeGrammar = "workbench.action.changeGrammar";
-
 
     public static string FocusEditorByIndex(int oneBasedIndex) =>
         $"workbench.action.focusEditor{oneBasedIndex}";

@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Dialogs;
+using MentalDesk.Tui.Loading;
 
 namespace TuiCode.Workbench.Controls;
 
@@ -10,12 +11,7 @@ internal static class PickerList
     /// <summary>The columns a row has in a picker <paramref name="dialogWidth"/> wide.</summary>
     public static int Width(int dialogWidth) => dialogWidth - Chrome;
 
-    public static int? SelectedIndex<T>(this PickerDialog<T> picker) where T : class =>
-        List(picker).SelectedItem;
-
-    public static void Select<T>(this PickerDialog<T> picker, int index) where T : class =>
-        List(picker).SelectedItem = index;
-
-    private static ListView List<T>(PickerDialog<T> picker) where T : class =>
-        picker.SubViews.OfType<ListView>().Single();
+    /// <summary>What a picker that loads its rows says in the list while it has none to show.</summary>
+    public static string Says<T>(this PickerDialog<T> picker) where T : class =>
+        picker.SubViews.OfType<LoadStateView>().Single().Says;
 }
