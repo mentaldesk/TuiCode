@@ -538,7 +538,6 @@ public sealed class Workbench : Window
         HistoryShowingChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Shows the AI assistance sidebar on the right, or hides it.</summary>
     public void ShowAssistant(bool showing)
     {
         if (IsAssistantShowing == showing) return;

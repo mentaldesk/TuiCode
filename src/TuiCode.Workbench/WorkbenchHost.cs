@@ -138,6 +138,7 @@ public sealed class WorkbenchHost : IDisposable
     private bool _launchedFromExplorer;
     private Func<int, int>? _dragTo;
     private Action<int>? _dragReport;
+    private bool _dragReleased;
     private bool _userBoundLegacyCtrlSlash;
     private bool _disposed;
 
@@ -542,11 +543,20 @@ public sealed class WorkbenchHost : IDisposable
     // the drag off the editor's cursor, the trees' selection and focus (#252, and see AGENTS.md).
     private void OnAppMouseEvent(object? sender, Mouse mouse)
     {
+        // Terminal.Gui follows the release with a click where the pointer is, which would move the keys there.
+        if (_dragReleased && mouse.Flags.HasFlag(MouseFlags.LeftButtonClicked))
+        {
+            _dragReleased = false;
+            mouse.Handled = true;
+            return;
+        }
+        _dragReleased = false;
         if (_dragTo is { } dragTo)
         {
             if (mouse.Flags.HasFlag(MouseFlags.LeftButtonReleased))
             {
                 _dragTo = null;
+                _dragReleased = true;
                 _dragReport?.Invoke(dragTo(mouse.ScreenPosition.X));
             }
             else if (mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed))

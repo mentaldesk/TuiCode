@@ -78,6 +78,25 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Releasing_a_drag_over_the_editor_leaves_the_keys_in_the_chat()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
+            Open(workbench),
+            () => workbench.Assistant.FocusInput(),
+            () => workbench.Assistant.InputHasFocus,
+            Press(host, BorderColumn),
+            Move(host, 60),
+            Release(host, 60),
+            () => workbench.StatusBar.DisplayedText.StartsWith("AI assistance width"));
+
+        Assert.True(workbench.Assistant.InputHasFocus);
+        Assert.Equal("AI assistance", workbench.StatusBar.DisplayedFocus);
+    }
+
+    [Fact]
     public async Task With_it_hidden_a_press_where_its_border_was_resizes_nothing()
     {
         using var workbench = BuildWorkbench();
