@@ -84,6 +84,10 @@ public static class CommandMnemonics
             [CommandIds.ToggleGutter] = "tg",
             [CommandIds.ToggleColumnSelect] = "tc",
             [CommandIds.ToggleWordWrap] = "tww",
+            // tbf, not tf, which would be a prefix of tfi (#477).
+            [CommandIds.ToggleFold] = "tbf",
+            [CommandIds.FoldAll] = "fa",
+            [CommandIds.UnfoldAll] = "ua",
             [CommandIds.ToggleMatchCase] = "tmc",
             [CommandIds.ToggleWholeWord] = "tmw",
             [CommandIds.ToggleIgnoredFiles] = "tfi",

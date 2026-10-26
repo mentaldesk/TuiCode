@@ -50,7 +50,7 @@ public sealed class CommandMenu
         [CommandIds.ShowExplorer] = 'e', [CommandIds.FindGlobally] = 'f', [CommandIds.FocusUsages] = 'u',
         [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
         [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'h', [CommandIds.ToggleGutter] = 'g',
-        [CommandIds.ToggleWordWrap] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
+        [CommandIds.ToggleWordWrap] = 't', [CommandIds.ToggleFold] = 'b', [CommandIds.FoldAll] = 'l', [CommandIds.UnfoldAll] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
         [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i',
         [CommandIds.AiAssistance] = 'a',
 
@@ -112,6 +112,8 @@ public sealed class CommandMenu
             CommandIds.RefreshExplorer,
             Separator,
             CommandIds.ToggleGutter, CommandIds.ToggleWordWrap,
+            Separator,
+            CommandIds.ToggleFold, CommandIds.FoldAll, CommandIds.UnfoldAll,
             Separator,
             CommandIds.MoveToOtherGroup, CommandIds.FocusOtherGroup, CommandIds.JoinGroups,
         ]),

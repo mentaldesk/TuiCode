@@ -5,10 +5,15 @@ using Size = System.Drawing.Size;
 
 namespace TuiCode.Editor;
 
-// Soft wrap (#378); see "Word wrap" in AGENTS.md.
+// Soft wrap (#378) and the rows folds leave (#477); see "Word wrap" and "Folding" in AGENTS.md.
 internal sealed partial class CodeEditor
 {
     private readonly WrapMap _wrap = new();
+    // Whether Viewport.Y counts screen rows through _wrap rather than file lines: while wrapped, or while anything is folded.
+    private bool _mapped;
+    private Size _naturalSize;
+    private bool _sizing;
+    private bool[]? _wrapHidden;
     private (int Row, int Column)? _followed;
     private bool _barScrolling;
     private bool _followingBar;
@@ -25,37 +30,56 @@ internal sealed partial class CodeEditor
             field = value;
             _followed = null;
             _box = null;
-            if (value)
-            {
-                FollowVerticalBar();
-                RefreshWrap();
-                ScrollToRow(_wrap.FirstRow(topLine));
-            }
-            else
-            {
-                base.Viewport = Viewport with { Y = topLine };
-            }
+            _mapped = value || HiddenLines is not null;
+            MapRows(topLine);
             SetNeedsLayout();
             SetNeedsDraw();
         }
     }
 
+    internal bool RowMapped => _mapped;
+
     internal int WrappedRows => _wrap.Rows;
 
     internal (int Line, int Row) WrappedRowAt(int screenRow) => _wrap.At(screenRow);
 
-    internal int TopLine => SoftWrap ? _wrap.At(Viewport.Y).Line : Viewport.Y;
+    internal int TopLine => _mapped ? _wrap.At(Viewport.Y).Line : Viewport.Y;
 
     internal void ScrollToLine(int line, int column)
     {
         line = Math.Clamp(line, 0, Math.Max(Lines - 1, 0));
-        if (SoftWrap)
+        SyncRowMapping();
+        if (_mapped)
         {
             RefreshWrap();
-            ScrollToRow(_wrap.FirstRow(line));
+            ScrollToRow(_wrap.FirstRow(ShownLine(line)));
+            if (!SoftWrap) base.Viewport = Viewport with { X = Math.Max(column, 0) };
             return;
         }
         Viewport = Viewport with { X = Math.Max(column, 0), Y = Math.Min(line, Math.Max(Lines - Viewport.Height, 0)) };
+    }
+
+    // Folds appear and go with edits as well as commands, so the view changes how it counts rows when it next looks.
+    private void SyncRowMapping()
+    {
+        var wanted = SoftWrap || HiddenLines is not null;
+        if (wanted == _mapped) return;
+        var topLine = TopLine;
+        _mapped = wanted;
+        MapRows(topLine);
+    }
+
+    private void MapRows(int topLine)
+    {
+        if (_mapped)
+        {
+            FollowVerticalBar();
+            RefreshWrap();
+            ScrollToRow(_wrap.FirstRow(ShownLine(topLine)));
+            return;
+        }
+        SizeContent(_naturalSize);
+        base.Viewport = Viewport with { Y = topLine };
     }
 
     // TG positions the view by file line; while wrapped the caret's screen row decides that, at the next draw.
@@ -64,13 +88,14 @@ internal sealed partial class CodeEditor
         get => base.Viewport;
         set
         {
-            if (!SoftWrap)
+            // TG scrolls a view with no width yet sideways to "show" the caret, and nothing scrolls it back (#513).
+            var x = SoftWrap ? 0 : base.Viewport.Width == 0 ? base.Viewport.X : value.X;
+            if (!_mapped)
             {
-                // TG scrolls a view with no width yet sideways to "show" the caret, and nothing scrolls it back (#513).
-                base.Viewport = base.Viewport.Width == 0 ? value with { X = base.Viewport.X } : value;
+                base.Viewport = value with { X = x };
                 return;
             }
-            base.Viewport = _barScrolling ? value with { X = 0 } : value with { X = 0, Y = base.Viewport.Y };
+            base.Viewport = _barScrolling ? value with { X = x } : value with { X = x, Y = base.Viewport.Y };
             if (_barScrolling) return;
             _followed = null;
             SetNeedsDraw();
@@ -79,9 +104,24 @@ internal sealed partial class CodeEditor
 
     protected override bool OnContentSizeChanging(ValueChangingEventArgs<Size?> args)
     {
+        if (!_sizing && args.NewValue is { } size) _naturalSize = size;
         // Narrower than the view, so the horizontal bar hides even once the vertical one takes a column.
         if (SoftWrap) args.NewValue = new Size(1, _wrap.Rows);
+        else if (_mapped) args.NewValue = new Size(_naturalSize.Width, _wrap.Rows);
         return base.OnContentSizeChanging(args);
+    }
+
+    private void SizeContent(Size size)
+    {
+        _sizing = true;
+        try
+        {
+            SetContentSize(size);
+        }
+        finally
+        {
+            _sizing = false;
+        }
     }
 
     internal void RevealWrappedLines(int first, int last)
@@ -102,7 +142,7 @@ internal sealed partial class CodeEditor
     }
 
     private void ScrollToRow(int row) =>
-        base.Viewport = Viewport with { X = 0, Y = Math.Clamp(row, 0, Math.Max(_wrap.Rows - Viewport.Height, 0)) };
+        base.Viewport = Viewport with { X = SoftWrap ? 0 : Viewport.X, Y = Math.Clamp(row, 0, Math.Max(_wrap.Rows - Viewport.Height, 0)) };
 
     // One column for a scroll bar, so showing it doesn't rewrap, and one for the caret at the end of a full row.
     private int WrapWidth =>
@@ -110,12 +150,17 @@ internal sealed partial class CodeEditor
 
     private void RefreshWrap()
     {
-        var resized = WrapWidth != _wrap.Width || TabWidth != _wrap.TabWidth;
+        var width = SoftWrap ? WrapWidth : 0;
+        var hidden = HiddenLines;
+        var relaid = width != _wrap.Width || TabWidth != _wrap.TabWidth || !ReferenceEquals(hidden, _wrapHidden);
         var top = _wrap.At(Viewport.Y);
-        if (!_wrap.Update(_lines, Graphemes, WrapWidth, TabWidth)) return;
+        _wrapHidden = hidden;
+        if (!_wrap.Update(_lines, Graphemes, width, TabWidth, hidden)) return;
 
-        SetContentSize(new Size(1, _wrap.Rows));
-        if (resized) ScrollToRow(_wrap.FirstRow(top.Line) + Math.Min(top.Row, _wrap.Starts(Math.Min(top.Line, Lines - 1)).Length - 1));
+        SizeContent(new Size(SoftWrap ? 1 : _naturalSize.Width, _wrap.Rows));
+        if (!relaid) return;
+        var line = ShownLine(Math.Min(top.Line, Lines - 1));
+        ScrollToRow(_wrap.FirstRow(line) + (line == top.Line ? Math.Min(top.Row, _wrap.Starts(line).Length - 1) : 0));
     }
 
     private void FollowCaret()
@@ -135,7 +180,7 @@ internal sealed partial class CodeEditor
 
     private (int Row, int X) Locate(Point position)
     {
-        var line = Math.Clamp(position.Y, 0, _wrap.Lines - 1);
+        var line = ShownLine(Math.Clamp(position.Y, 0, _wrap.Lines - 1));
         var starts = _wrap.Starts(line);
         var cells = Graphemes(line);
         var column = Math.Clamp(position.X, 0, cells.Length);
@@ -170,14 +215,19 @@ internal sealed partial class CodeEditor
 
     private Point PositionAt(Point viewportPoint)
     {
-        if (!SoftWrap)
+        if (!_mapped)
         {
             var line = Math.Clamp(Viewport.Y + viewportPoint.Y, 0, Lines - 1);
             return new Point(WrapLayout.ColumnAt(Graphemes(line), [0], 0, Math.Max(Viewport.X + viewportPoint.X, 0), TabWidth), line);
         }
-        if (Viewport.Y + viewportPoint.Y >= _wrap.Rows) return new Point(LineLength(Lines - 1), Lines - 1);
+        if (Viewport.Y + viewportPoint.Y >= _wrap.Rows)
+        {
+            var last = _wrap.At(_wrap.Rows - 1).Line;
+            return new Point(LineLength(last), last);
+        }
         var row = Viewport.Y + Math.Clamp(viewportPoint.Y, 0, Math.Max(Viewport.Height - 1, 0));
-        return PositionOnRow(row, Math.Clamp(viewportPoint.X, 0, Math.Max(Viewport.Width - 1, 0)));
+        var x = SoftWrap ? Math.Clamp(viewportPoint.X, 0, Math.Max(Viewport.Width - 1, 0)) : Math.Max(Viewport.X + viewportPoint.X, 0);
+        return PositionOnRow(row, x);
     }
 
     private Point PositionOnRow(int screenRow, int x)
@@ -233,15 +283,26 @@ internal sealed partial class CodeEditor
         return true;
     }
 
-    private void DrawWrappedRows(int right, int bottom, ref int row)
+    private void DrawMappedRows(int right, int bottom, ref int row)
     {
         var (line, sub) = _wrap.At(Viewport.Y);
         for (; line < Lines && row < bottom; line++, sub = 0)
         {
+            if (_wrap.IsHidden(line)) continue;
             var cells = Graphemes(line);
+            if (!SoftWrap)
+            {
+                var col = DrawRow(cells, line, row, right, FirstVisibleGlyph(cells), cells.Length);
+                DrawFoldSummary(line, row, col, right);
+                row++;
+                continue;
+            }
             var starts = _wrap.Starts(line);
             for (; sub < starts.Length && row < bottom; sub++, row++)
-                DrawRow(cells, line, row, right, (0, 0, starts[sub]), sub + 1 < starts.Length ? starts[sub + 1] : cells.Length);
+            {
+                var col = DrawRow(cells, line, row, right, (0, 0, starts[sub]), sub + 1 < starts.Length ? starts[sub + 1] : cells.Length);
+                if (sub == starts.Length - 1) DrawFoldSummary(line, row, col, right);
+            }
         }
     }
 
@@ -250,7 +311,8 @@ internal sealed partial class CodeEditor
     {
         if (OnPinnedMouse(mouse)) return true;
         var flags = mouse.Flags;
-        if (SoftWrap && (flags.HasFlag(MouseFlags.WheeledDown) || flags.HasFlag(MouseFlags.WheeledUp)))
+        SyncRowMapping();
+        if (_mapped && (flags.HasFlag(MouseFlags.WheeledDown) || flags.HasFlag(MouseFlags.WheeledUp)))
         {
             RefreshWrap();
             ScrollToRow(Viewport.Y + (flags.HasFlag(MouseFlags.WheeledDown) ? 1 : -1));
@@ -263,7 +325,7 @@ internal sealed partial class CodeEditor
         if ((flags & buttons) == 0 || mouse.Position is not { } point) return base.OnMouseEvent(mouse);
 
         if (CanFocus && !HasFocus) SetFocus();
-        if (SoftWrap) RefreshWrap();
+        if (_mapped) RefreshWrap();
         if (flags.HasFlag(MouseFlags.Alt))
         {
             if (flags.HasFlag(MouseFlags.LeftButtonClicked)) ToggleCaret(Carets, PositionAt(point));
@@ -316,7 +378,7 @@ internal sealed partial class CodeEditor
 
     private void ScrollRows(int rows)
     {
-        if (SoftWrap) ScrollToRow(Viewport.Y + rows);
+        if (_mapped) ScrollToRow(Viewport.Y + rows);
         else Viewport = Viewport with { Y = Math.Clamp(Viewport.Y + rows, 0, Math.Max(Lines - Viewport.Height, 0)) };
     }
 }

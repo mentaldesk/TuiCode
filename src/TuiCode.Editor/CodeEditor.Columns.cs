@@ -33,7 +33,7 @@ internal sealed partial class CodeEditor
     private bool ExtendColumnSelection(KeyBinding binding)
     {
         if (!binding.Commands.All(ColumnCommands.Contains)) return false;
-        if (SoftWrap) return ExtendWrappedColumnSelection(binding);
+        if (_mapped) return ExtendWrappedColumnSelection(binding);
         var (anchor, active) = _box ?? (PrimaryCaret.Anchor ?? InsertionPoint, InsertionPoint);
 
         // Move a lone caret from the active corner so TG decides where the movement lands.

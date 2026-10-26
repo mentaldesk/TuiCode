@@ -1,8 +1,9 @@
+using Terminal.Gui.Drivers;
 using TuiCode.Syntax;
 
 namespace TuiCode.Editor;
 
-/// <summary>Line numbers and change markers (#23), drawn beside the text view and scrolled with it.</summary>
+/// <summary>Line numbers, fold markers (#477) and change markers (#23), drawn beside the text view and scrolled with it.</summary>
 internal sealed class EditorGutter : View
 {
     private const int MinDigits = 3;
@@ -26,10 +27,11 @@ internal sealed class EditorGutter : View
         Width = WidthFor(text.Lines);
         _text.ViewportChanged += (_, _) => SetNeedsDraw();
         _text.CaretChanged += (_, _) => SetNeedsDraw();
-        // Wrapped rows can shift on any edit or caret move, and the text view draws first.
+        _text.FoldsChanged += (_, _) => SetNeedsDraw();
+        // Mapped rows can shift on any edit or caret move, and the text view draws first.
         _text.DrawComplete += (_, _) =>
         {
-            if (_text.SoftWrap || !_pinned.SequenceEqual(_text.Pinned)) SetNeedsDraw();
+            if (_text.RowMapped || !_pinned.SequenceEqual(_text.Pinned)) SetNeedsDraw();
         };
     }
 
@@ -63,13 +65,14 @@ internal sealed class EditorGutter : View
         OnContentChanged();
     }
 
-    internal static int WidthFor(int lineCount) => Math.Max(MinDigits, lineCount.ToString().Length) + 2;
+    // The number, a space, the fold marker and the change marker.
+    internal static int WidthFor(int lineCount) => Math.Max(MinDigits, lineCount.ToString().Length) + 3;
 
     protected override bool OnDrawingContent(DrawContext? context)
     {
         var changes = Changes;
         var editable = GetAttributeForRole(VisualRole.Editable);
-        var digits = Viewport.Width - 2;
+        var digits = Viewport.Width - 3;
         var top = _text.Viewport.Y;
         var lineNumber = ThemeColor("editorLineNumber.foreground");
         var activeLineNumber = ThemeColor("editorLineNumber.activeForeground") ?? editable.Foreground;
@@ -104,15 +107,27 @@ internal sealed class EditorGutter : View
                 : background with { Style = background.Style | TextStyle.Faint };
             SetAttribute(number);
             AddStr((continuation ? "" : (line + 1).ToString()).PadLeft(digits) + " ");
+            var folded = !continuation && row >= _pinned.Count && _text.IsFoldedAt(line);
+            SetAttribute(folded ? background : background with { Style = background.Style | TextStyle.Faint });
+            AddStr(continuation || row < _pinned.Count ? " " : folded ? "▸" : _text.StartsBlock(line) ? "▾" : " ");
             SetAttribute(background with { Foreground = marker });
             AddStr(continuation && change == LineChange.Deleted ? " " : Glyph(change));
         }
         return true;
     }
 
+    protected override bool OnMouseEvent(Mouse mouse)
+    {
+        if (!mouse.Flags.HasFlag(MouseFlags.LeftButtonClicked) || mouse.Position is not { } point || point.X != Viewport.Width - 2
+            || point.Y < _pinned.Count || point.Y >= _text.Viewport.Height)
+            return base.OnMouseEvent(mouse);
+        var (line, continuation) = LineOn(_text.Viewport.Y + point.Y, _text.Lines);
+        return continuation || line >= _text.Lines ? base.OnMouseEvent(mouse) : _text.ToggleFoldAt(line);
+    }
+
     private (int Line, bool Continuation) LineOn(int screenRow, int lines)
     {
-        if (!_text.SoftWrap) return (screenRow, false);
+        if (!_text.RowMapped) return (screenRow, false);
         if (screenRow >= _text.WrappedRows) return (lines, false);
         var (line, row) = _text.WrappedRowAt(screenRow);
         return (line, row > 0);

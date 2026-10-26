@@ -39,7 +39,7 @@ internal sealed partial class CodeEditor
     private IReadOnlyList<int> PinnedAt(int top)
     {
         if (Sticky.IsEmpty || Viewport.Height < StickyLines.MinHeight || Lines == 0) return [];
-        return Sticky.At(top, row => SoftWrap ? _wrap.At(row).Line : Math.Min(row, Lines - 1));
+        return Sticky.At(top, row => _mapped ? _wrap.At(row).Line : Math.Min(row, Lines - 1));
     }
 
     // A caret that moves up under the pinned rows scrolls the text down to clear them, as does one they grow over.
@@ -51,10 +51,10 @@ internal sealed partial class CodeEditor
         _pinnedFor = current;
         if (_pinned.Count == 0) return;
 
-        var row = SoftWrap ? Locate(InsertionPoint).Row : CurrentRow;
+        var row = _mapped ? Locate(InsertionPoint).Row : CurrentRow;
         if (row < Viewport.Y || row >= Viewport.Y + _pinned.Count) return;
-        var top = Reveal.Below(row, 0, Math.Max((SoftWrap ? _wrap.Rows : Lines) - Viewport.Height, 0), PinnedCountAt);
-        if (SoftWrap) ScrollToRow(top);
+        var top = Reveal.Below(row, 0, Math.Max((_mapped ? _wrap.Rows : Lines) - Viewport.Height, 0), PinnedCountAt);
+        if (_mapped) ScrollToRow(top);
         else Viewport = Viewport with { Y = top };
         _pinned = PinnedAt(Viewport.Y);
     }
