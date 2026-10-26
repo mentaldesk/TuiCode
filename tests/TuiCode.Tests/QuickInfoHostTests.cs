@@ -5,6 +5,7 @@ using TuiCode.Explorer;
 using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Help;
+using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
@@ -233,6 +234,28 @@ public class QuickInfoHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_failed_request_says_so_on_the_status_bar_as_an_error()
+    {
+        _server.Hover = (_, _) => throw new JsonRpcException(-32603, "hover broke");
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var shown = "";
+        var error = false;
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => Ready(workbench),
+            () => { Tab(workbench).MoveCursor(4, 26); },
+            () => { Execute(host); },
+            () => workbench.StatusBar.Message.StartsWith("Quick info failed: ", StringComparison.Ordinal),
+            () => { shown = workbench.StatusBar.Message; error = workbench.StatusBar.ShowsError; });
+
+        Assert.Contains("hover broke", shown);
+        Assert.True(error);
+        Assert.Null(Box(workbench));
+    }
+
+    [Fact]
     public async Task Only_the_latest_of_two_quick_presses_shows()
     {
         _server.HoldHover = new ManualResetEventSlim();
@@ -270,7 +293,7 @@ public class QuickInfoHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => workbench.StatusBar.DisplayedText.EndsWith("C# ◌ loading", StringComparison.Ordinal),
+            () => workbench.StatusBar.DisplayedState.Contains("C# ◌ loading", StringComparison.Ordinal),
             () => { Execute(host); },
             () => { pressed = workbench.StatusBar.Message; host.App.InjectKey(Key.G.WithAlt); },
             () => workbench.MenuBar.IsOpen(),
@@ -292,7 +315,7 @@ public class QuickInfoHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => { workbench.StatusBar.SetMessage("elsewhere"); Execute(host); },
+            () => { workbench.StatusBar.ShowMessage("elsewhere"); Execute(host); },
             () => { pressed = workbench.StatusBar.Message; });
 
         Assert.Equal("No C# language server. Install: dotnet tool install -g csharp-ls", pressed);
@@ -337,7 +360,7 @@ public class QuickInfoHostTests : StaticConfigurationTest
     }
 
     private static bool Ready(Workbench.Workbench workbench) =>
-        workbench.StatusBar.DisplayedText.EndsWith("C# ● ready", StringComparison.Ordinal);
+        workbench.StatusBar.DisplayedState.Contains("C# ● ready", StringComparison.Ordinal);
 
     private static void Execute(WorkbenchHost host)
     {
