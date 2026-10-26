@@ -16,7 +16,7 @@ public abstract record SessionUpdate
             "agent_message_chunk" => Message(ChatRole.Agent, content),
             "user_message_chunk" => Message(ChatRole.User, content),
             "tool_call" or "tool_call_update" when StringOf(update!["toolCallId"]) is { } id =>
-                new ToolCallUpdate(id, StringOf(update["title"]), StringOf(update["status"])),
+                new ToolCallUpdate(id, StringOf(update["title"]), StringOf(update["status"]), StringOf(update["kind"]), PathsOf(update)),
             _ => null,
         };
     }
@@ -29,6 +29,13 @@ public abstract record SessionUpdate
         _ => null,
     };
 
+    // The files a tool call names: its locations, and the paths of any diffs it carries.
+    private static IReadOnlyList<string> PathsOf(JsonNode update) =>
+    [
+        .. (update["locations"] as JsonArray ?? []).Select(l => StringOf(l?["path"])).OfType<string>(),
+        .. (update["content"] as JsonArray ?? []).Where(c => StringOf(c?["type"]) == "diff").Select(c => StringOf(c?["path"])).OfType<string>(),
+    ];
+
     internal static string? StringOf(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 }
 
@@ -37,4 +44,7 @@ public sealed record MessageChunk(ChatRole Role, string Text) : SessionUpdate;
 /// <summary>A file attached to a message, by URI.</summary>
 public sealed record ContextChunk(ChatRole Role, string Uri) : SessionUpdate;
 
-public sealed record ToolCallUpdate(string Id, string? Title, string? Status) : SessionUpdate;
+public sealed record ToolCallUpdate(string Id, string? Title, string? Status, string? Kind = null, IReadOnlyList<string>? Paths = null) : SessionUpdate
+{
+    public bool IsEdit => Kind is "edit" or "delete" or "move";
+}

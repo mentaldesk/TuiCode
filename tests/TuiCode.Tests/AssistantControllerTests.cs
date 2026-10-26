@@ -58,7 +58,7 @@ public class AssistantControllerTests : IDisposable
         Assert.Equal(("npx", "-y @agentclientprotocol/claude-agent-acp", Root), (command, string.Join(' ', arguments), directory));
         var initialize = _agent.Received("initialize").Single()!;
         Assert.True(initialize["clientCapabilities"]!["fs"]!["readTextFile"]!.GetValue<bool>());
-        Assert.False(initialize["clientCapabilities"]!["fs"]!["writeTextFile"]!.GetValue<bool>());
+        Assert.True(initialize["clientCapabilities"]!["fs"]!["writeTextFile"]!.GetValue<bool>());
         Assert.Equal(Root, _agent.Received("session/new").Single()!["cwd"]!.GetValue<string>());
     }
 
@@ -197,61 +197,155 @@ public class AssistantControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task Writing_a_file_is_refused_nothing_is_written_and_the_chat_says_so()
+    public async Task A_new_session_switches_to_the_agents_auto_mode()
+    {
+        _agent.Modes = ["default", "acceptEdits", "auto"];
+
+        await _controller.EnsureStartedAsync().WaitAsync(Timeout);
+
+        var setMode = _agent.Received("session/set_mode").Single()!;
+        Assert.Equal((_agent.SessionId, "auto"), (setMode["sessionId"]!.GetValue<string>(), setMode["modeId"]!.GetValue<string>()));
+    }
+
+    [Fact]
+    public async Task A_loaded_session_switches_to_the_agents_auto_mode()
+    {
+        _sessions.Save(Root, AgentPresets.ClaudeCode.CommandLine, "earlier");
+        _agent.Modes = ["default", "auto"];
+
+        await _controller.EnsureStartedAsync().WaitAsync(Timeout);
+
+        Assert.Single(_agent.Received("session/load"));
+        Assert.Equal("earlier", _agent.Received("session/set_mode").Single()!["sessionId"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("default,plan")]
+    [InlineData("auto,default")]
+    public async Task No_mode_switch_is_sent_without_an_auto_mode_to_switch_to(string? modes)
+    {
+        _agent.Modes = modes?.Split(',');
+
+        await _controller.EnsureStartedAsync().WaitAsync(Timeout);
+
+        Assert.Empty(_agent.Received("session/set_mode"));
+    }
+
+    [Theory]
+    [InlineData("edit", null)]
+    [InlineData("delete", null)]
+    [InlineData("move", null)]
+    [InlineData("execute", "git log --oneline -5")]
+    [InlineData("fetch", null)]
+    public async Task Every_permission_request_is_allowed_always_or_else_once(string kind, string? command)
+    {
+        string? always = "unset", once = "unset";
+        _agent.OnPrompt = async (agent, _) =>
+        {
+            always = await agent.AskPermission(kind, "A tool", command);
+            once = await agent.AskPermission(kind, "A tool", command, offerAlways: false);
+        };
+
+        _controller.Ask("Go", null);
+        await Until(() => !_controller.IsAnswering);
+
+        Assert.Equal(("always", "allow"), (always, once));
+    }
+
+    [Fact]
+    public async Task A_write_to_a_file_that_isnt_open_creates_it_and_its_folder()
+    {
+        var path = _fs.Path.Combine(Root, "new", "B.cs");
+        _agent.OnPrompt = (agent, _) => agent.Ask("fs/write_text_file", new JsonObject { ["path"] = path, ["content"] = "class B { }" });
+
+        _controller.Ask("Write", null);
+        await Until(() => !_controller.IsAnswering);
+
+        Assert.Equal("class B { }", _fs.File.ReadAllText(path));
+    }
+
+    [Fact]
+    public async Task A_write_to_an_open_tab_goes_to_its_buffer_and_not_the_disk()
     {
         var path = _fs.Path.Combine(Root, "A.cs");
         _fs.AddFile(path, new MockFileData("before"));
-        JsonRpcException? refused = null;
-        _agent.OnPrompt = async (agent, _) =>
-        {
-            refused = await Assert.ThrowsAsync<JsonRpcException>(() => agent.Ask("fs/write_text_file", new JsonObject { ["path"] = path, ["content"] = "after" }));
-        };
+        (string Path, string Text)? buffered = null;
+        _controller.WriteBuffer = (p, text) => { buffered = (p, text); return true; };
+        _agent.OnPrompt = (agent, _) => agent.Ask("fs/write_text_file", new JsonObject { ["path"] = path, ["content"] = "after" });
 
-        _controller.Ask("Edit", null);
+        _controller.Ask("Write", null);
         await Until(() => !_controller.IsAnswering);
 
-        Assert.NotNull(refused);
+        Assert.Equal((path, "after"), buffered);
         Assert.Equal("before", _fs.File.ReadAllText(path));
-        Assert.Contains("TuiCode declined the edit (A.cs)", Chat(_controller));
     }
 
     [Fact]
-    public async Task An_edit_is_rejected_and_a_read_allowed_without_asking()
+    public async Task An_answer_that_changed_files_ends_by_counting_them_once_each_and_pointing_at_review()
     {
-        var asked = 0;
-        _controller.AskPermission = _ => { asked++; return Task.FromResult(true); };
-        string? edit = "unset", read = "unset";
+        _controller.ReviewKey = () => "Ctrl+Shift+R";
+        var a = _fs.Path.Combine(Root, "A.cs");
+        var b = _fs.Path.Combine(Root, "B.cs");
         _agent.OnPrompt = async (agent, _) =>
         {
-            edit = await agent.AskPermission("edit", "Edit A.cs");
-            read = await agent.AskPermission("read", "Read A.cs");
+            agent.Tool("r", "Read C.cs", "completed", "read", _fs.Path.Combine(Root, "C.cs"));
+            agent.Tool("e1", "Edit A.cs", "pending", "edit", a);
+            agent.ToolUpdate("e1", "completed");
+            agent.Tool("e2", "Edit A.cs", "completed", "edit", a);
+            agent.Tool("e3", "Edit D.cs", "pending", "edit", _fs.Path.Combine(Root, "D.cs"));
+            agent.ToolUpdate("e3", "failed");
+            await agent.Ask("fs/write_text_file", new JsonObject { ["path"] = b, ["content"] = "b" });
+            await agent.Ask("fs/write_text_file", new JsonObject { ["path"] = b, ["content"] = "bb" });
+            agent.Say("Done.");
         };
 
-        _controller.Ask("Go", null);
+        _controller.Ask("Fix", null);
         await Until(() => !_controller.IsAnswering);
 
-        Assert.Equal(("reject", "allow", 0), (edit, read, asked));
-        Assert.Contains("TuiCode declined the edit (Edit A.cs)", Chat(_controller));
+        Assert.EndsWith("Done.\n\nChanged 2 files · Ctrl+Shift+R to review", Chat(_controller));
+        Assert.Contains("▸ Edit A.cs", Chat(_controller));
     }
 
     [Fact]
-    public async Task A_command_is_put_to_the_user_and_denying_it_tells_the_agent_and_the_answer_carries_on()
+    public async Task The_count_covers_only_the_files_that_answer_touched()
     {
-        PermissionRequest? request = null;
-        _controller.AskPermission = r => { request = r; return Task.FromResult(false); };
-        string? answer = "unset";
-        _agent.OnPrompt = async (agent, _) =>
+        _controller.ReviewKey = () => "Ctrl+Shift+R";
+        _agent.OnPrompt = (agent, _) =>
         {
-            answer = await agent.AskPermission("execute", "git log", "git log --oneline -5");
-            agent.Say("Carrying on.");
+            agent.Tool("e1", "Edit A.cs", "completed", "edit", _fs.Path.Combine(Root, "A.cs"));
+            return Task.CompletedTask;
         };
-
-        _controller.Ask("Go", null);
+        _controller.Ask("One", null);
         await Until(() => !_controller.IsAnswering);
 
-        Assert.Equal("git log --oneline -5", request!.Command);
-        Assert.Equal("reject", answer);
-        Assert.EndsWith("Carrying on.", Chat(_controller));
+        _agent.OnPrompt = (agent, _) =>
+        {
+            agent.Tool("e2", "Edit B.cs", "completed", "edit", _fs.Path.Combine(Root, "B.cs"));
+            agent.Say("Two done.");
+            return Task.CompletedTask;
+        };
+        _controller.Ask("Two", null);
+        await Until(() => !_controller.IsAnswering);
+
+        Assert.EndsWith("Two done.\n\nChanged 1 file · Ctrl+Shift+R to review", Chat(_controller));
+    }
+
+    [Fact]
+    public async Task An_answer_that_changed_nothing_has_no_changed_files_line()
+    {
+        _controller.ReviewKey = () => "Ctrl+Shift+R";
+        _agent.OnPrompt = (agent, _) =>
+        {
+            agent.Tool("r", "Read A.cs", "completed", "read", _fs.Path.Combine(Root, "A.cs"));
+            agent.Say("Read it.");
+            return Task.CompletedTask;
+        };
+
+        _controller.Ask("Look", null);
+        await Until(() => !_controller.IsAnswering);
+
+        Assert.DoesNotContain("Changed", Chat(_controller));
     }
 
     [Fact]
