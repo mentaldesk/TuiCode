@@ -27,7 +27,7 @@ public class DecompiledSourceHostTests : StaticConfigurationTest
     private const string ConsoleUri = "csharp:/work/App.csproj/decompiled/System.Console.cs";
     private const string SecretUri = "csharp:/work/App.csproj/decompiled/System.Secret.cs";
 
-    private const string ConsoleSource = """
+    private static readonly string ConsoleSource = """
         namespace System;
 
         /// <summary>Represents the standard input, output, and error streams.</summary>
@@ -38,7 +38,7 @@ public class DecompiledSourceHostTests : StaticConfigurationTest
 
             public static void WriteLine(int value) { }
         }
-        """;
+        """.ReplaceLineEndings("\n");
 
     private static readonly SyntaxHighlighter Syntax = new(GrammarBundle.Load());
 
