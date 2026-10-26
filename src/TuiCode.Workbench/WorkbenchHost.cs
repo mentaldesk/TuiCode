@@ -264,7 +264,8 @@ public sealed class WorkbenchHost : IDisposable
             _assistant = new AssistantController(agents, fileSystem, assistantSessions, action => _app.Invoke(action), _workbench.Panel.Assistant.Conversation)
             {
                 OpenBuffer = OpenBufferLines,
-                AskPermission = AskAgentPermission,
+                WriteBuffer = WriteAgentText,
+                ReviewKey = () => KeyOf(CommandIds.FocusReview),
             };
             _assistant.Changed += (_, _) => ShowAssistant();
             _assistant.Configure(AgentPresets.Resolve(_settings.Assistant));
@@ -2527,20 +2528,12 @@ public sealed class WorkbenchHost : IDisposable
     private IReadOnlyList<string>? OpenBufferLines(string path) =>
         _workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path)?.Lines;
 
-    // Edits are refused and reads allowed before it gets here; anything else, such as a command, is the user's call.
-    private Task<bool> AskAgentPermission(PermissionRequest request)
+    private bool WriteAgentText(string path, string content)
     {
-        var answer = new TaskCompletionSource<bool>();
-        if (_activeConfirm is not null || _assistant?.Agent is not { } agent)
-        {
-            answer.SetResult(false);
-            return answer.Task;
-        }
-        var title = request.Command is not null || request.Kind == "execute" ? $"{agent.Name} wants to run a command" : $"{agent.Name} wants to use a tool";
-        Confirm(title, request.Command ?? request.Title,
-            [Main("Allow once", ButtonKind.Primary, () => answer.TrySetResult(true))],
-            cancelled: () => answer.TrySetResult(false), cancel: "Deny");
-        return answer.Task;
+        if (_workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path) is not { } tab) return false;
+        tab.ReplaceLines(0, tab.Lines.Count, content.Replace("\r\n", "\n").Split('\n'));
+        tab.Save();
+        return true;
     }
 
     // Show the sidebar and focus its active tab: the explorer tree, or the search query input.
