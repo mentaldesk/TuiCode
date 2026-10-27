@@ -119,7 +119,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task F1_in_the_AI_assistance_tab_lists_showing_tool_calls_in_full()
+    public async Task F1_in_the_AI_assistance_sidebar_lists_showing_tool_calls_in_full()
     {
         var help = await HelpFrom(() =>
         {
