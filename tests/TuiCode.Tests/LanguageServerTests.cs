@@ -125,6 +125,54 @@ public class LanguageServerTests
     }
 
     [Fact]
+    public async Task It_tells_the_server_it_can_show_decompiled_library_sources()
+    {
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        var initialize = _fake.Received("initialize").Single()!;
+
+        Assert.True(initialize["capabilities"]!["experimental"]!["csharp"]!["metadataUris"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task A_decompiled_file_is_asked_about_by_the_servers_own_uri_and_never_opened()
+    {
+        const string uri = "csharp:/work/App.csproj/decompiled/System.Console.cs";
+        var file = Path.GetFullPath("/tmp/TuiCode/decompiled/System.Console.cs");
+        _fake.Library[uri] = new DecompiledSource("System.Console", "System.Console", "class Console\n{\n    void Beep() { }\n    void Go() { Beep(); }\n}");
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        var source = await server.DecompiledAsync(uri);
+        server.Alias(file, uri);
+        server.Open(file, source!.Source);
+        var found = await server.DefinitionAsync(file, 3, 17);
+
+        Assert.Equal(("System.Console", "System.Console"), (source.AssemblyName, source.SymbolName));
+        Assert.Equal([new SourceLocation(uri, 2, 9)], found);
+        Assert.DoesNotContain("textDocument/didOpen", _fake.Methods);
+    }
+
+    [Fact]
+    public async Task A_type_the_server_cant_decompile_has_no_source()
+    {
+        const string uri = "csharp:/work/App.csproj/decompiled/System.Secret.cs";
+        _fake.Library[uri] = new DecompiledSource("System.Secret", "System.Secret", "class Secret { }");
+        _fake.Undecompilable.Add(uri);
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        Assert.Null(await server.DecompiledAsync(uri));
+    }
+
+    [Fact]
     public async Task A_server_that_crashes_stops_and_isnt_started_again()
     {
         using var server = Server();

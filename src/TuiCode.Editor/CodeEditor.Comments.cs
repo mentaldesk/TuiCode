@@ -9,7 +9,7 @@ internal sealed partial class CodeEditor
     /// </summary>
     public void ToggleLineComment(string open, string? close = null)
     {
-        if (ReadOnly) return;
+        if (Refused()) return;
         var opening = Split(open);
         var closing = close is null ? null : Split(close);
         var prefix = Split(open + " ");

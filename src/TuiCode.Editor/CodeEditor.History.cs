@@ -99,7 +99,7 @@ internal sealed partial class CodeEditor
 
     private bool Step(bool undo)
     {
-        if (ReadOnly || (undo ? _undone == _undo.Count : _undone == 0)) return true;
+        if (Refused() || (undo ? _undone == _undo.Count : _undone == 0)) return true;
         var group = undo ? _undo[_undo.Count - 1 - _undone++] : _undo[_undo.Count - _undone--];
         ClearSelection();
         _autoIndents.Clear();

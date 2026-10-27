@@ -49,6 +49,12 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 
     public ConcurrentDictionary<string, string> Documents { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>Library types, by csharp-ls's <c>csharp:/…/decompiled/…</c> URI: definitions reach their declarations, and <c>csharp/metadata</c> gives their source.</summary>
+    public ConcurrentDictionary<string, DecompiledSource> Library { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Library URIs whose <c>csharp/metadata</c> answers null, as when csharp-ls can't decompile them.</summary>
+    public HashSet<string> Undecompilable { get; } = new(StringComparer.Ordinal);
+
     public List<(string Command, string Directory)> Launches { get; } = [];
 
     public List<InProcessServer> Servers { get; } = [];
@@ -108,6 +114,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             "textDocument/references" => References(parameters!),
             "textDocument/documentSymbol" => Symbols(parameters!),
             "textDocument/hover" => HoverAt(parameters!),
+            "csharp/metadata" => Metadata(parameters!),
             _ => null,
         };
     }
@@ -143,13 +150,11 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
         var path = Path(parameters["textDocument"]!);
         var line = parameters["position"]!["line"]!.GetValue<int>();
         var character = parameters["position"]!["character"]!.GetValue<int>();
-        var lines = Lines(Documents.GetValueOrDefault(path) ?? Files.GetValueOrDefault(path) ?? "");
+        var lines = Lines(Sources().GetValueOrDefault(path) ?? "");
         if (line >= lines.Length || Word(lines[line], character) is not { } word) return [];
 
         var found = new JsonArray();
-        var sources = Files.ToDictionary();
-        foreach (var (open, text) in Documents) sources[open] = text;
-        foreach (var (file, text) in sources.OrderBy(s => s.Key, StringComparer.Ordinal))
+        foreach (var (file, text) in Sources().OrderBy(s => s.Key, StringComparer.Ordinal))
         {
             var fileLines = Lines(text);
             for (var row = 0; row < fileLines.Length; row++)
@@ -165,6 +170,19 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                     });
         }
         return found;
+    }
+
+    private JsonObject? Metadata(JsonNode parameters)
+    {
+        var uri = parameters["textDocument"]!["uri"]!.GetValue<string>();
+        if (Undecompilable.Contains(uri) || !Library.TryGetValue(uri, out var source)) return null;
+        return new JsonObject
+        {
+            ["projectName"] = "work",
+            ["assemblyName"] = source.AssemblyName,
+            ["symbolName"] = source.SymbolName,
+            ["source"] = source.Source,
+        };
     }
 
     private JsonArray References(JsonNode parameters)
@@ -239,6 +257,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
     private Dictionary<string, string> Sources()
     {
         var sources = Files.ToDictionary();
+        foreach (var (uri, library) in Library) sources[uri] = library.Source;
         foreach (var (open, text) in Documents) sources[open] = text;
         return sources;
     }
@@ -253,7 +272,8 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 
     private static readonly HashSet<string> Keywords = ["public", "class", "void", "int", "string", "var", "return", "new", "partial"];
 
-    private static string Path(JsonNode document) => LspLocations.ToPath(document["uri"]!.GetValue<string>())!;
+    private static string Path(JsonNode document) =>
+        document["uri"]!.GetValue<string>() is var uri && LspLocations.IsDecompiled(uri) ? uri : LspLocations.ToPath(uri)!;
 
     [GeneratedRegex(@"\w+")]
     private static partial Regex WordPattern();

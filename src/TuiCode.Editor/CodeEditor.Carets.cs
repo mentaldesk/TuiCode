@@ -114,7 +114,7 @@ internal sealed partial class CodeEditor
         var carets = Carets;
         var blocks = RowBlocks(carets);
         var up = direction == LineDirection.Up;
-        if (ReadOnly || (up ? blocks[0].First == 0 : blocks[^1].Last == Lines - 1)) return;
+        if (Refused() || (up ? blocks[0].First == 0 : blocks[^1].Last == Lines - 1)) return;
 
         var step = up ? -1 : 1;
         Edit(() =>
@@ -133,7 +133,7 @@ internal sealed partial class CodeEditor
     /// <summary>Copy the lines under each caret above or below themselves, as one undo step.</summary>
     public void DuplicateLines(LineDirection direction)
     {
-        if (ReadOnly) return;
+        if (Refused()) return;
         var carets = Carets;
         var blocks = RowBlocks(carets);
         Edit(() =>
@@ -160,7 +160,7 @@ internal sealed partial class CodeEditor
     /// <summary>Replaces <paramref name="count"/> lines from <paramref name="start"/> with <paramref name="lines"/>, as one undo step.</summary>
     public void ReplaceLines(int start, int count, IReadOnlyList<string> lines)
     {
-        if (ReadOnly) return;
+        if (Refused()) return;
         var carets = Carets;
         Edit(() =>
         {
@@ -253,6 +253,7 @@ internal sealed partial class CodeEditor
         if (key.IsCtrl || (key.IsAlt && string.IsNullOrEmpty(key.AssociatedText))) return false;
         // An Alt key with text is the Option character a macOS terminal composed, e.g. Option+P's π (#553).
         if (key.IsAlt) key = key.NoAlt;
+        if (!string.IsNullOrEmpty(key.GetPrintableText()) && Refused()) return true;
         var handled = false;
         if (_secondary.Count == 0)
             EditAtPrimary(() => handled = base.OnKeyDownNotHandled(key));
@@ -315,7 +316,7 @@ internal sealed partial class CodeEditor
         _copiedText = text;
         // So a paste at one caret puts a whole copied line above the caret's, as TextView's did.
         _copiedLine = ordered is [{ Anchor: null }];
-        if (!cut || ReadOnly) return true;
+        if (!cut || Refused()) return true;
 
         AtEachCaret(_ =>
         {
@@ -352,7 +353,7 @@ internal sealed partial class CodeEditor
 
     private void PasteAtCarets(string? text)
     {
-        if (ReadOnly || text is not { Length: > 0 }) return;
+        if (text is not { Length: > 0 } || Refused()) return;
         var carets = Carets;
         if (carets is [{ Anchor: null } only] && _copiedLine && text == _copiedText)
         {
