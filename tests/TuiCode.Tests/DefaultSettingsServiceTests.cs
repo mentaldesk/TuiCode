@@ -257,7 +257,7 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     public void Editor_settings_round_trip_through_the_settings_file()
     {
         var fs = new MockFileSystem();
-        var editor = new EditorSettings { IndentSize = 2, InsertSpaces = false, LineEnding = LineEnding.CRLF, InsertFinalNewline = false, WordWrap = true, StickyLines = false };
+        var editor = new EditorSettings { IndentSize = 2, InsertSpaces = false, LineEnding = LineEnding.CRLF, InsertFinalNewline = false, DetectIndentation = false, WordWrap = true, StickyLines = false };
         var svc = new DefaultSettingsService(fs) { Editor = editor };
 
         svc.Save();

@@ -132,6 +132,8 @@ public sealed class DefaultSettingsService : ISettingsService
             root["LineEnding"] = Editor.LineEnding.ToString();
         if (Editor.InsertFinalNewline != defaults.InsertFinalNewline)
             root["InsertFinalNewline"] = Editor.InsertFinalNewline;
+        if (Editor.DetectIndentation != defaults.DetectIndentation)
+            root["DetectIndentation"] = Editor.DetectIndentation;
         if (Editor.WordWrap != defaults.WordWrap)
             root["WordWrap"] = Editor.WordWrap;
         if (Editor.StickyLines != defaults.StickyLines)
@@ -258,6 +260,7 @@ public sealed class DefaultSettingsService : ISettingsService
             InsertSpaces = Read(root, "InsertSpaces", defaults.InsertSpaces),
             LineEnding = ReadEnum(root, "LineEnding", defaults.LineEnding),
             InsertFinalNewline = Read(root, "InsertFinalNewline", defaults.InsertFinalNewline),
+            DetectIndentation = Read(root, "DetectIndentation", defaults.DetectIndentation),
             WordWrap = Read(root, "WordWrap", defaults.WordWrap),
             StickyLines = Read(root, "StickyLines", defaults.StickyLines),
             WrapByLanguage = ReadWrapByLanguage(root),
