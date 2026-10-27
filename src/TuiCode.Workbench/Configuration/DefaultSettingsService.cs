@@ -91,6 +91,8 @@ public sealed class DefaultSettingsService : ISettingsService
 
     public int SidebarWidth { get; set; } = SidebarSizing.Default;
 
+    public int? AssistantWidth { get; set; }
+
     public bool AltOpensMenuWhileTyping { get; set; } = true;
 
     public IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; } =
@@ -143,6 +145,8 @@ public sealed class DefaultSettingsService : ISettingsService
         }
         if (SidebarWidth != SidebarSizing.Default)
             root["SidebarWidth"] = SidebarWidth;
+        if (AssistantWidth is { } assistantWidth)
+            root["AssistantWidth"] = assistantWidth;
         if (!AltOpensMenuWhileTyping)
             root["AltOpensMenuWhileTyping"] = AltOpensMenuWhileTyping;
         if (LanguageServers.Count > 0)
@@ -261,6 +265,7 @@ public sealed class DefaultSettingsService : ISettingsService
         SidebarWidth = Read(root, "SidebarWidth", SidebarSizing.Default) is var width && width >= SidebarSizing.Min
             ? width
             : SidebarSizing.Default;
+        AssistantWidth = Read(root, "AssistantWidth", 0) is var assistantWidth && assistantWidth >= AssistantSizing.Min ? assistantWidth : null;
         AltOpensMenuWhileTyping = Read(root, "AltOpensMenuWhileTyping", true);
         LanguageServers = ReadLanguageServers(root);
         Assistant = ReadAssistant(root);

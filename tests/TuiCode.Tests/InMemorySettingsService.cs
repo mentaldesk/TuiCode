@@ -35,6 +35,8 @@ internal sealed class InMemorySettingsService : ISettingsService
 
     public int SidebarWidth { get; set; } = SidebarSizing.Default;
 
+    public int? AssistantWidth { get; set; }
+
     public bool AltOpensMenuWhileTyping { get; set; } = true;
 
     public IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; } =
