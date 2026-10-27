@@ -419,6 +419,33 @@ public class EditorTabFileFormatTests
     }
 
     [Fact]
+    public void Saving_a_file_with_nothing_to_detect_yet_detects_its_indentation()
+    {
+        using var group = Open("/repo/a.txt", "");
+        var tab = group.ActiveTab!;
+        tab.Content = "one\n   two\n      three\n";
+
+        group.SaveActive();
+        tab.MoveCursor(3, 0);
+        tab.IndentLines();
+
+        Assert.Equal("3 spaces (detected)", tab.Format.IndentDescription);
+        Assert.Equal("   ", tab.Lines[3]);
+    }
+
+    [Fact]
+    public void Saving_keeps_the_indentation_detected_when_the_file_opened()
+    {
+        using var group = Open("/repo/App.csproj", Csproj);
+        var tab = group.ActiveTab!;
+        tab.Content = "a\n    b\n        c\n";
+
+        group.SaveActive();
+
+        Assert.Equal("2 spaces (detected)", tab.Format.IndentDescription);
+    }
+
+    [Fact]
     public void Without_detection_a_file_with_no_editorconfig_rules_uses_Settings()
     {
         using var group = Open("/repo/App.csproj", Csproj, EditorSettings.Default with { DetectIndentation = false });

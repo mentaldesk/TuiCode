@@ -12,7 +12,7 @@ public sealed class EditorTab : FrameView
     private View? _header;
     private string _eol;
     private EditorConfigRules _rules;
-    private readonly IndentGuess? _guess;
+    private IndentGuess? _guess;
     private bool _dirty;
     // What Save last wrote or the tab last read; null while nothing is on disk.
     private string? _saved;
@@ -208,11 +208,16 @@ public sealed class EditorTab : FrameView
         set
         {
             field = value;
-            Format = FileFormat.Of(value, _rules, _guess);
-            _text.TabWidth = Format.IndentSize;
-            _text.InsertSpaces = Format.InsertSpaces;
-            _text.SetNeedsDraw();
+            ApplyFormat();
         }
+    }
+
+    private void ApplyFormat()
+    {
+        Format = FileFormat.Of(Settings, _rules, _guess);
+        _text.TabWidth = Format.IndentSize;
+        _text.InsertSpaces = Format.InsertSpaces;
+        _text.SetNeedsDraw();
     }
 
     /// <summary>How this file indents and saves, from its <c>.editorconfig</c>, its own lines and <see cref="Settings"/> (#622).</summary>
@@ -230,12 +235,13 @@ public sealed class EditorTab : FrameView
         }
     }
 
-    // Indentation stays as the file opened with; the line ending and final newline follow .editorconfig as it is now.
+    // Indentation stays as the file opened with, unless it had none to detect yet; the line ending and final newline follow .editorconfig as it is now.
     private void RereadSaveRules()
     {
         var now = ReadRules();
         _rules = _rules with { LineEnding = now.LineEnding, InsertFinalNewline = now.InsertFinalNewline };
-        Format = FileFormat.Of(Settings, _rules, _guess);
+        _guess ??= IndentGuess.Of(_text.LineStrings);
+        ApplyFormat();
     }
 
     /// <summary>Time per frame for the scan that finds what to pin, on top of syntax colouring's.</summary>
