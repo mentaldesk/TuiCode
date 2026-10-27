@@ -184,7 +184,7 @@ public class AssistantHostTests : StaticConfigurationTest
         _fs.AddFile(path, new MockFileData("#region Assembly System.Console\npublic static class Console { }\n"));
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
         _agent.OnPrompt = async (agent, _) =>
         {
             try
@@ -348,7 +348,7 @@ public class AssistantHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         var settings = new InMemorySettingsService();
         using var host = BuildHost(workbench, settings: settings);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
         ManyCalls();
         string[] folded = [], full = [];
         string? marked = null, topInFull = null;
@@ -381,7 +381,7 @@ public class AssistantHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         var settings = new InMemorySettingsService { Assistant = AssistantSetting.Default with { ToolCallsInFull = true } };
         using var host = BuildHost(workbench, settings: settings);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
         ManyCalls();
         var startedInFull = false;
 

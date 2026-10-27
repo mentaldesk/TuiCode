@@ -124,7 +124,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
         var help = await HelpFrom(() =>
         {
             Built.ShowAssistant(true);
-            Built.Panel.Assistant.FocusInput();
+            Built.Assistant.FocusInput();
         }, "AI assistance");
 
         Assert.Contains(new KeyRow("Ctrl+T t", "Show tool calls in full"), help.Rows());

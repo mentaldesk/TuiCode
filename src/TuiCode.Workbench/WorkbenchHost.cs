@@ -2582,7 +2582,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private void ToggleToolCalls()
     {
-        var view = _workbench.Panel.Assistant;
+        var view = _workbench.Assistant;
         view.Chat.ShowToolCallsInFull(!view.Conversation.ToolCallsInFull);
         ShowAssistant();
     }
@@ -2590,7 +2590,7 @@ public sealed class WorkbenchHost : IDisposable
     // The setting is what a conversation starts with; changing it in Settings shows the chat that way too.
     private void ApplyToolCallsSetting()
     {
-        var view = _workbench.Panel.Assistant;
+        var view = _workbench.Assistant;
         var inFull = _settings.Assistant.ToolCallsInFull;
         if (view.Conversation.StartsInFull == inFull) return;
         view.Conversation.StartsInFull = inFull;
