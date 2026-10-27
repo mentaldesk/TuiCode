@@ -457,6 +457,67 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return counts;
     }
 
+    public async Task<GitResult<string?>> GetLinkRemoteUrlAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var directory = DirectoryOf(path);
+        var listed = await RunAsync(directory, ["remote"], cancellationToken);
+        if (listed.Failure is not null || listed.ExitCode != 0)
+            return GitResult<string?>.Failure(ErrorMessage(listed));
+        var remotes = listed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        string? upstream = null;
+        var branch = await GetCurrentBranchAsync(directory, cancellationToken);
+        if (!branch.Succeeded)
+            return GitResult<string?>.Failure(branch.Error!);
+        if (branch.Value is { } name)
+        {
+            var configured = await RunAsync(directory, ["config", "--get", $"branch.{name}.remote"], cancellationToken);
+            if (configured.Failure is null && configured.ExitCode == 0)
+                upstream = configured.Output.Trim();
+        }
+
+        if (ChooseRemote(remotes, upstream) is not { } remote)
+            return GitResult<string?>.Success(null);
+        var url = await RunAsync(directory, ["remote", "get-url", remote], cancellationToken);
+        return url.Failure is null && url.ExitCode == 0
+            ? GitResult<string?>.Success(url.Output.Trim())
+            : GitResult<string?>.Failure(ErrorMessage(url));
+    }
+
+    internal static string? ChooseRemote(IReadOnlyList<string> remotes, string? upstream)
+    {
+        if (upstream is not null && remotes.Contains(upstream, StringComparer.Ordinal)) return upstream;
+        if (remotes.Contains("origin", StringComparer.Ordinal)) return "origin";
+        return remotes.Count == 1 ? remotes[0] : null;
+    }
+
+    public async Task<GitResult<GitPushedCommit?>> GetNewestPushedCommitAsync(string path, string revision, CancellationToken cancellationToken = default)
+    {
+        if (!IsSafeRevision(revision))
+            return GitResult<GitPushedCommit?>.Failure($"Unknown revision '{revision}'");
+
+        var directory = DirectoryOf(path);
+        var resolved = await RunAsync(directory, ["rev-parse", "--verify", "--quiet", $"{revision}^{{commit}}"], cancellationToken);
+        if (resolved.Failure is not null || resolved.ExitCode is not (0 or 1))
+            return GitResult<GitPushedCommit?>.Failure(ErrorMessage(resolved));
+        if (resolved.ExitCode == 1)
+            return GitResult<GitPushedCommit?>.Failure($"Unknown revision '{revision}'");
+        var hash = resolved.Output.Trim();
+
+        var unpushed = await RunAsync(directory, ["rev-list", "--first-parent", "--boundary", hash, "--not", "--remotes"], cancellationToken);
+        return unpushed.Failure is null && unpushed.ExitCode == 0
+            ? GitResult<GitPushedCommit?>.Success(ParsePushed(hash, unpushed.Output))
+            : GitResult<GitPushedCommit?>.Failure(ErrorMessage(unpushed));
+    }
+
+    /// <summary>Reads <c>rev-list --boundary</c>: nothing listed means the remotes have it; a <c>-</c> line is where they start to.</summary>
+    internal static GitPushedCommit? ParsePushed(string hash, string output)
+    {
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length == 0) return new GitPushedCommit(hash, IsRevision: true);
+        return lines.FirstOrDefault(l => l.StartsWith('-')) is { } boundary ? new GitPushedCommit(boundary[1..], IsRevision: false) : null;
+    }
+
     internal static IReadOnlyList<GitRef> ParseRefs(string output)
     {
         var refs = new List<GitRef>();
