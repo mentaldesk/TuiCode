@@ -67,4 +67,19 @@ public class AgentPresetsTests
 
         Assert.Equal(new AssistantSetting(AssistantSetting.Custom, "my-agent acp"), form.Setting);
     }
+
+    [Fact]
+    public void Show_tool_calls_in_full_starts_as_saved_and_is_saved_with_the_agent()
+    {
+        var form = new AssistantForm(new AssistantSetting("goose", ToolCallsInFull: true), _ => true);
+        Assert.True(form.ToolCallsInFull);
+
+        form.ToolCallsInFull = false;
+        form.Selected = AgentPresets.All.Count;
+        form.Command = "my-agent";
+        Assert.Equal(new AssistantSetting(AssistantSetting.Custom, "my-agent"), form.Setting);
+
+        form.ToolCallsInFull = true;
+        Assert.Equal(new AssistantSetting(AssistantSetting.Custom, "my-agent", true), form.Setting);
+    }
 }

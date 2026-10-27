@@ -96,6 +96,7 @@ public static class CommandIds
     public const string AssistantSend = "assistant.action.send";
     public const string AssistantStop = "assistant.action.stop";
     public const string AssistantClear = "assistant.action.clear";
+    public const string ToggleToolCalls = "assistant.action.toggleToolCalls";
     public const string FollowLink = "workbench.action.followLink";
 
     public const string NavigateBack = "workbench.action.navigateBack";

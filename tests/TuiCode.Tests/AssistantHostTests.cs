@@ -324,6 +324,97 @@ public class AssistantHostTests : StaticConfigurationTest
         Assert.Equal("B.cs", Tab(workbench).File.Name);
     }
 
+    private void ManyCalls()
+    {
+        _agent.OnPrompt = (agent, _) =>
+        {
+            agent.Say(string.Join('\n', Enumerable.Range(1, 30).Select(i => $"before {i}")) + "\n");
+            for (var i = 1; i <= 5; i++) agent.Tool($"t{i}", $"Read {i}.cs", "completed");
+            agent.Say(string.Join('\n', Enumerable.Range(1, 30).Select(i => $"after {i}")));
+            return Task.CompletedTask;
+        };
+    }
+
+    private static string[] ToolRows(AssistantView view) => [.. view.Chat.Lines.Where(l => l.Kind == ChatLineKind.Tool).Select(l => l.Text)];
+
+    private static string TopRow(AssistantView view) => view.Chat.Lines[view.Chat.Viewport.Y].Text;
+
+    private static void Scroll(AssistantView view, string row) =>
+        view.Chat.Viewport = view.Chat.Viewport with { Y = view.Chat.Lines.ToList().FindIndex(l => l.Text == row) };
+
+    [Fact]
+    public async Task Ctrl_T_T_shows_every_tool_call_and_folds_them_again_keeping_the_row_in_view_and_the_setting()
+    {
+        using var workbench = BuildWorkbench();
+        var settings = new InMemorySettingsService();
+        using var host = BuildHost(workbench, settings: settings);
+        var view = workbench.Panel.Assistant;
+        ManyCalls();
+        string[] folded = [], full = [];
+        string? marked = null, topInFull = null;
+
+        await HostSteps.Run(host,
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Go"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("after 30"),
+            () => { folded = ToolRows(view); Scroll(view, "after 3"); },
+            () => { host.App.InjectKey(Key.T.WithCtrl); host.App.InjectKey(Key.T); },
+            () => view.Conversation.ToolCallsInFull,
+            () => { full = ToolRows(view); marked = view.HeaderShown; topInFull = TopRow(view); },
+            () => { host.App.InjectKey(Key.T.WithCtrl); host.App.InjectKey(Key.T); },
+            () => !view.Conversation.ToolCallsInFull);
+
+        Assert.Equal(["▸ Read 5.cs (+4)"], folded);
+        Assert.Equal(["▸ Read 1.cs", "▸ Read 2.cs", "▸ Read 3.cs", "▸ Read 4.cs", "▸ Read 5.cs"], full);
+        Assert.EndsWith(AssistantView.InFullMarker, marked);
+        Assert.Equal("after 3", topInFull);
+        Assert.Equal("after 3", TopRow(view));
+        Assert.DoesNotContain(AssistantView.InFullMarker, view.HeaderShown);
+        Assert.False(settings.Assistant.ToolCallsInFull);
+    }
+
+    [Fact]
+    public async Task With_the_setting_on_the_chat_starts_and_clears_to_in_full()
+    {
+        using var workbench = BuildWorkbench();
+        var settings = new InMemorySettingsService { Assistant = AssistantSetting.Default with { ToolCallsInFull = true } };
+        using var host = BuildHost(workbench, settings: settings);
+        var view = workbench.Panel.Assistant;
+        ManyCalls();
+        var startedInFull = false;
+
+        await HostSteps.Run(host,
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => startedInFull = view.Conversation.ToolCallsInFull,
+            () => Type(host, "Go"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("after 30"),
+            () => { host.App.InjectKey(Key.T.WithCtrl); host.App.InjectKey(Key.T); },
+            () => !view.Conversation.ToolCallsInFull,
+            () => host.App.InjectKey(Key.L.WithCtrl),
+            () => Chat(view) == "");
+
+        Assert.True(startedInFull);
+        Assert.True(view.Conversation.ToolCallsInFull);
+    }
+
+    [Fact]
+    public void Show_tool_calls_in_full_is_an_Assistant_command_on_Ctrl_T_T()
+    {
+        using var workbench = BuildWorkbench();
+        var keybindings = new KeybindingService(_commands);
+        using var host = new WorkbenchHost(workbench, _commands, keybindings, new InputScopeStack(), new InMemorySettingsService(),
+            driverName: DriverRegistry.Names.ANSI, fileSystem: _fs, agents: _agent);
+
+        var command = _commands.Registered.Single(c => c.Id == CommandIds.ToggleToolCalls);
+        Assert.Equal(("Show tool calls in full", CommandScope.Assistant), (command.Label, command.Scope));
+        Assert.Contains(keybindings.Bindings, b => b.CommandId == CommandIds.ToggleToolCalls && b.Display == "Ctrl+T t" && b.Scope == CommandScope.Assistant);
+        Assert.Equal("ttc", CommandMnemonics.For(CommandIds.ToggleToolCalls));
+    }
+
     private static string Chat(AssistantView view) => string.Join('\n', view.Chat.Lines.Select(l => l.Text));
 
     private static void Type(WorkbenchHost host, string text)
@@ -349,10 +440,10 @@ public class AssistantHostTests : StaticConfigurationTest
         return workbench;
     }
 
-    private WorkbenchHost BuildHost(Workbench.Workbench workbench, bool installed = true)
+    private WorkbenchHost BuildHost(Workbench.Workbench workbench, bool installed = true, InMemorySettingsService? settings = null)
     {
         var host = new WorkbenchHost(workbench, _commands, new KeybindingService(_commands), new InputScopeStack(),
-            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, fileSystem: _fs, agents: _agent,
+            settings ?? new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, fileSystem: _fs, agents: _agent,
             assistantSessions: new AssistantSessions(_fs, _fs.Path.GetFullPath("/home/.tui/TuiCode.assistant.json")))
         {
             CommandInstalled = _ => installed,

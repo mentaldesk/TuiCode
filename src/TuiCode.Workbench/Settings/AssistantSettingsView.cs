@@ -3,7 +3,7 @@ using TuiCode.Workbench.Assistant;
 
 namespace TuiCode.Workbench.Settings;
 
-/// <summary>Settings › AI Assistance (#566): which agent the AI assistance tab runs. <see cref="SettingsView"/> saves <see cref="Current"/>.</summary>
+/// <summary>Settings › AI Assistance (#566): which agent the AI assistance tab runs, and whether it shows tool calls in full (#618). <see cref="SettingsView"/> saves <see cref="Current"/>.</summary>
 public sealed class AssistantSettingsView : View
 {
     private const int RowColumn = 17;
@@ -11,6 +11,7 @@ public sealed class AssistantSettingsView : View
     private readonly AssistantForm _form;
     private readonly OptionSelector _agents;
     private readonly TextField _command;
+    private readonly CheckBox _inFull;
     private readonly VerbatimLabel _status;
 
     public AssistantSettingsView(AssistantSetting current, Func<string, bool> isInstalled)
@@ -40,8 +41,16 @@ public sealed class AssistantSettingsView : View
             if (_form.Command.Length > 0 && _agents.Value != _form.Custom) _agents.Value = _form.Custom;
             ShowStatus();
         };
-        _status = new VerbatimLabel { X = 0, Y = 4 + _form.Options.Count, Width = Dim.Fill(), Height = 4 };
-        Add(_command, _status);
+        _inFull = new CheckBox
+        {
+            X = 0,
+            Y = 3 + _form.Options.Count,
+            Text = "Show tool calls in full",
+            Value = _form.ToolCallsInFull ? CheckState.Checked : CheckState.UnChecked,
+        };
+        _inFull.ValueChanged += (_, _) => _form.ToolCallsInFull = _inFull.Value == CheckState.Checked;
+        _status = new VerbatimLabel { X = 0, Y = 5 + _form.Options.Count, Width = Dim.Fill(), Height = 4 };
+        Add(_command, _inFull, _status);
         KeyDown += OnKey;
         ShowStatus();
     }

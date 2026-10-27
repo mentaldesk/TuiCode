@@ -1,13 +1,14 @@
 using System.Globalization;
 using System.Text;
+using Terminal.Gui.Text;
 using TuiCode.Editor;
 
 namespace TuiCode.Workbench.Assistant;
 
 public enum ChatLineKind { Blank, Heading, Text, Tool, Note, Code }
 
-/// <summary>One screen row of the chat: who said it (null for a note), and for a code row its fenced block, the line in it and the UTF-16 offset the row starts at.</summary>
-public sealed record ChatLine(ChatLineKind Kind, string Text, int Block = -1, int Line = -1, int Offset = 0, ChatRole? Role = null);
+/// <summary>One screen row of the chat: who said it (null for a note), for a code row its fenced block, the line in it and the UTF-16 offset the row starts at, and the heading, part or note it's from.</summary>
+public sealed record ChatLine(ChatLineKind Kind, string Text, int Block = -1, int Line = -1, int Offset = 0, ChatRole? Role = null, int Source = -1);
 
 /// <summary>A fenced code block in an answer: its language as the fence names it, and its lines.</summary>
 public sealed record CodeBlock(string Language, IReadOnlyList<string> Lines);
@@ -21,6 +22,7 @@ public sealed class Conversation
     public const int Gutter = 4;
 
     private readonly List<Entry> _entries = [];
+    private bool _toolCallsInFull;
 
     /// <summary>Changes on every edit, so a view knows to lay out again.</summary>
     public int Version { get; private set; }
@@ -33,9 +35,25 @@ public sealed class Conversation
     /// <summary>Folder the context labels of reloaded questions are relative to.</summary>
     public string? Root { get; set; }
 
+    /// <summary>Whether every tool call has a row of its own (#618), rather than each answer's folding into its newest.</summary>
+    public bool ToolCallsInFull
+    {
+        get => _toolCallsInFull;
+        set
+        {
+            if (value == _toolCallsInFull) return;
+            _toolCallsInFull = value;
+            Version++;
+        }
+    }
+
+    /// <summary>What <see cref="ToolCallsInFull"/> goes back to when the chat is cleared for a new conversation.</summary>
+    public bool StartsInFull { get; set; }
+
     public void Clear()
     {
         _entries.Clear();
+        _toolCallsInFull = StartsInFull;
         Version++;
     }
 
@@ -100,33 +118,84 @@ public sealed class Conversation
         var lines = new List<ChatLine>();
         var blocks = new List<CodeBlock>();
         var turnWidth = Math.Max(width - Gutter, 1);
+        var source = 0;
+        void Add(Action write)
+        {
+            var start = lines.Count;
+            write();
+            for (var i = start; i < lines.Count; i++) lines[i] = lines[i] with { Source = source };
+            source++;
+        }
         foreach (var entry in _entries)
         {
             switch (entry)
             {
                 case Note { Text: { } text }:
-                    Gap(lines);
-                    Wrap(lines, ChatLineKind.Note, text, width);
+                    Add(() =>
+                    {
+                        Gap(lines);
+                        Wrap(lines, ChatLineKind.Note, text, width);
+                    });
                     break;
                 case Turn { Role: ChatRole.User } turn:
-                    Gap(lines);
-                    Wrap(lines, ChatLineKind.Heading, turn.Context is null ? "You" : $"You · {turn.Context}", turnWidth, ChatRole.User);
+                    Add(() =>
+                    {
+                        Gap(lines);
+                        Wrap(lines, ChatLineKind.Heading, turn.Context is null ? "You" : $"You · {turn.Context}", turnWidth, ChatRole.User);
+                    });
                     foreach (var part in turn.Parts.OfType<TextPart>())
-                        foreach (var line in Split(part.Text.ToString().Trim('\n'))) Wrap(lines, ChatLineKind.Text, line, turnWidth, ChatRole.User);
+                        Add(() =>
+                        {
+                            foreach (var line in Split(part.Text.ToString().Trim('\n'))) Wrap(lines, ChatLineKind.Text, line, turnWidth, ChatRole.User);
+                        });
                     break;
                 case Turn turn:
-                    Gap(lines);
-                    Wrap(lines, ChatLineKind.Heading, AgentName, turnWidth, ChatRole.Agent);
+                    Add(() =>
+                    {
+                        Gap(lines);
+                        Wrap(lines, ChatLineKind.Heading, AgentName, turnWidth, ChatRole.Agent);
+                    });
+                    var folded = turn.Parts.OfType<ToolPart>().Where(t => !t.Failed).ToList();
                     foreach (var part in turn.Parts)
                     {
-                        if (part is ToolPart tool) Wrap(lines, ChatLineKind.Tool, $"▸ {tool.Title}{(tool.Status == "failed" ? " (failed)" : "")}", turnWidth, ChatRole.Agent);
-                        else if (part is TextPart text) Markdown(lines, blocks, text.Text.ToString(), turnWidth);
+                        if (part is ToolPart tool) Add(() => Tool(lines, tool, folded, turnWidth));
+                        else if (part is TextPart text) Add(() => Markdown(lines, blocks, text.Text.ToString(), turnWidth));
                     }
                     break;
             }
         }
         return (lines, blocks);
     }
+
+    private void Tool(List<ChatLine> lines, ToolPart tool, List<ToolPart> folded, int width)
+    {
+        var failed = tool.Failed ? " (failed)" : "";
+        if (ToolCallsInFull)
+        {
+            Wrap(lines, ChatLineKind.Tool, $"▸ {tool.Title}{failed}", width, ChatRole.Agent);
+            return;
+        }
+        if (!tool.Failed && !ReferenceEquals(tool, folded[^1])) return;
+        var count = tool.Failed || folded.Count == 1 ? "" : $" (+{folded.Count - 1})";
+        lines.Add(new ChatLine(ChatLineKind.Tool, Clip($"▸ {tool.Title.ReplaceLineEndings(" ")}", failed + count, width), Role: ChatRole.Agent));
+    }
+
+    private static string Clip(string text, string suffix, int width)
+    {
+        if (Columns(text) + Columns(suffix) <= width) return text + suffix;
+        var room = width - Columns(suffix) - 1;
+        var kept = new StringBuilder();
+        var used = 0;
+        foreach (var grapheme in Graphemes(text))
+        {
+            if (used + Columns(grapheme) > room) break;
+            kept.Append(grapheme);
+            used += Columns(grapheme);
+        }
+        return kept.Append('…').Append(suffix).ToString();
+    }
+
+    private static int Columns(string text) => Math.Max(text.GetColumns(), 0);
 
     private static void Gap(List<ChatLine> lines)
     {
@@ -222,5 +291,6 @@ public sealed class Conversation
         public string Id { get; } = id;
         public string Title { get; set; } = "";
         public string? Status { get; set; }
+        public bool Failed => Status == "failed";
     }
 }

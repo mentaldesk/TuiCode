@@ -493,6 +493,18 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         Assert.Equal(new AssistantSetting(agent, command), new DefaultSettingsService(fs).Assistant);
     }
 
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("codex")]
+    public void Showing_tool_calls_in_full_survives_a_restart(string agent)
+    {
+        var fs = new MockFileSystem();
+        new DefaultSettingsService(fs) { Assistant = new AssistantSetting(agent, ToolCallsInFull: true) }.Save();
+
+        Assert.Equal(new AssistantSetting(agent, ToolCallsInFull: true), new DefaultSettingsService(fs).Assistant);
+        Assert.False(AssistantSetting.Default.ToolCallsInFull);
+    }
+
     [Fact]
     public void Claude_Code_is_the_AI_assistance_default_and_isnt_written()
     {

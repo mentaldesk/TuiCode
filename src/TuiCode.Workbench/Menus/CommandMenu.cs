@@ -52,7 +52,7 @@ public sealed class CommandMenu
         [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'h', [CommandIds.ToggleGutter] = 'g',
         [CommandIds.ToggleWordWrap] = 't', [CommandIds.ToggleFold] = 'b', [CommandIds.FoldAll] = 'l', [CommandIds.UnfoldAll] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
         [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i',
-        [CommandIds.AiAssistance] = 'a',
+        [CommandIds.AiAssistance] = 'a', [CommandIds.ToggleToolCalls] = 'c',
 
         [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.QuickInfo] = 'i',
         [CommandIds.FindUsages] = 'f', [CommandIds.FollowLink] = 'l', [CommandIds.NavigateBack] = 'p',
@@ -107,7 +107,7 @@ public sealed class CommandMenu
             Separator,
             CommandIds.ToggleSidebar, CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
             Separator,
-            CommandIds.ToggleFileHistory, CommandIds.AiAssistance,
+            CommandIds.ToggleFileHistory, CommandIds.AiAssistance, CommandIds.ToggleToolCalls,
             Separator,
             CommandIds.RefreshExplorer,
             Separator,
