@@ -119,12 +119,12 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task F1_in_the_AI_assistance_tab_lists_showing_tool_calls_in_full()
+    public async Task F1_in_the_AI_assistance_sidebar_lists_showing_tool_calls_in_full()
     {
         var help = await HelpFrom(() =>
         {
             Built.ShowAssistant(true);
-            Built.Panel.Assistant.FocusInput();
+            Built.Assistant.FocusInput();
         }, "AI assistance");
 
         Assert.Contains(new KeyRow("Ctrl+T t", "Show tool calls in full"), help.Rows());
