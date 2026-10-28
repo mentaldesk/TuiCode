@@ -338,9 +338,8 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         var search = workbench.Sidebar.Search;
         var buffers = new GatedBuffers(_fs.Path.GetFullPath("/work/c.txt"));
         search.OpenBuffers = buffers;
-        WorkspaceSearchResult? shown = null;
         var whileFinding = "";
-        var afterEsc = (Status: "", Query: "", Searching: true, Inputs: false, SameResults: false);
+        var afterEsc = (Status: "", Query: "", Searching: true, Inputs: false, Matches: -1, Rows: -1);
 
         try
         {
@@ -348,12 +347,13 @@ public class FindAndSearchHostTests : StaticConfigurationTest
                 () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
                 () => { foreach (var c in "needl") host.App.InjectKey(new Key(c)); },
                 () => search.Result.MatchCount == 3,
-                () => { shown = search.Result; buffers.Armed = true; host.App.InjectKey(new Key('e')); },
+                () => { buffers.Armed = true; host.App.InjectKey(new Key('e')); },
                 () => search.StatusText.StartsWith("Finding… 2 files", StringComparison.Ordinal),
                 () => { whileFinding = search.StatusText; host.App.InjectKey(Key.Esc); },
                 () =>
                 {
-                    afterEsc = (search.StatusText, search.Query, search.IsSearching, search.InputsHaveFocus, ReferenceEquals(shown, search.Result));
+                    afterEsc = (search.StatusText, search.Query, search.IsSearching, search.InputsHaveFocus,
+                        search.Result.MatchCount, search.Results.Objects.Count());
                     buffers.Release();
                     host.App.InjectKey(Key.Backspace);
                 },
@@ -365,7 +365,58 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         }
 
         Assert.Equal("Finding… 2 files · Esc stop", whileFinding);
-        Assert.Equal(("Stopped · 2 files searched", "needle", false, true, true), afterEsc);
+        Assert.Equal(("Stopped · 2 files searched", "needle", false, true, 0, 0), afterEsc);
+    }
+
+    // #631: a refined query's search used to leave the earlier query's results in the tree, shown as its own once stopped.
+    [Fact]
+    public async Task The_results_tree_never_shows_an_earlier_query_under_a_search_and_Esc_leaves_it_as_it_was()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("needle"));
+        _fs.AddFile("/work/b.txt", new MockFileData("needle"));
+        _fs.AddFile("/work/c.txt", new MockFileData("needle"));
+        _fs.AddFile("/work/d.txt", new MockFileData("need only"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        HostSteps.PinScreenSize(host, 100, 30);
+        var search = workbench.Sidebar.Search;
+        var buffers = new GatedBuffers(_fs.Path.GetFullPath("/work/c.txt"));
+        search.OpenBuffers = buffers;
+        string[] before = [], whileFinding = [], afterEsc = [];
+
+        try
+        {
+            await HostSteps.Run(host,
+                () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+                () => { foreach (var c in "need") host.App.InjectKey(new Key(c)); },
+                () => search.Result.MatchCount == 4,
+                () => { },
+                () => { before = TreeRows(host, search); buffers.Armed = true; host.App.InjectKey(new Key('l')); },
+                () => search.StatusText.StartsWith("Finding… 2 files", StringComparison.Ordinal),
+                () => { },
+                () => { whileFinding = TreeRows(host, search); host.App.InjectKey(Key.Esc); },
+                () => search.StatusText.StartsWith("Stopped", StringComparison.Ordinal),
+                () => { },
+                () => { afterEsc = TreeRows(host, search); });
+        }
+        finally
+        {
+            buffers.Release();
+        }
+
+        Assert.Contains(before, row => row.Contains("d.txt", StringComparison.Ordinal));
+        Assert.Empty(whileFinding);
+        Assert.Empty(afterEsc);
+    }
+
+    private static string[] TreeRows(WorkbenchHost host, SearchView search)
+    {
+        var contents = host.App.Driver!.Contents!;
+        var frame = search.Results.FrameToScreen();
+        return Enumerable.Range(frame.Y, frame.Height)
+            .Select(row => string.Concat(Enumerable.Range(frame.X, frame.Width).Select(col => contents[row, col].Grapheme)).Trim())
+            .Where(row => row.Length > 0)
+            .ToArray();
     }
 
     [Fact]
