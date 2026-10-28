@@ -2807,7 +2807,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var file = tab.File.FileSystem.FileInfo.New(tab.File.FullName);
         var grammar = tab.Grammar?.Name ?? Workbench.PlainTextName;
-        var facts = DocumentInfoView.Facts(grammar, tab.LineEnding, file.Exists ? file.Length : null, tab.IsDirty);
+        var facts = DocumentInfoView.Facts(grammar, tab.LineEnding, tab.Format, file.Exists ? file.Length : null, tab.IsDirty);
         var view = new DocumentInfoView(WorkspacePath(tab.File), facts, tab.CountDocument(), tab.CountSelection());
         view.Closed += (_, _) => CloseDocumentInfo(view);
         _activeDocumentInfo = view;

@@ -43,7 +43,7 @@ public class DocumentInfoHostTests : StaticConfigurationTest
         Assert.Equal(["3", "4", "24", "22"], shown.Columns[0].Values);
         Assert.Equal(["1", "1", "5", "5"], shown.Columns[1].Values);
         Assert.Contains("src/a.txt", labels);
-        Assert.Contains("Plain Text  •  LF  •  26 B on disk", labels);
+        Assert.Contains("Plain Text  •  LF  •  4 spaces (Settings)  •  26 B on disk", labels);
         Assert.True(tab!.ContentHasFocus, "Focus should return to the editor after closing");
     }
 
@@ -129,8 +129,21 @@ public class DocumentInfoViewTests
     [Fact]
     public void Facts_lists_size_and_unsaved_changes_only_when_known()
     {
-        Assert.Equal("C#  •  CRLF  •  unsaved changes", DocumentInfoView.Facts("C#", LineEnding.CRLF, null, dirty: true));
-        Assert.Equal("Plain Text  •  LF  •  10 B on disk", DocumentInfoView.Facts("Plain Text", LineEnding.LF, 10, dirty: false));
+        Assert.Equal("C#  •  CRLF  •  unsaved changes", DocumentInfoView.Facts("C#", LineEnding.CRLF, null, null, dirty: true));
+        Assert.Equal("Plain Text  •  LF  •  10 B on disk", DocumentInfoView.Facts("Plain Text", LineEnding.LF, null, 10, dirty: false));
+    }
+
+    [Fact]
+    public void Facts_say_how_the_file_indents_and_its_final_newline_when_editorconfig_sets_it()
+    {
+        var detected = FileFormat.Of(EditorSettings.Default, EditorConfigRules.None, new IndentGuess(InsertSpaces: true, Size: 2));
+        var configured = FileFormat.Of(EditorSettings.Default,
+            new EditorConfigRules { InsertSpaces = false, TabWidth = 4, InsertFinalNewline = false }, null);
+
+        Assert.Equal("XML  •  LF  •  2 spaces (detected)  •  3 B on disk",
+            DocumentInfoView.Facts("XML", LineEnding.LF, detected, 3, dirty: false));
+        Assert.Equal("Makefile  •  LF  •  tabs (.editorconfig)  •  no final newline (.editorconfig)",
+            DocumentInfoView.Facts("Makefile", LineEnding.LF, configured, null, dirty: false));
     }
 
     [Fact]
