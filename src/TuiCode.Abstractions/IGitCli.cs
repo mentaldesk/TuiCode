@@ -75,6 +75,24 @@ public interface IGitCli
     /// <paramref name="contents"/>, the file is blamed as that text, so unsaved edits don't shift the line.
     /// </summary>
     Task<GitResult<GitBlameLine?>> BlameAsync(string filePath, int line, string? contents = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The URL of the remote links go to: the current branch's upstream's, else <c>origin</c>'s, else the only one's;
+    /// null when there's no remote to choose.
+    /// </summary>
+    Task<GitResult<string?>> GetLinkRemoteUrlAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <paramref name="revision"/> when a remote-tracking branch contains it, else its newest first-parent ancestor that
+    /// one does, read from what git already knows; null when none does.
+    /// </summary>
+    Task<GitResult<GitPushedCommit?>> GetNewestPushedCommitAsync(string path, string revision, CancellationToken cancellationToken = default);
+}
+
+/// <summary>A commit a remote has; <see cref="IsRevision"/> when it's the revision asked about, not an ancestor of it.</summary>
+public sealed record GitPushedCommit(string Hash, bool IsRevision)
+{
+    public string ShortHash => Hash[..Math.Min(7, Hash.Length)];
 }
 
 public readonly record struct GitResult<T>(T Value, string? Error)

@@ -780,6 +780,9 @@ public sealed class WorkbenchHost : IDisposable
             CommandScope.Editor, () => GitRepository.Contains(Group.ActiveTab?.File.Directory));
         _commands.Register(CommandIds.CompareToOtherFile, "Compare to other file", CompareToOtherFile, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.GitBlame, "Git blame", GitBlame, CommandScope.Editor, FileOpen);
+        // Global, not Editor, so they also run on a diff tab (#623). No default key.
+        _commands.Register(CommandIds.CopyPermalink, "Copy permalink", () => LinkLine(open: false), CommandScope.Global, CanLinkLine);
+        _commands.Register(CommandIds.OpenOnGitHub, "Open on GitHub", () => LinkLine(open: true), CommandScope.Global, CanLinkLine);
         _commands.Register(CommandIds.ToggleFileHistory, "Show or hide file history", () => _fileHistory.Toggle(), CommandScope.Global,
             () => FileOpen() || _workbench.IsHistoryOn,
             () => _workbench.IsHistoryOn ? "Hide file history" : "Show file history");
@@ -1951,6 +1954,52 @@ public sealed class WorkbenchHost : IDisposable
         else _workbench.StatusBar.ShowMessage($"Opened {url}");
     }
 
+    private bool CanLinkLine() => Group.ActiveTab is not null || Group.ActiveDiffTab is { Diff.Rows.Count: > 0 };
+
+    /// <summary>Copies or opens a GitHub permalink to the lines under the cursor (#623).</summary>
+    private void LinkLine(bool open)
+    {
+        if (LineToLink() is not var (target, fileSystem, copier)) return;
+        var built = Task.Run(() => Permalinks.BuildAsync(_git, fileSystem, target));
+        WhenDone(built, () =>
+        {
+            var link = built.Result;
+            if (link.Url is not { } url)
+                _workbench.StatusBar.ShowMessage(link.Message);
+            else if (open && !_environment.IsOverSsh)
+            {
+                if (Browser.Open(url) is { } failure) _workbench.StatusBar.ShowMessage($"Couldn't open the link: {failure}", Severity.Error);
+                else _workbench.StatusBar.ShowMessage($"Opened {link.Message}");
+            }
+            else if ((copier?.CopyText(url) ?? CopyToClipboard(url)) is CopyOutcome.Failed(var reason))
+                _workbench.StatusBar.ShowMessage($"Couldn't copy the link: {reason}", Severity.Error);
+            else
+                _workbench.StatusBar.ShowMessage($"Copied {link.Message}{(open ? " (no browser over SSH)" : "")}");
+        });
+    }
+
+    /// <summary>The active file tab's selection or cursor line; on a diff, the current row's right side, or its left on a left-only row.</summary>
+    private (PermalinkTarget Target, IFileSystem FileSystem, EditorTab? Copier)? LineToLink()
+    {
+        if (Group.ActiveTab is { } tab)
+        {
+            var (first, last) = tab.SelectedRows ?? (tab.CursorRow, tab.CursorRow);
+            return (new PermalinkTarget(tab.File.FullName, tab.Lines, first, last), tab.File.FileSystem, tab);
+        }
+        if (Group.ActiveDiffTab is not { Diff.Rows.Count: > 0 } diff) return null;
+
+        var row = diff.Diff.Rows[Math.Clamp(diff.CurrentDiffRow, 0, diff.Diff.Rows.Count - 1)];
+        var (origin, lines, line) = row switch
+        {
+            { Right: { } right } when !diff.IsDeleted => (diff.RightOrigin, diff.RightLines, right),
+            { Left: { } left } => (diff.LeftOrigin, diff.LeftLines, left),
+            _ => (null, [], -1),
+        };
+        if (line < 0) return null;
+        origin ??= new DiffSideOrigin(diff.File.FullName);
+        return (new PermalinkTarget(origin.FilePath, lines, line, line, origin.Revision, origin.RepoPath), diff.File.FileSystem, diff.Source);
+    }
+
     internal const string TutorialsUrl = "https://www.youtube.com/playlist?list=PLGokw8JfNpWE";
 
     internal Func<string, CopyOutcome> CopyToClipboard { get; set; }
@@ -3005,8 +3054,10 @@ public sealed class WorkbenchHost : IDisposable
                 return;
             }
             var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(repoRoot, line.Path));
-            _workbench.Editor.Group.CompareRevisions(file, $"{line.ShortHash}^",
+            var diff = _workbench.Editor.Group.CompareRevisions(file, $"{line.ShortHash}^",
                 before.Result.Value is { } old ? DiffTab.SplitLines(old) : [], line.ShortHash, DiffTab.SplitLines(text));
+            diff.LeftOrigin = line.Previous is { } parent ? new DiffSideOrigin(file.FullName, parent.Hash, parent.Path) : null;
+            diff.RightOrigin = new DiffSideOrigin(file.FullName, line.Hash, line.Path);
             MoveFocus(FocusRegion.Diff);
         });
     }
@@ -3046,10 +3097,13 @@ public sealed class WorkbenchHost : IDisposable
         }
         try
         {
-            if (_workbench.Editor.Group.Compare(tab, other.Name, () => DiffTab.ReadLines(other), other.FullName) is null)
+            if (_workbench.Editor.Group.Compare(tab, other.Name, () => DiffTab.ReadLines(other), other.FullName) is not { } diff)
                 _workbench.StatusBar.ShowMessage($"No changes against {other.Name}");
             else
+            {
+                diff.LeftOrigin = new DiffSideOrigin(other.FullName);
                 FocusEditorBody();
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -3101,10 +3155,13 @@ public sealed class WorkbenchHost : IDisposable
                 group.FocusDiff(tab, revision);
                 FocusEditorBody();
             }
-            else if (group.Compare(tab, revision, () => lines) is null)
+            else if (group.Compare(tab, revision, () => lines) is not { } diff)
                 _workbench.StatusBar.ShowMessage($"No changes against {revision}");
             else
+            {
+                diff.LeftOrigin = new DiffSideOrigin(tab.File.FullName, revision);
                 FocusEditorBody();
+            }
         });
         view.FilterField.SetFocus();
 
@@ -3215,6 +3272,8 @@ public sealed class WorkbenchHost : IDisposable
             var diff = _workbench.Editor.Group.CompareRevisions(
                 fileSystem.FileInfo.New(spot.Path), $"{commit.ShortHash}^", left, commit.ShortHash, right);
             diff.History = spot;
+            diff.LeftOrigin = commit.ParentPath is { } parent ? new DiffSideOrigin(spot.Path, $"{commit.Hash}^", parent) : null;
+            diff.RightOrigin = new DiffSideOrigin(spot.Path, commit.Hash, commit.Path);
             if (_workbench.History.FilePath == spot.Path) _workbench.History.Select(commit);
             then(diff);
         });
@@ -3404,6 +3463,7 @@ public sealed class WorkbenchHost : IDisposable
             if (diff is not null)
             {
                 diff.Review = new ReviewSpot(review.MergeBase, index, count, change.Path);
+                diff.LeftOrigin = new DiffSideOrigin(file.FullName, review.MergeBase, basePath);
                 diff.ShowThreads(review.ThreadsOn(change.Path));
                 OpenDrafts(review);
                 diff.ShowDrafts(Drafts.On(change.Path));

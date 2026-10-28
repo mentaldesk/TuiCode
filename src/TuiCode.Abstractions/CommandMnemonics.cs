@@ -108,6 +108,8 @@ public static class CommandMnemonics
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
             [CommandIds.GitBlame] = "gb",
+            [CommandIds.CopyPermalink] = "cp",
+            [CommandIds.OpenOnGitHub] = "og",
             [CommandIds.ToggleFileHistory] = "gh",
             [CommandIds.ShowExplorer] = "se",
             [CommandIds.MoveLinesUp] = "mu",

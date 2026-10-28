@@ -175,6 +175,12 @@ public sealed class DiffTab : FrameView
     /// <summary>Which commit of a file's history this diff shows (#534); null when it was opened any other way.</summary>
     public HistorySpot? History { get; set; }
 
+    /// <summary>Where the left side's text comes from (#623); by default the diff's file on disk.</summary>
+    public DiffSideOrigin? LeftOrigin { get; set; }
+
+    /// <summary>Where the right side's text comes from (#623); by default the diff's file, as its buffer.</summary>
+    public DiffSideOrigin? RightOrigin { get; set; }
+
     /// <summary>The version on the left; for a deleted file (#182) it's what restoring it brings back (#247).</summary>
     public IReadOnlyList<string> LeftLines => _left;
 

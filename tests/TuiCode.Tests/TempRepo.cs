@@ -31,7 +31,7 @@ internal sealed class TempRepo : IDisposable
             "commit", "-q", "-m", message);
     }
 
-    public void Git(params string[] arguments)
+    public string Git(params string[] arguments)
     {
         var info = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true };
         info.ArgumentList.Add("-C");
@@ -39,9 +39,11 @@ internal sealed class TempRepo : IDisposable
         foreach (var argument in arguments)
             info.ArgumentList.Add(argument);
         using var process = Process.Start(info)!;
+        var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEnd();
         process.WaitForExit();
         Assert.True(process.ExitCode == 0, error);
+        return output.Result.Trim();
     }
 
     public void Dispose()

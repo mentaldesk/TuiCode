@@ -637,6 +637,76 @@ public class GitCliTests
     }
 
     [Fact]
+    public async Task The_newest_pushed_commit_is_HEAD_once_a_remote_branch_has_it_else_its_newest_pushed_ancestor()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        repo.Git("update-ref", "refs/remotes/origin/main", "HEAD");
+        var pushed = repo.Git("rev-parse", "HEAD");
+        repo.Commit("a.cs", "two\n", "Second");
+        repo.Commit("a.cs", "three\n", "Third");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var ahead = (await git.GetNewestPushedCommitAsync(repo.Path, "HEAD", ct)).Value;
+        repo.Git("update-ref", "refs/remotes/origin/main", "HEAD");
+        var caughtUp = (await git.GetNewestPushedCommitAsync(repo.Path, "HEAD", ct)).Value;
+        var parent = (await git.GetNewestPushedCommitAsync(repo.Path, "HEAD^", ct)).Value;
+
+        Assert.Equal(new GitPushedCommit(pushed, IsRevision: false), ahead);
+        Assert.Equal(new GitPushedCommit(repo.Git("rev-parse", "HEAD"), IsRevision: true), caughtUp);
+        Assert.Equal(new GitPushedCommit(repo.Git("rev-parse", "HEAD^"), IsRevision: true), parent);
+    }
+
+    [Fact]
+    public async Task Nothing_is_pushed_without_remote_branches_and_an_unknown_revision_fails()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var none = await git.GetNewestPushedCommitAsync(repo.Path, "HEAD", ct);
+        var unknown = await git.GetNewestPushedCommitAsync(repo.Path, "no-such-branch", ct);
+
+        Assert.True(none.Succeeded);
+        Assert.Null(none.Value);
+        Assert.Equal("Unknown revision 'no-such-branch'", unknown.Error);
+    }
+
+    [Fact]
+    public async Task The_link_remote_is_the_upstream_s_else_origin_else_the_only_one()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var none = (await git.GetLinkRemoteUrlAsync(repo.Path, ct)).Value;
+        repo.Git("remote", "add", "fork", "git@github.com:me/r.git");
+        var only = (await git.GetLinkRemoteUrlAsync(repo.Path, ct)).Value;
+        repo.Git("remote", "add", "origin", "https://github.com/o/r.git");
+        var origin = (await git.GetLinkRemoteUrlAsync(repo.Path, ct)).Value;
+        repo.Git("config", "branch.main.remote", "fork");
+        var upstream = (await git.GetLinkRemoteUrlAsync(repo.Path, ct)).Value;
+
+        Assert.Null(none);
+        Assert.Equal("git@github.com:me/r.git", only);
+        Assert.Equal("https://github.com/o/r.git", origin);
+        Assert.Equal("git@github.com:me/r.git", upstream);
+    }
+
+    [Theory]
+    [InlineData(new[] { "a", "b" }, null, null)]
+    [InlineData(new[] { "a", "origin" }, null, "origin")]
+    [InlineData(new[] { "a", "origin" }, "a", "a")]
+    [InlineData(new[] { "a", "origin" }, "gone", "origin")]
+    [InlineData(new[] { "a" }, null, "a")]
+    [InlineData(new string[0], null, null)]
+    public void ChooseRemote_takes_the_upstream_else_origin_else_the_only_one(string[] remotes, string? upstream, string? chosen) =>
+        Assert.Equal(chosen, GitCli.ChooseRemote(remotes, upstream));
+
+    [Fact]
     public async Task Blame_outside_a_repo_fails()
     {
         using var dir = new TempRepo(init: false);
