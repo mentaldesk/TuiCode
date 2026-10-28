@@ -2,6 +2,7 @@ using Terminal.Gui.ViewBase;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
+using TuiCode.Search;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Find;
 using TuiCode.Workbench.Help;
@@ -325,6 +326,141 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         Assert.Equal(SidebarTab.Find, workbench.Sidebar.ActiveTab);
         Assert.False(search.ReplaceVisible);
         Assert.True(search.InputsHaveFocus);
+    }
+
+    [Fact]
+    public async Task Esc_in_the_find_box_stops_a_running_search_and_editing_the_query_starts_afresh()
+    {
+        foreach (var name in new[] { "a", "b", "c" })
+            _fs.AddFile($"/work/{name}.txt", new MockFileData("needle"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var search = workbench.Sidebar.Search;
+        var buffers = new GatedBuffers(_fs.Path.GetFullPath("/work/c.txt"));
+        search.OpenBuffers = buffers;
+        WorkspaceSearchResult? shown = null;
+        var whileFinding = "";
+        var afterEsc = (Status: "", Query: "", Searching: true, Inputs: false, SameResults: false);
+
+        try
+        {
+            await HostSteps.Run(host,
+                () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+                () => { foreach (var c in "needl") host.App.InjectKey(new Key(c)); },
+                () => search.Result.MatchCount == 3,
+                () => { shown = search.Result; buffers.Armed = true; host.App.InjectKey(new Key('e')); },
+                () => search.StatusText.StartsWith("Finding… 2 files", StringComparison.Ordinal),
+                () => { whileFinding = search.StatusText; host.App.InjectKey(Key.Esc); },
+                () =>
+                {
+                    afterEsc = (search.StatusText, search.Query, search.IsSearching, search.InputsHaveFocus, ReferenceEquals(shown, search.Result));
+                    buffers.Release();
+                    host.App.InjectKey(Key.Backspace);
+                },
+                () => search.StatusText == "3 in 3 files (not a git repo)");
+        }
+        finally
+        {
+            buffers.Release();
+        }
+
+        Assert.Equal("Finding… 2 files · Esc stop", whileFinding);
+        Assert.Equal(("Stopped · 2 files searched", "needle", false, true, true), afterEsc);
+    }
+
+    [Fact]
+    public async Task Esc_in_the_find_box_with_no_search_running_still_goes_back_to_the_editor()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("needle\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var search = workbench.Sidebar.Search;
+        EditorTab? tab = null;
+
+        await HostSteps.Run(host,
+            () => { tab = workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")); },
+            () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+            () => { foreach (var c in "needle") host.App.InjectKey(new Key(c)); },
+            () => search.Result.MatchCount == 1 && !search.IsSearching,
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.True(tab!.ContentHasFocus, "Esc should still hand the keys to the editor");
+        Assert.Equal("1 in 1 file (not a git repo)", search.StatusText);
+    }
+
+    // #629: laying out thousands of results from minified files used to hold the UI thread for seconds.
+    [Fact]
+    public async Task Thousands_of_long_line_matches_never_hold_up_the_keys()
+    {
+        var line = string.Concat(Enumerable.Repeat("x.exec(a,b);return ", 200));
+        var content = string.Join('\n', Enumerable.Repeat(line, 100));
+        for (var i = 0; i < 100; i++)
+            _fs.AddFile($"/work/d{i % 10}/f{i}.min.js", new MockFileData(content));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var search = workbench.Sidebar.Search;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var last = TimeSpan.Zero;
+        var longest = TimeSpan.Zero;
+        var timing = false;
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+            () =>
+            {
+                host.App.Iteration += (_, _) =>
+                {
+                    if (!timing) return;
+                    var now = clock.Elapsed;
+                    if (now - last > longest) longest = now - last;
+                    last = now;
+                };
+                timing = true;
+                last = clock.Elapsed;
+                host.App.InjectKey(new Key('e'));
+            },
+            () => search.Result.MatchCount > 0 && !search.IsSearching,
+            () => host.App.InjectKey(new Key('x')),
+            () => search.Query == "ex" && search.Result.MatchCount > 0 && !search.IsSearching,
+            () => host.App.InjectKey(Key.Enter),
+            () => search.Results.HasFocus,
+            () => host.App.InjectKey(Key.PageDown),
+            () => { });
+
+        Assert.Equal(WorkspaceSearch.DefaultMaxMatches, search.Result.MatchCount);
+        Assert.True(longest < TimeSpan.FromMilliseconds(500), $"the UI thread was held for {longest.TotalMilliseconds:F0} ms");
+    }
+
+    private sealed class GatedBuffers(string gatedPath) : IOpenBuffers
+    {
+        private readonly ManualResetEventSlim _gate = new();
+        private readonly string _gatedPath = gatedPath;
+
+        public volatile bool Armed;
+
+        public void Release() => _gate.Set();
+
+        public IReadOnlyDictionary<string, string> Snapshot() => new Gated(this);
+
+        public int? ReplaceAll(string fullPath, string query, string replacement, MatchOptions options) => null;
+
+        private sealed class Gated(GatedBuffers owner) : IReadOnlyDictionary<string, string>
+        {
+            public bool TryGetValue(string key, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out string value)
+            {
+                if (owner.Armed && key == owner._gatedPath) owner._gate.Wait();
+                value = null;
+                return false;
+            }
+
+            public string this[string key] => throw new KeyNotFoundException();
+            public IEnumerable<string> Keys => [];
+            public IEnumerable<string> Values => [];
+            public int Count => 0;
+            public bool ContainsKey(string key) => false;
+            public IEnumerator<KeyValuePair<string, string>> GetEnumerator() => Enumerable.Empty<KeyValuePair<string, string>>().GetEnumerator();
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        }
     }
 
     private Workbench.Workbench BuildWorkbench()

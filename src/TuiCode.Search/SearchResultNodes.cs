@@ -21,19 +21,31 @@ public sealed class FileNode(FileSearchResult result) : SearchNode
 public sealed class MatchNode(IFileInfo file, LineMatch match) : SearchNode
 {
     private const int PreviewLeadChars = 12;
+    private const int PreviewMaxChars = 80;
+
+    private string? _display;
 
     public IFileInfo File { get; } = file;
     public LineMatch Line { get; } = match;
 
-    // "12: …text around the match" — trimmed so the hit stays visible in a narrow sidebar.
-    public override string ToString()
+    // Cached: TG measures every row whenever the tree changes.
+    public override string ToString() => _display ??= $"{Line.Match.Row + 1}: {Preview(Line.LineText, Line.Match)}";
+
+    /// <summary>The text around <paramref name="match"/>, cut to a short row so a minified line stays cheap to show.</summary>
+    internal static string Preview(string text, TextMatch match)
     {
-        var text = Line.LineText;
-        var start = Math.Max(0, Line.Match.Column - PreviewLeadChars);
-        var leading = text.Length - text.TrimStart().Length;
-        if (start <= leading) start = leading;
-        var preview = text[start..].TrimEnd().Replace('\t', ' ');
-        return $"{Line.Match.Row + 1}: {(start > leading ? "…" : "")}{preview}";
+        var leading = 0;
+        while (leading < text.Length && char.IsWhiteSpace(text[leading])) leading++;
+        var trailing = text.Length;
+        while (trailing > leading && char.IsWhiteSpace(text[trailing - 1])) trailing--;
+
+        var start = Math.Max(leading, match.Column - PreviewLeadChars);
+        var end = Math.Min(trailing, Math.Max(start + PreviewMaxChars, match.Column + match.Length));
+        if (start > leading && char.IsLowSurrogate(text[start])) start--;
+        if (end < trailing && char.IsLowSurrogate(text[end])) end++;
+
+        var preview = text[start..end].Replace('\t', ' ');
+        return $"{(start > leading ? "…" : "")}{preview}{(end < trailing ? "…" : "")}";
     }
 }
 

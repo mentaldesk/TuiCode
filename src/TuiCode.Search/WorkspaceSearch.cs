@@ -42,6 +42,7 @@ public static class WorkspaceSearch
     private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
 
     /// <param name="gitFiles">The files under <paramref name="root"/> git lists, relative to it, or null to walk the folder instead.</param>
+    /// <param name="fileSearched">Called after each file is searched, on the searching thread.</param>
     public static WorkspaceSearchResult Search(
         IDirectoryInfo root,
         string query,
@@ -49,6 +50,7 @@ public static class WorkspaceSearch
         IReadOnlyDictionary<string, string>? openBuffers = null,
         IReadOnlyList<string>? gitFiles = null,
         int maxMatches = DefaultMaxMatches,
+        Action? fileSearched = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(query)) return WorkspaceSearchResult.Empty;
@@ -64,10 +66,9 @@ public static class WorkspaceSearch
                 content = buffer;
             else if (TryRead(file, out var text, out _))
                 content = text;
-            if (content is null) continue;
-
-            var lines = TextSearch.SplitLines(content);
+            var lines = content is null ? [] : TextSearch.SplitLines(content);
             var matches = TextSearch.FindAll(lines, query, options);
+            fileSearched?.Invoke();
             if (matches.Count == 0) continue;
 
             var take = Math.Min(matches.Count, maxMatches - total);

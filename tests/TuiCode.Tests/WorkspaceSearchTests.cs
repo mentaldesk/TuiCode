@@ -222,6 +222,47 @@ public class WorkspaceSearchTests
         Assert.Equal("5: …............needle", node.ToString());
     }
 
+    [Theory]
+    [InlineData(5, ".....needle...")]
+    [InlineData(3_000, "…............needle" + "...")]
+    [InlineData(5_994, "…............needle")]
+    public void Match_preview_cuts_a_long_line_to_a_short_row_around_the_hit(int column, string expectedStart)
+    {
+        var file = new MockFileSystem().FileInfo.New("/work/a.min.js");
+        var line = new string('.', column) + "needle" + new string('.', 6_000 - column - 6);
+
+        var preview = new MatchNode(file, new LineMatch(new TuiCode.Abstractions.TextMatch(0, column, 6), line)).ToString();
+
+        Assert.StartsWith("1: " + expectedStart, preview);
+        Assert.True(preview.Length < 100, preview);
+        Assert.Equal(column + 6 < line.Length, preview.EndsWith('…'));
+    }
+
+    [Fact]
+    public void Match_preview_leaves_a_short_line_as_it_is()
+    {
+        var file = new MockFileSystem().FileInfo.New("/work/a.txt");
+
+        var node = new MatchNode(file, new LineMatch(new TuiCode.Abstractions.TextMatch(2, 6, 6), "  say needle here  "));
+
+        Assert.Equal("3: say needle here", node.ToString());
+    }
+
+    [Fact]
+    public void Search_reports_each_file_it_searches()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile("/work/a.txt", new MockFileData("needle"));
+        fs.AddFile("/work/b.txt", new MockFileData("nothing"));
+        fs.AddFile("/work/c.bin", new MockFileData([0, 1, 2]));
+        var searched = 0;
+
+        WorkspaceSearch.Search(fs.DirectoryInfo.New("/work"), "needle", fileSearched: () => searched++,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, searched);
+    }
+
     private sealed class FakeOpenBuffers(string openPath) : IOpenBuffers
     {
         public (string Query, string Replacement)? Replaced { get; private set; }
