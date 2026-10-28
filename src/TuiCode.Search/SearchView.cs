@@ -21,13 +21,21 @@ public sealed class SearchView : View
     private readonly FindOption _ignoredFiles;
     private readonly VerbatimLabel _status;
     private readonly TreeView<SearchNode> _results;
-    private CancellationTokenSource? _searchCts;
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
+
+    private Running? _running;
     private (Request Request, string Replacement, int Matches)? _pendingReplace;
     // What Result was computed for — lags the inputs while a background search is in flight.
     private Request _resultFor = new(string.Empty, default, false);
     private bool _gitFailed;
 
     private readonly record struct Request(string Query, MatchOptions Options, bool IncludeIgnored);
+
+    private sealed class Running
+    {
+        public readonly CancellationTokenSource Cts = new();
+        public int FilesSearched;
+    }
 
     public event EventHandler<(IFileInfo File, TextMatch Match)>? MatchActivated;
 
@@ -47,6 +55,10 @@ public sealed class SearchView : View
     public bool InputsHaveFocus => _query.HasFocus || _replacement.HasFocus;
     public bool ReplacementHasFocus => _replacement.HasFocus;
     public string StatusText => _status.Text;
+    public bool IsSearching => _running is not null;
+
+    /// <summary>The key that stops a running search, shown while it runs; null shows none.</summary>
+    public string? StopKey { get; set; }
 
     public MatchOptions Options => new(IsChecked(_matchCase), IsChecked(_wholeWord));
     public bool IncludeIgnored => IsChecked(_ignoredFiles);
@@ -178,8 +190,8 @@ public sealed class SearchView : View
     /// <summary>Re-run the current query (e.g. after files changed on disk or a folder was opened).</summary>
     public void RunSearch()
     {
-        _searchCts?.Cancel();
-        _searchCts = null;
+        _running?.Cts.Cancel();
+        _running = null;
 
         var search = new Request(Query, Options, IncludeIgnored);
         var root = RootProvider?.Invoke();
@@ -194,28 +206,50 @@ public sealed class SearchView : View
         var git = InRepository(root) ? Git : null;
         if (App is not { } app)
         {
-            Apply(root, search, Task.Run(() => FindAsync(root, search, buffers, git, CancellationToken.None)).GetAwaiter().GetResult());
+            Apply(root, search, Task.Run(() => FindAsync(root, search, buffers, git, new Running())).GetAwaiter().GetResult());
             return;
         }
 
-        var cts = _searchCts = new CancellationTokenSource();
-        _status.Text = "Finding…";
-        Task.Run(() => FindAsync(root, search, buffers, git, cts.Token), cts.Token)
-            .ContinueWith(t =>
+        var run = _running = new Running();
+        ShowProgress(run);
+        app.AddTimeout(ProgressInterval, () =>
+        {
+            if (!ReferenceEquals(_running, run)) return false;
+            ShowProgress(run);
+            return true;
+        });
+        Task.Run(() => FindAsync(root, search, buffers, git, run), run.Cts.Token)
+            .ContinueWith(t => app.Invoke(() =>
             {
-                if (!t.IsCompletedSuccessfully) return;
-                app.Invoke(() =>
-                {
-                    if (ReferenceEquals(_searchCts, cts)) Apply(root, search, t.Result);
-                });
-            }, TaskScheduler.Default);
+                if (!ReferenceEquals(_running, run)) return;
+                _running = null;
+                if (t.IsCompletedSuccessfully) Apply(root, search, t.Result);
+            }), TaskScheduler.Default);
+    }
+
+    /// <summary>Stop the running search, leaving the query and the results already shown.</summary>
+    public void StopSearch()
+    {
+        if (_running is not { } run) return;
+        run.Cts.Cancel();
+        _running = null;
+        var files = Volatile.Read(ref run.FilesSearched);
+        _status.Text = $"Stopped · {files:N0} {Plural.Of(files, "file")} searched";
+    }
+
+    private void ShowProgress(Running run)
+    {
+        var files = Volatile.Read(ref run.FilesSearched);
+        _status.Text = $"Finding… {files:N0} {Plural.Of(files, "file")}" + (StopKey is { } key ? $" · {key} stop" : string.Empty);
     }
 
     private static async Task<WorkspaceSearchResult> FindAsync(
-        IDirectoryInfo root, Request search, IReadOnlyDictionary<string, string>? buffers, IGitCli? git, CancellationToken cancellationToken)
+        IDirectoryInfo root, Request search, IReadOnlyDictionary<string, string>? buffers, IGitCli? git, Running run)
     {
-        var files = git is null ? null : (await git.ListFilesAsync(root.FullName, search.IncludeIgnored, cancellationToken)).Value;
-        return WorkspaceSearch.Search(root, search.Query, search.Options, buffers, files, cancellationToken: cancellationToken);
+        var token = run.Cts.Token;
+        var files = git is null ? null : (await git.ListFilesAsync(root.FullName, search.IncludeIgnored, token)).Value;
+        return WorkspaceSearch.Search(root, search.Query, search.Options, buffers, files,
+            fileSearched: () => Interlocked.Increment(ref run.FilesSearched), cancellationToken: token);
     }
 
     /// <summary>
@@ -295,9 +329,9 @@ public sealed class SearchView : View
     {
         if (disposing)
         {
-            // Nulling the token source also stops a search that already finished from applying to a dead view.
-            _searchCts?.Cancel();
-            _searchCts = null;
+            // Nulling the run also stops a search that already finished from applying to a dead view.
+            _running?.Cts.Cancel();
+            _running = null;
         }
         base.Dispose(disposing);
     }

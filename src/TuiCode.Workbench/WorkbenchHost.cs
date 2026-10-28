@@ -719,6 +719,8 @@ public sealed class WorkbenchHost : IDisposable
             CommandScope.Find, () => search.InputsHaveFocus);
         _commands.Register(CommandIds.SearchReplaceAll, "Replace all globally",
             () => { if (search.ReplaceVisible) search.RequestReplaceAll(); }, CommandScope.Find, () => search.InputsHaveFocus);
+        _commands.Register(CommandIds.SearchStop, "Stop finding", search.StopSearch,
+            CommandScope.Find, () => search.InputsHaveFocus && search.IsSearching);
         // Global, gated on a find box having the keys: the find bar's keys are in the Editor scope, the pane's in Find.
         bool InFindBox() => _focus.Region is FocusRegion.FindBar or FocusRegion.Find;
         bool InFindPane() => _focus.Region is FocusRegion.Find;
@@ -854,6 +856,7 @@ public sealed class WorkbenchHost : IDisposable
 
         _menu.Refresh();
         _workbench.StatusBar.SetHelpKey(KeyOf(CommandIds.ShowHelp));
+        _workbench.Sidebar.Search.StopKey = KeyOf(CommandIds.SearchStop);
     }
 
     private KeyColumn? PlaceHelp()
@@ -1139,6 +1142,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Tab", CommandIds.SearchSwitchField);
         keybindings.Bind("Shift+Tab", CommandIds.SearchSwitchField);
         keybindings.Bind("Ctrl+Enter", CommandIds.SearchReplaceAll);
+        keybindings.Bind("Esc", CommandIds.SearchStop);
     }
 
     // Flip visibility unconditionally (works from every entry point — see #85), then settle focus
