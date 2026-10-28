@@ -16,6 +16,7 @@ internal sealed class AssistantForm
             ? Custom
             : Math.Max(AgentPresets.All.ToList().FindIndex(a => a.Id == current.Agent), 0);
         Command = current.Command;
+        ToolCallsInFull = current.ToolCallsInFull;
     }
 
     public IReadOnlyList<string> Options { get; }
@@ -27,9 +28,11 @@ internal sealed class AssistantForm
     /// <summary>The custom command line.</summary>
     public string Command { get; set; }
 
+    public bool ToolCallsInFull { get; set; }
+
     public AssistantSetting Setting => Selected == Custom
-        ? new AssistantSetting(AssistantSetting.Custom, Command.Trim())
-        : new AssistantSetting(AgentPresets.All[Selected].Id);
+        ? new AssistantSetting(AssistantSetting.Custom, Command.Trim(), ToolCallsInFull)
+        : new AssistantSetting(AgentPresets.All[Selected].Id, ToolCallsInFull: ToolCallsInFull);
 
     /// <summary>A preset's row beside its name: whether its program is on <c>PATH</c>, and the command it runs.</summary>
     public string Row(int option)

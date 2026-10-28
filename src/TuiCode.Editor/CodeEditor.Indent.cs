@@ -17,7 +17,7 @@ internal sealed partial class CodeEditor
     /// <summary>Indents every line a multi-line selection touches, or else inserts an indent at every caret, as one undo step.</summary>
     public bool IndentLines()
     {
-        if (ReadOnly) return true;
+        if (Refused()) return true;
         var carets = Carets;
         if (carets.Any(c => c.Start.Y != c.End.Y))
             ShiftLines(carets, outdent: false);
@@ -31,7 +31,7 @@ internal sealed partial class CodeEditor
     /// <summary>Outdents every line under a caret or selection by up to one level, as one undo step.</summary>
     public bool OutdentLines()
     {
-        if (ReadOnly) return true;
+        if (Refused()) return true;
         ShiftLines(Carets, outdent: true);
         return true;
     }
@@ -112,7 +112,7 @@ internal sealed partial class CodeEditor
 
     private void NewLineKeepingIndent()
     {
-        if (ReadOnly) return;
+        if (Refused()) return;
         if (HasSelection) ReplaceSelection("");
 
         var row = CurrentRow;

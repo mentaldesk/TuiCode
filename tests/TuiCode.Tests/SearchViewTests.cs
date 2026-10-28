@@ -137,6 +137,25 @@ public class SearchViewTests
     }
 
     [Fact]
+    public void A_match_in_a_long_line_shows_a_short_row_and_opens_at_its_place_in_the_full_line()
+    {
+        var line = new string('x', 4_000) + "needle" + new string('y', 4_000);
+        var (view, _) = Build(("/work/a.min.js", "one\n" + line));
+        view.Query = "needle";
+        (IFileInfo File, TuiCode.Abstractions.TextMatch Match)? hit = null;
+        view.MatchActivated += (_, e) => hit = e;
+
+        var fileNode = Assert.IsType<FileNode>(Assert.Single(view.Results.Objects!));
+        var match = fileNode.Children[0];
+        view.Results.SelectedObject = match;
+        view.Results.NewKeyDownEvent(Key.Enter);
+
+        Assert.StartsWith("2: …xxxxxxxxxxxxneedleyyy", match.ToString());
+        Assert.True(match.ToString().Length < 100);
+        Assert.Equal(new TuiCode.Abstractions.TextMatch(1, 4_000, 6), hit!.Value.Match);
+    }
+
+    [Fact]
     public void ReplaceAll_needs_a_second_request_to_confirm()
     {
         var (view, fs) = Build(("/work/a.txt", "foo"), ("/work/b.txt", "foo foo"));

@@ -3,6 +3,7 @@ using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
+using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Git;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
@@ -42,7 +43,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.C),
             () => host.App.InjectKey(Key.T),
             () => host.App.InjectKey(Key.R),
-            () => (view = Picker(workbench)) is { Loaded: true },
+            () => (view = Picker(workbench)) is { State: LoadState.Loaded },
             () => { rows = view!.VisibleItems; },
             () => host.App.InjectKey(Key.Esc));
 
@@ -62,7 +63,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
             () => Picker(workbench) is not null,
-            () => { selected = Picker(workbench)!.SelectedItem; },
+            () => { selected = Picker(workbench)!.SelectedIndex; },
             () => host.App.InjectKey(Key.Enter),
             () => workbench.Editor.Group.ActiveDiffTab is not null);
 
@@ -101,7 +102,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => Type(host, "HEAD"),
             () => Picker(workbench)!.VisibleItems.SequenceEqual(["HEAD", "feature/header"]),
             () => host.App.InjectKey(Key.Enter),
@@ -120,7 +121,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => Type(host, "HEAD~3"),
             () => Picker(workbench)!.VisibleItems.Count == 0,
             () => host.App.InjectKey(Key.Enter),
@@ -141,7 +142,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => Type(host, "bravo"),
             () => Picker(workbench)!.VisibleItems.SequenceEqual(["3f2a9c1  Add bravo"]),
             () => host.App.InjectKey(Key.Enter),
@@ -161,12 +162,12 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.CursorUp),
-            () => Picker(workbench)!.SelectedItem == 2,
+            () => Picker(workbench)!.SelectedIndex == 2,
             () =>
             {
                 _git.Files["origin/main"] = "alpha\nzulu\n";
@@ -184,12 +185,12 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var selected = new List<int?>();
-        void Record() => selected.Add(Picker(workbench)!.SelectedItem);
+        void Record() => selected.Add(Picker(workbench)!.SelectedIndex);
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.PageDown),
             Record,
             () => host.App.InjectKey(Key.PageDown),
@@ -212,11 +213,11 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => Type(host, "mian~"),
             () => host.App.InjectKey(Key.Enter),
-            () => (error = Picker(workbench)!.Error).Length > 0,
-            () => { filter = Picker(workbench)!.Filter; },
+            () => (error = Picker(workbench)!.Alert.Message).Length > 0,
+            () => { filter = Picker(workbench)!.FilterField.Text; },
             () => host.App.InjectKey(Key.Esc),
             () => host.App.InjectKey(Key.Esc));
 
@@ -236,10 +237,10 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => Type(host, "v1"),
             () => host.App.InjectKey(Key.Enter),
-            () => (error = Picker(workbench)!.Error).Length > 0,
+            () => (error = Picker(workbench)!.Alert.Message).Length > 0,
             () => host.App.InjectKey(Key.Esc),
             () => host.App.InjectKey(Key.Esc));
 
@@ -257,12 +258,12 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is not null,
             () => { group.OpenOrFocus(group.Tabs[0].File); },
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is not null);
 
@@ -285,11 +286,11 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is { IsFocused: true },
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () =>
             {
                 if (pick == "row") host.App.InjectKey(Key.CursorDown);
@@ -319,17 +320,17 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is not null,
             () => { group.OpenOrFocus(group.Tabs[0].File); },
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.CursorDown),
             () => host.App.InjectKey(Key.Enter),
             () => group.ActiveDiffTab is { Title: "a.txt ↔ main", IsFocused: true },
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench) is null,
             () =>
@@ -353,7 +354,7 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Enter),
             () => Picker(workbench) is null);
 
@@ -368,7 +369,8 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         _git.RefsGate = gate.Task;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        IReadOnlyList<string> rowsBeforeLoad = [];
+        IReadOnlyList<string> rowsBeforeLoad = ["unset"];
+        var pickBeforeLoad = true;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -377,23 +379,25 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () =>
             {
                 rowsBeforeLoad = Picker(workbench)!.VisibleItems;
+                pickBeforeLoad = Picker(workbench)!.PickButton.Enabled;
                 gate.SetResult();
             },
-            () => Picker(workbench)!.VisibleItems.Count == 5,
+            () => Picker(workbench)!.VisibleItems.Count == 5 && Picker(workbench)!.PickButton.Enabled,
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal(["HEAD"], rowsBeforeLoad);
+        Assert.Empty(rowsBeforeLoad);
+        Assert.False(pickBeforeLoad);
     }
 
     [Fact]
-    public async Task While_the_list_loads_it_says_so_and_the_hint_row_keeps_its_keys()
+    public async Task While_the_list_loads_it_says_so_and_the_buttons_keep_their_keys()
     {
         var gate = new TaskCompletionSource();
         _git.RefsGate = gate.Task;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var state = LoadState.Loaded;
-        var hint = "";
+        IReadOnlyList<string> buttons = [];
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -401,15 +405,15 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
             () => Picker(workbench) is not null,
             () =>
             {
-                state = Picker(workbench)!.State.State;
-                hint = Picker(workbench)!.SubViews.OfType<Terminal.Gui.Views.Label>().Last().Text;
+                state = Picker(workbench)!.State;
+                buttons = [.. Picker(workbench)!.SubViews.OfType<Terminal.Gui.Views.Button>().Select(b => b.Text.Trim())];
                 gate.SetResult();
             },
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal(LoadState.Loading, state);
-        Assert.Equal("Type to filter · Up/Down/PgUp/PgDn · Enter compare · Esc cancel", hint);
+        Assert.Equal(["Enter Compare", "Esc Cancel"], buttons);
         Assert.DoesNotContain("Loading", workbench.StatusBar.DisplayedText);
     }
 
@@ -424,14 +428,14 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench)?.State.State == LoadState.Failed,
+            () => Picker(workbench)?.State == LoadState.Failed,
             () =>
             {
-                says = Picker(workbench)!.State.Says;
+                says = Picker(workbench)!.Says();
                 _git.Missing = false;
                 host.App.InjectKey(Key.R);
             },
-            () => Picker(workbench) is { Loaded: true },
+            () => Picker(workbench) is { State: LoadState.Loaded },
             () => Assert.Equal(5, Picker(workbench)!.VisibleItems.Count),
             () => host.App.InjectKey(Key.Esc));
 
@@ -450,13 +454,13 @@ public class CompareToRevisionHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => commands.TryExecute(CommandIds.CompareToRevision),
-            () => Picker(workbench)?.State.State == LoadState.Empty,
+            () => Picker(workbench)?.State == LoadState.Empty,
             () =>
             {
-                says = Picker(workbench)!.State.Says;
+                says = Picker(workbench)!.Says();
                 host.App.InjectKey(Key.R);
             },
-            () => Assert.Equal(LoadState.Empty, Picker(workbench)!.State.State),
+            () => Assert.Equal(LoadState.Empty, Picker(workbench)!.State),
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal("a.txt isn't in a git repository", says);

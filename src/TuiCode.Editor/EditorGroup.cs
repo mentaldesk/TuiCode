@@ -13,6 +13,7 @@ public sealed class EditorGroup : PaneTabs
 
     public event EventHandler<IFileInfo>? FileSaved;
     public event EventHandler<CopyOutcome>? Copied;
+    public event EventHandler<EditorTab>? EditRefused;
     public event EventHandler<EditorTab?>? ActiveTabChanged;
 
     /// <summary>Raised whenever tabs are opened, closed or moved, so what to watch can be re-read (#268).</summary>
@@ -181,12 +182,14 @@ public sealed class EditorGroup : PaneTabs
         EventHandler saved = (_, _) => FileSaved?.Invoke(this, tab.File);
         EventHandler baseline = (_, _) => BaselineReset?.Invoke(this, tab);
         EventHandler<CopyOutcome> copied = (_, outcome) => Copied?.Invoke(this, outcome);
+        EventHandler refused = (_, _) => EditRefused?.Invoke(this, tab);
         EventHandler<(int Row, int Column)> moved = (_, p) => CursorMoved?.Invoke(this, (tab.File, p.Row, p.Column));
         EventHandler grammar = (_, _) => GrammarChanged?.Invoke(this, tab);
         EventHandler<int> pinned = (_, line) => PinnedLineClicked?.Invoke(this, (tab, line));
         tab.Saved += saved;
         tab.BaselineReset += baseline;
         tab.Copied += copied;
+        tab.EditRefused += refused;
         tab.CursorMoved += moved;
         tab.GrammarChanged += grammar;
         tab.PinnedLineClicked += pinned;
@@ -195,6 +198,7 @@ public sealed class EditorGroup : PaneTabs
             tab.Saved -= saved;
             tab.BaselineReset -= baseline;
             tab.Copied -= copied;
+            tab.EditRefused -= refused;
             tab.CursorMoved -= moved;
             tab.GrammarChanged -= grammar;
             tab.PinnedLineClicked -= pinned;

@@ -15,6 +15,9 @@ public sealed record WorkspaceState(IReadOnlyList<string> Files, string? ActiveF
 
     /// <summary>Whether the History panel was on (#534).</summary>
     public bool History { get; init; }
+
+    /// <summary>Whether the AI assistance sidebar was open (#619).</summary>
+    public bool Assistant { get; init; }
 }
 
 public sealed record WorkspaceGroup(IReadOnlyList<string> Files, string? ActiveFile);
@@ -57,6 +60,7 @@ public sealed class WorkspaceStateStore
                     Second = second is null ? null : new WorkspaceGroup(Files(second), second["Active"]?.GetValue<string>()),
                     SecondFocused = second?["Focused"]?.GetValue<bool>() ?? false,
                     History = obj["History"]?.GetValue<bool>() ?? false,
+                    Assistant = obj["Assistant"]?.GetValue<bool>() ?? false,
                 };
             }
             catch (InvalidOperationException)
@@ -87,6 +91,8 @@ public sealed class WorkspaceStateStore
             entry["Second"] = new JsonObject { ["Files"] = ToArray(second.Files), ["Active"] = second.ActiveFile, ["Focused"] = state.SecondFocused };
         if (state.History)
             entry["History"] = true;
+        if (state.Assistant)
+            entry["Assistant"] = true;
 
         var root = new JsonArray { (JsonNode)entry };
         foreach (var obj in ReadEntries().Where(o => FolderOf(o) is { } f && f != folder).Take(MaxFolders - 1))

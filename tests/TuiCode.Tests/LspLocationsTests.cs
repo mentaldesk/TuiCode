@@ -50,6 +50,16 @@ public class LspLocationsTests
         Assert.Empty(LspLocations.Parse(JsonNode.Parse(json)));
 
     [Fact]
+    public void A_decompiled_library_type_is_kept_as_csharp_ls_named_it()
+    {
+        const string uri = "csharp:/work/App.csproj/decompiled/System.Console.cs";
+        var result = Parse("""[{"uri":"URI_X","range":{"start":{"line":9,"character":20},"end":{"line":9,"character":27}}}]""".Replace("URI_X", uri, StringComparison.Ordinal));
+
+        Assert.Equal([new SourceLocation(uri, 9, 20)], LspLocations.Parse(result));
+        Assert.Equal(uri, LspLocations.ToUri(uri));
+    }
+
+    [Fact]
     public void A_path_survives_the_round_trip_through_a_uri()
     {
         var path = Path.GetFullPath("/work/with space/C#.cs");

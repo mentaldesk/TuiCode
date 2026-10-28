@@ -11,6 +11,8 @@ public sealed class EditorTab : FrameView
     private bool _grammarChosen;
     private View? _header;
     private string _eol;
+    private EditorConfigRules _rules;
+    private IndentGuess? _guess;
     private bool _dirty;
     // What Save last wrote or the tab last read; null while nothing is on disk.
     private string? _saved;
@@ -60,11 +62,30 @@ public sealed class EditorTab : FrameView
         }
     } = FileIconStyle.Off;
 
+    /// <summary>Text that can be read but not changed, like a library's decompiled source (#610); every edit raises <see cref="EditRefused"/>.</summary>
+    public bool ReadOnly
+    {
+        get => _text.ReadOnly;
+        set => _text.ReadOnly = value;
+    }
+
+    /// <summary>The tab's title in place of the file's name.</summary>
+    public string? DisplayName
+    {
+        get;
+        set
+        {
+            field = value;
+            UpdateTitle();
+        }
+    }
+
     public string Content
     {
         get => _text.Text;
         set
         {
+            if (Refused()) return;
             _text.Text = value;
             OnEdited();
         }
@@ -82,6 +103,7 @@ public sealed class EditorTab : FrameView
     /// <summary>Raised when the buffer is taken as the file again, by a save or a reload, so its <c>HEAD</c> baseline can be re-read.</summary>
     public event EventHandler? BaselineReset;
     public event EventHandler<CopyOutcome>? Copied;
+    public event EventHandler? EditRefused;
 
     /// <summary>
     /// Raised whenever the insertion point moves, carrying the position in the file's own
@@ -135,6 +157,7 @@ public sealed class EditorTab : FrameView
             : unsaved is null ? initial
             : file.Exists ? file.FileSystem.File.ReadAllText(file.FullName) : null;
         _eol = DetectEol(onDisk is null ? initial : _saved ?? initial);
+        _rules = ReadRules();
 
         _text = new CodeEditor
         {
@@ -145,6 +168,7 @@ public sealed class EditorTab : FrameView
             Syntax = syntax?.CreateCache(syntax.LanguageForFile(file.Name)),
         };
         _text.ViewportSettings |= ViewportSettingsFlags.HasScrollBars;
+        _guess = IndentGuess.Of(_text.LineStrings);
         Settings = EditorSettings.Default;
         _gutter = new EditorGutter(_text, syntax) { X = 0, Y = 0, Height = Dim.Fill(Dim.Func(_ => _text.Padding!.Thickness.Bottom)) };
         _text.HorizontalScrollBar.VisibleChanged += (_, _) => SetNeedsLayout();
@@ -155,6 +179,7 @@ public sealed class EditorTab : FrameView
         // Subscribe AFTER setting initial text so the load doesn't mark dirty.
         _text.Edited += (_, _) => OnEdited();
         _text.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
+        _text.EditRefused += (_, _) => EditRefused?.Invoke(this, EventArgs.Empty);
         _text.RefreshingSticky = RefreshSticky;
         _text.Drawing = ScrollToPendingView;
         _text.PinnedLineClicked += (_, line) => PinnedLineClicked?.Invoke(this, line);
@@ -183,10 +208,40 @@ public sealed class EditorTab : FrameView
         set
         {
             field = value;
-            _text.TabWidth = value.IndentSize;
-            _text.InsertSpaces = value.InsertSpaces;
-            _text.SetNeedsDraw();
+            ApplyFormat();
         }
+    }
+
+    private void ApplyFormat()
+    {
+        Format = FileFormat.Of(Settings, _rules, _guess);
+        _text.TabWidth = Format.IndentSize;
+        _text.InsertSpaces = Format.InsertSpaces;
+        _text.SetNeedsDraw();
+    }
+
+    /// <summary>How this file indents and saves, from its <c>.editorconfig</c>, its own lines and <see cref="Settings"/> (#622).</summary>
+    public FileFormat Format { get; private set; } = null!;
+
+    private EditorConfigRules ReadRules()
+    {
+        try
+        {
+            return EditorConfigRules.For(File.FileSystem, File.FullName);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return EditorConfigRules.None;
+        }
+    }
+
+    // Indentation stays as the file opened with, unless it had none to detect yet; the line ending and final newline follow .editorconfig as it is now.
+    private void RereadSaveRules()
+    {
+        var now = ReadRules();
+        _rules = _rules with { LineEnding = now.LineEnding, InsertFinalNewline = now.InsertFinalNewline };
+        _guess ??= IndentGuess.Of(_text.LineStrings);
+        ApplyFormat();
     }
 
     /// <summary>Time per frame for the scan that finds what to pin, on top of syntax colouring's.</summary>
@@ -485,8 +540,8 @@ public sealed class EditorTab : FrameView
 
     internal int SelectionCounts { get; private set; }
 
-    /// <summary>What <see cref="Save"/> will write: the Line endings setting, or on Auto the file's own.</summary>
-    public LineEnding LineEnding => Settings.LineEnding switch
+    /// <summary>What <see cref="Save"/> will write: <c>.editorconfig</c>'s or the Line endings setting, or on Auto the file's own.</summary>
+    public LineEnding LineEnding => Format.LineEnding switch
     {
         LineEnding.Auto => _eol == "\r\n" ? LineEnding.CRLF : LineEnding.LF,
         var chosen => chosen,
@@ -642,6 +697,7 @@ public sealed class EditorTab : FrameView
     /// <summary>Replace the text covered by <paramref name="match"/>, as one undo step.</summary>
     public void Replace(TextMatch match, string replacement)
     {
+        if (Refused()) return;
         Select(match);
         _text.EditAtPrimary(() =>
         {
@@ -658,6 +714,8 @@ public sealed class EditorTab : FrameView
 
     public void Save()
     {
+        if (Refused()) return;
+        RereadSaveRules();
         var content = SaveContent();
         // A deleted file's directory can have gone with it (#271), and a tab opened on a file that never
         // existed (#247) has nothing above it either; recreate the path rather than throwing.
@@ -686,7 +744,7 @@ public sealed class EditorTab : FrameView
     {
         var eol = Eol;
         var content = Normalize(_text.Text, eol);
-        if (Settings.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
+        if (Format.InsertFinalNewline && content.Length > 0 && !content.EndsWith(eol, StringComparison.Ordinal))
             content += eol;
         return content;
     }
@@ -697,7 +755,7 @@ public sealed class EditorTab : FrameView
         if (_saved is not { } saved) return false;
         var lines = _text.LineStrings;
         var eol = Eol;
-        var finalEol = Settings.InsertFinalNewline && lines.Count > 0 && lines[^1].Length > 0;
+        var finalEol = Format.InsertFinalNewline && lines.Count > 0 && lines[^1].Length > 0;
         var length = _text.LineChars + (Math.Max(lines.Count - 1, 0) + (finalEol ? 1 : 0)) * eol.Length;
         if (length != saved.Length) return false;
 
@@ -739,6 +797,12 @@ public sealed class EditorTab : FrameView
         base.Dispose(disposing);
     }
 
+    private bool Refused()
+    {
+        if (ReadOnly) EditRefused?.Invoke(this, EventArgs.Empty);
+        return ReadOnly;
+    }
+
     private void OnEdited()
     {
         if (_loading) return;
@@ -760,7 +824,7 @@ public sealed class EditorTab : FrameView
     {
         // The trailing space keeps the marker off the tab's right border.
         var mark = DiskMark.For(_disk, IconStyle);
-        Title = $"{(_dirty ? "● " : "")}{File.Name}{(mark.Length > 0 ? $" {mark} " : "")}";
+        Title = $"{(_dirty ? "● " : "")}{DisplayName ?? File.Name}{(mark.Length > 0 ? $" {mark} " : "")}";
         PaneTabs.ShowTitle(this);
         if (Border.View is BorderView { TitleView: { } view })
             ColourWhileMarked(view);

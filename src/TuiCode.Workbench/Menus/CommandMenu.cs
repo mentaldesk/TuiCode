@@ -45,14 +45,15 @@ public sealed class CommandMenu
 
         [CommandIds.AddCursorAbove] = 'a', [CommandIds.AddCursorBelow] = 'b', [CommandIds.RemoveSecondaryCursors] = 'r',
         [CommandIds.ClearSelection] = 'c', [CommandIds.ToggleColumnSelect] = 't', [CommandIds.SelectNextOccurrence] = 's',
-        [CommandIds.SelectPreviousOccurrence] = 'p', [CommandIds.SelectAllOccurrences] = 'o',
+        [CommandIds.SelectPreviousOccurrence] = 'p', [CommandIds.SelectAllOccurrences] = 'o', [CommandIds.GitBlame] = 'g',
+        [CommandIds.CopyPermalink] = 'm', [CommandIds.OpenOnGitHub] = 'h',
 
         [CommandIds.ShowExplorer] = 'e', [CommandIds.FindGlobally] = 'f', [CommandIds.FocusUsages] = 'u',
         [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
         [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'h', [CommandIds.ToggleGutter] = 'g',
         [CommandIds.ToggleWordWrap] = 't', [CommandIds.ToggleFold] = 'b', [CommandIds.FoldAll] = 'l', [CommandIds.UnfoldAll] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
         [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i',
-        [CommandIds.AiAssistance] = 'a',
+        [CommandIds.AiAssistance] = 'a', [CommandIds.ToggleToolCalls] = 'c',
 
         [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.QuickInfo] = 'i',
         [CommandIds.FindUsages] = 'f', [CommandIds.FollowLink] = 'l', [CommandIds.NavigateBack] = 'p',
@@ -60,7 +61,7 @@ public sealed class CommandMenu
 
         [CommandIds.CompareToSaved] = 'c', [CommandIds.CompareToRevision] = 'r', [CommandIds.CompareToOtherFile] = 'o',
         [CommandIds.NextChange] = 'n', [CommandIds.PreviousChange] = 'p', [CommandIds.GoToChangeLine] = 'g',
-        [CommandIds.RevertChange] = 'e', [CommandIds.RevertAllChanges] = 'a', [CommandIds.GitBlame] = 'b',
+        [CommandIds.RevertChange] = 'e', [CommandIds.RevertAllChanges] = 'a',
 
         [CommandIds.OpenPullRequest] = 'o', [CommandIds.PullRequestOverview] = 'p', [CommandIds.CreateComment] = 'c',
         [CommandIds.ToggleViewed] = 'v', [CommandIds.SubmitReview] = 's',
@@ -100,6 +101,8 @@ public sealed class CommandMenu
             CommandIds.ToggleColumnSelect,
             Separator,
             CommandIds.SelectNextOccurrence, CommandIds.SelectPreviousOccurrence, CommandIds.SelectAllOccurrences,
+            Separator,
+            CommandIds.GitBlame, CommandIds.CopyPermalink, CommandIds.OpenOnGitHub,
         ]),
         ("_View",
         [
@@ -107,7 +110,7 @@ public sealed class CommandMenu
             Separator,
             CommandIds.ToggleSidebar, CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
             Separator,
-            CommandIds.ToggleFileHistory, CommandIds.AiAssistance,
+            CommandIds.ToggleFileHistory, CommandIds.AiAssistance, CommandIds.ToggleToolCalls,
             Separator,
             CommandIds.RefreshExplorer,
             Separator,
@@ -132,8 +135,6 @@ public sealed class CommandMenu
             CommandIds.NextChange, CommandIds.PreviousChange, CommandIds.GoToChangeLine,
             Separator,
             CommandIds.RevertChange, CommandIds.RevertAllChanges,
-            Separator,
-            CommandIds.GitBlame,
         ]),
         ("_Review",
         [

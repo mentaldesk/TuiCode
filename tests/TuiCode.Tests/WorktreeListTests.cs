@@ -41,18 +41,6 @@ public class WorktreeListTests
     }
 
     [Fact]
-    public void Filter_matches_the_branch_the_name_or_the_parent_whatever_the_case()
-    {
-        var rows = WorktreeList.Rows(Worktrees, "/elsewhere", Home);
-
-        Assert.Equal(["save-conflict"], WorktreeList.Filter(rows, "FIX/").Select(r => r.Name));
-        Assert.Equal(["pr-247"], WorktreeList.Filter(rows, "pr-2").Select(r => r.Name));
-        Assert.Equal(["pr-247"], WorktreeList.Filter(rows, "detached").Select(r => r.Name));
-        Assert.Equal(["cli-path"], WorktreeList.Filter(rows, "builds").Select(r => r.Name));
-        Assert.Same(rows, WorktreeList.Filter(rows, "  "));
-    }
-
-    [Fact]
     public void Display_lines_up_the_branch_name_and_parent_columns()
     {
         var row = new WorktreeRow("/x/y/main", "main", "main", "~/x");

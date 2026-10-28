@@ -29,6 +29,7 @@ public sealed class LanguageServer : IDisposable
     private readonly Lock _gate = new();
     private readonly Dictionary<string, Document> _documents = new(StringComparer.Ordinal);
     private readonly HashSet<string> _progress = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _aliases = new(StringComparer.Ordinal);
     private ILanguageServerProcess? _process;
     private JsonRpcConnection? _connection;
     private bool _initialized;
@@ -130,6 +131,7 @@ public sealed class LanguageServer : IDisposable
                     ["documentSymbol"] = new JsonObject { ["hierarchicalDocumentSymbolSupport"] = true },
                     ["hover"] = new JsonObject { ["contentFormat"] = new JsonArray("markdown", "plaintext") },
                 },
+                ["experimental"] = new JsonObject { ["csharp"] = new JsonObject { ["metadataUris"] = true } },
             },
         };
     }
@@ -177,6 +179,7 @@ public sealed class LanguageServer : IDisposable
         var uri = LspLocations.ToUri(path);
         lock (_gate)
         {
+            if (_aliases.ContainsKey(path)) return;
             if (_documents.ContainsKey(uri)) return;
             var document = new Document { Version = 1 };
             _documents[uri] = document;
@@ -190,6 +193,7 @@ public sealed class LanguageServer : IDisposable
         var uri = LspLocations.ToUri(path);
         lock (_gate)
         {
+            if (_aliases.ContainsKey(path)) return;
             if (!_documents.TryGetValue(uri, out var document)) return;
             document.Version++;
             if (!_initialized)
@@ -224,6 +228,7 @@ public sealed class LanguageServer : IDisposable
         var uri = LspLocations.ToUri(path);
         lock (_gate)
         {
+            if (_aliases.ContainsKey(path)) return;
             if (!_documents.Remove(uri) || !_initialized) return;
             _connection?.Notify("textDocument/didClose", new JsonObject
             {
@@ -236,6 +241,24 @@ public sealed class LanguageServer : IDisposable
     {
         lock (_gate) return _documents.ContainsKey(LspLocations.ToUri(path));
     }
+
+    /// <summary>Asks about <paramref name="path"/> as the server's own <paramref name="uri"/>, which the server already has open.</summary>
+    public void Alias(string path, string uri)
+    {
+        lock (_gate) _aliases[path] = uri;
+    }
+
+    private string UriOf(string path)
+    {
+        lock (_gate) return _aliases.GetValueOrDefault(path) ?? LspLocations.ToUri(path);
+    }
+
+    /// <summary>csharp-ls's decompiled source for a <c>csharp:/</c> <paramref name="uri"/>, or null when it can't give it.</summary>
+    public async Task<DecompiledSource?> DecompiledAsync(string uri) =>
+        DecompiledSource.Parse(await RequestAsync("csharp/metadata", new JsonObject
+        {
+            ["textDocument"] = new JsonObject { ["uri"] = uri },
+        }).ConfigureAwait(false));
 
     /// <summary>Where the symbol at <paramref name="line"/> and UTF-16 <paramref name="character"/> is defined.</summary>
     public async Task<IReadOnlyList<SourceLocation>> DefinitionAsync(string path, int line, int character) =>
@@ -258,7 +281,7 @@ public sealed class LanguageServer : IDisposable
     {
         var symbols = await RequestAsync("textDocument/documentSymbol", new JsonObject
         {
-            ["textDocument"] = new JsonObject { ["uri"] = LspLocations.ToUri(location.Path) },
+            ["textDocument"] = new JsonObject { ["uri"] = UriOf(location.Path) },
         }).ConfigureAwait(false);
         return LspSymbols.QualifiedName(symbols, location.Line, location.Character);
     }
@@ -270,9 +293,9 @@ public sealed class LanguageServer : IDisposable
         return connection is null ? null : await connection.RequestAsync(method, parameters).ConfigureAwait(false);
     }
 
-    private static JsonObject Position(string path, int line, int character) => new()
+    private JsonObject Position(string path, int line, int character) => new()
     {
-        ["textDocument"] = new JsonObject { ["uri"] = LspLocations.ToUri(path) },
+        ["textDocument"] = new JsonObject { ["uri"] = UriOf(path) },
         ["position"] = new JsonObject { ["line"] = line, ["character"] = character },
     };
 

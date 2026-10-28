@@ -30,6 +30,8 @@ public class EditorSettingsViewTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Space),
             () => host.App.InjectKey(Key.Tab),
             () => host.App.InjectKey(Key.Space),
+            () => host.App.InjectKey(Key.Tab),
+            () => host.App.InjectKey(Key.Space),
             () => host.App.InjectKey(Key.Enter.WithCtrl));
 
         var expected = new EditorSettings
@@ -38,6 +40,7 @@ public class EditorSettingsViewTests : StaticConfigurationTest
             InsertSpaces = false,
             LineEnding = LineEnding.LF,
             InsertFinalNewline = false,
+            DetectIndentation = false,
             WordWrap = true,
         };
         Assert.Equal(expected, _settings.Editor);

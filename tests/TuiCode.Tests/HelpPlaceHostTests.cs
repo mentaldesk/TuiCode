@@ -105,23 +105,29 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task F1_in_the_AI_assistance_tab_ends_with_the_keys_that_switch_the_panels_tabs()
+    public async Task F1_in_AI_assistance_ends_with_the_key_that_hides_it()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one"));
         var help = await HelpFrom(() =>
         {
             Built.OpenFile(_fs.FileInfo.New("/work/a.txt"));
             Built.ShowAssistant(true);
-            Built.Panel.Assistant.FocusInput();
+            Built.Assistant.FocusInput();
         }, "AI assistance");
 
-        Assert.Equal(
-        [
-            new("Ctrl+G h", "Show or hide file history"),
-            new("Ctrl+G a", "AI assistance"),
-            new("Ctrl+PageDown", "Next panel tab"),
-            new("Ctrl+PageUp", "Previous panel tab"),
-        ], help.Rows().TakeLast(4));
+        Assert.Equal(new KeyRow("Ctrl+G a", "Hide AI assistance"), help.Rows().Last());
+    }
+
+    [Fact]
+    public async Task F1_in_the_AI_assistance_sidebar_lists_showing_tool_calls_in_full()
+    {
+        var help = await HelpFrom(() =>
+        {
+            Built.ShowAssistant(true);
+            Built.Assistant.FocusInput();
+        }, "AI assistance");
+
+        Assert.Contains(new KeyRow("Ctrl+T t", "Show tool calls in full"), help.Rows());
     }
 
     [Fact]

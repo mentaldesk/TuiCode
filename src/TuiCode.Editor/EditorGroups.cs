@@ -14,6 +14,7 @@ public sealed class EditorGroups
 
     public event EventHandler<IFileInfo>? FileSaved;
     public event EventHandler<CopyOutcome>? Copied;
+    public event EventHandler<EditorTab>? EditRefused;
     public event EventHandler? TabsChanged;
     public event EventHandler<EditorTab>? BaselineReset;
     public event EventHandler<EditorTab>? GrammarChanged;
@@ -36,6 +37,7 @@ public sealed class EditorGroups
         {
             group.FileSaved += (_, file) => FileSaved?.Invoke(this, file);
             group.Copied += (_, outcome) => Copied?.Invoke(this, outcome);
+            group.EditRefused += (_, tab) => EditRefused?.Invoke(this, tab);
             group.BaselineReset += (_, tab) => BaselineReset?.Invoke(this, tab);
             group.GrammarChanged += (_, tab) => GrammarChanged?.Invoke(this, tab);
             group.CursorMoved += (_, e) => CursorMoved?.Invoke(this, e);

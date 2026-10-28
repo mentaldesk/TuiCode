@@ -12,6 +12,7 @@ public sealed class AssistantView : View
 {
     public const string TabTitle = "AI assistance";
     public const string FootText = "Esc stop · Ctrl+L clear";
+    public const string InFullMarker = "[tool calls]";
     private const int InputRows = 2;
 
     private readonly VerbatimLabel _header;
@@ -43,6 +44,9 @@ public sealed class AssistantView : View
 
     public string HeaderText => _headerText;
 
+    /// <summary>The top line left of the keys, as shown.</summary>
+    internal string HeaderShown => _header.Text;
+
     /// <summary>What the next question will be about, shown above the box.</summary>
     public string ContextText => _contextText;
 
@@ -70,7 +74,13 @@ public sealed class AssistantView : View
 
     private void ShowLines()
     {
-        _header.Text = Fit(_headerText, Viewport.Width - FootText.Length - 1);
+        var columns = Viewport.Width - FootText.Length - 1;
+        if (!Conversation.ToolCallsInFull) _header.Text = Fit(_headerText, columns);
+        else
+        {
+            var text = Fit(_headerText, columns - InFullMarker.Length - 1);
+            _header.Text = text + new string(' ', Math.Max(columns - text.GetColumns() - InFullMarker.Length, 1)) + InFullMarker;
+        }
         _context.Text = Fit(_contextText, Viewport.Width);
     }
 
@@ -84,7 +94,11 @@ public sealed class AssistantView : View
         return kept.Append('…').ToString();
     }
 
-    public void Refresh() => Chat.Refresh();
+    public void Refresh()
+    {
+        ShowLines();
+        Chat.Refresh();
+    }
 
     private void Faint(object? sender, VisualRoleEventArgs e)
     {

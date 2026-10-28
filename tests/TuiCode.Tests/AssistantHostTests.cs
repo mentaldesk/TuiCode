@@ -6,6 +6,7 @@ using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Assistant;
 using TuiCode.Workbench.Files;
+using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 
@@ -15,6 +16,9 @@ namespace TuiCode.Tests;
 public class AssistantHostTests : StaticConfigurationTest
 {
     private static readonly SyntaxHighlighter Syntax = new(GrammarBundle.Load());
+
+    // Wide enough for the chat's 50 columns beside the explorer and the editor.
+    private const int Columns = 140;
 
     private readonly MockFileSystem _fs = new();
     private readonly FakeAgent _agent = new();
@@ -30,7 +34,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -41,7 +45,7 @@ public class AssistantHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter),
             () => Chat(view).Contains("Hello"));
 
-        Assert.Equal(PanelTab.Assistant, workbench.Panel.ActiveTab);
+        Assert.True(workbench.IsAssistantShowing);
         Assert.StartsWith("● Claude Code · ", view.HeaderText);
         var prompt = _agent.Received("session/prompt").Single()!["prompt"]!.AsArray();
         Assert.Equal("// line 41\n// line 42\n// line 43", prompt[1]!["resource"]!["text"]!.GetValue<string>());
@@ -54,7 +58,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -70,7 +74,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
         string? whileAnswering = null;
         _agent.OnPrompt = async (agent, _) =>
         {
@@ -98,7 +102,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
 
         await HostSteps.Run(host,
             () => _commands.TryExecute(CommandIds.AiAssistance),
@@ -121,7 +125,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
         string? answer = "unset";
         var dialogs = 0;
         _agent.OnPrompt = async (agent, _) =>
@@ -145,7 +149,7 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
         _agent.OnPrompt = async (agent, _) =>
         {
             await agent.Ask("fs/write_text_file", new JsonObject { ["path"] = _fs.Path.GetFullPath("/work/A.cs"), ["content"] = "class A { }\nclass B { }" });
@@ -174,6 +178,41 @@ public class AssistantHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_write_to_a_decompiled_tab_is_refused_and_leaves_it_as_it_was()
+    {
+        var path = _fs.Path.Combine(_fs.Path.GetTempPath(), "MetadataAsSource", "a28", "Console.cs");
+        _fs.AddFile(path, new MockFileData("#region Assembly System.Console\npublic static class Console { }\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+        _agent.OnPrompt = async (agent, _) =>
+        {
+            try
+            {
+                await agent.Ask("fs/write_text_file", new JsonObject { ["path"] = path, ["content"] = "class Mine { }" });
+            }
+            catch (JsonRpcException e)
+            {
+                agent.Say(e.Message);
+            }
+        };
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New(path)),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Go"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("read-only"));
+
+        Assert.True(Tab(workbench).ReadOnly);
+        Assert.Equal("public static class Console { }", Tab(workbench).Lines[1]);
+        Assert.False(Tab(workbench).IsDirty);
+        Assert.Equal("#region Assembly System.Console\npublic static class Console { }\n", _fs.File.ReadAllText(path));
+        Assert.EndsWith("Decompiled source is read-only", Chat(view));
+    }
+
+    [Fact]
     public async Task With_no_agent_found_ai_says_so_and_points_at_settings_without_opening_the_tab()
     {
         using var workbench = BuildWorkbench();
@@ -188,20 +227,22 @@ public class AssistantHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Ctrl_G_A_opens_the_tab_in_the_panel_under_the_editor_with_the_question_box_focused()
+    public async Task Ctrl_G_A_opens_the_sidebar_on_the_right_the_full_height_of_the_window_with_the_question_box_focused()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var view = workbench.Panel.Assistant;
+        var view = workbench.Assistant;
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => host.App.InjectKey(Key.G.WithCtrl),
             () => host.App.InjectKey(Key.A),
-            () => view.InputHasFocus);
+            () => view.InputHasFocus && workbench.AssistantSidebar.Frame.Width == workbench.DrawnAssistantWidth);
 
-        Assert.True(workbench.Panel.Visible);
-        Assert.Equal(PanelTab.Assistant, workbench.Panel.ActiveTab);
+        var frame = workbench.AssistantSidebar.Frame;
+        Assert.Equal((Columns - frame.Width, 1, 30 - 2), (frame.X, frame.Y, frame.Height));
+        Assert.Equal(frame.X, workbench.Editor.Frame.Right);
+        Assert.False(workbench.Panel.Visible);
         Assert.Equal("AI assistance", workbench.StatusBar.DisplayedFocus);
     }
 
@@ -214,12 +255,13 @@ public class AssistantHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => _commands.TryExecute(CommandIds.AiAssistance),
-            () => workbench.Panel.Assistant.InputHasFocus,
+            () => workbench.Assistant.InputHasFocus,
             () => _commands.TryExecute(CommandIds.AiAssistance),
             () => workbench.StatusBar.DisplayedFocus == "Editor");
 
         Assert.False(workbench.IsAssistantShowing);
-        Assert.False(workbench.Panel.Visible);
+        Assert.False(workbench.AssistantSidebar.Visible);
+        Assert.Equal(Columns - SidebarSizing.Default, workbench.Editor.Frame.Width);
     }
 
     [Fact]
@@ -231,20 +273,41 @@ public class AssistantHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => _commands.TryExecute(CommandIds.AiAssistance),
-            () => workbench.Panel.Assistant.InputHasFocus,
+            () => workbench.Assistant.InputHasFocus,
             () => host.App.InjectKey(Key.G.WithCtrl),
             () => host.App.InjectKey(Key.A),
             () => !workbench.IsAssistantShowing && workbench.StatusBar.DisplayedFocus == "Editor",
             () => host.App.InjectKey(Key.G.WithCtrl),
             () => host.App.InjectKey(Key.A),
-            () => workbench.Panel.Assistant.InputHasFocus);
+            () => workbench.Assistant.InputHasFocus);
 
         Assert.True(workbench.IsAssistantShowing);
-        Assert.Equal("", workbench.Panel.Assistant.Question);
+        Assert.Equal("", workbench.Assistant.Question);
     }
 
     [Fact]
-    public async Task Ctrl_PageDown_in_the_panel_switches_its_tab_and_leaves_the_editor_tabs_alone()
+    public async Task With_History_open_too_it_stays_under_the_editor_and_the_chat_keeps_the_full_height()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => workbench.Assistant.InputHasFocus,
+            () => workbench.ShowHistory(true),
+            () => workbench.Panel.Frame.Height > 0);
+
+        var chat = workbench.AssistantSidebar.Frame;
+        var history = workbench.Panel.Frame;
+        Assert.Equal(30 - 2, chat.Height);
+        Assert.Equal((workbench.Editor.Frame.X, workbench.Editor.Frame.Bottom, workbench.Editor.Frame.Width), (history.X, history.Y, history.Width));
+        Assert.Equal(chat.X, history.Right);
+        Assert.Equal([workbench.History], workbench.Panel.SubViews.OfType<PaneTabs>().Single().TabCollection);
+    }
+
+    [Fact]
+    public async Task Ctrl_PageDown_in_the_chat_leaves_the_editor_tabs_alone()
     {
         _fs.AddFile("/work/B.cs", new MockFileData("b"));
         using var workbench = BuildWorkbench();
@@ -253,14 +316,103 @@ public class AssistantHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => OpenFile(workbench),
             () => workbench.OpenFile(_fs.FileInfo.New("/work/B.cs")),
-            () => workbench.ShowHistory(true),
             () => _commands.TryExecute(CommandIds.AiAssistance),
-            () => workbench.Panel.Assistant.InputHasFocus,
-            () => host.App.InjectKey(Key.PageDown.WithCtrl),
-            () => workbench.StatusBar.DisplayedFocus == "History");
+            () => workbench.Assistant.InputHasFocus,
+            () => host.App.InjectKey(Key.PageDown.WithCtrl));
 
-        Assert.Equal(PanelTab.History, workbench.Panel.ActiveTab);
+        Assert.Equal("AI assistance", workbench.StatusBar.DisplayedFocus);
         Assert.Equal("B.cs", Tab(workbench).File.Name);
+    }
+
+    private void ManyCalls()
+    {
+        _agent.OnPrompt = (agent, _) =>
+        {
+            agent.Say(string.Join('\n', Enumerable.Range(1, 30).Select(i => $"before {i}")) + "\n");
+            for (var i = 1; i <= 5; i++) agent.Tool($"t{i}", $"Read {i}.cs", "completed");
+            agent.Say(string.Join('\n', Enumerable.Range(1, 30).Select(i => $"after {i}")));
+            return Task.CompletedTask;
+        };
+    }
+
+    private static string[] ToolRows(AssistantView view) => [.. view.Chat.Lines.Where(l => l.Kind == ChatLineKind.Tool).Select(l => l.Text)];
+
+    private static string TopRow(AssistantView view) => view.Chat.Lines[view.Chat.Viewport.Y].Text;
+
+    private static void Scroll(AssistantView view, string row) =>
+        view.Chat.Viewport = view.Chat.Viewport with { Y = view.Chat.Lines.ToList().FindIndex(l => l.Text == row) };
+
+    [Fact]
+    public async Task Ctrl_T_T_shows_every_tool_call_and_folds_them_again_keeping_the_row_in_view_and_the_setting()
+    {
+        using var workbench = BuildWorkbench();
+        var settings = new InMemorySettingsService();
+        using var host = BuildHost(workbench, settings: settings);
+        var view = workbench.Assistant;
+        ManyCalls();
+        string[] folded = [], full = [];
+        string? marked = null, topInFull = null;
+
+        await HostSteps.Run(host,
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Go"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("after 30"),
+            () => { folded = ToolRows(view); Scroll(view, "after 3"); },
+            () => { host.App.InjectKey(Key.T.WithCtrl); host.App.InjectKey(Key.T); },
+            () => view.Conversation.ToolCallsInFull,
+            () => { full = ToolRows(view); marked = view.HeaderShown; topInFull = TopRow(view); },
+            () => { host.App.InjectKey(Key.T.WithCtrl); host.App.InjectKey(Key.T); },
+            () => !view.Conversation.ToolCallsInFull);
+
+        Assert.Equal(["▸ Read 5.cs (+4)"], folded);
+        Assert.Equal(["▸ Read 1.cs", "▸ Read 2.cs", "▸ Read 3.cs", "▸ Read 4.cs", "▸ Read 5.cs"], full);
+        Assert.EndsWith(AssistantView.InFullMarker, marked);
+        Assert.Equal("after 3", topInFull);
+        Assert.Equal("after 3", TopRow(view));
+        Assert.DoesNotContain(AssistantView.InFullMarker, view.HeaderShown);
+        Assert.False(settings.Assistant.ToolCallsInFull);
+    }
+
+    [Fact]
+    public async Task With_the_setting_on_the_chat_starts_and_clears_to_in_full()
+    {
+        using var workbench = BuildWorkbench();
+        var settings = new InMemorySettingsService { Assistant = AssistantSetting.Default with { ToolCallsInFull = true } };
+        using var host = BuildHost(workbench, settings: settings);
+        var view = workbench.Assistant;
+        ManyCalls();
+        var startedInFull = false;
+
+        await HostSteps.Run(host,
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => startedInFull = view.Conversation.ToolCallsInFull,
+            () => Type(host, "Go"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("after 30"),
+            () => { host.App.InjectKey(Key.T.WithCtrl); host.App.InjectKey(Key.T); },
+            () => !view.Conversation.ToolCallsInFull,
+            () => host.App.InjectKey(Key.L.WithCtrl),
+            () => Chat(view) == "");
+
+        Assert.True(startedInFull);
+        Assert.True(view.Conversation.ToolCallsInFull);
+    }
+
+    [Fact]
+    public void Show_tool_calls_in_full_is_an_Assistant_command_on_Ctrl_T_T()
+    {
+        using var workbench = BuildWorkbench();
+        var keybindings = new KeybindingService(_commands);
+        using var host = new WorkbenchHost(workbench, _commands, keybindings, new InputScopeStack(), new InMemorySettingsService(),
+            driverName: DriverRegistry.Names.ANSI, fileSystem: _fs, agents: _agent);
+
+        var command = _commands.Registered.Single(c => c.Id == CommandIds.ToggleToolCalls);
+        Assert.Equal(("Show tool calls in full", CommandScope.Assistant), (command.Label, command.Scope));
+        Assert.Contains(keybindings.Bindings, b => b.CommandId == CommandIds.ToggleToolCalls && b.Display == "Ctrl+T t" && b.Scope == CommandScope.Assistant);
+        Assert.Equal("ttc", CommandMnemonics.For(CommandIds.ToggleToolCalls));
     }
 
     private static string Chat(AssistantView view) => string.Join('\n', view.Chat.Lines.Select(l => l.Text));
@@ -288,15 +440,15 @@ public class AssistantHostTests : StaticConfigurationTest
         return workbench;
     }
 
-    private WorkbenchHost BuildHost(Workbench.Workbench workbench, bool installed = true)
+    private WorkbenchHost BuildHost(Workbench.Workbench workbench, bool installed = true, InMemorySettingsService? settings = null)
     {
         var host = new WorkbenchHost(workbench, _commands, new KeybindingService(_commands), new InputScopeStack(),
-            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, fileSystem: _fs, agents: _agent,
+            settings ?? new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, fileSystem: _fs, agents: _agent,
             assistantSessions: new AssistantSessions(_fs, _fs.Path.GetFullPath("/home/.tui/TuiCode.assistant.json")))
         {
             CommandInstalled = _ => installed,
         };
-        HostSteps.PinScreenSize(host, 100, 30);
+        HostSteps.PinScreenSize(host, Columns, 30);
         return host;
     }
 }

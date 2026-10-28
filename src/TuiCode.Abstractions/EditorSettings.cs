@@ -19,6 +19,9 @@ public sealed record EditorSettings
     /// <summary>Whether saving a non-empty file makes sure it ends with a line break.</summary>
     public bool InsertFinalNewline { get; init; } = true;
 
+    /// <summary>Whether a file without <c>.editorconfig</c> rules indents the way its own lines do (#622).</summary>
+    public bool DetectIndentation { get; init; } = true;
+
     /// <summary>Whether a tab opens wrapped (#380); <c>Ctrl+T W</c> still flips each tab on its own.</summary>
     public bool WordWrap { get; init; }
 
@@ -46,13 +49,14 @@ public sealed record EditorSettings
         && InsertSpaces == other.InsertSpaces
         && LineEnding == other.LineEnding
         && InsertFinalNewline == other.InsertFinalNewline
+        && DetectIndentation == other.DetectIndentation
         && WordWrap == other.WordWrap
         && StickyLines == other.StickyLines
         && WrapByLanguage.Count == other.WrapByLanguage.Count
         && WrapByLanguage.All(w => other.WrapByLanguage.TryGetValue(w.Key, out var v) && v == w.Value);
 
     public override int GetHashCode() =>
-        HashCode.Combine(IndentSize, InsertSpaces, LineEnding, InsertFinalNewline, WordWrap, StickyLines, WrapByLanguage.Count);
+        HashCode.Combine(IndentSize, InsertSpaces, LineEnding, InsertFinalNewline, DetectIndentation, WordWrap, StickyLines, WrapByLanguage.Count);
 }
 
 public enum LineEnding

@@ -19,7 +19,7 @@ internal sealed class GrammarPickerView : PickerDialog<GrammarRow>
         : base(title, 60, 20, rows, r => r.Grammar is null ? r.Name : $"{r.Name} {r.Grammar.Id}", "Choose",
             r => (r.IsCurrent ? "● " : "  ") + r.Name)
     {
-        this.Select(Math.Max(0, rows.ToList().FindIndex(r => r.IsCurrent)));
+        SelectedIndex = Math.Max(0, rows.ToList().FindIndex(r => r.IsCurrent));
     }
 
     /// <summary>The grammar chosen, null for Plain Text; only meaningful once <see cref="AppDialog.Confirmed"/>.</summary>

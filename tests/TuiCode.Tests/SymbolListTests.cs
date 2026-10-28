@@ -1,3 +1,4 @@
+using TuiCode.Abstractions;
 using TuiCode.Syntax;
 using TuiCode.Workbench.Navigation;
 
@@ -11,23 +12,6 @@ public class SymbolListTests
         new("ActiveGroup", SymbolKind.Property, 83, 1),
         new("CompareToSaved", SymbolKind.Method, 1060, 1),
     ];
-
-    [Theory]
-    [InlineData("dwa", new[] { "DoWorkAsync", "DoWarnAboutStaleCache" })]
-    [InlineData("stale", new[] { "DoWarnAboutStaleCache" })]
-    [InlineData("", new[] { "DoWorkAsync", "DoWarnAboutStaleCache", "Count" })]
-    [InlineData("zz", new string[0])]
-    public void Filtering_keeps_file_order(string filter, string[] expected)
-    {
-        IReadOnlyList<FileSymbol> symbols =
-        [
-            new("DoWorkAsync", SymbolKind.Method, 3, 1),
-            new("DoWarnAboutStaleCache", SymbolKind.Method, 7, 1),
-            new("Count", SymbolKind.Property, 9, 1),
-        ];
-
-        Assert.Equal(expected, SymbolList.Filter(symbols, filter).Select(s => s.Name));
-    }
 
     [Fact]
     public void Rendering_right_aligns_the_kind_and_the_one_based_line_and_indents_by_depth()
@@ -96,25 +80,12 @@ public class SymbolListTests
     }
 
     [Fact]
-    public void Kind_icons_keep_a_column_of_their_own_ahead_of_each_name()
+    public void Kind_icons_go_after_the_indent_and_ahead_of_the_name()
     {
-        Assert.Equal(
-            [
-                "  WorkbenchHost              class    31",
-                "    ActiveGroup           property    84",
-                "    CompareToSaved          method  1061",
-            ],
-            SymbolList.Render(Outline, 40, indent: true, iconWidth: 2));
-    }
+        IReadOnlyList<FileSymbol> outline = [new("Widget", SymbolKind.Class, 0, 0), new("Go", SymbolKind.Method, 2, 1)];
 
-    [Fact]
-    public void An_icon_goes_after_the_indent_and_only_while_the_name_has_room_for_it()
-    {
-        Assert.Equal(0, SymbolList.IconColumn(Outline[0], indent: true));
-        Assert.Equal(2, SymbolList.IconColumn(Outline[1], indent: true));
-        Assert.Equal(0, SymbolList.IconColumn(Outline[1], indent: false));
-        Assert.Equal(24, SymbolList.NameWidth(Outline, 40));
-        Assert.Equal(0, SymbolList.NameWidth(Outline, 10));
+        Assert.Equal(["\ueb5b Widget    class  1", "  \uea8c Go     method  3"], SymbolList.Render(outline, 20, indent: true, FileIconStyle.NerdFont));
+        Assert.Equal("Widget      class  1", SymbolList.Render(outline, 20, indent: true, FileIconStyle.Off)[0]);
     }
 
     [Fact]

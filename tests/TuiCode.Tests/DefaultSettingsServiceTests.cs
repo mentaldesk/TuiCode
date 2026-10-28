@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Terminal.Gui.Configuration;
 using TuiCode.Abstractions;
@@ -256,7 +257,7 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     public void Editor_settings_round_trip_through_the_settings_file()
     {
         var fs = new MockFileSystem();
-        var editor = new EditorSettings { IndentSize = 2, InsertSpaces = false, LineEnding = LineEnding.CRLF, InsertFinalNewline = false, WordWrap = true, StickyLines = false };
+        var editor = new EditorSettings { IndentSize = 2, InsertSpaces = false, LineEnding = LineEnding.CRLF, InsertFinalNewline = false, DetectIndentation = false, WordWrap = true, StickyLines = false };
         var svc = new DefaultSettingsService(fs) { Editor = editor };
 
         svc.Save();
@@ -343,6 +344,31 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         svc.Save();
 
         Assert.Equal(45, new DefaultSettingsService(fs).SidebarWidth);
+    }
+
+    [Fact]
+    public void AI_assistance_width_round_trips_through_the_settings_file_beside_the_sidebars()
+    {
+        var fs = new MockFileSystem();
+        var svc = new DefaultSettingsService(fs) { SidebarWidth = 45, AssistantWidth = 62 };
+
+        svc.Save();
+
+        var json = JsonNode.Parse(fs.File.ReadAllText(SettingsPath(fs)))!;
+        Assert.Equal(62, json["AssistantWidth"]!.GetValue<int>());
+        Assert.Equal(62, new DefaultSettingsService(fs).AssistantWidth);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{ \"AssistantWidth\": 12 }")]
+    [InlineData("{ \"AssistantWidth\": \"wide\" }")]
+    public void An_AI_assistance_width_never_dragged_or_under_its_floor_loads_as_none(string json)
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData(json));
+
+        Assert.Null(new DefaultSettingsService(fs).AssistantWidth);
     }
 
     [Fact]
@@ -465,6 +491,18 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         new DefaultSettingsService(fs) { Assistant = new AssistantSetting(agent, command) }.Save();
 
         Assert.Equal(new AssistantSetting(agent, command), new DefaultSettingsService(fs).Assistant);
+    }
+
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("codex")]
+    public void Showing_tool_calls_in_full_survives_a_restart(string agent)
+    {
+        var fs = new MockFileSystem();
+        new DefaultSettingsService(fs) { Assistant = new AssistantSetting(agent, ToolCallsInFull: true) }.Save();
+
+        Assert.Equal(new AssistantSetting(agent, ToolCallsInFull: true), new DefaultSettingsService(fs).Assistant);
+        Assert.False(AssistantSetting.Default.ToolCallsInFull);
     }
 
     [Fact]

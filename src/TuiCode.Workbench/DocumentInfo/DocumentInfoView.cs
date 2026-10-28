@@ -70,9 +70,14 @@ public sealed class DocumentInfoView : Window
     /// <summary>Each column's header and numbers, top to bottom.</summary>
     internal IReadOnlyList<(string Header, string[] Values)> Columns { get; }
 
-    public static string Facts(string grammar, LineEnding lineEnding, long? sizeOnDisk, bool dirty)
+    public static string Facts(string grammar, LineEnding lineEnding, FileFormat? format, long? sizeOnDisk, bool dirty)
     {
         var parts = new List<string> { grammar, lineEnding.ToString() };
+        if (format is not null)
+        {
+            parts.Add(format.IndentDescription);
+            if (format.FinalNewlineDescription is { } finalNewline) parts.Add(finalNewline);
+        }
         if (sizeOnDisk is { } size) parts.Add($"{FormatSize(size)} on disk");
         if (dirty) parts.Add("unsaved changes");
         return string.Join("  •  ", parts);

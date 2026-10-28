@@ -91,6 +91,8 @@ public sealed class DefaultSettingsService : ISettingsService
 
     public int SidebarWidth { get; set; } = SidebarSizing.Default;
 
+    public int? AssistantWidth { get; set; }
+
     public bool AltOpensMenuWhileTyping { get; set; } = true;
 
     public IReadOnlyDictionary<string, LanguageServerSetting> LanguageServers { get; set; } =
@@ -130,6 +132,8 @@ public sealed class DefaultSettingsService : ISettingsService
             root["LineEnding"] = Editor.LineEnding.ToString();
         if (Editor.InsertFinalNewline != defaults.InsertFinalNewline)
             root["InsertFinalNewline"] = Editor.InsertFinalNewline;
+        if (Editor.DetectIndentation != defaults.DetectIndentation)
+            root["DetectIndentation"] = Editor.DetectIndentation;
         if (Editor.WordWrap != defaults.WordWrap)
             root["WordWrap"] = Editor.WordWrap;
         if (Editor.StickyLines != defaults.StickyLines)
@@ -143,6 +147,8 @@ public sealed class DefaultSettingsService : ISettingsService
         }
         if (SidebarWidth != SidebarSizing.Default)
             root["SidebarWidth"] = SidebarWidth;
+        if (AssistantWidth is { } assistantWidth)
+            root["AssistantWidth"] = assistantWidth;
         if (!AltOpensMenuWhileTyping)
             root["AltOpensMenuWhileTyping"] = AltOpensMenuWhileTyping;
         if (LanguageServers.Count > 0)
@@ -160,6 +166,7 @@ public sealed class DefaultSettingsService : ISettingsService
         {
             var assistant = new JsonObject { ["Agent"] = Assistant.Agent };
             if (Assistant.Agent == AssistantSetting.Custom) assistant["Command"] = Assistant.Command;
+            if (Assistant.ToolCallsInFull) assistant["ToolCallsInFull"] = true;
             root["AiAssistance"] = assistant;
         }
 
@@ -253,6 +260,7 @@ public sealed class DefaultSettingsService : ISettingsService
             InsertSpaces = Read(root, "InsertSpaces", defaults.InsertSpaces),
             LineEnding = ReadEnum(root, "LineEnding", defaults.LineEnding),
             InsertFinalNewline = Read(root, "InsertFinalNewline", defaults.InsertFinalNewline),
+            DetectIndentation = Read(root, "DetectIndentation", defaults.DetectIndentation),
             WordWrap = Read(root, "WordWrap", defaults.WordWrap),
             StickyLines = Read(root, "StickyLines", defaults.StickyLines),
             WrapByLanguage = ReadWrapByLanguage(root),
@@ -261,6 +269,7 @@ public sealed class DefaultSettingsService : ISettingsService
         SidebarWidth = Read(root, "SidebarWidth", SidebarSizing.Default) is var width && width >= SidebarSizing.Min
             ? width
             : SidebarSizing.Default;
+        AssistantWidth = Read(root, "AssistantWidth", 0) is var assistantWidth && assistantWidth >= AssistantSizing.Min ? assistantWidth : null;
         AltOpensMenuWhileTyping = Read(root, "AltOpensMenuWhileTyping", true);
         LanguageServers = ReadLanguageServers(root);
         Assistant = ReadAssistant(root);
@@ -270,7 +279,10 @@ public sealed class DefaultSettingsService : ISettingsService
     {
         if (root?["AiAssistance"] is not JsonObject assistant) return AssistantSetting.Default;
         var agent = Read(assistant, "Agent", "");
-        return agent.Length == 0 ? AssistantSetting.Default : new AssistantSetting(agent, Read(assistant, "Command", "").Trim());
+        var inFull = Read(assistant, "ToolCallsInFull", false);
+        return agent.Length == 0
+            ? AssistantSetting.Default with { ToolCallsInFull = inFull }
+            : new AssistantSetting(agent, Read(assistant, "Command", "").Trim(), inFull);
     }
 
     private static Dictionary<string, LanguageServerSetting> ReadLanguageServers(JsonObject? root)

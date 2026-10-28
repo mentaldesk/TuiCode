@@ -1,171 +1,50 @@
-using System.Collections;
-using System.Collections.Specialized;
-using MentalDesk.Tui.Loading;
+using MentalDesk.Tui;
+using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
-using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Git;
 
 /// <summary>
-/// Modal picker for Open pull request (<c>opr</c>): a filter over the repo's open PRs. Enter checks the
-/// highlighted one out in its own worktree, which the host reports back through <see cref="ShowError"/>
-/// when it can't. It opens before the list is in, which the host hands over with <see cref="Load"/> (#525).
+/// Modal picker for Open pull request (<c>opr</c>): a filter over the repo's open PRs, which load after it
+/// opens (#525). Enter checks the highlighted one out in its own worktree; the host cancels the pick, does the
+/// work, and then chooses the PR or says why not with <see cref="ShowError"/>.
 /// </summary>
-public sealed class PullRequestPickerView : Window
+public sealed class PullRequestPickerView : PickerDialog<GitHubPullRequestSummary>
 {
-    private const string Hint = "Type to filter · Up/Down/PgUp/PgDn · Enter check out · Esc cancel";
-
-    private readonly TextField _filter;
-    private readonly ListView _list;
-    private readonly LoadStateView _state;
-    private readonly VerbatimLabel _status;
-
-    private readonly ICommandService _scopeCommands;
-    private readonly IKeybindingService _scopeKeybindings;
-
-    private IReadOnlyList<GitHubPullRequestSummary> _all = [];
-    private IReadOnlyList<GitHubPullRequestSummary> _visible = [];
-    private Action? _retry;
-
-    public IKeybindingService Scope => _scopeKeybindings;
-
-    public event EventHandler? Cancelled;
-
-    /// <summary>The PR to check out; the host does the work and closes the picker once it's done.</summary>
-    public event EventHandler<GitHubPullRequestSummary>? Submitted;
+    private const int DialogWidth = 78;
+    private const int ContentRows = 20;
 
     public PullRequestPickerView()
+        : base("Open pull request", DialogWidth, ContentRows, "Loading pull requests…",
+            pr => $"#{pr.Number} {pr.Title} {pr.Author}", "Check out",
+            pr => PullRequestList.Display(pr, PickerList.Width(DialogWidth)))
     {
-        Title = "Open pull request";
-        BorderStyle = LineStyle.Single;
-        X = Pos.Center();
-        Y = Pos.Center();
-        Width = 78;
-        Height = 22;
-        CanFocus = true;
-
-        _filter = new TextField { X = 1, Y = 0, Width = Dim.Fill(1) };
-        _filter.TextChanged += (_, _) => ShowEntries();
-
-        _list = new ListView { Width = Dim.Fill(), Height = Dim.Fill() };
-        _state = new LoadStateView(_list, "Loading pull requests…") { X = 1, Y = 1, Width = Dim.Fill(1), Height = Dim.Fill(3) };
-        _status = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(3), Width = Dim.Fill(1), Text = "" };
-        var legend = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(2), Width = Dim.Fill(1), Text = $"{PullRequestList.RequestedMarker} your review is requested" };
-        var hint = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(1), Width = Dim.Fill(1), Text = Hint };
-        Add(_filter, _state, _status, legend, hint);
-
-        _scopeCommands = new CommandService();
-        _scopeKeybindings = new KeybindingService(_scopeCommands);
-        RegisterScopeBindings();
-        ShowEntries();
+        Add(new VerbatimLabel { X = 1, Y = ContentRows - 1, Text = Legend, Enabled = false });
+        Commands.Register(CancelId, "Cancel", ClearOrCancel);
     }
 
-    internal string Filter => _filter.Text ?? "";
-    internal string Status => _status.Text ?? "";
-    internal IReadOnlyList<string> VisibleItems => [.. _visible.Select(pr => $"#{pr.Number}")];
-    internal int? SelectedItem => _list.SelectedItem;
-    internal LoadStateView State => _state;
-    internal bool Loaded => _state.State == LoadState.Loaded;
+    internal const string Legend = $"{PullRequestList.RequestedMarker} your review is requested";
 
-    public bool FocusFilter() => _filter.SetFocus();
+    internal IReadOnlyList<string> VisibleItems => [.. Shown.Select(pr => $"#{pr.Number}")];
 
-    public void ShowLoading()
-    {
-        _retry = null;
-        _state.ShowLoading();
-    }
-
-    public void Load(IReadOnlyList<GitHubPullRequestSummary> pullRequests)
-    {
-        _all = pullRequests;
-        if (pullRequests.Count == 0) _state.ShowEmpty("No open pull requests");
-        else _state.ShowContent();
-        ShowEntries();
-    }
+    public void Load(IReadOnlyList<GitHubPullRequestSummary> pullRequests) => ShowRows(pullRequests, "No open pull requests");
 
     public void ShowLoadFailed(string message, Action? retry)
     {
-        _retry = retry;
-        _state.ShowLoadFailed(message, retry);
+        if (retry is null) ShowRows([], message);
+        else ShowFailed(message, retry);
     }
 
     /// <summary>Shows why the checkout didn't happen; the picker stays open so another PR can be picked.</summary>
-    public void ShowError(string message) => _status.Text = message;
+    public void ShowError(string message) => ShowAlert(message, Severity.Error);
 
     /// <summary>Shows what the host is doing while it checks a PR out.</summary>
-    public void ShowBusy(int number) => _status.Text = $"Checking out #{number}…";
+    public void ShowBusy(int number) => ShowAlert($"Checking out #{number}…", Severity.Info);
 
-    private void RegisterScopeBindings()
+    private void ClearOrCancel()
     {
-        _scopeCommands.Register(CommandIds.PullRequestPickerCancel, OnCancel);
-        _scopeCommands.Register(CommandIds.PullRequestPickerConfirm, OnConfirm);
-        _scopeCommands.Register(CommandIds.PullRequestPickerUp, () => MoveSelection(-1));
-        _scopeCommands.Register(CommandIds.PullRequestPickerDown, () => MoveSelection(1));
-        _scopeCommands.Register(CommandIds.PullRequestPickerPageUp, () => MoveSelection(-PageHeight));
-        _scopeCommands.Register(CommandIds.PullRequestPickerPageDown, () => MoveSelection(PageHeight));
-        _scopeCommands.Register(CommandIds.PullRequestPickerRetry, "Retry", () => _retry?.Invoke(), CommandScope.Global, CanRetry);
-
-        _scopeKeybindings.Bind("Esc", CommandIds.PullRequestPickerCancel);
-        _scopeKeybindings.Bind("Enter", CommandIds.PullRequestPickerConfirm);
-        _scopeKeybindings.Bind("CursorUp", CommandIds.PullRequestPickerUp);
-        _scopeKeybindings.Bind("CursorDown", CommandIds.PullRequestPickerDown);
-        _scopeKeybindings.Bind("PageUp", CommandIds.PullRequestPickerPageUp);
-        _scopeKeybindings.Bind("PageDown", CommandIds.PullRequestPickerPageDown);
-        _scopeKeybindings.Bind("r", CommandIds.PullRequestPickerRetry);
-    }
-
-    private bool CanRetry() => _retry is not null && _state.State == LoadState.Failed;
-
-    private void OnCancel()
-    {
-        if (Filter.Length > 0) _filter.Text = "";
-        else Cancelled?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void OnConfirm()
-    {
-        if (_list.SelectedItem is { } i && i < _visible.Count) Submitted?.Invoke(this, _visible[i]);
-    }
-
-    private int PageHeight => Math.Max(1, _list.Viewport.Height);
-
-    private void MoveSelection(int delta)
-    {
-        if (_visible.Count == 0) return;
-        _list.SelectedItem = Math.Clamp((_list.SelectedItem ?? -1) + delta, 0, _visible.Count - 1);
-    }
-
-    private void ShowEntries()
-    {
-        _status.Text = "";
-        _visible = PullRequestList.Filter(_all, Filter);
-        _list.Source = new PullRequestListSource(_visible);
-        _list.SelectedItem = _visible.Count == 0 ? null : 0;
-    }
-
-    private sealed class PullRequestListSource(IReadOnlyList<GitHubPullRequestSummary> rows) : IListDataSource
-    {
-        public event NotifyCollectionChangedEventHandler? CollectionChanged { add { } remove { } }
-
-        public int Count => rows.Count;
-
-        public int MaxItemLength => 0;
-
-        public bool SuspendCollectionChangedEvent { get; set; }
-
-        public void Render(ListView listView, bool selected, int item, int col, int row, int width, int viewportX = 0)
-        {
-            listView.Move(col, row);
-            listView.AddStr(PullRequestList.Display(rows[item], width).PadRight(width));
-        }
-
-        public bool IsMarked(int item) => false;
-
-        public void SetMark(int item, bool value) { }
-
-        public IList ToList() => rows.Select(r => r.Title).ToList();
-
-        public void Dispose() { }
+        if (FilterField.Text.Length > 0) FilterField.Text = "";
+        else Cancel();
     }
 }
