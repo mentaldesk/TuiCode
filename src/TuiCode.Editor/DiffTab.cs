@@ -790,8 +790,10 @@ public sealed class DiffTab : FrameView
         return col;
     }
 
+    private int TabWidth => Source?.Format.IndentSize ?? Settings.IndentSize;
+
     private int Columns(string grapheme, int col) => grapheme == "\t"
-        ? Settings.IndentSize - col % Settings.IndentSize
+        ? TabWidth - col % TabWidth
         : Math.Max(1, grapheme.GetColumns(false));
 
     // The header (find bar) belongs to its controller, which outlives this tab — don't take it down with us.
