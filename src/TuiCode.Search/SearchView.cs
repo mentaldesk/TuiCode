@@ -210,6 +210,7 @@ public sealed class SearchView : View
             return;
         }
 
+        if (search != _resultFor) ClearResults();
         var run = _running = new Running();
         ShowProgress(run);
         app.AddTimeout(ProgressInterval, () =>
@@ -227,7 +228,7 @@ public sealed class SearchView : View
             }), TaskScheduler.Default);
     }
 
-    /// <summary>Stop the running search, leaving the query and the results already shown.</summary>
+    /// <summary>Stop the running search, leaving the query and any results already shown for it.</summary>
     public void StopSearch()
     {
         if (_running is not { } run) return;
@@ -298,6 +299,13 @@ public sealed class SearchView : View
             { Truncated: true } => $"{result.MatchCount}+ in {result.Files.Count} {Plural.Of(result.Files.Count, "file")}",
             _ => $"{result.MatchCount} in {result.Files.Count} {Plural.Of(result.Files.Count, "file")}",
         } + (result.NotARepo ? " (not a git repo)" : string.Empty);
+        SetNeedsDraw();
+    }
+
+    private void ClearResults()
+    {
+        Result = WorkspaceSearchResult.Empty;
+        _results.ClearObjects();
         SetNeedsDraw();
     }
 
