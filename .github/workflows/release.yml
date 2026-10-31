@@ -203,7 +203,33 @@ jobs:
       tag: ${{ needs.version.outputs.tag }}
       formula: packaging/tuicode.rb
       scoop: packaging/tuicode.json
+      apt: true
       artifacts: tuicode-*
       environment: release
     # The only way an environment's secrets reach a called workflow: actions/runner#4453.
     secrets: inherit
+
+  apt-check:
+    name: apt install ${{ matrix.arch }}
+    needs: [version, publish]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install from the apt repository
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          for image in debian:12 ubuntu:22.04; do
+            echo "::group::$image"
+            packaging/test-apt-repo.sh "$image" "$VERSION"
+            echo "::endgroup::"
+          done
