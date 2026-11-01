@@ -31,6 +31,8 @@ public sealed class SidebarPart : FrameView
 
     public event EventHandler? OpenFolderRequested;
 
+    public event EventHandler? ActiveTabChanged;
+
     public SidebarTab ActiveTab =>
         ReferenceEquals(_tabs.Value, _findTab) ? SidebarTab.Find
         : ReferenceEquals(_tabs.Value, _usagesTab) ? SidebarTab.Usages
@@ -90,6 +92,7 @@ public sealed class SidebarPart : FrameView
         _tabs.ValueChanged += (_, _) =>
         {
             if (ActiveTab == SidebarTab.Review) Review.Refresh();
+            ActiveTabChanged?.Invoke(this, EventArgs.Empty);
         };
         Add(_tabs);
     }

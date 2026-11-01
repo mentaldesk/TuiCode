@@ -11,4 +11,6 @@ internal sealed class ExplorerTreeBuilder : ITreeBuilder<IFileSystemInfo>
         entry is IDirectoryInfo && !entry.Attributes.HasFlag(FileAttributes.ReparsePoint);
 
     public IEnumerable<IFileSystemInfo> GetChildren(IFileSystemInfo entry) => _entries.GetChildren(entry);
+
+    public int Compare(IFileSystemInfo x, IFileSystemInfo y) => _entries.Compare(x, y);
 }
