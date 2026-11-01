@@ -54,4 +54,14 @@ public class AskContextTests
 
         Assert.Equal((0, 0, 0), (context.First, context.Last, context.Lines.Count));
     }
+
+    [Fact]
+    public void Two_contexts_are_the_same_when_they_name_the_same_lines_with_the_same_text()
+    {
+        var context = AskContext.Of("/work/A.cs", "/work", Lines, (4, 6), 0);
+
+        Assert.Equal(context, AskContext.Of("/work/A.cs", "/work", [.. Lines], (4, 6), 0));
+        Assert.NotEqual(context, AskContext.Of("/work/A.cs", "/work", Lines, (4, 7), 0));
+        Assert.NotEqual(context, AskContext.Of("/work/A.cs", "/work", [.. Lines.Select(l => l + "!")], (4, 6), 0));
+    }
 }

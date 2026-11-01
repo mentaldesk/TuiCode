@@ -70,6 +70,135 @@ public class AssistantHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task After_a_question_the_About_line_stays_and_follows_the_cursor_while_the_editor_has_the_keys()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => { Tab(workbench).MoveCursor(40, 0); Shift(host, Key.CursorDown, 3); },
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Why?"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("Hello"),
+            () => view.ContextText == "About lines 41–43 of A.cs",
+            () => host.App.InjectKey(Key.Esc),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => Tab(workbench).MoveCursor(60, 0),
+            () => view.ContextText == "About lines 21–100 of A.cs");
+    }
+
+    [Fact]
+    public async Task Coming_back_to_the_pane_after_selecting_other_lines_sends_those_lines_with_the_next_question()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => { Tab(workbench).MoveCursor(40, 0); Shift(host, Key.CursorDown, 3); },
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "One"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("Hello"),
+            () => host.App.InjectKey(Key.Esc),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => { Tab(workbench).MoveCursor(9, 0); Shift(host, Key.CursorDown, 2); },
+            ClickQuestionBox(host, workbench),
+            () => view.InputHasFocus,
+            () => view.ContextText == "About lines 10–11 of A.cs",
+            () => Type(host, "Two"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Split("Hello").Length == 3);
+
+        var prompt = _agent.Received("session/prompt").Last()!["prompt"]!.AsArray();
+        Assert.Equal("About lines 10–11 of A.cs:\n\nTwo", prompt[0]!["text"]!.GetValue<string>());
+        Assert.Equal("// line 10\n// line 11", prompt[1]!["resource"]!["text"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task A_follow_up_about_the_same_lines_sends_only_the_question_and_the_About_line_still_names_them()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => { Tab(workbench).MoveCursor(40, 0); Shift(host, Key.CursorDown, 3); },
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "One"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("Hello"),
+            () => Type(host, "Two"),
+            () => host.App.InjectKey(Key.Enter),
+            () => _agent.Received("session/prompt").Count() == 2);
+
+        var prompt = _agent.Received("session/prompt").Last()!["prompt"]!.AsArray();
+        Assert.Equal("Two", Assert.Single(prompt)!["text"]!.GetValue<string>());
+        Assert.Equal("About lines 41–43 of A.cs", view.ContextText);
+    }
+
+    [Fact]
+    public async Task After_Ctrl_L_the_next_question_carries_the_same_lines_again()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => { Tab(workbench).MoveCursor(40, 0); Shift(host, Key.CursorDown, 3); },
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "One"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("Hello"),
+            () => host.App.InjectKey(Key.L.WithCtrl),
+            () => Chat(view) == "",
+            () => Type(host, "Two"),
+            () => host.App.InjectKey(Key.Enter),
+            () => _agent.Received("session/prompt").Count() == 2);
+
+        Assert.Equal("About lines 41–43 of A.cs", view.ContextText);
+        var prompt = _agent.Received("session/prompt").Last()!["prompt"]!.AsArray();
+        Assert.Equal("// line 41\n// line 42\n// line 43", prompt[1]!["resource"]!["text"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Switching_tabs_names_the_other_file_and_with_no_file_tab_the_line_is_empty_and_the_question_carries_no_code()
+    {
+        _fs.AddFile("/work/B.cs", new MockFileData("// b"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/B.cs")),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => view.ContextText == "About line 1 of B.cs",
+            () => OpenFile(workbench),
+            () => view.ContextText == "About lines 1–41 of A.cs",
+            () => workbench.Editor.Group.CloseAll(),
+            () => view.ContextText == "",
+            ClickQuestionBox(host, workbench),
+            () => view.InputHasFocus,
+            () => Type(host, "Why?"),
+            () => host.App.InjectKey(Key.Enter),
+            () => _agent.Received("session/prompt").Any());
+
+        Assert.Equal("Why?", Assert.Single(_agent.Received("session/prompt").Single()!["prompt"]!.AsArray())!["text"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task The_status_bar_says_answering_until_the_answer_ends_and_Esc_stops_it()
     {
         using var workbench = BuildWorkbench();
@@ -421,6 +550,14 @@ public class AssistantHostTests : StaticConfigurationTest
     {
         foreach (var c in text) host.App.InjectKey(new Key(c));
     }
+
+    private static Action ClickQuestionBox(WorkbenchHost host, Workbench.Workbench workbench) => () =>
+    {
+        var frame = workbench.AssistantSidebar.FrameToScreen();
+        var at = new System.Drawing.Point(frame.X + frame.Width / 2, frame.Bottom - 3);
+        host.App.InjectMouse(new Mouse { Flags = MouseFlags.LeftButtonPressed, ScreenPosition = at });
+        host.App.InjectMouse(new Mouse { Flags = MouseFlags.LeftButtonReleased, ScreenPosition = at });
+    };
 
     private static void Shift(WorkbenchHost host, Key key, int times)
     {
