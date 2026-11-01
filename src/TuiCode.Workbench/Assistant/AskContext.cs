@@ -11,6 +11,11 @@ public sealed record AskContext(string Path, string RelativePath, int First, int
 
     public string Text => string.Join('\n', Lines);
 
+    public bool Equals(AskContext? other) =>
+        other is not null && (Path, First, Last) == (other.Path, other.First, other.Last) && Lines.SequenceEqual(other.Lines);
+
+    public override int GetHashCode() => HashCode.Combine(Path, First, Last);
+
     /// <summary>The file's URI with the lines as a fragment, which the chat reads back when a conversation is reloaded.</summary>
     public string Uri => $"{Languages.LspLocations.ToUri(Path)}#L{First + 1}-{Last + 1}";
 

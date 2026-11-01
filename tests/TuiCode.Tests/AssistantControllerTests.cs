@@ -100,6 +100,38 @@ public class AssistantControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_follow_up_about_the_same_lines_leaves_them_out_and_one_about_other_lines_sends_those()
+    {
+        IReadOnlyList<string> lines = ["a", "b", "c", "d"];
+        AskContext About(int first, int last) => AskContext.Of(_fs.Path.Combine(Root, "A.cs"), Root, lines, (first, last), 0);
+
+        foreach (var (question, context) in new[] { ("One", About(1, 2)), ("Two", About(1, 2)), ("Three", About(0, 0)) })
+        {
+            _controller.Ask(question, context);
+            await Until(() => !_controller.IsAnswering);
+        }
+
+        var prompts = _agent.Received("session/prompt").Select(p => p!["prompt"]!.AsArray()).ToList();
+        Assert.Equal([2, 1, 2], prompts.Select(p => p.Count));
+        Assert.Equal("Two", prompts[1][0]!["text"]!.GetValue<string>());
+        Assert.Equal("a", prompts[2][1]!["resource"]!["text"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task After_clearing_the_same_lines_go_out_again()
+    {
+        var context = AskContext.Of(_fs.Path.Combine(Root, "A.cs"), Root, ["a", "b"], (0, 1), 0);
+        _controller.Ask("One", context);
+        await Until(() => !_controller.IsAnswering);
+
+        _controller.Clear();
+        _controller.Ask("Two", context);
+        await Until(() => !_controller.IsAnswering);
+
+        Assert.Equal(2, _agent.Received("session/prompt").Last()!["prompt"]!.AsArray().Count);
+    }
+
+    [Fact]
     public async Task Stopping_cancels_the_session_and_keeps_what_arrived()
     {
         _agent.OnPrompt = async (agent, _) =>

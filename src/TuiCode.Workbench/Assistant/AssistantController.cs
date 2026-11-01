@@ -19,6 +19,7 @@ public sealed class AssistantController : IAgentRequests, IDisposable
     private bool _newSession;
     private string? _root;
     private HashSet<string>? _touched;
+    private AskContext? _sent;
     private readonly Dictionary<string, ToolCallUpdate> _edits = [];
 
     /// <param name="post">Runs an action on the UI thread.</param>
@@ -155,10 +156,12 @@ public sealed class AssistantController : IAgentRequests, IDisposable
     private static bool IsSignIn(JsonRpcException e) =>
         e.Code == -32000 || e.Message.Contains("auth", StringComparison.OrdinalIgnoreCase) || e.Message.Contains("log in", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Puts <paramref name="question"/> to the agent, about <paramref name="context"/> where there is one.</summary>
+    /// <summary>Puts <paramref name="question"/> to the agent, about <paramref name="context"/> unless the last question carried it already.</summary>
     public void Ask(string question, AskContext? context)
     {
         if (IsAnswering || Agent is null) return;
+        if (context is not null && context == _sent) context = null;
+        else _sent = context;
         Conversation.AddQuestion(question, context?.Label);
         IsAnswering = true;
         Raise();
@@ -310,6 +313,7 @@ public sealed class AssistantController : IAgentRequests, IDisposable
         IsStarting = false;
         IsAnswering = false;
         _touched = null;
+        _sent = null;
         _edits.Clear();
         client?.Dispose();
     }
