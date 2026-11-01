@@ -353,6 +353,7 @@ public sealed class Workbench : Window
     /// </summary>
     public void OpenFolder(IDirectoryInfo directory, bool rememberTabs = true)
     {
+        SaveWorkspaceState();
         _workspaceFolder = null;
         SetHistoryOn(false);
         ShowAssistant(false);

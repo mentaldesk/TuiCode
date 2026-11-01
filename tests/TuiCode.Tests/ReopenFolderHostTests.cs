@@ -187,6 +187,21 @@ public class ReopenFolderHostTests : StaticConfigurationTest
         Assert.Equal(new ExplorerRow(Full("/work/src"), Folder: true), Load().ExplorerSelected);
     }
 
+    [Fact]
+    public async Task Switching_folders_keeps_the_selected_row_of_the_one_left()
+    {
+        _fs.AddDirectory("/other");
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        workbench.OpenFolder(_fs.DirectoryInfo.New(Full("/work")));
+
+        await HostSteps.Run(host,
+            () => workbench.Sidebar.Explorer.Restore(Full("/work/src"), folder: true),
+            () => workbench.OpenFolder(_fs.DirectoryInfo.New(Full("/other"))));
+
+        Assert.Equal(new ExplorerRow(Full("/work/src"), Folder: true), Load().ExplorerSelected);
+    }
+
     private void Save(WorkspaceState state) => _store.Save(Full("/work"), state);
 
     private WorkspaceState Load() => _store.Load(Full("/work"))!;
