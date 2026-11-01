@@ -77,6 +77,33 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         NoteExpansion();
     }
 
+    /// <summary>Selects <paramref name="fullPath"/> in view, its folders expanded; if it's gone, what's now in its place, else the folder's last entry, else the folder.</summary>
+    public void Restore(string fullPath, bool folder)
+    {
+        if (Root is not { } root || !FilePaths.IsSameOrUnder(fullPath, root.FullName)) return;
+        var fs = root.FileSystem;
+        var segments = Segments(root, fullPath);
+        IFileSystemInfo current = root;
+        for (var i = 0; i < segments.Length; i++)
+        {
+            Expand(current);
+            var children = GetChildren(current).ToList();
+            if (children.FirstOrDefault(c => string.Equals(c.Name, segments[i], StringComparison.Ordinal)) is { } match)
+            {
+                current = match;
+                continue;
+            }
+            var gonePath = fs.Path.Combine(current.FullName, segments[i]);
+            IFileSystemInfo gone = folder || i < segments.Length - 1 ? fs.DirectoryInfo.New(gonePath) : fs.FileInfo.New(gonePath);
+            var builder = (ExplorerTreeBuilder)TreeBuilder!;
+            current = children.FirstOrDefault(c => builder.Compare(c, gone) > 0) ?? children.LastOrDefault() ?? current;
+            break;
+        }
+        SelectedObject = current;
+        EnsureVisible(current);
+        NoteExpansion();
+    }
+
     public void ActivateSelected()
     {
         if (SelectedObject is IFileInfo file)

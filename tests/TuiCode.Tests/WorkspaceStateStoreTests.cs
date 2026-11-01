@@ -1,3 +1,4 @@
+using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Workspace;
 
 namespace TuiCode.Tests;
@@ -40,6 +41,44 @@ public class WorkspaceStateStoreTests
 
         Assert.True(store.Load("/a")!.Assistant);
         Assert.False(store.Load("/b")!.Assistant);
+    }
+
+    [Fact]
+    public void Load_returns_the_sidebar_and_where_the_keys_were()
+    {
+        var store = new WorkspaceStateStore(new MockFileSystem(), StatePath);
+        store.Save("/a", new WorkspaceState([], null)
+        {
+            Sidebar = SidebarTab.Review,
+            SidebarHidden = true,
+            Focus = WorkspaceFocus.Sidebar,
+            ExplorerSelected = new ExplorerRow("/a/src", Folder: true),
+            ReviewSelected = "src/x.cs",
+        });
+
+        var state = store.Load("/a")!;
+
+        Assert.Equal(SidebarTab.Review, state.Sidebar);
+        Assert.True(state.SidebarHidden);
+        Assert.Equal(WorkspaceFocus.Sidebar, state.Focus);
+        Assert.Equal(new ExplorerRow("/a/src", true), state.ExplorerSelected);
+        Assert.Equal("src/x.cs", state.ReviewSelected);
+    }
+
+    [Fact]
+    public void Load_reads_a_folder_saved_before_the_sidebar_was_kept_as_leaving_it_alone()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(StatePath, new MockFileData("""[{ "Folder": "/a", "Files": ["/a/x.cs"], "Active": "/a/x.cs" }]"""));
+
+        var state = new WorkspaceStateStore(fs, StatePath).Load("/a")!;
+
+        Assert.Equal(["/a/x.cs"], state.Files);
+        Assert.Null(state.Sidebar);
+        Assert.False(state.SidebarHidden);
+        Assert.Equal(WorkspaceFocus.Editor, state.Focus);
+        Assert.Null(state.ExplorerSelected);
+        Assert.Null(state.ReviewSelected);
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using TuiCode.Workbench.Parts;
 
 namespace TuiCode.Workbench.Workspace;
 
@@ -18,7 +19,24 @@ public sealed record WorkspaceState(IReadOnlyList<string> Files, string? ActiveF
 
     /// <summary>Whether the AI assistance sidebar was open (#619).</summary>
     public bool Assistant { get; init; }
+
+    /// <summary>The sidebar tab that was showing (#645); null when saved before it was kept.</summary>
+    public SidebarTab? Sidebar { get; init; }
+
+    public bool SidebarHidden { get; init; }
+
+    public WorkspaceFocus Focus { get; init; }
+
+    public ExplorerRow? ExplorerSelected { get; init; }
+
+    /// <summary>The changed file selected in Review, by its repo-relative path.</summary>
+    public string? ReviewSelected { get; init; }
 }
+
+/// <summary>The part that had the keys (#645); <see cref="Editor"/> is the editor group saved as focused.</summary>
+public enum WorkspaceFocus { Editor, Sidebar, Assistant, History }
+
+public sealed record ExplorerRow(string Path, bool Folder);
 
 public sealed record WorkspaceGroup(IReadOnlyList<string> Files, string? ActiveFile);
 
@@ -61,6 +79,13 @@ public sealed class WorkspaceStateStore
                     SecondFocused = second?["Focused"]?.GetValue<bool>() ?? false,
                     History = obj["History"]?.GetValue<bool>() ?? false,
                     Assistant = obj["Assistant"]?.GetValue<bool>() ?? false,
+                    Sidebar = Enum.TryParse<SidebarTab>(obj["Sidebar"]?.GetValue<string>(), out var tab) ? tab : null,
+                    SidebarHidden = obj["SidebarHidden"]?.GetValue<bool>() ?? false,
+                    Focus = Enum.TryParse<WorkspaceFocus>(obj["Focus"]?.GetValue<string>(), out var focus) ? focus : WorkspaceFocus.Editor,
+                    ExplorerSelected = obj["ExplorerSelected"]?.GetValue<string>() is { } selected
+                        ? new ExplorerRow(selected, obj["ExplorerSelectedFolder"]?.GetValue<bool>() ?? false)
+                        : null,
+                    ReviewSelected = obj["ReviewSelected"]?.GetValue<string>(),
                 };
             }
             catch (InvalidOperationException)
@@ -93,6 +118,19 @@ public sealed class WorkspaceStateStore
             entry["History"] = true;
         if (state.Assistant)
             entry["Assistant"] = true;
+        if (state.Sidebar is { } tab)
+            entry["Sidebar"] = tab.ToString();
+        if (state.SidebarHidden)
+            entry["SidebarHidden"] = true;
+        if (state.Focus != WorkspaceFocus.Editor)
+            entry["Focus"] = state.Focus.ToString();
+        if (state.ExplorerSelected is { } row)
+        {
+            entry["ExplorerSelected"] = row.Path;
+            if (row.Folder) entry["ExplorerSelectedFolder"] = true;
+        }
+        if (state.ReviewSelected is { } review)
+            entry["ReviewSelected"] = review;
 
         var root = new JsonArray { (JsonNode)entry };
         foreach (var obj in ReadEntries().Where(o => FolderOf(o) is { } f && f != folder).Take(MaxFolders - 1))

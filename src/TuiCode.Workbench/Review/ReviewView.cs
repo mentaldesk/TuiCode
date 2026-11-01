@@ -355,6 +355,15 @@ public sealed class ReviewView : View
         return true;
     }
 
+    /// <summary>The next load selects <paramref name="path"/>, or the file now in its place, or the last one (#645).</summary>
+    public void SelectWhenLoaded(string? path) => _selectWhenLoaded = path;
+
+    /// <summary>The path waiting for <see cref="SelectWhenLoaded"/>, else the selected file's while the list is <paramref name="folder"/>'s.</summary>
+    public string? SelectedPathIn(string folder) =>
+        _selectWhenLoaded ?? (Review is { } review && FilePaths.IsSameOrUnder(folder, review.RepoRoot) ? SelectedFile?.Path : null);
+
+    private string? _selectWhenLoaded;
+
     /// <summary>Re-reads the branch's changes, then its PR. The task completes once both are shown, or at once when hosted.</summary>
     public Task Refresh()
     {
@@ -469,7 +478,9 @@ public sealed class ReviewView : View
             _totalsText = review.TotalsLine;
             _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads, review.LineCounts, review.Viewed));
             _files.ExpandAll();
-            _files.SelectedObject = FindThread(selectedThread) ?? (ReviewNode?)FindFile(selected) ?? FindFolder(selectedFolder) ?? (ReviewNode?)FirstFile();
+            _files.SelectedObject = _selectWhenLoaded is { } restored
+                ? FindFile(restored) ?? InPlaceOf(restored)
+                : FindThread(selectedThread) ?? (ReviewNode?)FindFile(selected) ?? FindFolder(selectedFolder) ?? (ReviewNode?)FirstFile();
             _files.Visible = true;
         }
         else
@@ -478,6 +489,7 @@ public sealed class ReviewView : View
             _totalsText = string.Empty;
             _files.Visible = false;
         }
+        _selectWhenLoaded = null;
         _checksText = result.Value?.ChecksLine ?? string.Empty;
         _threadsText = result.Value?.ThreadsLine ?? string.Empty;
         LayoutHeader();
@@ -562,6 +574,12 @@ public sealed class ReviewView : View
 
     private ReviewFolderNode? FindFolder(string? path) =>
         path is null ? null : (_files.Objects ?? []).OfType<ReviewFolderNode>().FirstOrDefault(f => f.Path == path);
+
+    private ReviewFileNode? InPlaceOf(string path)
+    {
+        var files = AllFiles().ToList();
+        return files.FirstOrDefault(f => ReviewTree.ListOrder.Compare(f.Change.Path, path) > 0) ?? files.LastOrDefault();
+    }
 
     private ReviewFileNode? FindFile(string? path) =>
         path is null ? null : AllFiles().FirstOrDefault(f => f.Change.Path == path);
