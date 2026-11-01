@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Paths;
 using Terminal.Gui.Views;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
@@ -55,15 +56,15 @@ public class NoFolderHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         host.OpenWhenRunning(Resolve("/tmp/notes.txt"));
-        OpenView? dialog = null;
+        PathPicker? dialog = null;
 
         await HostSteps.Run(host,
             () => workbench.Editor.Group.ActiveTab is not null,
             () => commands.TryExecute(CommandIds.FocusSidebar),
             () => workbench.Sidebar.OpenFolderButton.HasFocus,
             () => host.App.InjectKey(Key.Enter),
-            () => (dialog = workbench.SubViews.OfType<OpenView>().SingleOrDefault()) is not null,
-            () => { dialog!.SubViews.OfType<Button>().Single().InvokeCommand(Command.Accept); },
+            () => (dialog = PathPickers.Showing(workbench)) is not null,
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => workbench.Sidebar.Explorer.Root is not null);
 
         Assert.Equal("Explorer", workbench.StatusBar.DisplayedFocus);

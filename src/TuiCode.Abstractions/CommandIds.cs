@@ -35,6 +35,7 @@ public static class CommandIds
     public const string SubmitReview = "workbench.action.submitReview";
     public const string CreateComment = "workbench.action.createComment";
     public const string New = "workbench.action.new";
+    public const string NewFolder = "workbench.action.newFolder";
 
     public const string SettingsSave = "settings.action.save";
     public const string SettingsCancel = "settings.action.cancel";
@@ -122,9 +123,6 @@ public static class CommandIds
     public const string ToggleMatchCase = "find.action.toggleMatchCase";
     public const string ToggleWholeWord = "find.action.toggleWholeWord";
     public const string ToggleIgnoredFiles = "search.action.toggleIgnoredFiles";
-
-    public const string OpenConfirm = "open.action.confirm";
-    public const string OpenCancel = "open.action.cancel";
 
     public const string SubmitReviewConfirm = "submitReview.action.confirm";
     public const string SubmitReviewCancel = "submitReview.action.cancel";
