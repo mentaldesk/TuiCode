@@ -457,6 +457,10 @@ public class FindAndSearchHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host,
             () => host.App.InjectKey(Key.F.WithCtrl.WithShift),
+            () => { foreach (var c in "ex") host.App.InjectKey(new Key(c)); },
+            () => search.Query == "ex" && search.Result.MatchCount > 0 && !search.IsSearching,
+            () => { host.App.InjectKey(Key.Backspace); host.App.InjectKey(Key.Backspace); },
+            () => search.Query == "" && !search.IsSearching,
             () =>
             {
                 host.App.Iteration += (_, _) =>
