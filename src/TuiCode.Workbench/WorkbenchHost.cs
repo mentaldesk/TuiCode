@@ -249,6 +249,7 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.HistoryShowingChanged += (_, _) =>
         {
             if (!_workbench.IsHistoryShowing && _focus.Region == FocusRegion.History) FocusEditorBody();
+            else if (_workbench.IsHistoryShowing && _restoreTo == FocusRegion.History && _focus.Focus(FocusRegion.History)) _restoreTo = null;
         };
         _workbench.AssistantShowingChanged += (_, _) =>
         {
@@ -317,7 +318,7 @@ public sealed class WorkbenchHost : IDisposable
         // Opening a file is a move into the Editor region, so the service makes it: the tab it opens may
         // still be carrying a stale HasFocus, which its own SetFocus would no-op on (#228).
         _workbench.FileOpened += (_, _) => MoveFocus(FocusRegion.Editor);
-        _workbench.TabsRestored += (_, _) => _restoringFocus = true;
+        _workbench.TabsRestored += (_, focus) => RestoreFocus(focus);
         _workbench.Sidebar.OpenFolderRequested += (_, _) => _commands.TryExecute(CommandIds.Open);
     }
 
@@ -378,6 +379,13 @@ public sealed class WorkbenchHost : IDisposable
 
         _focus.RegionChanged += (_, region) =>
         {
+            _workbench.Focus = region switch
+            {
+                _ when InSidebar(region) => WorkspaceFocus.Sidebar,
+                FocusRegion.Assistant => WorkspaceFocus.Assistant,
+                FocusRegion.History => WorkspaceFocus.History,
+                _ => WorkspaceFocus.Editor,
+            };
             _workbench.StatusBar.SetFocusRegion(FocusService.Label(region));
             ShowAvailableMenus();
             ShowBorders();
@@ -390,6 +398,23 @@ public sealed class WorkbenchHost : IDisposable
     private View? _lastFocused;
     private bool _restoringFocus = true;
 
+    // The part a reopened folder had the keys in (#645), until they land there or a key is pressed.
+    private FocusRegion? _restoreTo;
+
+    private void RestoreFocus(WorkspaceFocus focus)
+    {
+        _restoringFocus = true;
+        _restoreTo = focus switch
+        {
+            WorkspaceFocus.Sidebar when _workbench.IsSidebarVisible => SidebarRegion(_workbench.Sidebar.ActiveTab),
+            WorkspaceFocus.Assistant when _workbench.IsAssistantShowing => FocusRegion.Assistant,
+            WorkspaceFocus.History when _workbench.IsHistoryOn => FocusRegion.History,
+            _ when _workbench.Editor.Group.Value is null => null,
+            _ => _workbench.Editor.Group.ActiveDiffTab is null ? FocusRegion.Editor : FocusRegion.Diff,
+        };
+        if (_restoreTo is { } region) _focus.Focus(region);
+    }
+
     // A click or Terminal.Gui's own navigation can take the keys into the other group; the commands follow them there.
     private void Reconcile()
     {
@@ -400,7 +425,12 @@ public sealed class WorkbenchHost : IDisposable
             _restoringFocus = false;
             _lastFocused = focused;
             var groups = _workbench.Editor.Groups;
-            if (_workbench.Editor.GroupOf(focused) is { } group && !ReferenceEquals(group, groups.Focused))
+            if (restoring && _restoreTo is { } region and not FocusRegion.History)
+            {
+                _restoreTo = null;
+                _focus.Focus(region);
+            }
+            else if (_workbench.Editor.GroupOf(focused) is { } group && !ReferenceEquals(group, groups.Focused))
             {
                 // Terminal.Gui puts the keys in the first group as restored tabs arrive; the group saved as focused wins.
                 if (restoring) Take(groups.Focused.Value, groups.Focused.FocusActive);
@@ -503,6 +533,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         // Diagnostics shows the raw key as delivered by the driver, so feed it the unnormalized key.
         _activeDiagnostics?.UpdateLastKey(key);
+        _restoreTo = null;
 
         var shown = _workbench.StatusBar.Bar.Current;
         var chording = _keybindings.CurrentChord is not null;
@@ -2693,14 +2724,16 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (!_workbench.IsSidebarVisible)
             _workbench.SetSidebarVisible(true);
-        MoveFocus(_workbench.Sidebar.ActiveTab switch
-        {
-            SidebarTab.Find => FocusRegion.Find,
-            SidebarTab.Usages => FocusRegion.Usages,
-            SidebarTab.Review => FocusRegion.Review,
-            _ => FocusRegion.Explorer,
-        });
+        MoveFocus(SidebarRegion(_workbench.Sidebar.ActiveTab));
     }
+
+    private static FocusRegion SidebarRegion(SidebarTab tab) => tab switch
+    {
+        SidebarTab.Find => FocusRegion.Find,
+        SidebarTab.Usages => FocusRegion.Usages,
+        SidebarTab.Review => FocusRegion.Review,
+        _ => FocusRegion.Explorer,
+    };
 
     private static int CountLines(string text)
     {

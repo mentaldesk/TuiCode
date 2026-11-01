@@ -110,6 +110,8 @@ public sealed class Workbench : Window
 
         Add(MenuBar, sidebar, editor, Panel, AssistantSidebar, statusBar);
 
+        sidebar.ActiveTabChanged += (_, _) => SaveWorkspaceState();
+
         sidebar.Explorer.FileActivated += (_, file) => OpenFile(file);
 
         sidebar.Search.RootProvider = () => sidebar.Explorer.Root;
@@ -276,8 +278,20 @@ public sealed class Workbench : Window
     /// <summary>A file has been opened in the editor; the host moves the keys into it through the focus service (#228).</summary>
     public event EventHandler? FileOpened;
 
-    /// <summary>A folder's saved tabs are back, and <see cref="EditorGroups.Focused"/> is the group that was focused.</summary>
-    public event EventHandler? TabsRestored;
+    /// <summary>A folder's saved state is back, with the part that had the keys; <see cref="EditorGroups.Focused"/> is the group that did.</summary>
+    public event EventHandler<WorkspaceFocus>? TabsRestored;
+
+    /// <summary>Where the keys are, kept with the folder (#645); the host keeps it up to date.</summary>
+    public WorkspaceFocus Focus
+    {
+        get;
+        set
+        {
+            if (field == value) return;
+            field = value;
+            SaveWorkspaceState();
+        }
+    }
 
     /// <summary>Open a file in the editor. Shared by the explorer and the Open dialog.</summary>
     public void OpenFile(IFileInfo file)
@@ -349,11 +363,13 @@ public sealed class Workbench : Window
         Sidebar.ShowNoFolder(false);
         Sidebar.Explorer.Open(directory);
         Sidebar.Search.RunSearch();
+        var state = rememberTabs ? _workspaceState?.Load(directory.FullName) : null;
+        Sidebar.Review.SelectWhenLoaded(state?.ReviewSelected);
         RefreshReviewIfShowing();
         StatusBar.ShowMessage($"Opened folder: {directory.FullName}");
 
         if (!rememberTabs) return;
-        RestoreOpenFiles(directory);
+        if (state is not null) Restore(directory, state);
         _workspaceFolder = directory.FullName;
         SaveWorkspaceState();
     }
@@ -409,9 +425,14 @@ public sealed class Workbench : Window
         return moved;
     }
 
-    private void RestoreOpenFiles(IDirectoryInfo directory)
+    private void Restore(IDirectoryInfo directory, WorkspaceState state)
     {
-        if (_workspaceState?.Load(directory.FullName) is not { } state) return;
+        if (state.Sidebar is { } sidebarTab)
+        {
+            Sidebar.ShowTab(sidebarTab);
+            SetSidebarVisible(!state.SidebarHidden);
+        }
+        if (state.ExplorerSelected is { } row) Sidebar.Explorer.Restore(row.Path, row.Folder);
 
         var groups = Editor.Groups;
         var first = Restore(groups.First, state.Files, state.ActiveFile);
@@ -419,9 +440,9 @@ public sealed class Workbench : Window
         if (first is not null) groups.Holding(first)?.Focus(first.File.FullName);
         if (second is not null) groups.Holding(second)?.Focus(second.File.FullName);
         groups.Focused = state.SecondFocused && groups.IsSplit ? groups.Second : groups.First;
-        TabsRestored?.Invoke(this, EventArgs.Empty);
         SetHistoryOn(state.History);
         ShowAssistant(state.Assistant);
+        TabsRestored?.Invoke(this, state.Focus);
 
         EditorTab? Restore(EditorGroup group, IReadOnlyList<string> files, string? activeFile)
         {
@@ -453,6 +474,11 @@ public sealed class Workbench : Window
             SecondFocused = groups.IsSplit && ReferenceEquals(groups.Focused, groups.Second),
             History = IsHistoryOn,
             Assistant = IsAssistantShowing,
+            Sidebar = Sidebar.ActiveTab,
+            SidebarHidden = !IsSidebarVisible,
+            Focus = Focus,
+            ExplorerSelected = Sidebar.Explorer.SelectedObject is { } selected ? new ExplorerRow(selected.FullName, selected is IDirectoryInfo) : null,
+            ReviewSelected = Sidebar.Review.SelectedPathIn(_workspaceFolder),
         });
 
         static List<string> Files(EditorGroup group) => [.. group.Tabs.Where(t => !t.ReadOnly).Select(t => t.File.FullName)];
@@ -467,6 +493,7 @@ public sealed class Workbench : Window
         if (disposing)
         {
             UnsavedEdits?.Dispose();
+            SaveWorkspaceState();
             _workspaceFolder = null;
             RememberPositions(Editor.Groups.Tabs);
         }
@@ -603,6 +630,7 @@ public sealed class Workbench : Window
         ApplySidebarWidths();
         SetNeedsLayout();
         RefreshReviewIfShowing();
+        SaveWorkspaceState();
     }
 
     /// <summary>The Review tab refreshes itself when it's switched to; this covers the other times it needs to.</summary>

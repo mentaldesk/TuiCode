@@ -529,6 +529,43 @@ public class ReviewViewTests
             line => Assert.True(line.Length <= width, $"'{line}' is wider than {width}"));
     }
 
+    [Theory]
+    [InlineData("src/b.cs", "src/b.cs")]
+    [InlineData("src/bb.cs", "src/c.cs")]
+    [InlineData("src/d.cs", "z.cs")]
+    [InlineData("zz.cs", "z.cs")]
+    public async Task SelectWhenLoaded_selects_the_file_or_the_one_now_in_its_place(string saved, string selected)
+    {
+        _git.Changes =
+        [
+            new GitChange(GitChangeKind.Modified, "src/a.cs"),
+            new GitChange(GitChangeKind.Modified, "src/b.cs"),
+            new GitChange(GitChangeKind.Modified, "src/c.cs"),
+            new GitChange(GitChangeKind.Modified, "z.cs"),
+        ];
+        using var view = Build();
+
+        view.SelectWhenLoaded(saved);
+        Assert.Equal(saved, view.SelectedPathIn(_fs.Path.GetFullPath("/work")));
+        await view.Refresh();
+
+        Assert.Equal(selected, view.SelectedFile?.Path);
+    }
+
+    [Fact]
+    public async Task SelectWhenLoaded_applies_to_one_load_only()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.cs"), new GitChange(GitChangeKind.Modified, "b.cs")];
+        using var view = Build();
+        view.SelectWhenLoaded("b.cs");
+        await view.Refresh();
+
+        view.Files.SelectedObject = File(view, "a.cs");
+        await view.Refresh();
+
+        Assert.Equal("a.cs", view.SelectedFile?.Path);
+    }
+
     private static GitHubReviewThread Thread(bool resolved) =>
         new("a.txt", 1, resolved, false, [new GitHubComment("octocat", default, "Look at this")]);
 
