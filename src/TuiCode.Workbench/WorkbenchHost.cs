@@ -255,6 +255,10 @@ public sealed class WorkbenchHost : IDisposable
         {
             if (!_workbench.IsAssistantShowing && _focus.Region == FocusRegion.Assistant) FocusEditorBody();
         };
+        _focus.RegionChanged += (_, region) =>
+        {
+            if (region == FocusRegion.Assistant) FollowEditor(reread: true);
+        };
         _workbench.History.CommitActivated += (_, commit) => OpenHistoryCommit(commit);
 
         if (languageServers is not null)
@@ -1954,7 +1958,11 @@ public sealed class WorkbenchHost : IDisposable
         Reconcile();
         _activeSymbolPicker?.Advance();
         if (_activeQuickInfo is not null && ReferenceEquals(_scopes.Top, _quickInfoScope) && !QuickInfoStillFits()) CloseQuickInfo();
-        if (_workbench.IsAssistantShowing) ShowingAssistant();
+        if (_workbench.IsAssistantShowing)
+        {
+            ShowingAssistant();
+            FollowEditor();
+        }
         // Some isEnabled checks touch the disk, so not on every iteration.
         if (Environment.TickCount64 - _menuShownAt >= 250) ShowAvailableMenus();
     }
@@ -2621,14 +2629,24 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
         _assistant.Configure(agent);
-        _askContext = _workbench.Editor.Group.ActiveTab is { } tab
-            ? AskContext.Of(tab.File.FullName, AssistantRoot(), tab.Lines, tab.SelectedRows, tab.CursorRow)
-            : null;
-        _workbench.Assistant.ShowContext(_askContext?.Label);
+        FollowEditor(reread: true);
         _workbench.ShowAssistant(true);
         MoveFocus(FocusRegion.Assistant);
         StartAssistant();
     }
+
+    /// <summary>Points the About line at the active editor's selection, or the lines around its cursor (#642).</summary>
+    private void FollowEditor(bool reread = false)
+    {
+        var tab = _workbench.Editor.Group.ActiveTab;
+        var at = (tab, tab?.SelectedRows, tab?.CursorRow);
+        if (!reread && at == _followed) return;
+        _followed = at;
+        _askContext = tab is null ? null : AskContext.Of(tab.File.FullName, AssistantRoot(), tab.Lines, tab.SelectedRows, tab.CursorRow);
+        _workbench.Assistant.ShowContext(_askContext?.Label);
+    }
+
+    private (TuiCode.Editor.EditorTab?, (int, int)?, int?) _followed;
 
     private string? AssistantRoot() =>
         _workbench.Sidebar.Explorer.Root?.FullName ?? _workbench.Editor.Group.ActiveTab?.File.DirectoryName;
@@ -2658,10 +2676,9 @@ public sealed class WorkbenchHost : IDisposable
         var view = _workbench.Assistant;
         var question = view.Question.Trim();
         if (_assistant is null || question.Length == 0 || _assistant.IsAnswering) return;
+        FollowEditor(reread: true);
         _assistant.Ask(question, _askContext);
-        _askContext = null;
         view.Question = "";
-        view.ShowContext(null);
     }
 
     private void ToggleToolCalls()
@@ -2685,8 +2702,7 @@ public sealed class WorkbenchHost : IDisposable
     private void ClearConversation()
     {
         _assistant?.Clear();
-        _askContext = null;
-        _workbench.Assistant.ShowContext(null);
+        FollowEditor(reread: true);
     }
 
     private void ShowAssistant()
