@@ -43,6 +43,7 @@ public static class CommandMnemonics
             [CommandIds.ShowAbout] = "tui",
             [CommandIds.WatchTutorials] = "wt",
             [CommandIds.New] = "nf",
+            [CommandIds.NewFolder] = "nd",
             [CommandIds.DeleteFile] = "df",
             [CommandIds.DeletePermanently] = "dp",
             [CommandIds.ShowDocumentInfo] = "di",

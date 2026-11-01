@@ -1,18 +1,9 @@
 namespace TuiCode.Workbench.Workspace;
 
-/// <summary>A folder path typed into <c>opa</c>.</summary>
+/// <summary>A folder path as the assistant shows it.</summary>
 internal static class FolderPath
 {
     private static readonly char[] Separators = ['/', '\\'];
-
-    /// <summary>The typed path with a leading <c>~</c> as <paramref name="home"/> and no trailing separator.</summary>
-    public static string Expand(string typed, string home)
-    {
-        var path = typed.Trim();
-        if (home.Length > 0 && (path == "~" || (path.Length > 1 && path[0] == '~' && Separators.Contains(path[1]))))
-            path = TrimEnd(home) + path[1..];
-        return TrimEnd(path);
-    }
 
     /// <summary><paramref name="path"/> with <paramref name="home"/> as <c>~</c>.</summary>
     public static string Shorten(string path, string home) => RecentFolderList.ShortenHome(TrimEnd(path), TrimEnd(home));

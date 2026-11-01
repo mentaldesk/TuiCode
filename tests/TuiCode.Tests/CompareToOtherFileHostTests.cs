@@ -2,7 +2,7 @@ using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
-using TuiCode.Workbench.Navigation;
+using MentalDesk.Tui.Paths;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 
@@ -22,12 +22,12 @@ public class CompareToOtherFileHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Cto_opens_the_open_dialog_in_the_files_folder_and_diffs_the_picked_file()
+    public async Task Cto_opens_a_file_picker_in_the_files_folder_and_diffs_the_picked_file()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out _);
-        OpenView? view = null;
-        IReadOnlyList<string> rows = [];
+        PathPicker? view = null;
+        IReadOnlyList<string> buttons = [];
 
         await HostSteps.Run(host,
             () => OpenFile(workbench),
@@ -36,15 +36,13 @@ public class CompareToOtherFileHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.T),
             () => host.App.InjectKey(Key.O),
             () => (view = Dialog(workbench)) is not null,
-            () => { rows = view!.VisibleItems; },
-            () => Type(host, "b.t"),
-            () => view!.VisibleItems.SequenceEqual(["b.txt"]),
-            () => host.App.InjectKey(Key.Enter),
+            () => { buttons = PathPickers.Buttons(view!); },
+            () => Choose(view!, "/work/src/b.txt"),
             () => workbench.Editor.Group.ActiveDiffTab is not null);
 
         Assert.Equal("Compare a.txt to…", view!.Title);
-        Assert.Empty(view.SubViews.OfType<Terminal.Gui.Views.Button>());
-        Assert.Equal(["../", "a.txt", "b.txt"], rows);
+        Assert.Equal(_fs.Path.GetFullPath("/work/src"), view.Folder);
+        Assert.Equal(["Enter Open", "Esc Cancel"], buttons);
         Assert.Null(Dialog(workbench));
         var diff = Assert.Single(workbench.Editor.Group.DiffTabs);
         Assert.Equal("a.txt ↔ b.txt", diff.Title);
@@ -69,9 +67,9 @@ public class CompareToOtherFileHostTests : StaticConfigurationTest
     }
 
     [Theory]
-    [InlineData("a.t", "Can't compare a.txt with itself")]
-    [InlineData("same", "No changes against same.txt")]
-    public async Task Picking_the_same_or_an_identical_file_says_so_and_opens_no_tab(string query, string message)
+    [InlineData("/work/src/a.txt", "Can't compare a.txt with itself")]
+    [InlineData("/work/src/same.txt", "No changes against same.txt")]
+    public async Task Picking_the_same_or_an_identical_file_says_so_and_opens_no_tab(string path, string message)
     {
         _fs.AddFile("/work/src/same.txt", new MockFileData("alpha\nbravo\n"));
         using var workbench = BuildWorkbench();
@@ -79,7 +77,7 @@ public class CompareToOtherFileHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host, [
             () => OpenFile(workbench),
-            .. Pick(host, commands, workbench, query),
+            .. Pick(commands, workbench, path),
             () => workbench.StatusBar.DisplayedText == message]);
 
         Assert.Empty(workbench.Editor.Group.DiffTabs);
@@ -95,7 +93,7 @@ public class CompareToOtherFileHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host, [
             () => OpenFile(workbench),
-            .. Pick(host, commands, workbench, "b.t"),
+            .. Pick(commands, workbench, "/work/src/b.txt"),
             () => workbench.StatusBar.DisplayedText.StartsWith("Can't read b.txt:")]);
 
         Assert.Empty(workbench.Editor.Group.DiffTabs);
@@ -109,9 +107,9 @@ public class CompareToOtherFileHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host, [
             () => OpenFile(workbench),
-            .. Pick(host, commands, workbench, "b.t"),
+            .. Pick(commands, workbench, "/work/src/b.txt"),
             () => workbench.Editor.Group.DiffTabs.Count == 1,
-            .. Pick(host, commands, workbench, "oth/b", fromParent: true),
+            .. Pick(commands, workbench, "/work/other/b.txt"),
             () => workbench.Editor.Group.DiffTabs.Count == 2]);
 
         Assert.Equal(
@@ -129,7 +127,7 @@ public class CompareToOtherFileHostTests : StaticConfigurationTest
 
         await HostSteps.Run(host, [
             () => OpenFile(workbench),
-            .. Pick(host, commands, workbench, "b.t"),
+            .. Pick(commands, workbench, "/work/src/b.txt"),
             () => group.ActiveDiffTab is not null,
             () =>
             {
@@ -155,24 +153,17 @@ public class CompareToOtherFileHostTests : StaticConfigurationTest
         Assert.Null(Dialog(workbench));
     }
 
-    private static OpenView? Dialog(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<OpenView>().SingleOrDefault();
+    private static PathPicker? Dialog(Workbench.Workbench workbench) => PathPickers.Showing(workbench);
 
-    private static Delegate[] Pick(WorkbenchHost host, CommandService commands, Workbench.Workbench workbench, string query, bool fromParent = false) =>
+    private void Choose(PathPicker picker, string path) => picker.Choose(new PathRow(PathRowKind.File, _fs.Path.GetFullPath(path), path));
+
+    private Delegate[] Pick(CommandService commands, Workbench.Workbench workbench, string path) =>
     [
         () => commands.TryExecute(CommandIds.CompareToOtherFile),
         () => Dialog(workbench) is not null,
-        () => { if (fromParent) host.App.InjectKey(Key.Enter); },
-        () => Type(host, query),
-        () => Dialog(workbench)!.VisibleItems.Count == 1,
-        () => host.App.InjectKey(Key.Enter),
+        () => Choose(Dialog(workbench)!, path),
         () => Dialog(workbench) is null,
     ];
-
-    private static void Type(WorkbenchHost host, string text)
-    {
-        foreach (var c in text) host.App.InjectKey(new Key(c));
-    }
 
     private void OpenFile(Workbench.Workbench workbench) => workbench.OpenFile(_fs.FileInfo.New("/work/src/a.txt"));
 

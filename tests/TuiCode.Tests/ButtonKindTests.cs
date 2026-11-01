@@ -111,15 +111,6 @@ public class ButtonKindTests
     }
 
     [Fact]
-    public void Open_this_folder_is_secondary()
-    {
-        var fs = new MockFileSystem();
-        fs.AddDirectory("/work");
-
-        Assert.Equal([("Open this folder", SchemeNames.ButtonSecondary)], Kinds(new OpenView(fs.DirectoryInfo.New("/work"))));
-    }
-
-    [Fact]
     public void Terminal_integration_actions_are_primary_except_Remove()
     {
         Assert.Equal(
