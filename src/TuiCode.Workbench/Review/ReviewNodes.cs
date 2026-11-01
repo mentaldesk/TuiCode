@@ -129,6 +129,19 @@ public sealed class ReviewThreadNode(ReviewOutdatedNode outdated, GitHubReviewTh
 
 internal static class ReviewTree
 {
+    /// <summary>The order <see cref="Build"/> lists changed files in, by their paths.</summary>
+    public static readonly IComparer<string> ListOrder = Comparer<string>.Create((x, y) =>
+    {
+        var (xFolder, xName) = Split(x);
+        var (yFolder, yName) = Split(y);
+        if ((xFolder is null) != (yFolder is null)) return xFolder is null ? 1 : -1;
+        var byFolder = string.CompareOrdinal(xFolder, yFolder);
+        return byFolder != 0 ? byFolder : string.CompareOrdinal(xName, yName);
+
+        static (string? Folder, string Name) Split(string path) =>
+            path.LastIndexOf('/') is var slash and >= 0 ? (path[..slash], path[(slash + 1)..]) : (null, path);
+    });
+
     /// <summary>One node per folder, by its full path, then the files at the repo root; each sorted ordinally.</summary>
     public static IReadOnlyList<ReviewNode> Build(
         IReadOnlyList<GitChange> changes,
