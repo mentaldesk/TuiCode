@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Dialogs;
+using MentalDesk.Tui.Paths;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using TuiCode.Abstractions;
@@ -143,8 +144,7 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
             () => Confirm(workbench) is not null,
             ConfirmDialogs.Choose(host, workbench, "Don't save"),
             () => Picker(workbench) is not null,
-            () => Type(host, Full("/code/feature")),
-            () => host.App.InjectKey(Key.Enter),
+            () => PathPickers.Showing(workbench)!.Choose(new PathRow(PathRowKind.Folder, Full("/code/feature"), "/code/feature")),
             () => Picker(workbench) is null);
 
         Assert.Equal(Full("/code/feature"), workbench.Sidebar.Explorer.Root?.FullName);
@@ -231,16 +231,11 @@ public class SwitchFolderDirtyHostTests : StaticConfigurationTest
 
     private string Full(string path) => _fs.Path.GetFullPath(path);
 
-    private static void Type(WorkbenchHost host, string text)
-    {
-        foreach (var c in text) host.App.InjectKey(new Key(c));
-    }
-
     private static ConfirmDialog? Confirm(Workbench.Workbench workbench) => ConfirmDialogs.Of(workbench);
 
     private static View? Picker(Workbench.Workbench workbench) =>
-        workbench.SubViews.SingleOrDefault(v => v is OpenView or PullRequestPickerView or RecentFolderPickerView
-            or WorktreePickerView or PathPromptView);
+        workbench.SubViews.SingleOrDefault(v => v is PathPicker or PullRequestPickerView or RecentFolderPickerView
+            or WorktreePickerView);
 
     private static string Message(ConfirmDialog view) => view.Message();
 

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MentalDesk.Tui;
 using MentalDesk.Tui.Chrome;
 using MentalDesk.Tui.Dialogs;
+using MentalDesk.Tui.Paths;
 using KeyColumn = MentalDesk.Tui.Keys.KeyColumn;
 using KeyRow = MentalDesk.Tui.Keys.KeyRow;
 using KeysDialog = MentalDesk.Tui.Keys.KeysDialog;
@@ -122,7 +123,7 @@ public sealed class WorkbenchHost : IDisposable
     private BlameView? _activeBlame;
     private bool? _sixelSupported;
     private MnemonicView? _activeMnemonics;
-    private OpenView? _activeOpen;
+    private PathPicker? _activePathPicker;
     private PathPromptView? _activePathPrompt;
     private ConfirmDialog? _activeConfirm;
     private RevisionPickerView? _activeRevisionPicker;
@@ -701,7 +702,8 @@ public sealed class WorkbenchHost : IDisposable
         // Global so that it reaches both the Review tab and a review diff (#398); disabled everywhere else, so Space still types.
         _commands.Register(CommandIds.ToggleViewed, "Mark viewed or not", ToggleViewed, CommandScope.Global, CanToggleViewed,
             () => ViewedTargetIsViewed() ? "Mark not viewed" : "Mark viewed");
-        _commands.Register(CommandIds.New, "New file or folder", OpenNewPath);
+        _commands.Register(CommandIds.New, "New file", OpenNewFile);
+        _commands.Register(CommandIds.NewFolder, "New folder", OpenNewFolder);
         _commands.Register(CommandIds.DeleteFile, "Delete file or folder", ConfirmTrash, CommandScope.Explorer);
         _commands.Register(CommandIds.DeletePermanently, "Delete permanently", ConfirmDeletePermanently, CommandScope.Explorer);
         _commands.Register(CommandIds.RenameFile, "Move or rename file or folder", OpenRename, CommandScope.Explorer);
@@ -1067,6 +1069,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+,", CommandIds.OpenSettings);
         keybindings.Bind("Ctrl+O", CommandIds.Open);
         keybindings.Bind("Ctrl+N", CommandIds.New);
+        keybindings.Bind("Ctrl+Shift+N", CommandIds.NewFolder);
         keybindings.Bind("Ctrl+E", CommandIds.ShowActions);
         // Leader key for the mnemonic launcher (issue #50). Rebindable like any shortcut;
         // the mnemonics it dispatches are fixed (CommandMnemonics).
@@ -2077,24 +2080,16 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OpenFileOrFolder()
     {
-        if (_activeOpen is not null) return;
-        var view = new OpenView(_workbench.Sidebar.Explorer.Root ?? CurrentDirectory(), _icons);
-        view.Cancelled += (_, _) => CloseOpen(view);
-        view.FileSelected += (_, file) =>
+        if (_activePathPicker is not null) return;
+        var start = _workbench.Sidebar.Explorer.Root ?? CurrentDirectory();
+        var picker = new PathPicker("Open", PathKind.File, start.FullName, Home, useFolder: "Open this folder");
+        ShowPathPicker(picker, start.FileSystem, (row, fileSystem) =>
         {
-            CloseOpen(view);
-            _workbench.OpenFile(file);
-        };
-        view.FolderSelected += (_, dir) =>
-        {
-            CloseOpen(view);
-            _workbench.OpenFolder(dir);
-        };
-
-        _activeOpen = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusList();
+            if (row.Kind == PathRowKind.Folder)
+                _workbench.OpenFolder(fileSystem.DirectoryInfo.New(row.FullPath));
+            else
+                _workbench.OpenFile(fileSystem.FileInfo.New(row.FullPath));
+        });
     }
 
     // With no folder open (#451), the folder tuicode was started from.
@@ -2104,45 +2099,100 @@ public sealed class WorkbenchHost : IDisposable
         return fileSystem.DirectoryInfo.New(fileSystem.Directory.GetCurrentDirectory());
     }
 
-    private void CloseOpen(OpenView view)
+    private string Home => _environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    private void ShowPathPicker(PathPicker picker, IFileSystem fileSystem, Action<PathRow, IFileSystem> picked)
     {
-        if (!ReferenceEquals(_activeOpen, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeOpen = null;
-        FocusCallingRegion();
+        _activePathPicker = picker;
+        void ShowIcons(object? sender, EventArgs e) => picker.Icon = _icons is { } icons ? row => Icon(icons, row)?.Glyph : null;
+        ShowIcons(null, EventArgs.Empty);
+        if (_icons is not null) _icons.Changed += ShowIcons;
+        HostedDialog.Show(_workbench, _scopes, picker, () =>
+        {
+            if (_icons is not null) _icons.Changed -= ShowIcons;
+            _activePathPicker = null;
+            FocusCallingRegion();
+            if (picker.Confirmed && picker.Chosen is { } row) picked(row, fileSystem);
+        });
+        picker.FilterField.SetFocus();
     }
 
-    private void OpenNewPath()
+    private static FileIcon? Icon(FileIcons icons, PathRow row) => row.Kind switch
+    {
+        PathRowKind.File or PathRowKind.NewFile => icons.ForFile(Path.GetFileName(row.FullPath)),
+        _ => icons.ForDirectory(false),
+    };
+
+    private void OpenNewFile()
+    {
+        if (_activePathPicker is not null) return;
+        var start = NewFileFolder();
+        var picker = new PathPicker("New file", PathKind.NewFile, start.FullName, Home);
+        picker.ConfirmReplace = shown =>
+        {
+            ConfirmReplace(picker, shown);
+            return false;
+        };
+        ShowPathPicker(picker, start.FileSystem, (row, fileSystem) => CreateFile(fileSystem, row.FullPath));
+    }
+
+    // The library's own confirm needs a running shell.
+    private void ConfirmReplace(PathPicker picker, string shown)
+    {
+        if (_activeConfirm is not null) return;
+        _activeConfirm = HostedConfirm.Show(_workbench, _scopes, "Replace file",
+            $"{shown} is already there.\nReplace it? This can't be undone.", [PathPicker.ReplaceAction], chosen =>
+            {
+                _activeConfirm = null;
+                if (chosen is not null && ReferenceEquals(_activePathPicker, picker))
+                    picker.Choose(new PathRow(PathRowKind.NewFile, Path.GetFullPath(HomePath.Expand(shown, picker.Home)), shown));
+                else
+                    picker.FilterField.SetFocus();
+            });
+    }
+
+    private IDirectoryInfo NewFileFolder()
+    {
+        var explorer = _workbench.Sidebar.Explorer;
+        if (ExplorerIsContext && explorer.NewEntryTarget() is { } selected) return selected;
+        if (_workbench.Editor.Group.ActiveTab?.File.Directory is { Exists: true } folder) return folder;
+        return explorer.NewEntryTarget() ?? CurrentDirectory();
+    }
+
+    private void CreateFile(IFileSystem fileSystem, string path)
+    {
+        try
+        {
+            fileSystem.File.Create(path).Dispose();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _workbench.StatusBar.ShowMessage($"Can't create {Path.GetFileName(path)}: {ex.Message}", Severity.Error);
+            return;
+        }
+        _workbench.Sidebar.Explorer.Refresh();
+        _workbench.OpenFile(fileSystem.FileInfo.New(path));
+    }
+
+    private void OpenNewFolder()
     {
         if (_activePathPrompt is not null) return;
         var explorer = _workbench.Sidebar.Explorer;
-        // No workspace root means there's nowhere to create the entry.
         if (explorer.Root is null) return;
 
-        var view = new PathPromptView(
-            "New File or Folder", "Path (relative to root; end with / for a folder)", explorer.NewEntryPrefill());
+        var view = new PathPromptView("New folder", "Path (relative to root)", explorer.NewEntryPrefill());
         view.Cancelled += (_, _) => ClosePathPrompt(view);
         view.Submitted += (_, relativePath) =>
         {
             try
             {
-                var created = explorer.Create(relativePath);
+                explorer.Create(FilePaths.IsDirectoryPath(relativePath) ? relativePath : relativePath + "/");
                 ClosePathPrompt(view);
-                // A new file opens in the editor (VS Code behaviour); a new folder just gets
-                // selected in the explorer so the user can keep building it out.
-                if (created is IFileInfo file)
-                    _workbench.OpenFile(file);
-                else
-                {
-                    _workbench.Sidebar.ShowTab(SidebarTab.Explorer);
-                    FocusSidebar();
-                }
+                _workbench.Sidebar.ShowTab(SidebarTab.Explorer);
+                FocusSidebar();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
-                // Keep the modal up so the user can correct the path.
                 view.ShowError(ex.Message);
             }
         };
@@ -3068,7 +3118,7 @@ public sealed class WorkbenchHost : IDisposable
 
     private void CompareToOtherFile()
     {
-        if (_activeOpen is not null) return;
+        if (_activePathPicker is not null) return;
         var group = _workbench.Editor.Group;
         if ((group.ActiveTab ?? group.ActiveDiffTab?.Source) is not { } tab)
         {
@@ -3078,18 +3128,8 @@ public sealed class WorkbenchHost : IDisposable
         var start = tab.File.Directory is { Exists: true } folder ? folder : _workbench.Sidebar.Explorer.Root;
         if (start is null) return;
 
-        var view = new OpenView(start, _icons, $"Compare {tab.File.Name} to…", canOpenFolder: false);
-        view.Cancelled += (_, _) => CloseOpen(view);
-        view.FileSelected += (_, other) =>
-        {
-            CloseOpen(view);
-            CompareTo(tab, other);
-        };
-
-        _activeOpen = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusList();
+        var picker = new PathPicker($"Compare {tab.File.Name} to…", PathKind.File, start.FullName, Home);
+        ShowPathPicker(picker, start.FileSystem, (row, fileSystem) => CompareTo(tab, fileSystem.FileInfo.New(row.FullPath)));
     }
 
     private void CompareTo(EditorTab tab, IFileInfo other)
@@ -4043,24 +4083,10 @@ public sealed class WorkbenchHost : IDisposable
 
     private void OpenFilePath()
     {
-        if (_activePathPrompt is not null) return;
+        if (_activePathPicker is not null) return;
         var fileSystem = _workbench.Sidebar.Explorer.Root?.FileSystem ?? new FileSystem();
-        var home = _environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var view = new PathPromptView("Open file path", "Folder to open (~ is your home folder)", "");
-        view.Cancelled += (_, _) => ClosePathPrompt(view);
-        view.Submitted += (_, typed) =>
-        {
-            var path = FolderPath.Expand(typed, home);
-            if (!fileSystem.Path.IsPathRooted(path) || !fileSystem.Directory.Exists(path))
-            {
-                view.ShowError($"No such folder: {typed.Trim()}");
-                return;
-            }
-            ClosePathPrompt(view);
-            _workbench.OpenFolder(fileSystem.DirectoryInfo.New(path));
-        };
-
-        ShowPathPrompt(view);
+        var picker = new PathPicker("Open file path", PathKind.Folder, Home, Home);
+        ShowPathPicker(picker, fileSystem, (row, fs) => _workbench.OpenFolder(fs.DirectoryInfo.New(row.FullPath)));
     }
 
     /// <summary>Runs <paramref name="then"/> on the UI thread once <paramref name="task"/> has succeeded.</summary>

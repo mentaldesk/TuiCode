@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Dialogs;
+using MentalDesk.Tui.Paths;
 using Terminal.Gui.Drawing;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
@@ -80,15 +81,13 @@ public class FocusHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        OpenView? dialog = null;
+        PathPicker? dialog = null;
 
         await HostSteps.Run(host,
             () => commands.TryExecute(from),
             () => host.App.InjectKey(Key.O.WithCtrl),
-            () => (dialog = workbench.SubViews.OfType<OpenView>().SingleOrDefault()) is not null,
-            () => { foreach (var c in "b.t") host.App.InjectKey(new Key(c)); },
-            () => dialog!.VisibleItems.SequenceEqual(["b.txt"]),
-            () => host.App.InjectKey(Key.Enter),
+            () => (dialog = PathPickers.Showing(workbench)) is not null,
+            () => dialog!.Choose(new PathRow(PathRowKind.File, _fs.Path.GetFullPath("/work/b.txt"), "b.txt")),
             () => workbench.Editor.Group.ActiveTab is not null,
             () => host.App.InjectKey(new Key('X')),
             () => workbench.Editor.Group.ActiveTab!.Content.StartsWith('X'));
@@ -102,7 +101,7 @@ public class FocusHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        OpenView? dialog = null;
+        PathPicker? dialog = null;
 
         await HostSteps.Run(host,
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
@@ -112,10 +111,8 @@ public class FocusHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.O.WithCtrl),
             () => ConfirmDialogs.Of(workbench) is not null,
             ConfirmDialogs.Choose(host, workbench, "Don't save"),
-            () => (dialog = workbench.SubViews.OfType<OpenView>().SingleOrDefault()) is not null,
-            () => { foreach (var c in "b.t") host.App.InjectKey(new Key(c)); },
-            () => dialog!.VisibleItems.SequenceEqual(["b.txt"]),
-            () => host.App.InjectKey(Key.Enter),
+            () => (dialog = PathPickers.Showing(workbench)) is not null,
+            () => dialog!.Choose(new PathRow(PathRowKind.File, _fs.Path.GetFullPath("/work/b.txt"), "b.txt")),
             () => workbench.Editor.Group.ActiveTab?.File.Name == "b.txt",
             () => host.App.InjectKey(new Key('X')),
             () => workbench.Editor.Group.ActiveTab!.Content.StartsWith('X'));
@@ -130,7 +127,7 @@ public class FocusHostTests : StaticConfigurationTest
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        OpenView? dialog = null;
+        PathPicker? dialog = null;
 
         await HostSteps.Run(host,
             () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
@@ -138,10 +135,8 @@ public class FocusHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.FocusSidebar),
             () => workbench.StatusBar.DisplayedFocus == "Explorer",
             () => host.App.InjectKey(Key.O.WithCtrl),
-            () => (dialog = workbench.SubViews.OfType<OpenView>().SingleOrDefault()) is not null,
-            () => { foreach (var c in "b.t") host.App.InjectKey(new Key(c)); },
-            () => dialog!.VisibleItems.SequenceEqual(["b.txt"]),
-            () => host.App.InjectKey(Key.Enter),
+            () => (dialog = PathPickers.Showing(workbench)) is not null,
+            () => dialog!.Choose(new PathRow(PathRowKind.File, _fs.Path.GetFullPath("/work/b.txt"), "b.txt")),
             () => workbench.Editor.Group.ActiveTab?.File.Name == "b.txt",
             () => host.App.InjectKey(new Key('X')),
             () => workbench.Editor.Group.ActiveTab!.Content.StartsWith('X'));

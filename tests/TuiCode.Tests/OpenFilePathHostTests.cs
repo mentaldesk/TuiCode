@@ -1,7 +1,7 @@
+using MentalDesk.Tui.Paths;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
-using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 using TuiCode.Workbench.Workspace;
@@ -22,79 +22,47 @@ public class OpenFilePathHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Opa_opens_the_typed_folder_and_remembers_it()
+    public async Task Opa_opens_a_folder_picker_at_home_and_Ctrl_Enter_opens_that_folder_and_remembers_it()
     {
         using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out _);
+        using var host = BuildHost(workbench, out _,
+            new FakeEnvironment().SetFolder(Environment.SpecialFolder.UserProfile, Full("/elsewhere/new")));
+        PathPicker? picker = null;
+        IReadOnlyList<string> buttons = [];
 
         await HostSteps.Run(host,
             () => host.App.InjectKey(Key.Space.WithCtrl),
             () => host.App.InjectKey(Key.O),
             () => host.App.InjectKey(Key.P),
             () => host.App.InjectKey(Key.A),
-            () => Prompt(workbench) is not null,
-            () => Type(host, "/elsewhere/new/"),
-            () => Prompt(workbench)!.Path == "/elsewhere/new/",
-            () => host.App.InjectKey(Key.Enter),
-            () => Prompt(workbench) is null);
+            () => (picker = PathPickers.Showing(workbench)) is not null,
+            () => { buttons = PathPickers.Buttons(picker!); },
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => PathPickers.Showing(workbench) is null);
 
+        Assert.Equal("Open file path", picker!.Title);
+        Assert.Equal(Full("/elsewhere/new"), picker.Folder);
+        Assert.Equal(["Enter Open", "Ctrl+Enter Use this folder", "Esc Cancel"], buttons);
         Assert.Equal(Full("/elsewhere/new"), workbench.Sidebar.Explorer.Root?.FullName);
         Assert.Equal(Full("/elsewhere/new"), workbench.RecentFolders[0]);
     }
 
     [Fact]
-    public async Task A_leading_tilde_is_the_home_folder()
-    {
-        using var workbench = BuildWorkbench();
-        using var host = BuildHost(workbench, out var commands,
-            new FakeEnvironment().SetFolder(Environment.SpecialFolder.UserProfile, Full("/elsewhere")));
-
-        await HostSteps.Run(host,
-            () => commands.TryExecute(CommandIds.OpenFilePath),
-            () => Prompt(workbench) is not null,
-            () => Type(host, "~/new"),
-            () => Prompt(workbench)!.Path == "~/new",
-            () => host.App.InjectKey(Key.Enter),
-            () => Prompt(workbench) is null);
-
-        Assert.Equal(Full("/elsewhere/new"), workbench.Sidebar.Explorer.Root?.FullName);
-    }
-
-    [Theory]
-    [InlineData("/elsewhere/nope")]
-    [InlineData("/elsewhere/new/n.txt")]
-    [InlineData("elsewhere/new")]
-    public async Task A_path_that_is_not_a_folder_says_so_until_the_path_changes(string path)
+    public async Task Esc_leaves_the_folder_open()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        var error = "";
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.OpenFilePath),
-            () => Prompt(workbench) is not null,
-            () => Type(host, path),
-            () => Prompt(workbench)!.Path == path,
-            () => host.App.InjectKey(Key.Enter),
-            () => Prompt(workbench)!.Error != "",
-            () => { error = Prompt(workbench)!.Error; },
-            () => host.App.InjectKey(Key.Backspace),
-            () => Prompt(workbench)!.Error == "");
+            () => PathPickers.Showing(workbench) is not null,
+            () => host.App.InjectKey(Key.Esc),
+            () => PathPickers.Showing(workbench) is null);
 
-        Assert.Equal($"No such folder: {path}", error);
-        Assert.NotNull(Prompt(workbench));
         Assert.Equal(Full("/work"), workbench.Sidebar.Explorer.Root?.FullName);
     }
 
     private string Full(string path) => _fs.Path.GetFullPath(path);
-
-    private static PathPromptView? Prompt(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<PathPromptView>().SingleOrDefault();
-
-    private static void Type(WorkbenchHost host, string text)
-    {
-        foreach (var c in text) host.App.InjectKey(new Key(c));
-    }
 
     private Workbench.Workbench BuildWorkbench()
     {

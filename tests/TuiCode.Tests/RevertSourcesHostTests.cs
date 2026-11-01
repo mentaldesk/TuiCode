@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Loading;
+using MentalDesk.Tui.Paths;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -64,10 +65,8 @@ public class RevertSourcesHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => workbench.OpenFile(_fs.FileInfo.New("/work/src/a.txt")),
             () => commands.TryExecute(CommandIds.CompareToOtherFile),
-            () => OpenDialog(workbench) is not null,
-            () => Type(host, "b.t"),
-            () => OpenDialog(workbench)!.VisibleItems.Count == 1,
-            () => host.App.InjectKey(Key.Enter),
+            () => PathPickers.Showing(workbench) is not null,
+            () => PathPickers.Showing(workbench)!.Choose(new PathRow(PathRowKind.File, _fs.Path.GetFullPath("/work/src/b.txt"), "b.txt")),
             () => group.ActiveDiffTab is { IsFocused: true },
             () => host.App.InjectKey(Key.R.WithCtrl));
 
@@ -166,9 +165,6 @@ public class RevertSourcesHostTests : StaticConfigurationTest
 
     private static PullRequestPickerView? PullRequestPicker(Workbench.Workbench workbench) =>
         workbench.SubViews.OfType<PullRequestPickerView>().SingleOrDefault();
-
-    private static OpenView? OpenDialog(Workbench.Workbench workbench) =>
-        workbench.SubViews.OfType<OpenView>().SingleOrDefault();
 
     private static void Type(WorkbenchHost host, string text)
     {
