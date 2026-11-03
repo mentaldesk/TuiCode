@@ -59,6 +59,7 @@ public static class CommandIds
     public const string CopyPermalink = "workbench.action.copyPermalink";
     public const string OpenOnGitHub = "workbench.action.openOnGitHub";
     public const string ToggleFileHistory = "workbench.action.toggleFileHistory";
+    public const string RevealInExplorer = "workbench.action.revealInExplorer";
 
     public const string NextChange = "diff.action.nextChange";
     public const string PreviousChange = "diff.action.previousChange";

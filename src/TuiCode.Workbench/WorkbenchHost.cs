@@ -825,6 +825,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.ToggleFileHistory, "Show or hide file history", () => _fileHistory.Toggle(), CommandScope.Global,
             () => FileOpen() || _workbench.IsHistoryOn,
             () => _workbench.IsHistoryOn ? "Hide file history" : "Show file history");
+        _commands.Register(CommandIds.RevealInExplorer, "Reveal in explorer", RevealInExplorer, CommandScope.Global, EditorOpen);
         // No default key (#272).
         _commands.Register(CommandIds.ReloadFromDisk, "Reload from disk", ReloadFromDisk, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.MoveLinesUp, "Move line up", () => EditActiveTab(tab => tab.MoveLines(LineDirection.Up)), CommandScope.Editor);
@@ -1118,6 +1119,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G N", CommandIds.NavigateForward);
         keybindings.Bind("Ctrl+G B", CommandIds.GitBlame);
         keybindings.Bind("Ctrl+G H", CommandIds.ToggleFileHistory);
+        keybindings.Bind("Ctrl+G F", CommandIds.RevealInExplorer);
         keybindings.Bind("Ctrl+G A", CommandIds.AiAssistance);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
         keybindings.Bind("Ctrl+G I", CommandIds.QuickInfo);
@@ -1277,6 +1279,27 @@ public sealed class WorkbenchHost : IDisposable
     private void ShowSidebarTab(SidebarTab tab)
     {
         _workbench.Sidebar.ShowTab(tab);
+        FocusSidebar();
+    }
+
+    private void RevealInExplorer()
+    {
+        if ((Group.ActiveTab?.File ?? Group.ActiveDiffTab?.File) is not { } file) return;
+        var explorer = _workbench.Sidebar.Explorer;
+        if (explorer.Root is not { } root || !FilePaths.IsSameOrUnder(file.FullName, root.FullName))
+        {
+            _workbench.StatusBar.ShowMessage($"{file.Name} isn't in this folder");
+            return;
+        }
+        if (!file.FileSystem.File.Exists(file.FullName))
+        {
+            _workbench.StatusBar.ShowMessage($"{file.Name} isn't on disk");
+            return;
+        }
+        _workbench.Sidebar.ShowTab(SidebarTab.Explorer);
+        _workbench.SetSidebarVisible(true);
+        _workbench.Layout();
+        explorer.Reveal(file.FullName);
         FocusSidebar();
     }
 
