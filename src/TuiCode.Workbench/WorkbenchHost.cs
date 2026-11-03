@@ -5,6 +5,7 @@ using MentalDesk.Tui;
 using MentalDesk.Tui.Chrome;
 using MentalDesk.Tui.Dialogs;
 using MentalDesk.Tui.Paths;
+using LoadState = MentalDesk.Tui.Loading.LoadState;
 using KeyColumn = MentalDesk.Tui.Keys.KeyColumn;
 using KeyRow = MentalDesk.Tui.Keys.KeyRow;
 using KeysDialog = MentalDesk.Tui.Keys.KeysDialog;
@@ -1670,16 +1671,26 @@ public sealed class WorkbenchHost : IDisposable
             [.. languages?.Running.Where(s => s.State == state) ?? []];
 
         var loading = Servers(LanguageServerState.Loading);
-        var view = new TypePickerView(
-            Servers(LanguageServerState.Ready) is [] && loading is [var first, ..] ? first.Spec.Loading : "Searching…",
-            _icons?.Style ?? FileIconStyle.Off);
+        var saysLoading = Servers(LanguageServerState.Ready) is [] && loading is not [];
+        var view = new TypePickerView(saysLoading ? loading[0].Spec.Loading : "Searching…", _icons?.Style ?? FileIconStyle.Off);
+        // csharp-ls sends no containerName, so a C# type's namespace is read from its file.
+        var namespaces = new Dictionary<string, string?>();
+        string? NamespaceOf(string path)
+        {
+            if (!path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) return null;
+            if (namespaces.TryGetValue(path, out var space)) return space;
+            try { space = CSharpNamespace.Of(fileSystem.File.ReadLines(path)); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { space = null; }
+            return namespaces[path] = space;
+        }
         var search = new TypeSearch(
             () => [.. Servers(LanguageServerState.Ready).Select(s => (Func<string, Task<IReadOnlyList<TypeSymbol>>>)s.TypesAsync)],
             action => _app.Invoke(action));
         search.Found += (query, types, done) =>
         {
             var rows = types.Where(t => fileSystem.File.Exists(t.Location.Path))
-                .Select(t => new TypeRow(t, DisplayPath(t.Location.Path, root))).ToList();
+                .Select(t => new TypeRow(t with { Container = t.Container ?? NamespaceOf(t.Location.Path) }, DisplayPath(t.Location.Path, root)))
+                .ToList();
             if (rows.Count > 0 || done) view.ShowTypes(rows, query.Length == 0 ? "Type a type's name" : TypePickerView.NoTypes);
         };
 
@@ -1688,6 +1699,8 @@ public sealed class WorkbenchHost : IDisposable
             loading = Servers(LanguageServerState.Loading);
             if (Servers(LanguageServerState.Ready) is not [])
             {
+                if (saysLoading && view.State == LoadState.Loading) view.ShowTypes([], "Searching…");
+                saysLoading = false;
                 view.ShowStatus(loading is [var still, ..] ? still.Spec.Loading : null);
                 languages!.Flush();
                 search.Search(view.FilterField.Text);

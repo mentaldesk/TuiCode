@@ -67,6 +67,25 @@ public class GoToTypeHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Without_a_container_from_the_server_a_C_sharp_type_shows_its_files_namespace()
+    {
+        _server.NoContainerNames = true;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        IReadOnlyList<string> labels = [];
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => Ready(workbench),
+            () => Execute(host),
+            () => Picker(workbench) is { Shown.Count: > 0 },
+            () => { labels = Picker(workbench)!.Labels; });
+
+        Assert.Matches(@"^Point\s+TuiCode\.Shapes\s+src/Shapes\.cs$", labels.Single(l => l.StartsWith("Point", StringComparison.Ordinal)).Replace('\\', '/'));
+        Assert.Matches(@"^Caller\s+Caller\.cs$", labels.Single(l => l.StartsWith("Caller", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task Enter_opens_the_file_at_the_declaration_and_Ctrl_G_P_goes_back()
     {
         using var workbench = BuildWorkbench();
@@ -141,6 +160,8 @@ public class GoToTypeHostTests : StaticConfigurationTest
     public async Task While_the_server_loads_the_picker_says_so_and_fills_in_once_it_is_ready()
     {
         _server.HoldLoading = true;
+        using var answer = new ManualResetEventSlim();
+        _server.HoldWorkspaceSymbol = answer;
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
         TypePickerView? picker = null;
@@ -153,6 +174,8 @@ public class GoToTypeHostTests : StaticConfigurationTest
             () => (picker = Picker(workbench)) is not null,
             () => Text(picker!).Contains("csharp-ls is loading the solution…", StringComparison.Ordinal),
             () => { shownWhileLoading = picker!.Shown.Count; _server.FinishLoading(); },
+            () => Text(picker!).Contains("Searching…", StringComparison.Ordinal),
+            () => answer.Set(),
             () => picker!.Shown.Count > 0);
 
         Assert.Equal(0, shownWhileLoading);

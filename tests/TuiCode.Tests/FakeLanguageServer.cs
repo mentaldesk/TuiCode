@@ -44,6 +44,12 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
     /// <summary>Answers workspace/symbol as WorkspaceSymbol[] rather than SymbolInformation[].</summary>
     public bool WorkspaceSymbols { get; set; }
 
+    /// <summary>Leaves out containerName, as csharp-ls does.</summary>
+    public bool NoContainerNames { get; set; }
+
+    /// <summary>Holds workspace/symbol requests until it's set.</summary>
+    public ManualResetEventSlim? HoldWorkspaceSymbol { get; set; }
+
     /// <summary>Answers workspace/symbol with an error.</summary>
     public bool FailWorkspaceSymbol { get; set; }
 
@@ -92,6 +98,14 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                         return Answer(server, method, parameters);
                     })
                     : Task.FromResult(Answer(server, method, parameters));
+        if (HoldWorkspaceSymbol is { } held)
+            server.Connection.AsyncRequestHandler = (method, parameters) => method == "workspace/symbol"
+                ? Task.Run(() =>
+                {
+                    held.Wait(TimeSpan.FromSeconds(30));
+                    return WorkspaceSymbol(extension, parameters!);
+                })
+                : Task.FromResult(Answer(server, method, parameters));
         server.Connection.NotificationReceived += (method, parameters) => OnNotification(server, method, parameters);
         server.Connection.Start();
         Servers.Add(server);
@@ -205,7 +219,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                     var location = Location(file, row, match.Groups[2].Index, name.Length);
                     if (WorkspaceSymbols) location = new JsonObject { ["uri"] = location["uri"]!.DeepClone() };
                     var symbol = new JsonObject { ["name"] = name, ["kind"] = kind, ["location"] = location };
-                    if (space is not null) symbol["containerName"] = space;
+                    if (space is not null && !NoContainerNames) symbol["containerName"] = space;
                     found.Add(symbol);
                 }
         }
