@@ -52,7 +52,7 @@ public sealed class CommandMenu
         [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
         [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'h', [CommandIds.ToggleGutter] = 'g',
         [CommandIds.ToggleWordWrap] = 't', [CommandIds.ToggleFold] = 'b', [CommandIds.FoldAll] = 'l', [CommandIds.UnfoldAll] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
-        [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i',
+        [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i', [CommandIds.RevealInExplorer] = 'x',
         [CommandIds.AiAssistance] = 'a', [CommandIds.ToggleToolCalls] = 'c',
 
         [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToType] = 'y', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.QuickInfo] = 'i',
@@ -110,7 +110,7 @@ public sealed class CommandMenu
             Separator,
             CommandIds.ToggleSidebar, CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
             Separator,
-            CommandIds.ToggleFileHistory, CommandIds.AiAssistance, CommandIds.ToggleToolCalls,
+            CommandIds.ToggleFileHistory, CommandIds.RevealInExplorer, CommandIds.AiAssistance, CommandIds.ToggleToolCalls,
             Separator,
             CommandIds.RefreshExplorer,
             Separator,

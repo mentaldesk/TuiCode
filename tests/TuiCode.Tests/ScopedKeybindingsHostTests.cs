@@ -381,7 +381,7 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             // Gated on a find box having the keys: the bar's keys are in Editor, the pane's in Find.
             CommandIds.ToggleMatchCase, CommandIds.ToggleWholeWord, CommandIds.ToggleIgnoredFiles,
             // Run on a file tab and a diff tab alike, whose keys are in Editor and Diff.
-            CommandIds.CopyPermalink, CommandIds.OpenOnGitHub,
+            CommandIds.CopyPermalink, CommandIds.OpenOnGitHub, CommandIds.RevealInExplorer,
             .. Enumerable.Range(1, 9).Select(CommandIds.FocusEditorByIndex),
         ];
 
