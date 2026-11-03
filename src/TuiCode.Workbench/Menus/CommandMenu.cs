@@ -51,9 +51,9 @@ public sealed class CommandMenu
 
         [CommandIds.ShowExplorer] = 'e', [CommandIds.FindGlobally] = 'f', [CommandIds.FocusUsages] = 'u',
         [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
-        [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'x', [CommandIds.ToggleGutter] = 'g',
+        [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'p', [CommandIds.ToggleGutter] = 'g',
         [CommandIds.ToggleWordWrap] = 't', [CommandIds.ToggleFold] = 'b', [CommandIds.FoldAll] = 'l', [CommandIds.UnfoldAll] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
-        [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i',
+        [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i', [CommandIds.RevealInExplorer] = 'x',
         [CommandIds.FocusAssistant] = 'a', [CommandIds.AiAssistance] = 'h', [CommandIds.ToggleToolCalls] = 'c',
 
         [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.QuickInfo] = 'i',
@@ -111,7 +111,7 @@ public sealed class CommandMenu
             Separator,
             CommandIds.ToggleSidebar, CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
             Separator,
-            CommandIds.ToggleFileHistory, CommandIds.AiAssistance, CommandIds.ToggleToolCalls,
+            CommandIds.ToggleFileHistory, CommandIds.RevealInExplorer, CommandIds.AiAssistance, CommandIds.ToggleToolCalls,
             Separator,
             CommandIds.RefreshExplorer,
             Separator,

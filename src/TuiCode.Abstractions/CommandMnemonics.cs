@@ -113,6 +113,7 @@ public static class CommandMnemonics
             [CommandIds.CopyPermalink] = "cp",
             [CommandIds.OpenOnGitHub] = "og",
             [CommandIds.ToggleFileHistory] = "gh",
+            [CommandIds.RevealInExplorer] = "gf",
             [CommandIds.ShowExplorer] = "se",
             [CommandIds.MoveLinesUp] = "mu",
             [CommandIds.MoveLinesDown] = "md",

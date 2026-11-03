@@ -104,6 +104,14 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         NoteExpansion();
     }
 
+    /// <summary>Expands the folders down to <paramref name="fullPath"/>, then selects it and scrolls it into view.</summary>
+    public bool Reveal(string fullPath)
+    {
+        if (Root is not { } root || Reveal(root, fullPath) is not { } node) return false;
+        EnsureVisible(node);
+        return true;
+    }
+
     public void ActivateSelected()
     {
         if (SelectedObject is IFileInfo file)
