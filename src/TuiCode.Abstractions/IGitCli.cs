@@ -82,6 +82,9 @@ public interface IGitCli
     /// </summary>
     Task<GitResult<string?>> GetLinkRemoteUrlAsync(string path, CancellationToken cancellationToken = default);
 
+    /// <summary>The URL of <c>origin</c>; null when there's no such remote or <paramref name="path"/> isn't in a repo.</summary>
+    Task<GitResult<string?>> GetOriginUrlAsync(string path, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// <paramref name="revision"/> when a remote-tracking branch contains it, else its newest first-parent ancestor that
     /// one does, read from what git already knows; null when none does.

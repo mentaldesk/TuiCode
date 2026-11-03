@@ -176,6 +176,11 @@ internal sealed class FakeGitCli : IGitCli
     public Task<GitResult<string?>> GetLinkRemoteUrlAsync(string path, CancellationToken cancellationToken = default) =>
         Task.FromResult(Missing ? GitResult<string?>.Failure(NoGit) : GitResult<string?>.Success(RemoteUrl));
 
+    public string? OriginUrl { get; set; }
+
+    public Task<GitResult<string?>> GetOriginUrlAsync(string path, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Missing ? GitResult<string?>.Failure(NoGit) : GitResult<string?>.Success(OriginUrl));
+
     /// <summary>The newest pushed commit by the revision asked about; a revision with no entry has none.</summary>
     public Dictionary<string, GitPushedCommit> Pushed { get; } = new(StringComparer.Ordinal);
 

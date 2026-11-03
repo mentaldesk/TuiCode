@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Shell;
 using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
@@ -5,7 +6,7 @@ using TuiCode.Editor;
 namespace TuiCode.Workbench.Services;
 
 /// <summary>Stops TuiCode and hands the terminal back to the shell it was started from until <c>fg</c>, as Ctrl+Z does in vim (#463).</summary>
-public sealed class ShellSuspend(IEnvironment environment, Func<bool> hasJobControl, Action<string> write, Action stop)
+public sealed class ShellSuspend(IEnvironment environment, Func<bool> hasJobControl, Action<string> write, Action stop, TerminalTitle? title = null)
 {
     public const string NotOnWindows = "⚠ Suspend isn't available on Windows. Use a new terminal tab.";
     public const string NoJobControl = "⚠ Can't suspend: TuiCode wasn't started from a shell with job control.";
@@ -16,7 +17,10 @@ public sealed class ShellSuspend(IEnvironment environment, Func<bool> hasJobCont
         if (environment.IsWindows) return NotOnWindows;
         if (!hasJobControl()) return NoJobControl;
         write(modes.Off);
+        title?.Restore();
         stop();
+        title?.Save();
+        title?.Show();
         write(modes.On);
         return null;
     }

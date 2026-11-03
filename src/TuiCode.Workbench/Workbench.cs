@@ -351,6 +351,8 @@ public sealed class Workbench : Window
     /// Switch the workspace to <paramref name="directory"/>: close every open editor, re-root the
     /// explorer and reopen the files that were open when this folder was last used (#13).
     /// </summary>
+    public event EventHandler<IDirectoryInfo>? FolderOpened;
+
     public void OpenFolder(IDirectoryInfo directory, bool rememberTabs = true)
     {
         SaveWorkspaceState();
@@ -363,6 +365,7 @@ public sealed class Workbench : Window
         Editor.Groups.CloseAll();
         Sidebar.ShowNoFolder(false);
         Sidebar.Explorer.Open(directory);
+        FolderOpened?.Invoke(this, directory);
         Sidebar.Search.RunSearch();
         var state = rememberTabs ? _workspaceState?.Load(directory.FullName) : null;
         Sidebar.Review.SelectWhenLoaded(state?.ReviewSelected);
