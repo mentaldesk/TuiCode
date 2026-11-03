@@ -7,6 +7,7 @@ using TuiCode.Workbench;
 using TuiCode.Workbench.Assistant;
 using TuiCode.Workbench.Files;
 using TuiCode.Workbench.Languages;
+using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
 
@@ -412,6 +413,98 @@ public class AssistantHostTests : StaticConfigurationTest
 
         Assert.True(workbench.IsAssistantShowing);
         Assert.Equal("", workbench.Assistant.Question);
+    }
+
+    [Fact]
+    public async Task Ctrl_Shift_A_with_the_tab_hidden_opens_it_with_the_question_box_focused()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => host.App.InjectKey(Key.A.WithCtrl.WithShift),
+            () => workbench.Assistant.InputHasFocus);
+
+        Assert.True(workbench.IsAssistantShowing);
+        Assert.Equal("About lines 1–41 of A.cs", workbench.Assistant.ContextText);
+    }
+
+    [Fact]
+    public async Task Focus_AI_assistance_from_the_editor_focuses_the_question_box_rereads_the_About_line_and_leaves_the_layout()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+        var frame = System.Drawing.Rectangle.Empty;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => host.App.InjectKey(Key.Esc),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => { frame = workbench.AssistantSidebar.Frame; Tab(workbench).MoveCursor(9, 0); Shift(host, Key.CursorDown, 2); },
+            () => _commands.TryExecute(CommandIds.FocusAssistant),
+            () => view.InputHasFocus);
+
+        Assert.True(workbench.IsAssistantShowing);
+        Assert.Equal(frame, workbench.AssistantSidebar.Frame);
+        Assert.Equal("About lines 10–11 of A.cs", view.ContextText);
+    }
+
+    [Fact]
+    public async Task Focus_AI_assistance_from_the_transcript_moves_to_the_question_box()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => view.Chat.SetFocus(),
+            () => view.Chat.HasFocus && !view.InputHasFocus,
+            () => _commands.TryExecute(CommandIds.FocusAssistant),
+            () => view.InputHasFocus);
+
+        Assert.True(workbench.IsAssistantShowing);
+    }
+
+    [Fact]
+    public async Task Focus_AI_assistance_in_the_question_box_never_hides_the_tab()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => workbench.Assistant.InputHasFocus,
+            () => host.App.InjectKey(Key.A.WithCtrl.WithShift),
+            () => host.App.InjectKey(Key.A.WithCtrl.WithShift));
+
+        Assert.True(workbench.IsAssistantShowing);
+        Assert.True(workbench.Assistant.InputHasFocus);
+    }
+
+    [Fact]
+    public void Focus_AI_assistance_is_on_Ctrl_Shift_A_with_a_mnemonic_and_a_place_in_the_View_menu_after_Review()
+    {
+        using var workbench = BuildWorkbench();
+        var keybindings = new KeybindingService(_commands);
+        using var host = new WorkbenchHost(workbench, _commands, keybindings, new InputScopeStack(),
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI);
+
+        Assert.Equal("Focus AI assistance", _commands.Registered.Single(c => c.Id == CommandIds.FocusAssistant).Label);
+        Assert.Equal(CommandScope.Global, _commands.ScopeOf(CommandIds.FocusAssistant));
+        Assert.Equal("fi", CommandMnemonics.For(CommandIds.FocusAssistant));
+        Assert.Equal("Ctrl+Shift+A", keybindings.Bindings.Single(b => b.CommandId == CommandIds.FocusAssistant).Display);
+        var items = host.Menu.Items.Select(i => i.Id).ToList();
+        Assert.Equal(items.IndexOf(CommandIds.FocusReview) + 1, items.IndexOf(CommandIds.FocusAssistant));
+        Assert.Equal('a', CommandMenu.Letters[CommandIds.FocusAssistant]);
+        Assert.Equal('h', CommandMenu.Letters[CommandIds.AiAssistance]);
     }
 
     [Fact]

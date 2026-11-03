@@ -784,7 +784,9 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.QuickInfo, "Quick info", ShowQuickInfo, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
         // Global and ungated, so with no agent installed it can say so (#566).
-        _commands.Register(CommandIds.AiAssistance, "AI assistance", AskAssistant);
+        _commands.Register(CommandIds.AiAssistance, "AI assistance", AskAssistant, CommandScope.Global, null,
+            () => _workbench.IsAssistantShowing ? "Hide AI assistance" : "Show AI assistance");
+        _commands.Register(CommandIds.FocusAssistant, "Focus AI assistance", FocusAssistant);
         var assistant = _workbench.Assistant;
         _commands.Register(CommandIds.AssistantSend, "Send question", SendQuestion, CommandScope.Assistant, () => assistant.InputHasFocus);
         _commands.Register(CommandIds.AssistantStop, "Stop answering", () => _assistant?.Stop(), CommandScope.Assistant,
@@ -917,7 +919,8 @@ public sealed class WorkbenchHost : IDisposable
         {
             _ when InSidebar(_focus.Region) => SidebarTabKeys(),
             FocusRegion.History => [.. KeyRowOf(CommandIds.ToggleFileHistory, "Show or hide file history")],
-            FocusRegion.Assistant => [.. KeyRowOf(CommandIds.AiAssistance, "Hide AI assistance")],
+            FocusRegion.Assistant =>
+                [.. KeyRowOf(CommandIds.FocusAssistant, "Show AI assistance"), .. KeyRowOf(CommandIds.AiAssistance, "Hide AI assistance")],
             _ => [],
         };
         return help is null ? null : HelpSheet.Place(help.Heading, [.. help.Rows(), .. switching]);
@@ -929,6 +932,7 @@ public sealed class WorkbenchHost : IDisposable
         .. KeyRowOf(CommandIds.FindGlobally, "Show find"),
         .. KeyRowOf(CommandIds.FocusUsages, "Show usages"),
         .. KeyRowOf(CommandIds.FocusReview, "Show review"),
+        .. KeyRowOf(CommandIds.FocusAssistant, "Show AI assistance"),
         .. KeyRowOf(CommandIds.NextEditor, "Next sidebar tab"),
         .. KeyRowOf(CommandIds.PreviousEditor, "Previous sidebar tab"),
     ];
@@ -1147,6 +1151,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+Shift+E", CommandIds.ShowExplorer);
         keybindings.Bind("Ctrl+Shift+R", CommandIds.FocusReview);
         keybindings.Bind("Ctrl+Shift+U", CommandIds.FocusUsages);
+        keybindings.Bind("Ctrl+Shift+A", CommandIds.FocusAssistant);
 
         for (var i = 1; i <= MaxIndexedEditorBindings; i++)
             keybindings.Bind($"Ctrl+D{i}", CommandIds.FocusEditorByIndex(i));
@@ -2671,6 +2676,24 @@ public sealed class WorkbenchHost : IDisposable
             _workbench.ShowAssistant(false);
             return;
         }
+        OpenAssistant();
+    }
+
+    /// <summary>Focus AI assistance (<c>fi</c>, #657): like <c>ai</c>, but on a showing tab it focuses the question box rather than hiding it.</summary>
+    private void FocusAssistant()
+    {
+        if (!_workbench.IsAssistantShowing)
+        {
+            OpenAssistant();
+            return;
+        }
+        if (_workbench.Assistant.InputHasFocus) return;
+        FollowEditor(reread: true);
+        MoveFocus(FocusRegion.Assistant);
+    }
+
+    private void OpenAssistant()
+    {
         var agent = AgentPresets.Resolve(_settings.Assistant);
         if (_assistant is null || agent is null || !CommandInstalled(agent.Program))
         {

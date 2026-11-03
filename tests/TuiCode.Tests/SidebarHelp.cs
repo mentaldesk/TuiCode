@@ -11,6 +11,7 @@ internal static class SidebarHelp
         new("Ctrl+Shift+F", "Show find"),
         new("Ctrl+Shift+U", "Show usages"),
         new("Ctrl+Shift+R", "Show review"),
+        new("Ctrl+Shift+A", "Show AI assistance"),
         new("Ctrl+PageDown", "Next sidebar tab"),
         new("Ctrl+PageUp", "Previous sidebar tab"),
     ];
