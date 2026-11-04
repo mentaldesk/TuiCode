@@ -24,6 +24,7 @@ public sealed class CommandMenu
         [CommandIds.FindGlobally] = "Find",
         [CommandIds.FocusUsages] = "Usages",
         [CommandIds.FocusReview] = "Review",
+        [CommandIds.FocusAssistant] = "AI assistance",
     };
 
     /// <summary>Each item's letter, unique within its menu, which runs it while the menu is open (#516).</summary>
@@ -50,10 +51,10 @@ public sealed class CommandMenu
 
         [CommandIds.ShowExplorer] = 'e', [CommandIds.FindGlobally] = 'f', [CommandIds.FocusUsages] = 'u',
         [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
-        [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'h', [CommandIds.ToggleGutter] = 'g',
+        [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'p', [CommandIds.ToggleGutter] = 'g',
         [CommandIds.ToggleWordWrap] = 't', [CommandIds.ToggleFold] = 'b', [CommandIds.FoldAll] = 'l', [CommandIds.UnfoldAll] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
         [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i', [CommandIds.RevealInExplorer] = 'x',
-        [CommandIds.AiAssistance] = 'a', [CommandIds.ToggleToolCalls] = 'c',
+        [CommandIds.FocusAssistant] = 'a', [CommandIds.AiAssistance] = 'h', [CommandIds.ToggleToolCalls] = 'c',
 
         [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.QuickInfo] = 'i',
         [CommandIds.FindUsages] = 'f', [CommandIds.FollowLink] = 'l', [CommandIds.NavigateBack] = 'p',
@@ -106,7 +107,7 @@ public sealed class CommandMenu
         ]),
         ("_View",
         [
-            CommandIds.ShowExplorer, CommandIds.FindGlobally, CommandIds.FocusUsages, CommandIds.FocusReview,
+            CommandIds.ShowExplorer, CommandIds.FindGlobally, CommandIds.FocusUsages, CommandIds.FocusReview, CommandIds.FocusAssistant,
             Separator,
             CommandIds.ToggleSidebar, CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
             Separator,

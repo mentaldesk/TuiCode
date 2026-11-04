@@ -105,7 +105,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task F1_in_AI_assistance_ends_with_the_key_that_hides_it()
+    public async Task F1_in_AI_assistance_ends_with_the_keys_that_focus_and_hide_it()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("one"));
         var help = await HelpFrom(() =>
@@ -115,7 +115,7 @@ public class HelpPlaceHostTests : StaticConfigurationTest
             Built.Assistant.FocusInput();
         }, "AI assistance");
 
-        Assert.Equal(new KeyRow("Ctrl+G a", "Hide AI assistance"), help.Rows().Last());
+        Assert.Equal([new KeyRow("Ctrl+Shift+A", "Show AI assistance"), new KeyRow("Ctrl+G a", "Hide AI assistance")], help.Rows().TakeLast(2));
     }
 
     [Fact]
