@@ -105,6 +105,7 @@ public static class CommandMnemonics
             [CommandIds.QuickInfo] = "gi",
             [CommandIds.FindUsages] = "gu",
             [CommandIds.AiAssistance] = "ai",
+            [CommandIds.FocusAssistant] = "fi",
             [CommandIds.ToggleToolCalls] = "ttc",
             [CommandIds.NavigateBack] = "gp",
             [CommandIds.NavigateForward] = "gn",
