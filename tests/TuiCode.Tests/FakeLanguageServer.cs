@@ -41,6 +41,21 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 
     public string? HoldHoverOf { get; set; }
 
+    /// <summary>Answers workspace/symbol as WorkspaceSymbol[] rather than SymbolInformation[].</summary>
+    public bool WorkspaceSymbols { get; set; }
+
+    /// <summary>Leaves out containerName, as csharp-ls does.</summary>
+    public bool NoContainerNames { get; set; }
+
+    /// <summary>Holds workspace/symbol requests until it's set.</summary>
+    public ManualResetEventSlim? HoldWorkspaceSymbol { get; set; }
+
+    /// <summary>Answers workspace/symbol with an error.</summary>
+    public bool FailWorkspaceSymbol { get; set; }
+
+    /// <summary>Every workspace/symbol query asked, in order.</summary>
+    public ConcurrentQueue<string> SymbolQueries { get; } = new();
+
     /// <summary>What hover answers for a word; by default its declaration as C# and a line about it, or null for no declaration.</summary>
     public Func<string, string?, JsonNode?>? Hover { get; set; }
 
@@ -70,7 +85,10 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
         Launches.Add((command, directory));
         if (Missing) return null;
         var server = new InProcessServer();
-        server.Connection.RequestHandler = (method, parameters) => Answer(server, method, parameters);
+        var extension = command == KnownLanguageServers.CSharpLs.Command ? ".cs" : ".ts";
+        server.Connection.RequestHandler = (method, parameters) => method == "workspace/symbol"
+            ? WorkspaceSymbol(extension, parameters!)
+            : Answer(server, method, parameters);
         if (HoldHover is { } hold)
             server.Connection.AsyncRequestHandler = (method, parameters) =>
                 method == "textDocument/hover" && WordAt(parameters!) == HoldHoverOf
@@ -80,6 +98,14 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                         return Answer(server, method, parameters);
                     })
                     : Task.FromResult(Answer(server, method, parameters));
+        if (HoldWorkspaceSymbol is { } held)
+            server.Connection.AsyncRequestHandler = (method, parameters) => method == "workspace/symbol"
+                ? Task.Run(() =>
+                {
+                    held.Wait(TimeSpan.FromSeconds(30));
+                    return WorkspaceSymbol(extension, parameters!);
+                })
+                : Task.FromResult(Answer(server, method, parameters));
         server.Connection.NotificationReceived += (method, parameters) => OnNotification(server, method, parameters);
         server.Connection.Start();
         Servers.Add(server);
@@ -170,6 +196,42 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                     });
         }
         return found;
+    }
+
+    // Every type and method declared in the server's language, whose name has the query's letters in order, as csharp-ls matches.
+    private JsonNode? WorkspaceSymbol(string extension, JsonNode parameters)
+    {
+        var query = parameters["query"]!.GetValue<string>();
+        _received.Enqueue(("workspace/symbol", parameters.DeepClone()));
+        SymbolQueries.Enqueue(query);
+        if (FailWorkspaceSymbol) throw new JsonRpcException(-32603, "workspace/symbol failed");
+        var found = new JsonArray();
+        foreach (var (file, text) in Sources().Where(s => s.Key.EndsWith(extension, StringComparison.Ordinal)).OrderBy(s => s.Key, StringComparer.Ordinal))
+        {
+            var fileLines = Lines(text);
+            var space = fileLines.Select(l => Regex.Match(l, @"^namespace\s+([\w.]+)")).FirstOrDefault(m => m.Success)?.Groups[1].Value;
+            for (var row = 0; row < fileLines.Length; row++)
+                foreach (Match match in Regex.Matches(fileLines[row], @"\b(class|interface|struct|enum|record|void)\s+(\w+)"))
+                {
+                    var name = match.Groups[2].Value;
+                    if (!Subsequence(query, name)) continue;
+                    var kind = match.Groups[1].Value switch { "interface" => 11, "struct" => 23, "enum" => 10, "void" => 6, _ => 5 };
+                    var location = Location(file, row, match.Groups[2].Index, name.Length);
+                    if (WorkspaceSymbols) location = new JsonObject { ["uri"] = location["uri"]!.DeepClone() };
+                    var symbol = new JsonObject { ["name"] = name, ["kind"] = kind, ["location"] = location };
+                    if (space is not null && !NoContainerNames) symbol["containerName"] = space;
+                    found.Add(symbol);
+                }
+        }
+        return found;
+    }
+
+    private static bool Subsequence(string query, string name)
+    {
+        var at = 0;
+        foreach (var c in name)
+            if (at < query.Length && char.ToLowerInvariant(c) == char.ToLowerInvariant(query[at])) at++;
+        return at == query.Length;
     }
 
     private JsonObject? Metadata(JsonNode parameters)

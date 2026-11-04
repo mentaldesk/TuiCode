@@ -8,6 +8,8 @@ public sealed record LanguageServerSpec(string LanguageId, string Name, string C
     public static readonly LanguageServerSpec CSharp = new(
         "csharp", "C#", KnownLanguageServers.CSharpLs.Command, KnownLanguageServers.CSharpLs.Arguments, KnownLanguageServers.CSharpLs.Install);
 
+    public string Loading => $"{Command} is loading the {(LanguageId == "csharp" ? "solution" : "folder")}…";
+
     public string NotInstalled => Install is null
         ? $"No {Name} language server: {Command} isn't on PATH"
         : $"No {Name} language server. Install: {Install}";
@@ -123,7 +125,15 @@ public sealed class LanguageServer : IDisposable
             ["capabilities"] = new JsonObject
             {
                 ["window"] = new JsonObject { ["workDoneProgress"] = true },
-                ["workspace"] = new JsonObject { ["workspaceFolders"] = true, ["configuration"] = true },
+                ["workspace"] = new JsonObject
+                {
+                    ["workspaceFolders"] = true,
+                    ["configuration"] = true,
+                    ["symbol"] = new JsonObject
+                    {
+                        ["symbolKind"] = new JsonObject { ["valueSet"] = new JsonArray([.. Enumerable.Range(1, 26).Select(k => (JsonNode)k)]) },
+                    },
+                },
                 ["textDocument"] = new JsonObject
                 {
                     ["synchronization"] = new JsonObject { ["didSave"] = true },
@@ -286,11 +296,15 @@ public sealed class LanguageServer : IDisposable
         return LspSymbols.QualifiedName(symbols, location.Line, location.Character);
     }
 
-    private async Task<JsonNode?> RequestAsync(string method, JsonObject parameters)
+    /// <summary>The types in the folder whose names match <paramref name="query"/>, as the server matches them.</summary>
+    public async Task<IReadOnlyList<TypeSymbol>> TypesAsync(string query, CancellationToken cancellationToken = default) =>
+        LspTypes.Parse(await RequestAsync("workspace/symbol", new JsonObject { ["query"] = query }, cancellationToken).ConfigureAwait(false));
+
+    private async Task<JsonNode?> RequestAsync(string method, JsonObject parameters, CancellationToken cancellationToken = default)
     {
         JsonRpcConnection? connection;
         lock (_gate) connection = State == LanguageServerState.Ready ? _connection : null;
-        return connection is null ? null : await connection.RequestAsync(method, parameters).ConfigureAwait(false);
+        return connection is null ? null : await connection.RequestAsync(method, parameters, cancellationToken).ConfigureAwait(false);
     }
 
     private JsonObject Position(string path, int line, int character) => new()

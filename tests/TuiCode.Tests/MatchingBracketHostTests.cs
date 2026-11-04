@@ -75,7 +75,7 @@ public class MatchingBracketHostTests : StaticConfigurationTest
         Assert.Equal("gm", CommandMnemonics.For(CommandIds.GoToMatchingBracket));
         Assert.Equal("Ctrl+G m", keybindings.Bindings.Single(b => b.CommandId == CommandIds.GoToMatchingBracket).Display);
         var go = host.Menu.Items.Select(i => i.Id).ToList();
-        Assert.Equal(go.IndexOf(CommandIds.GoToSymbol) + 1, go.IndexOf(CommandIds.GoToMatchingBracket));
+        Assert.Equal(go.IndexOf(CommandIds.GoToType) + 1, go.IndexOf(CommandIds.GoToMatchingBracket));
     }
 
     [Fact]

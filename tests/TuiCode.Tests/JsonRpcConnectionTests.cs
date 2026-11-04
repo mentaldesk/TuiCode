@@ -98,6 +98,34 @@ public class JsonRpcConnectionTests
     }
 
     [Fact]
+    public async Task Cancelling_a_request_tells_the_other_side_which_one_and_ends_it_cancelled()
+    {
+        using var server = new InProcessServer();
+        var never = new TaskCompletionSource<JsonNode?>();
+        var asked = new TaskCompletionSource<long>();
+        var cancelled = new TaskCompletionSource<long>();
+        server.Connection.AsyncRequestHandler = (_, parameters) =>
+        {
+            asked.TrySetResult(parameters!["n"]!.GetValue<long>());
+            return never.Task;
+        };
+        server.Connection.NotificationReceived += (method, parameters) =>
+        {
+            if (method == "$/cancelRequest") cancelled.TrySetResult(parameters!["id"]!.GetValue<long>());
+        };
+        server.Connection.Start();
+        using var client = Client(server);
+        using var cancel = new CancellationTokenSource();
+
+        var pending = client.RequestAsync("workspace/symbol", new JsonObject { ["n"] = 1 }, cancel.Token);
+        await asked.Task.WaitAsync(Timeout);
+        cancel.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(Timeout));
+        Assert.Equal(1, await cancelled.Task.WaitAsync(Timeout));
+    }
+
+    [Fact]
     public async Task Requests_still_waiting_fail_when_the_other_side_goes_away()
     {
         using var server = new InProcessServer();

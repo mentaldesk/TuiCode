@@ -48,6 +48,10 @@ public sealed class LanguageServers : IDisposable
     /// <summary>The server <paramref name="tab"/>'s language would use, whether or not it has started.</summary>
     public LanguageServerSpec? SpecFor(EditorTab tab) => tab is { HasSyntax: true, Grammar: { } grammar } ? SpecFor(grammar) : null;
 
+    /// <summary>The command <paramref name="languageId"/>'s server runs, or null when it has none.</summary>
+    public string? CommandFor(string languageId) =>
+        KnownLanguageServers.Chosen(languageId, _chosen) is { IsNone: false } chosen ? chosen.Command : null;
+
     private LanguageServerSpec? SpecFor(SyntaxLanguage language)
     {
         if (_specs.TryGetValue(language.Id, out var cached)) return cached;

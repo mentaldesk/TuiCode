@@ -100,6 +100,7 @@ public static class CommandMnemonics
             [CommandIds.FollowLink] = "fl",
             [CommandIds.GoToLine] = "gl",
             [CommandIds.GoToSymbol] = "gs",
+            [CommandIds.GoToType] = "gt",
             [CommandIds.GoToMatchingBracket] = "gm",
             [CommandIds.GoToDefinition] = "gd",
             [CommandIds.QuickInfo] = "gi",
