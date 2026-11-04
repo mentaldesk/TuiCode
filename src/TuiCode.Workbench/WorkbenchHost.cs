@@ -1712,7 +1712,7 @@ public sealed class WorkbenchHost : IDisposable
             return namespaces[path] = space;
         }
         var search = new TypeSearch(
-            () => [.. Servers(LanguageServerState.Ready).Select(s => (Func<string, Task<IReadOnlyList<TypeSymbol>>>)s.TypesAsync)],
+            () => [.. Servers(LanguageServerState.Ready).Select(s => (Func<string, CancellationToken, Task<IReadOnlyList<TypeSymbol>>>)s.TypesAsync)],
             action => _app.Invoke(action));
         search.Found += (query, types, done) =>
         {

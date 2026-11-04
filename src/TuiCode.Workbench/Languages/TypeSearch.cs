@@ -3,13 +3,13 @@ namespace TuiCode.Workbench.Languages;
 /// <summary>
 /// Go to type's searches over every ready server. One runs at a time: a query typed while one runs waits, and only
 /// the last of those runs next, so typing never piles requests up. A server that fails or takes longer than
-/// <see cref="Timeout"/> counts as finding nothing.
+/// <see cref="Timeout"/> counts as finding nothing, and is asked to cancel.
 /// </summary>
 public sealed class TypeSearch
 {
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly Func<IReadOnlyList<Func<string, Task<IReadOnlyList<TypeSymbol>>>>> _sources;
+    private readonly Func<IReadOnlyList<Func<string, CancellationToken, Task<IReadOnlyList<TypeSymbol>>>>> _sources;
     private readonly Action<Action> _post;
     private string? _running;
     private string? _next;
@@ -17,7 +17,7 @@ public sealed class TypeSearch
 
     /// <param name="sources">The servers to ask, read afresh for every search.</param>
     /// <param name="post">Runs an action on the UI thread.</param>
-    public TypeSearch(Func<IReadOnlyList<Func<string, Task<IReadOnlyList<TypeSymbol>>>>> sources, Action<Action> post)
+    public TypeSearch(Func<IReadOnlyList<Func<string, CancellationToken, Task<IReadOnlyList<TypeSymbol>>>>> sources, Action<Action> post)
     {
         _sources = sources;
         _post = post;
@@ -76,13 +76,14 @@ public sealed class TypeSearch
         Found?.Invoke(query, [.. found], true);
     }
 
-    private async Task<IReadOnlyList<TypeSymbol>> Ask(Func<string, Task<IReadOnlyList<TypeSymbol>>> source, string query)
+    private async Task<IReadOnlyList<TypeSymbol>> Ask(Func<string, CancellationToken, Task<IReadOnlyList<TypeSymbol>>> source, string query)
     {
+        using var timeout = new CancellationTokenSource(Timeout);
         try
         {
-            return await source(query).WaitAsync(Timeout).ConfigureAwait(false);
+            return await source(query, timeout.Token).WaitAsync(timeout.Token).ConfigureAwait(false);
         }
-        catch (Exception e) when (e is TimeoutException or JsonRpcException or IOException or ObjectDisposedException)
+        catch (Exception e) when (e is OperationCanceledException or JsonRpcException or IOException or ObjectDisposedException)
         {
             return [];
         }

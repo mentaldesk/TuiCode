@@ -297,14 +297,14 @@ public sealed class LanguageServer : IDisposable
     }
 
     /// <summary>The types in the folder whose names match <paramref name="query"/>, as the server matches them.</summary>
-    public async Task<IReadOnlyList<TypeSymbol>> TypesAsync(string query) =>
-        LspTypes.Parse(await RequestAsync("workspace/symbol", new JsonObject { ["query"] = query }).ConfigureAwait(false));
+    public async Task<IReadOnlyList<TypeSymbol>> TypesAsync(string query, CancellationToken cancellationToken = default) =>
+        LspTypes.Parse(await RequestAsync("workspace/symbol", new JsonObject { ["query"] = query }, cancellationToken).ConfigureAwait(false));
 
-    private async Task<JsonNode?> RequestAsync(string method, JsonObject parameters)
+    private async Task<JsonNode?> RequestAsync(string method, JsonObject parameters, CancellationToken cancellationToken = default)
     {
         JsonRpcConnection? connection;
         lock (_gate) connection = State == LanguageServerState.Ready ? _connection : null;
-        return connection is null ? null : await connection.RequestAsync(method, parameters).ConfigureAwait(false);
+        return connection is null ? null : await connection.RequestAsync(method, parameters, cancellationToken).ConfigureAwait(false);
     }
 
     private JsonObject Position(string path, int line, int character) => new()

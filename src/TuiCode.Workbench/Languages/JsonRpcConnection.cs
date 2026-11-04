@@ -49,8 +49,10 @@ public sealed class JsonRpcConnection : IDisposable
         _writing = Task.Run(WriteLoop);
     }
 
-    public Task<JsonNode?> RequestAsync(string method, JsonNode? parameters = null)
+    /// <summary>Cancelling sends <c>$/cancelRequest</c>, so the other side can stop working on it, and drops its answer.</summary>
+    public Task<JsonNode?> RequestAsync(string method, JsonNode? parameters = null, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var id = Interlocked.Increment(ref _nextId);
         var answer = new TaskCompletionSource<JsonNode?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[id] = answer;
@@ -58,6 +60,16 @@ public sealed class JsonRpcConnection : IDisposable
         var message = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id, ["method"] = method };
         if (parameters is not null) message["params"] = parameters;
         Send(message);
+        if (cancellationToken.CanBeCanceled)
+        {
+            var cancelling = cancellationToken.Register(() =>
+            {
+                if (!_pending.TryRemove(id, out _)) return;
+                Notify("$/cancelRequest", new JsonObject { ["id"] = id });
+                answer.TrySetCanceled(cancellationToken);
+            });
+            answer.Task.ContinueWith(_ => cancelling.Dispose(), TaskScheduler.Default);
+        }
         return answer.Task;
     }
 

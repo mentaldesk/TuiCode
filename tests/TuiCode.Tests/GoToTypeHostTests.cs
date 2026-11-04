@@ -110,6 +110,28 @@ public class GoToTypeHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_server_answering_WorkspaceSymbols_without_a_range_opens_the_file_at_its_top()
+    {
+        _server.WorkspaceSymbols = true;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        (string File, int Row, int Column) jumped = default;
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => Ready(workbench),
+            () => Execute(host),
+            () => Picker(workbench) is { Shown.Count: > 0 },
+            () => { foreach (var c in "Point") host.App.InjectKey(new Key(c)); },
+            () => Picker(workbench)!.VisibleItems.SequenceEqual(["Point"]),
+            () => host.App.InjectKey(Key.Enter),
+            () => Picker(workbench) is null && Tab(workbench).File.Name == "Shapes.cs",
+            () => { jumped = Where(workbench); });
+
+        Assert.Equal(("Shapes.cs", 0, 0), jumped);
+    }
+
+    [Fact]
     public async Task Esc_clears_the_filter_and_then_closes_the_picker()
     {
         using var workbench = BuildWorkbench();
