@@ -505,6 +505,7 @@ public class DiffTabDrawTests : StaticConfigurationTest
         var diff = Diff("int a;\nint b;", "int a;\nint c;", new SyntaxHighlighter(GrammarBundle.Load()), "/work/a.cs");
 
         Render(diff);
+        Render(diff); // A cold grammar can time out mid-line; the next draw re-lexes it.
 
         var normal = diff.GetAttributeForRole(VisualRole.Editable);
         foreach (var col in new[] { 5, 21 })
