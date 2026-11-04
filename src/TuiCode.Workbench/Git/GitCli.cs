@@ -484,6 +484,13 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
             : GitResult<string?>.Failure(ErrorMessage(url));
     }
 
+    public async Task<GitResult<string?>> GetOriginUrlAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(DirectoryOf(path), ["remote", "get-url", "origin"], cancellationToken);
+        if (run.Failure is not null) return GitResult<string?>.Failure(ErrorMessage(run));
+        return GitResult<string?>.Success(run.ExitCode == 0 ? run.Output.Trim() : null);
+    }
+
     internal static string? ChooseRemote(IReadOnlyList<string> remotes, string? upstream)
     {
         if (upstream is not null && remotes.Contains(upstream, StringComparer.Ordinal)) return upstream;

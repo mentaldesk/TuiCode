@@ -128,7 +128,7 @@ public class PathPickerHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.New),
             () => PathPickers.Showing(workbench) is not null,
-            () => { picking = PathPickers.Showing(workbench)!.ConfirmReplace!(Full("/work/a.txt")); },
+            () => { picking = PathPickers.Showing(workbench)!.ConfirmReplace!(new PathRow(PathRowKind.File, Full("/work/a.txt"), "a.txt")); },
             () => ConfirmDialogs.Of(workbench) is not null,
             () => { asked = ConfirmDialogs.Of(workbench)!.Message(); },
             ConfirmDialogs.Choose(host, workbench, choice),
