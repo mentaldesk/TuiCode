@@ -82,6 +82,7 @@ public sealed class WorkbenchHost : IDisposable
     private readonly ITrash _trash;
     private readonly IGitHubCli _gitHub;
     private readonly TerminalCursors _terminalCursors;
+    private readonly IDisposable _titleTakeOver;
     private readonly CommandMenu _menu;
     // Open menus take arrows, Enter and Esc for themselves, so no workbench key fires under one.
     private readonly KeybindingService _menuKeys = new(new CommandService());
@@ -186,6 +187,8 @@ public sealed class WorkbenchHost : IDisposable
         if (_app.Driver is { } output) output.Clipboard = new TerminalClipboard(output.Clipboard, output.WriteRaw);
         _terminalCursors = new TerminalCursors(_app);
         _terminalCursors.Detect();
+        Title = new TerminalTitle(sequence => WriteTitle(sequence)) { App = "TuiCode" };
+        _titleTakeOver = TerminalTitle.TakeOver(_app);
         // Detected up front so About can show a spinner rather than ASCII art that the image then replaces.
         if (_app.Driver is { } driver)
             SixelProbe.Detect(driver, supported => _app.Invoke(() =>
@@ -200,7 +203,7 @@ public sealed class WorkbenchHost : IDisposable
         _settings = settings;
         _terminalIntegrations = (terminalIntegrations ?? Array.Empty<ITerminalIntegration>()).ToArray();
         _environment = environment ?? new SystemEnvironment();
-        ShellSuspend = new ShellSuspend(_environment, JobControl.IsAvailable, WriteToTerminal, () => _app.Driver?.Suspend());
+        ShellSuspend = new ShellSuspend(_environment, JobControl.IsAvailable, WriteToTerminal, () => _app.Driver?.Suspend(), Title);
         Browser = SystemBrowser.For(_environment);
         CopyToClipboard = text => VerifiedClipboard.Copy(_app.Clipboard, text);
         _logger = logger ?? NullLogger<WorkbenchHost>.Instance;
@@ -214,6 +217,8 @@ public sealed class WorkbenchHost : IDisposable
         _focus = new FocusService(FocusedView);
         _find = new FindController(_workbench.Editor.Groups, _scopes, _keybindings);
         _find.Closed += (_, _) => FocusEditorBody();
+        _workbench.FolderOpened += (_, folder) => ShowPlace(folder.FullName);
+        _workbench.StatusBar.Bar.UnreadErrorsChanged += (_, _) => Title.UnseenErrors = _workbench.StatusBar.Bar.UnreadErrors;
 
         RegisterDefaultCommands();
         _menu = new CommandMenu(_workbench.MenuBar, _commands, _keybindings, () => !_workbench.HasDialog,
@@ -514,7 +519,23 @@ public sealed class WorkbenchHost : IDisposable
     internal CommandMenu Menu => _menu;
     public Workbench Workbench => _workbench;
 
-    public void Run() => _app.Run(_workbench, errorHandler: null!);
+    internal TerminalTitle Title { get; }
+
+    internal Action<string> WriteTitle { get; set; } = WriteToTerminal;
+
+    public void Run()
+    {
+        Title.Save();
+        Title.Show();
+        try
+        {
+            _app.Run(_workbench, errorHandler: null!);
+        }
+        finally
+        {
+            Title.Restore();
+        }
+    }
 
     /// <summary>
     /// Opens what the command line asked for (#263) on the first loop iteration rather than now: before
@@ -533,8 +554,19 @@ public sealed class WorkbenchHost : IDisposable
         }
     }
 
-    public Task<object?> RunAsync(CancellationToken ct = default) =>
-        _app.RunAsync(_workbench, ct, errorHandler: null!);
+    public async Task<object?> RunAsync(CancellationToken ct = default)
+    {
+        Title.Save();
+        Title.Show();
+        try
+        {
+            return await _app.RunAsync(_workbench, ct, errorHandler: null!);
+        }
+        finally
+        {
+            Title.Restore();
+        }
+    }
 
     private void OnAppKeyDown(object? sender, Key key)
     {
@@ -2280,24 +2312,25 @@ public sealed class WorkbenchHost : IDisposable
         if (_activePathPicker is not null) return;
         var start = NewFileFolder();
         var picker = new PathPicker("New file", PathKind.NewFile, start.FullName, Home);
-        picker.ConfirmReplace = shown =>
+        picker.ConfirmReplace = row =>
         {
-            ConfirmReplace(picker, shown);
+            ConfirmReplace(picker, row);
             return false;
         };
         ShowPathPicker(picker, start.FileSystem, (row, fileSystem) => CreateFile(fileSystem, row.FullPath));
     }
 
     // The library's own confirm needs a running shell.
-    private void ConfirmReplace(PathPicker picker, string shown)
+    private void ConfirmReplace(PathPicker picker, PathRow row)
     {
         if (_activeConfirm is not null) return;
+        var shown = HomePath.Show(row.FullPath, picker.Home);
         _activeConfirm = HostedConfirm.Show(_workbench, _scopes, "Replace file",
             $"{shown} is already there.\nReplace it? This can't be undone.", [PathPicker.ReplaceAction], chosen =>
             {
                 _activeConfirm = null;
                 if (chosen is not null && ReferenceEquals(_activePathPicker, picker))
-                    picker.Choose(new PathRow(PathRowKind.NewFile, Path.GetFullPath(HomePath.Expand(shown, picker.Home)), shown));
+                    picker.Choose(row);
                 else
                     picker.FilterField.SetFocus();
             });
@@ -4269,6 +4302,16 @@ public sealed class WorkbenchHost : IDisposable
         ShowPathPicker(picker, fileSystem, (row, fs) => _workbench.OpenFolder(fs.DirectoryInfo.New(row.FullPath)));
     }
 
+    private void ShowPlace(string folder)
+    {
+        var origin = Task.Run(() => _git.GetOriginUrlAsync(folder));
+        WhenDone(origin, () =>
+        {
+            if (_workbench.Sidebar.Explorer.Root?.FullName == folder)
+                Title.Place = TerminalPlace.For(folder, origin.Result.Value);
+        });
+    }
+
     /// <summary>Runs <paramref name="then"/> on the UI thread once <paramref name="task"/> has succeeded.</summary>
     private void WhenDone(Task task, Action then) =>
         task.ContinueWith(t =>
@@ -4379,6 +4422,7 @@ public sealed class WorkbenchHost : IDisposable
         _folderWatcher.Dispose();
         _find.Dispose();
         _terminalCursors.Dispose();
+        _titleTakeOver.Dispose();
         _workbench.Dispose();
         _aboutImage.Dispose();
         _app.Dispose();

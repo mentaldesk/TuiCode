@@ -675,6 +675,29 @@ public class GitCliTests
     }
 
     [Fact]
+    public async Task The_origin_url_is_null_without_an_origin_or_outside_a_repo()
+    {
+        using var repo = new TempRepo(init: true);
+        using var outside = new TempRepo(init: false);
+        var git = new GitCli(new FileSystem());
+        var ct = TestContext.Current.CancellationToken;
+
+        var none = await git.GetOriginUrlAsync(repo.Path, ct);
+        repo.Git("remote", "add", "fork", "git@github.com:me/r.git");
+        var fork = (await git.GetOriginUrlAsync(repo.Path, ct)).Value;
+        repo.Git("remote", "add", "origin", "https://github.com/o/r.git");
+        var origin = (await git.GetOriginUrlAsync(repo.Path, ct)).Value;
+        var notARepo = await git.GetOriginUrlAsync(outside.Path, ct);
+
+        Assert.True(none.Succeeded);
+        Assert.Null(none.Value);
+        Assert.Null(fork);
+        Assert.Equal("https://github.com/o/r.git", origin);
+        Assert.True(notARepo.Succeeded);
+        Assert.Null(notARepo.Value);
+    }
+
+    [Fact]
     public async Task The_link_remote_is_the_upstream_s_else_origin_else_the_only_one()
     {
         using var repo = new TempRepo(init: true);

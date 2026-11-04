@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Shell;
 using Terminal.Gui.Drivers;
 using TuiCode.Workbench.Services;
 
@@ -24,6 +25,18 @@ public class ShellSuspendTests
             "stop",
             "\e[>9u" + "\e[6 q" + "\e]1337;SetUserVar=TUICODE_ACTIVE=MQ==\a" + "\e]12;#FFCC00\a",
         ], _events);
+    }
+
+    [Fact]
+    public void Run_gives_the_terminal_its_own_title_in_the_shell_and_sets_TuiCode_s_again_after_fg()
+    {
+        var title = new TerminalTitle(_events.Add) { App = "TuiCode", Place = "notes" };
+        title.Show();
+        _events.Clear();
+
+        new ShellSuspend(new FakeEnvironment(), () => true, _ => { }, () => _events.Add("stop"), title).Run(Everything);
+
+        Assert.Equal(["\e[23;0t", "stop", "\e[22;0t", "\e]0;notes — TuiCode\a"], _events);
     }
 
     [Fact]
