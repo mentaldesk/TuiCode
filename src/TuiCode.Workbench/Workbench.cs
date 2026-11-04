@@ -347,12 +347,12 @@ public sealed class Workbench : Window
     /// <summary>The folders this workspace has been switched to before, most recently used first.</summary>
     public IReadOnlyList<string> RecentFolders => _workspaceState?.Folders() ?? [];
 
+    public event EventHandler<IDirectoryInfo>? FolderOpened;
+
     /// <summary>
     /// Switch the workspace to <paramref name="directory"/>: close every open editor, re-root the
     /// explorer and reopen the files that were open when this folder was last used (#13).
     /// </summary>
-    public event EventHandler<IDirectoryInfo>? FolderOpened;
-
     public void OpenFolder(IDirectoryInfo directory, bool rememberTabs = true)
     {
         SaveWorkspaceState();

@@ -178,8 +178,14 @@ internal sealed class FakeGitCli : IGitCli
 
     public string? OriginUrl { get; set; }
 
-    public Task<GitResult<string?>> GetOriginUrlAsync(string path, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Missing ? GitResult<string?>.Failure(NoGit) : GitResult<string?>.Success(OriginUrl));
+    /// <summary>Folders whose <c>origin</c> lookup waits until the test sets a result.</summary>
+    public Dictionary<string, TaskCompletionSource<string?>> OriginUrlLater { get; } = new(StringComparer.Ordinal);
+
+    public async Task<GitResult<string?>> GetOriginUrlAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (OriginUrlLater.TryGetValue(path, out var later)) return GitResult<string?>.Success(await later.Task);
+        return Missing ? GitResult<string?>.Failure(NoGit) : GitResult<string?>.Success(OriginUrl);
+    }
 
     /// <summary>The newest pushed commit by the revision asked about; a revision with no entry has none.</summary>
     public Dictionary<string, GitPushedCommit> Pushed { get; } = new(StringComparer.Ordinal);

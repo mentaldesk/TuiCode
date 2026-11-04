@@ -4217,7 +4217,6 @@ public sealed class WorkbenchHost : IDisposable
         ShowPathPicker(picker, fileSystem, (row, fs) => _workbench.OpenFolder(fs.DirectoryInfo.New(row.FullPath)));
     }
 
-    /// <summary>Runs <paramref name="then"/> on the UI thread once <paramref name="task"/> has succeeded.</summary>
     private void ShowPlace(string folder)
     {
         var origin = Task.Run(() => _git.GetOriginUrlAsync(folder));
@@ -4228,6 +4227,7 @@ public sealed class WorkbenchHost : IDisposable
         });
     }
 
+    /// <summary>Runs <paramref name="then"/> on the UI thread once <paramref name="task"/> has succeeded.</summary>
     private void WhenDone(Task task, Action then) =>
         task.ContinueWith(t =>
         {

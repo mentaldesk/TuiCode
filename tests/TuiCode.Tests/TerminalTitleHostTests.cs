@@ -51,6 +51,30 @@ public class TerminalTitleHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_lookup_that_finishes_after_the_folder_changed_again_leaves_the_newer_folder_s_name()
+    {
+        var older = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _git.OriginUrlLater[Full("/code/TuiCode/main")] = older;
+        _git.OriginUrl = "https://github.com/mentaldesk/tui-style-guide.git";
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var settled = System.Diagnostics.Stopwatch.StartNew();
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFolder(_fs.DirectoryInfo.New(Full("/code/TuiCode/main"))),
+            () => workbench.OpenFolder(_fs.DirectoryInfo.New(Full("/code/tui-style-guide"))),
+            () => host.Title.Shown == "tui-style-guide — TuiCode",
+            () =>
+            {
+                older.SetResult("git@github.com:mentaldesk/TuiCode.git");
+                settled.Restart();
+            },
+            () => settled.ElapsedMilliseconds > 500);
+
+        Assert.Equal([Push, "TuiCode", "tui-style-guide — TuiCode", Pop], Titles);
+    }
+
+    [Fact]
     public async Task With_no_folder_the_tab_says_TuiCode()
     {
         using var workbench = BuildWorkbench();
