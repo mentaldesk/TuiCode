@@ -11,7 +11,7 @@ namespace TuiCode.Workbench.Assistant;
 public sealed class AssistantView : View
 {
     public const string TabTitle = "AI assistance";
-    public const string FootText = "Esc stop · Ctrl+L clear";
+    public const string FootText = "Ctrl+H stop · Ctrl+L clear";
     public const string InFullMarker = "[tool calls]";
     private const int InputRows = 2;
 
