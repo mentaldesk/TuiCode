@@ -5,6 +5,7 @@ using MentalDesk.Tui;
 using MentalDesk.Tui.Chrome;
 using MentalDesk.Tui.Dialogs;
 using MentalDesk.Tui.Paths;
+using LoadState = MentalDesk.Tui.Loading.LoadState;
 using KeyColumn = MentalDesk.Tui.Keys.KeyColumn;
 using KeyRow = MentalDesk.Tui.Keys.KeyRow;
 using KeysDialog = MentalDesk.Tui.Keys.KeysDialog;
@@ -107,6 +108,7 @@ public sealed class WorkbenchHost : IDisposable
     private StatusMessage? _answeringMessage;
     private SymbolPickerView? _activeSymbolPicker;
     private DefinitionPickerView? _activeDefinitionPicker;
+    private TypePickerView? _activeTypePicker;
     // Only the latest Go to definition jumps, however the answers come back.
     private int _definitionRequest;
     private int _usagesRequest;
@@ -810,6 +812,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.GoToLine, "Go to line:column", OpenGoToLine, CommandScope.Editor, FileOpen);
         // No default key (#137): VS Code's Ctrl+Shift+O collapses onto Ctrl+O in Terminal.app.
         _commands.Register(CommandIds.GoToSymbol, "Go to symbol in file", OpenSymbolPicker, CommandScope.Editor);
+        _commands.Register(CommandIds.GoToType, "Go to type", OpenTypePicker);
         _commands.Register(CommandIds.GoToMatchingBracket, "Go to matching bracket", GoToMatchingBracket, CommandScope.Editor, FileOpen);
         // Enabled without a ready server, so the key can say what's missing; the menu dims it (IsAvailableFrom).
         _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
@@ -1158,6 +1161,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G F", CommandIds.RevealInExplorer);
         keybindings.Bind("Ctrl+G A", CommandIds.AiAssistance);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
+        keybindings.Bind("Ctrl+G T", CommandIds.GoToType);
         keybindings.Bind("Ctrl+G I", CommandIds.QuickInfo);
         keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
         keybindings.Bind("Enter", CommandIds.AssistantSend);
@@ -1712,6 +1716,87 @@ public sealed class WorkbenchHost : IDisposable
             if (view.Confirmed && view.Chosen is { } symbol) JumpToLine(tab, symbol.Line);
         });
         view.FilterField.SetFocus();
+    }
+
+    /// <summary>Go to type (<c>gt</c>): the types the running language servers find in the folder, searched as the filter changes.</summary>
+    private void OpenTypePicker()
+    {
+        if (_activeTypePicker is not null) return;
+        var languages = _workbench.Languages;
+        var origin = _workbench.Editor.Group.ActiveTab;
+        var explorerRoot = _workbench.Sidebar.Explorer.Root;
+        var fileSystem = explorerRoot?.FileSystem ?? origin?.File.FileSystem ?? new FileSystem();
+        var root = explorerRoot?.FullName;
+        IReadOnlyList<LanguageServer> Servers(LanguageServerState state) =>
+            [.. languages?.Running.Where(s => s.State == state) ?? []];
+
+        var loading = Servers(LanguageServerState.Loading);
+        var saysLoading = Servers(LanguageServerState.Ready) is [] && loading is not [];
+        var view = new TypePickerView(saysLoading ? loading[0].Spec.Loading : "Searching…", _icons?.Style ?? FileIconStyle.Off);
+        // csharp-ls sends no containerName, so a C# type's namespace is read from its file.
+        var namespaces = new Dictionary<string, string?>();
+        string? NamespaceOf(string path)
+        {
+            if (!path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) return null;
+            if (namespaces.TryGetValue(path, out var space)) return space;
+            try { space = CSharpNamespace.Of(fileSystem.File.ReadLines(path)); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { space = null; }
+            return namespaces[path] = space;
+        }
+        var search = new TypeSearch(
+            () => [.. Servers(LanguageServerState.Ready).Select(s => (Func<string, CancellationToken, Task<IReadOnlyList<TypeSymbol>>>)s.TypesAsync)],
+            action => _app.Invoke(action));
+        search.Found += (query, types, done) =>
+        {
+            var rows = types.Where(t => fileSystem.File.Exists(t.Location.Path))
+                .Select(t => new TypeRow(t with { Container = t.Container ?? NamespaceOf(t.Location.Path) }, DisplayPath(t.Location.Path, root)))
+                .ToList();
+            if (rows.Count > 0 || done) view.ShowTypes(rows, query.Length == 0 ? "Type a type's name" : TypePickerView.NoTypes);
+        };
+
+        void Refresh()
+        {
+            loading = Servers(LanguageServerState.Loading);
+            if (Servers(LanguageServerState.Ready) is not [])
+            {
+                if (saysLoading && view.State == LoadState.Loading) view.ShowTypes([], "Searching…");
+                saysLoading = false;
+                view.ShowStatus(loading is [var still, ..] ? still.Spec.Loading : null);
+                languages!.Flush();
+                search.Search(view.FilterField.Text);
+            }
+            else if (loading is []) view.ShowTypes([], NoTypeSearch(languages));
+        }
+        void OnStateChanged(object? sender, EventArgs e) => Refresh();
+        void OnFilterChanged(object? sender, EventArgs e)
+        {
+            if (Servers(LanguageServerState.Ready) is not []) search.Search(view.FilterField.Text);
+        }
+
+        _activeTypePicker = view;
+        if (languages is not null) languages.StateChanged += OnStateChanged;
+        view.FilterField.TextChanged += OnFilterChanged;
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            search.Stop();
+            if (languages is not null) languages.StateChanged -= OnStateChanged;
+            view.FilterField.TextChanged -= OnFilterChanged;
+            _activeTypePicker = null;
+            FocusCallingRegion();
+            if (view.Confirmed && view.Chosen is { } chosen) JumpTo(fileSystem, origin, chosen.Type.Location);
+        });
+        view.FilterField.SetFocus();
+        Refresh();
+    }
+
+    private static string NoTypeSearch(LanguageServers? languages)
+    {
+        var running = languages?.Running ?? [];
+        if (running.FirstOrDefault(s => s.State == LanguageServerState.Missing) is { } missing) return missing.Spec.NotInstalled;
+        if (running.FirstOrDefault(s => s.State == LanguageServerState.Stopped) is { } stopped) return $"The {stopped.Spec.Name} language server stopped";
+        return languages?.CommandFor("csharp") is { } command
+            ? $"No language server is running. Open a C# file to start {command}"
+            : "No language server is running";
     }
 
     // As in Go to line: drive the move ourselves so even a short hop records as a deliberate jump.

@@ -85,6 +85,7 @@ public static class CommandIds
     public const string GoToLine = "workbench.action.goToLine";
 
     public const string GoToSymbol = "workbench.action.goToSymbol";
+    public const string GoToType = "workbench.action.goToType";
     public const string GoToMatchingBracket = "workbench.action.goToMatchingBracket";
 
     public const string GoToDefinition = "workbench.action.goToDefinition";
