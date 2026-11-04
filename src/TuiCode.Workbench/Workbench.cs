@@ -347,6 +347,8 @@ public sealed class Workbench : Window
     /// <summary>The folders this workspace has been switched to before, most recently used first.</summary>
     public IReadOnlyList<string> RecentFolders => _workspaceState?.Folders() ?? [];
 
+    public event EventHandler<IDirectoryInfo>? FolderOpened;
+
     /// <summary>
     /// Switch the workspace to <paramref name="directory"/>: close every open editor, re-root the
     /// explorer and reopen the files that were open when this folder was last used (#13).
@@ -363,6 +365,7 @@ public sealed class Workbench : Window
         Editor.Groups.CloseAll();
         Sidebar.ShowNoFolder(false);
         Sidebar.Explorer.Open(directory);
+        FolderOpened?.Invoke(this, directory);
         Sidebar.Search.RunSearch();
         var state = rememberTabs ? _workspaceState?.Load(directory.FullName) : null;
         Sidebar.Review.SelectWhenLoaded(state?.ReviewSelected);
