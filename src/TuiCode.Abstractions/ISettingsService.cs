@@ -38,12 +38,12 @@ public interface ISettingsService
     EditorSettings Editor { get; set; }
 
     /// <summary>
-    /// Sidebar width in columns (#209) — what the user asked for, which a narrow terminal clamps
+    /// Sidebar width in columns (#209) — what the user chose, which a narrow terminal shrinks
     /// when drawing without overwriting. Stages the change in memory; <see cref="Save"/> persists it.
     /// </summary>
     int SidebarWidth { get; set; }
 
-    /// <summary>The AI assistance sidebar's width (#619), null until it's dragged. Stages the change in memory; <see cref="Save"/> persists it.</summary>
+    /// <summary>The AI assistance sidebar's width (#619), null until one is chosen. Stages the change in memory; <see cref="Save"/> persists it.</summary>
     int? AssistantWidth { get; set; }
 
     /// <summary>Alt + a menu bar letter opens that menu even from a text box (#553). Stages the change in memory; <see cref="Save"/> persists it.</summary>

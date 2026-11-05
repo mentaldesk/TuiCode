@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Terminal.Gui.Configuration;
 using Terminal.Gui.Drivers;
+using MentalDesk.Tui.Layout;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Themes;
 
@@ -89,7 +90,7 @@ public sealed class DefaultSettingsService : ISettingsService
 
     public EditorSettings Editor { get; set; } = EditorSettings.Default;
 
-    public int SidebarWidth { get; set; } = SidebarSizing.Default;
+    public int SidebarWidth { get; set; } = PaneWidths.SidebarDefault;
 
     public int? AssistantWidth { get; set; }
 
@@ -145,7 +146,7 @@ public sealed class DefaultSettingsService : ISettingsService
                 wrapByLanguage[language] = wrap;
             root["WrapByLanguage"] = wrapByLanguage;
         }
-        if (SidebarWidth != SidebarSizing.Default)
+        if (SidebarWidth != PaneWidths.SidebarDefault)
             root["SidebarWidth"] = SidebarWidth;
         if (AssistantWidth is { } assistantWidth)
             root["AssistantWidth"] = assistantWidth;
@@ -266,10 +267,10 @@ public sealed class DefaultSettingsService : ISettingsService
             WrapByLanguage = ReadWrapByLanguage(root),
         };
         // A width above the spinner's maximum is legitimate on a wide terminal, so only the floor is validated.
-        SidebarWidth = Read(root, "SidebarWidth", SidebarSizing.Default) is var width && width >= SidebarSizing.Min
+        SidebarWidth = Read(root, "SidebarWidth", PaneWidths.SidebarDefault) is var width && width >= SidePanes.MinimumWidth
             ? width
-            : SidebarSizing.Default;
-        AssistantWidth = Read(root, "AssistantWidth", 0) is var assistantWidth && assistantWidth >= AssistantSizing.Min ? assistantWidth : null;
+            : PaneWidths.SidebarDefault;
+        AssistantWidth = Read(root, "AssistantWidth", 0) is var assistantWidth && assistantWidth >= SidePanes.MinimumWidth ? assistantWidth : null;
         AltOpensMenuWhileTyping = Read(root, "AltOpensMenuWhileTyping", true);
         LanguageServers = ReadLanguageServers(root);
         Assistant = ReadAssistant(root);
