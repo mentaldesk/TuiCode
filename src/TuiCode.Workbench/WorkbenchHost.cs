@@ -745,7 +745,9 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.FocusUsages, "Focus usages", () => ShowSidebarTab(SidebarTab.Usages));
         // Left ungated: with no tab these are Ctrl+F falling back to the Find pane and Esc's "Nothing to focus".
         _commands.Register(CommandIds.FindInFile, "Find in file", () => OpenFind(replace: false));
-        _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => OpenFind(replace: true));
+        // Replace belongs to the editor, so Ctrl+H in AI assistance never opens it (#664).
+        _commands.Register(CommandIds.ReplaceInFile, "Replace in file", () => OpenFind(replace: true), CommandScope.Global,
+            () => _focus.Region != FocusRegion.Assistant);
         _commands.Register(CommandIds.FocusEditorBody, "Focus editor", FocusEditorBody);
         _commands.Register(CommandIds.FocusEditorTabStrip, "Focus editor tab strip", FocusEditorTabStrip);
         _commands.Register(CommandIds.ToggleGutter, "Show or hide gutter", ToggleGutter, CommandScope.Global, EditorOpen,
@@ -1165,7 +1167,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G I", CommandIds.QuickInfo);
         keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
         keybindings.Bind("Enter", CommandIds.AssistantSend);
-        keybindings.Bind("Esc", CommandIds.AssistantStop);
+        keybindings.Bind("Ctrl+H", CommandIds.AssistantStop);
         keybindings.Bind("Ctrl+L", CommandIds.AssistantClear);
         keybindings.Bind("Ctrl+T T", CommandIds.ToggleToolCalls);
         keybindings.Bind("F12", CommandIds.ShowDiagnostics);

@@ -6,6 +6,7 @@ using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Assistant;
 using TuiCode.Workbench.Files;
+using TuiCode.Workbench.Help;
 using TuiCode.Workbench.Languages;
 using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Parts;
@@ -200,7 +201,7 @@ public class AssistantHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task The_status_bar_says_answering_until_the_answer_ends_and_Esc_stops_it()
+    public async Task The_status_bar_says_answering_until_the_answer_ends_and_Ctrl_H_stops_it()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
@@ -219,12 +220,122 @@ public class AssistantHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter),
             () => Chat(view).Contains("Partial"),
             () => { whileAnswering = workbench.StatusBar.DisplayedText; },
-            () => host.App.InjectKey(Key.Esc),
+            () => host.App.InjectKey(Key.H.WithCtrl),
             () => Chat(view).EndsWith("Stopped."));
 
         Assert.Contains("AI assistance: answering…", whileAnswering);
         Assert.DoesNotContain("answering", workbench.StatusBar.DisplayedText);
         Assert.Contains("Partial", Chat(view));
+    }
+
+    [Fact]
+    public async Task Esc_while_answering_goes_back_to_the_editor_and_the_answer_keeps_coming()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+        var more = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        string? afterEsc = null;
+        _agent.OnPrompt = async (agent, _) =>
+        {
+            agent.Say("First half. ");
+            await more.Task;
+            agent.Say("Second half.");
+        };
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Long?"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("First half."),
+            () => host.App.InjectKey(Key.Esc),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => { afterEsc = workbench.StatusBar.DisplayedText; more.SetResult(); },
+            () => Chat(view).Contains("Second half."),
+            () => _commands.TryExecute(CommandIds.FocusAssistant),
+            () => view.InputHasFocus);
+
+        Assert.Empty(_agent.Received("session/cancel"));
+        Assert.Contains("AI assistance: answering…", afterEsc);
+        Assert.EndsWith("First half. Second half.", Chat(view));
+    }
+
+    [Fact]
+    public async Task Ctrl_H_with_no_answer_coming_does_nothing_and_never_opens_Replace()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Why"),
+            () => host.App.InjectKey(Key.H.WithCtrl),
+            () => host.App.InjectKey(Key.H.WithCtrl));
+
+        Assert.True(view.InputHasFocus);
+        Assert.Equal("AI assistance", workbench.StatusBar.DisplayedFocus);
+        Assert.Equal("Why", view.Question);
+        Assert.Empty(_agent.Received("session/cancel"));
+    }
+
+    [Fact]
+    public async Task Stop_answering_is_Ctrl_H_in_the_hint_and_in_F1_while_answering()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+        KeysDialog? help = null;
+        _agent.OnPrompt = async (agent, _) =>
+        {
+            agent.Say("Partial");
+            await agent.Cancelled.Task;
+        };
+
+        await HostSteps.Run(host,
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Long?"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("Partial"),
+            () => host.App.InjectKey(Key.F1),
+            () => (help = workbench.SubViews.OfType<KeysDialog>().SingleOrDefault()) is not null,
+            () => host.App.InjectKey(Key.Esc),
+            () => host.App.InjectKey(Key.H.WithCtrl),
+            () => Chat(view).EndsWith("Stopped."));
+
+        Assert.Equal("Ctrl+H stop · Ctrl+L clear", AssistantView.FootText);
+        var rows = help!.Sheet.Here!.Rows().ToList();
+        Assert.Contains(new KeyRow("Ctrl+H", "Stop answering"), rows);
+        Assert.DoesNotContain(new KeyRow("Esc", "Stop answering"), rows);
+    }
+
+    [Fact]
+    public async Task Stop_answering_rebound_in_settings_keeps_its_key()
+    {
+        using var workbench = BuildWorkbench();
+        var settings = new InMemorySettingsService();
+        settings.SetKeybindingOverrides([new KeybindingOverride(TestKeys.Chord("F8"), CommandIds.AssistantStop)]);
+        using var host = BuildHost(workbench, settings: settings);
+        var view = workbench.Assistant;
+        _agent.OnPrompt = async (agent, _) =>
+        {
+            agent.Say("Partial");
+            await agent.Cancelled.Task;
+        };
+
+        await HostSteps.Run(host,
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Long?"),
+            () => host.App.InjectKey(Key.Enter),
+            () => Chat(view).Contains("Partial"),
+            () => host.App.InjectKey(Key.F8),
+            () => Chat(view).EndsWith("Stopped."));
     }
 
     [Fact]
