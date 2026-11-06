@@ -538,6 +538,7 @@ What follows is how TuiCode implements it today.
 - **A called workflow doesn't inherit the caller's permissions**, so the `version` job declares `contents: read` + `pull-requests: read` and `publish` declares `contents: write`.
 - `publish` runs only from `main`, in the `release` environment, which only `main` can deploy to. The packages token is that environment's `PACKAGES_TOKEN` secret, so a workflow on any other branch can't read it. `publish` passes `secrets: inherit` because that's the only way an environment's secrets reach a called workflow ([actions/runner#4453](https://github.com/actions/runner/issues/4453)).
 - Shared `publish` creates the tag itself (`gh release create --target $GITHUB_SHA`), so the caller must never tag, and the build matrix is `fail-fast: true`: a platform that fails leaves no tag behind to clean up. `concurrency: release` stops two dispatches racing for the same version.
+- Re-running a failed `publish` job finishes that version: if the release exists, shared `publish` runs `gh release upload --clobber` instead of creating it, then carries on with the packaging steps. It refuses a version older than the latest release.
 - macOS signing + notarization auto-enables when these secrets exist; without them the macOS tarballs ship unsigned (Gatekeeper quarantines on download):
   - `APPLE_CERT_BASE64` — Developer ID Application `.p12`, base64-encoded.
   - `APPLE_CERT_PASSWORD` — password for the `.p12`.
