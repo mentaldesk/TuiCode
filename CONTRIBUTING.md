@@ -33,7 +33,7 @@ flowchart TD
     Click -->|workflow_dispatch| Version["version job<br/>a-team/release-version.yml"]
     Version -->|"next version, e.g. 0.1.0"| Matrix{{"matrix per RID"}}
 
-    Matrix --> A["osx-arm64<br/>(macos-14)"]
+    Matrix --> A["osx-arm64<br/>(macos-15)"]
     Matrix --> B["linux-x64<br/>(ubuntu-22.04)"]
     Matrix --> C["linux-arm64<br/>(ubuntu-22.04-arm)"]
     Matrix --> D["win-x64<br/>(windows-latest)"]
@@ -52,7 +52,7 @@ flowchart TD
     Smoke --> Upload["actions/upload-artifact"]
 
     Upload --> Pub["publish job<br/>a-team/release-publish.yml"]
-    Pub --> Tag["gh release create v0.1.0<br/>--target $GITHUB_SHA --generate-notes"]
+    Pub --> Tag["gh release create v0.1.0<br/>--target $GITHUB_SHA --generate-notes<br/>(if it exists: gh release upload --clobber)"]
     Tag --> Public[("Published release<br/>18 assets, tag created")]
     Public --> Render["render packaging/tuicode.rb + tuicode.json<br/>version + 5 SHA256s"]
     Render --> TapPR["PR to homebrew-tap<br/>auto-merge on"]
@@ -66,6 +66,8 @@ flowchart TD
 ```
 
 The shared publish job creates the tag, so a build that fails on any platform (the matrix is `fail-fast`) leaves no tag behind and nothing to clean up. `concurrency: release` keeps two dispatches from racing for the same version. Re-running the workflow after a successful publish picks the *next* version — tags are immutable; never delete and re-push one.
+
+If publish fails after the release is out, like a 502 opening the tap PR, use **Re-run failed jobs**. It keeps the version, uploads the assets to that release again and finishes the packaging steps. **Re-run all jobs** would work out a new version instead. Publish refuses a version older than the latest release, so a failed publish can't be finished once a newer one is out.
 
 The release is published outright rather than as a draft: draft assets 404 for unauthenticated clients, which is what `brew install` is. The gate that used to be "publish the draft" is now the tap's own CI (`brew style`, `brew audit --strict --online`, and a full install/test/uninstall cycle on macOS arm64, Linux x64 and Linux arm64), which has to go green before auto-merge lands the formula.
 
