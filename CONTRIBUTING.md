@@ -33,7 +33,7 @@ flowchart TD
     Click -->|workflow_dispatch| Version["version job<br/>a-team/release-version.yml"]
     Version -->|"next version, e.g. 0.1.0"| Matrix{{"matrix per RID"}}
 
-    Matrix --> A["osx-arm64<br/>(macos-14)"]
+    Matrix --> A["osx-arm64<br/>(macos-15)"]
     Matrix --> B["linux-x64<br/>(ubuntu-22.04)"]
     Matrix --> C["linux-arm64<br/>(ubuntu-22.04-arm)"]
     Matrix --> D["win-x64<br/>(windows-latest)"]
