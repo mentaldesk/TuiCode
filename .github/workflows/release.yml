@@ -22,7 +22,7 @@ concurrency: release
 
 jobs:
   version:
-    uses: mentaldesk/a-team/.github/workflows/release-version.yml@v0.1.101
+    uses: mentaldesk/a-team/.github/workflows/release-version.yml@v0.2.25
     # A called workflow doesn't inherit the caller's permissions.
     permissions:
       contents: read
@@ -194,7 +194,7 @@ jobs:
   publish:
     needs: [version, build]
     if: github.ref == 'refs/heads/main'
-    uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.1.101
+    uses: mentaldesk/a-team/.github/workflows/release-publish.yml@v0.2.25
     permissions:
       contents: write
     with:
