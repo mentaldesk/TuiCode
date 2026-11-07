@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using MentalDesk.Tui;
 using MentalDesk.Tui.Dialogs;
 using TuiCode.Abstractions;
@@ -29,7 +30,7 @@ public sealed class GoToLineView : AppDialog
             Width = Dim.Fill(1),
             Text = $"Line[:Col]  (1-{totalLines}, current: {currentLine})",
         };
-        _input = new TextField { X = 1, Y = 1, Width = Dim.Fill(1) };
+        _input = new PlaceholderField { X = 1, Y = 1, Width = Dim.Fill(1) };
         Add(hint, _input);
 
         Commands.Register(GoId, "Go to", OnConfirm);

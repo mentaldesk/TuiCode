@@ -88,7 +88,7 @@ public sealed class EditorSettingsView : View
         _stickyLines = new CheckBox { X = 0, Y = 13, Text = "Show sticky lines", Value = Check(settings.StickyLines) };
 
         var wrapByLanguageLabel = new VerbatimLabel { X = 0, Y = 15, Text = "Wrap by language" };
-        _languageFilter = new TextField { X = 0, Y = 16, Width = Dim.Fill(), Height = 1 };
+        _languageFilter = new PlaceholderField { X = 0, Y = 16, Width = Dim.Fill(), Height = 1 };
         _languageFilter.TextChanged += (_, _) => RebuildLanguages();
         _languageFilter.KeyDown += OnLanguageFilterKey;
         _languageFilter.MouseEvent += (_, _) => _languageFilter.SetFocus();

@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Assistant;
 
@@ -34,7 +35,7 @@ public sealed class AssistantSettingsView : View
         Add(caption, _agents);
         for (var i = 0; i < _form.Custom; i++)
             Add(new VerbatimLabel { X = RowColumn, Y = 2 + i, Width = Dim.Fill(), Text = _form.Row(i) });
-        _command = new TextField { X = RowColumn, Y = 2 + _form.Custom, Width = Dim.Fill(1), Text = _form.Command };
+        _command = new PlaceholderField { X = RowColumn, Y = 2 + _form.Custom, Width = Dim.Fill(1), Text = _form.Command };
         _command.TextChanged += (_, _) =>
         {
             _form.Command = _command.Text ?? "";

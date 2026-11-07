@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using System.Globalization;
 using System.Text;
 using Terminal.Gui.Text;
@@ -17,7 +18,7 @@ public sealed class AssistantView : View
 
     private readonly VerbatimLabel _header;
     private readonly VerbatimLabel _context;
-    private readonly InputView _input;
+    private readonly MultiLineField _input;
     private readonly VerbatimLabel _foot;
     private string _headerText = "";
     private string _contextText = "";
@@ -28,9 +29,9 @@ public sealed class AssistantView : View
         CanFocus = true;
         _header = new VerbatimLabel { X = 0, Y = 0, Width = Dim.Fill(FootText.Length + 1), Height = 1, Text = "" };
         _foot = new VerbatimLabel { X = Pos.AnchorEnd(FootText.Length), Y = 0, Width = FootText.Length, Height = 1, Text = FootText };
-        Chat = new ChatView(conversation, syntax) { X = 0, Y = 1, Width = Dim.Fill(), Height = Dim.Fill(InputRows + InputView.Frame + 1) };
-        _context = new VerbatimLabel { X = 0, Y = Pos.AnchorEnd(InputRows + InputView.Frame + 1), Width = Dim.Fill(), Height = 1, Text = "" };
-        _input = new InputView { X = 0, Y = Pos.AnchorEnd(InputRows + InputView.Frame), Width = Dim.Fill(), Height = InputRows + InputView.Frame };
+        Chat = new ChatView(conversation, syntax) { X = 0, Y = 1, Width = Dim.Fill(), Height = Dim.Fill(InputRows + MultiLineBox.Frame + 1) };
+        _context = new VerbatimLabel { X = 0, Y = Pos.AnchorEnd(InputRows + MultiLineBox.Frame + 1), Width = Dim.Fill(), Height = 1, Text = "" };
+        _input = new MultiLineField { X = 0, Y = Pos.AnchorEnd(InputRows + MultiLineBox.Frame), Width = Dim.Fill(), Height = InputRows + MultiLineBox.Frame }.HeavyWhileFocused();
         // GetAttributeForRole isn't virtual, so the hints are styled through its event; Handled makes the result stick.
         _context.GettingAttributeForRole += Faint;
         _foot.GettingAttributeForRole += Faint;

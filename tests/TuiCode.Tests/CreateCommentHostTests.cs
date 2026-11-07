@@ -1,3 +1,6 @@
+using MentalDesk.Tui.Fields;
+using Terminal.Gui.Drawing;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
@@ -80,19 +83,19 @@ public class CreateCommentHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.CreateComment),
             () => Dialog(workbench) is not null,
-            () => { shows = Dialog(workbench)!.SubViews.OfType<InputView>().Single().ShowsFocus; },
+            () => { shows = Dialog(workbench)!.SubViews.OfType<MultiLineField>().Single().BorderStyle == LineStyle.Heavy; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(shows);
     }
 
     [Fact]
-    public async Task The_terminal_cursor_lands_in_the_comment_box_where_typing_goes()
+    public async Task The_comment_box_paints_its_caret_where_typing_goes_with_the_terminal_cursor_hidden()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         Cursor? cursor = null;
-        var expected = System.Drawing.Point.Empty;
+        Attribute? painted = null, expected = null;
 
         await OpenDiff(host, workbench, commands);
         await HostSteps.Run(host,
@@ -103,13 +106,15 @@ public class CreateCommentHostTests : StaticConfigurationTest
             () =>
             {
                 cursor = host.App.Driver!.GetCursor();
-                expected = Dialog(workbench)!.SubViews.OfType<InputView>().Single()
-                    .ViewportToScreen(new System.Drawing.Point(2, 0));
+                var box = Dialog(workbench)!.SubViews.OfType<MultiLineField>().Single();
+                var cell = box.ViewportToScreen(new System.Drawing.Point(2, 0));
+                painted = host.App.Driver.Contents![cell.Y, cell.X].Attribute;
+                expected = PaintedCaretColours.Of(box);
             },
             () => host.App.InjectKey(Key.Esc));
 
-        Assert.Equal(expected, cursor!.Position);
-        Assert.Equal(TextView.DefaultCursorStyle, cursor.Style);
+        Assert.Equal(CursorStyle.Hidden, cursor!.Style);
+        Assert.Equal(expected, painted);
     }
 
     [Fact]
@@ -221,7 +226,7 @@ public class CreateCommentHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorDown),
             () => workbench.Editor.Group.ActiveDiffTab!.CurrentDraft is not null,
             () => host.App.InjectKey(Key.Enter),
-            () => Dialog(workbench)?.MostFocused is InputView,
+            () => Dialog(workbench)?.MostFocused is MultiLineField,
             () =>
             {
                 var dialog = Dialog(workbench)!;
@@ -339,6 +344,65 @@ public class CreateCommentHostTests : StaticConfigurationTest
 
         Assert.Equal([new DraftComment("src/a.txt", 1, "Rename this?")], workbench.Editor.Group.ActiveDiffTab!.Drafts);
         Assert.Equal("Draft review: 1 comment", workbench.Sidebar.Review.DraftReviewText);
+    }
+
+    [Fact]
+    public async Task A_comment_longer_than_the_box_wraps_in_it_and_is_added_as_typed()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var text = string.Join(' ', Enumerable.Repeat("This line is longer than the box is wide.", 3));
+
+        await OpenDiff(host, workbench, commands);
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.CreateComment),
+            () => Dialog(workbench) is not null,
+            () => Type(host, text),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal([new DraftComment("src/a.txt", 1, text)], workbench.Editor.Group.ActiveDiffTab!.Drafts);
+    }
+
+    [Fact]
+    public async Task The_terminals_paste_goes_into_the_comment_box_and_leaves_the_dialog_open()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var body = "";
+
+        await OpenDiff(host, workbench, commands);
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.CreateComment),
+            () => Dialog(workbench) is not null,
+            () => Assert.True(host.App.RaisePasteEvent("one\r\ntwo")),
+            () => { body = Dialog(workbench)!.Body; },
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal("one\ntwo", body);
+    }
+
+    [Fact]
+    public async Task Tab_leaves_the_comment_box_for_the_buttons_without_typing_a_tab()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        View? focused = null;
+        var body = "";
+
+        await OpenDiff(host, workbench, commands);
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.CreateComment),
+            () => Dialog(workbench) is not null,
+            () => Type(host, "Hi"),
+            () => host.App.InjectKey(Key.Tab),
+            () => { focused = Dialog(workbench)!.MostFocused; body = Dialog(workbench)!.Body; },
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.IsType<Button>(focused, exactMatch: false);
+        Assert.Equal("Hi", body);
     }
 
     /// <summary>Opens the review's only file as a diff, with its threads and drafts in.</summary>
