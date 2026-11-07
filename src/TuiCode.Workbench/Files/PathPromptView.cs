@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using System.Globalization;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Services;
@@ -48,7 +49,7 @@ public sealed class PathPromptView : Window
             Text = hint,
         };
 
-        _input = new TextField
+        _input = new PlaceholderField
         {
             X = 1,
             Y = 1,

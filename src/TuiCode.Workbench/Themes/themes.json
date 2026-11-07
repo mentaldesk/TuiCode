@@ -112,6 +112,9 @@
           "HotNormal": { "Foreground": "#000000", "Background": "#00AAAA", "Style": "Underline" },
           "HotFocus": { "Foreground": "#000000", "Background": "#55FFFF", "Style": "Bold, Underline" },
           "Highlight": { "Foreground": "#000000", "Background": "#2BD4D4" }
+        },
+        "Cursor": {
+          "Normal": { "Foreground": "#FFFF55", "Background": "#0000AA" }
         }
       }
     },
@@ -227,6 +230,9 @@
           "HotNormal": { "Foreground": "#000000", "Background": "#A8A8A8", "Style": "Underline" },
           "HotFocus": { "Foreground": "#000000", "Background": "#E0E0E0", "Style": "Bold, Underline" },
           "Highlight": { "Foreground": "#000000", "Background": "#C0C0C0" }
+        },
+        "Cursor": {
+          "Normal": { "Foreground": "#FFFF57", "Background": "#003078" }
         }
       }
     },
@@ -342,6 +348,9 @@
           "HotNormal": { "Foreground": "#E6E9EF", "Background": "#3A4150", "Style": "Underline" },
           "HotFocus": { "Foreground": "#FFFFFF", "Background": "#56637A", "Style": "Bold, Underline" },
           "Highlight": { "Foreground": "#E6E9EF", "Background": "#465063" }
+        },
+        "Cursor": {
+          "Normal": { "Foreground": "#E6E9EF", "Background": "#1B1E24" }
         }
       }
     },
@@ -457,6 +466,9 @@
           "HotNormal": { "Foreground": "#1F2328", "Background": "#DDE1E6", "Style": "Underline" },
           "HotFocus": { "Foreground": "#1F2328", "Background": "#B4C6DE", "Style": "Bold, Underline" },
           "Highlight": { "Foreground": "#1F2328", "Background": "#E9ECF0" }
+        },
+        "Cursor": {
+          "Normal": { "Foreground": "#1F2328", "Background": "#FAFAFA" }
         }
       }
     }

@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using ButtonKind = MentalDesk.Tui.Dialogs.ButtonKind;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
@@ -16,10 +17,9 @@ public sealed class CommentView : Window
     private const string MissingBody = "A comment needs something to say.";
     private const string MissingReply = "A reply needs something to say.";
     private const int DialogWidth = 70;
-    private const int DialogHeight = 12 + InputView.Frame;
+    private const int DialogHeight = 12 + MultiLineBox.Frame;
 
-    private readonly InputView _body;
-    private readonly System.Drawing.Point _end;
+    private readonly MultiLineField _body;
     private readonly AlertView _alert;
     private readonly Button[] _buttons;
     private readonly Button _confirm;
@@ -61,17 +61,14 @@ public sealed class CommentView : Window
         CanFocus = true;
 
         written ??= string.Empty;
-        _body = new InputView
+        _body = new MultiLineField
         {
             X = 1,
             Y = 0,
             Width = Dim.Fill(1),
             Height = Dim.Fill(2),
             Text = written,
-        };
-
-        var lines = written.Split('\n');
-        _end = new System.Drawing.Point(lines[^1].Length, lines.Length - 1);
+        }.HeavyWhileFocused();
 
         _scopeCommands = new CommandService();
         _scopeKeybindings = new KeybindingService(_scopeCommands);
@@ -113,7 +110,7 @@ public sealed class CommentView : Window
     public bool FocusBody()
     {
         var focused = _body.SetFocus();
-        _body.InsertionPoint = _end;
+        _body.CaretOffset = _body.Document!.TextLength;
         return focused;
     }
 

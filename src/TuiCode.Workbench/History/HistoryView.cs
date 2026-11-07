@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using System.Collections;
 using System.Collections.Specialized;
 using MentalDesk.Tui.Loading;
@@ -25,7 +26,7 @@ public sealed class HistoryView : View
         Title = "History";
         CanFocus = true;
 
-        _filter = new TextField { X = 0, Y = 0, Width = Dim.Fill() };
+        _filter = new PlaceholderField { X = 0, Y = 0, Width = Dim.Fill() };
         _filter.TextChanged += (_, _) => ShowCommits();
         _filter.KeyDown += OnFilterKey;
         _note = new VerbatimLabel { X = Pos.AnchorEnd(0), Y = 0, Width = 0, Text = "" };

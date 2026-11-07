@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using TuiCode.Abstractions;
 using TuiCode.Syntax;
 using TuiCode.Workbench.Controls;
@@ -30,7 +31,7 @@ public sealed class GrammarAssociationsView : View
         Height = Dim.Fill();
         CanFocus = true;
 
-        _search = new TextField { X = 0, Y = 0, Width = Dim.Fill(), Height = 1 };
+        _search = new PlaceholderField { X = 0, Y = 0, Width = Dim.Fill(), Height = 1 };
         _search.TextChanged += (_, _) => Rebuild();
         _search.KeyDown += OnSearchKey;
         _search.MouseEvent += (_, _) => _search.SetFocus();

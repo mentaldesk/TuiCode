@@ -284,6 +284,62 @@ public class AssistantHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Ctrl_K_in_the_question_box_deletes_to_the_end_of_the_line()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Why not"),
+            () => { for (var i = 0; i < 4; i++) host.App.InjectKey(Key.CursorLeft); },
+            () => host.App.InjectKey(Key.K.WithCtrl));
+
+        Assert.Equal("Why", view.Question);
+    }
+
+    [Fact]
+    public async Task A_multi_line_paste_stays_in_the_question_box_and_is_not_sent()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Assert.True(host.App.RaisePasteEvent("one\r\ntwo\r\n")),
+            () => { });
+
+        Assert.Equal("one\ntwo", view.Question);
+        Assert.True(view.InputHasFocus);
+        Assert.Empty(_agent.Received("session/prompt"));
+    }
+
+    [Fact]
+    public async Task Tab_leaves_the_question_box_without_typing_a_tab()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var view = workbench.Assistant;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench),
+            () => _commands.TryExecute(CommandIds.AiAssistance),
+            () => view.InputHasFocus,
+            () => Type(host, "Why"),
+            () => host.App.InjectKey(Key.Tab),
+            () => { });
+
+        Assert.False(view.InputHasFocus);
+        Assert.Equal("Why", view.Question);
+    }
+
+    [Fact]
     public async Task Stop_answering_is_Ctrl_H_in_the_hint_and_in_F1_while_answering()
     {
         using var workbench = BuildWorkbench();
