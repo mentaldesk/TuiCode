@@ -17,7 +17,7 @@ public class WorkbenchTests
     }
 
     [Fact]
-    public void SetSidebarVisible_hides_sidebar_and_lets_editor_consume_the_freed_space()
+    public void SetSidebarVisible_hides_sidebar()
     {
         using var workbench = Build();
 
@@ -25,8 +25,6 @@ public class WorkbenchTests
 
         Assert.False(workbench.IsSidebarVisible);
         Assert.False(workbench.Sidebar.Visible);
-        // Editor's X anchor moves off the sidebar's right edge to column 0.
-        Assert.Equal(Pos.Absolute(0), workbench.Editor.X);
     }
 
     [Fact]

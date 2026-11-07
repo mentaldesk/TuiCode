@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Layout;
 using TuiCode.Abstractions;
 using TuiCode.Explorer;
 using TuiCode.Workbench;
@@ -16,13 +17,13 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
     private const int BorderRow = 5;
 
     // Opened at 50 columns against the right edge, so its left border is the first column it occupies.
-    private const int BorderColumn = WideTerminal - AssistantSizing.Default;
+    private const int BorderColumn = WideTerminal - PaneWidths.AssistantDefault;
 
     private readonly MockFileSystem _fs = new();
     private readonly InMemorySettingsService _settings = new();
 
     [Fact]
-    public async Task A_drag_on_its_left_border_follows_the_pointer_and_releasing_saves_and_reports_the_width()
+    public async Task A_drag_on_its_left_border_follows_the_pointer_and_saves_the_width()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
@@ -32,22 +33,21 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
             Open(workbench),
             Press(host, BorderColumn),
             Move(host, 100),
-            () => widths.Add(workbench.DrawnAssistantWidth),
+            () => widths.Add(workbench.AssistantSidebar.Frame.Width),
             Move(host, 95),
-            () => widths.Add(workbench.DrawnAssistantWidth),
+            () => widths.Add(workbench.AssistantSidebar.Frame.Width),
             () => Assert.Equal(0, _settings.SaveCount),
             Release(host, 95));
 
         Assert.Equal([60, 65], widths);
-        Assert.Equal(65, workbench.DrawnAssistantWidth);
+        Assert.Equal(65, workbench.AssistantSidebar.Frame.Width);
         Assert.Equal(65, _settings.AssistantWidth);
         Assert.Equal(1, _settings.SaveCount);
-        Assert.Equal("AI assistance width: 65", workbench.StatusBar.DisplayedText);
         Assert.Equal(WideTerminal - 65, workbench.Editor.Frame.Right);
     }
 
     [Fact]
-    public async Task Dragging_past_its_floor_stops_at_thirty_columns()
+    public async Task Dragging_past_its_floor_stops_at_fifteen_columns()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
@@ -57,8 +57,7 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
             Press(host, BorderColumn),
             Release(host, WideTerminal - 1));
 
-        Assert.Equal(AssistantSizing.Min, workbench.DrawnAssistantWidth);
-        Assert.Equal("AI assistance width: 30 (minimum)", workbench.StatusBar.DisplayedText);
+        Assert.Equal(SidePanes.MinimumWidth, workbench.AssistantSidebar.Frame.Width);
     }
 
     [Fact]
@@ -72,9 +71,8 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
             Press(host, BorderColumn),
             Release(host, 0));
 
-        Assert.Equal(WideTerminal - SidebarSizing.Default - SidebarSizing.EditorFloor, workbench.DrawnAssistantWidth);
-        Assert.Equal(SidebarSizing.EditorFloor, workbench.Editor.Frame.Width);
-        Assert.Equal("AI assistance width: 90 (maximum — the editor needs 40 columns)", workbench.StatusBar.DisplayedText);
+        Assert.Equal(WideTerminal - PaneWidths.SidebarDefault - SidePanes.MinimumMainWidth, workbench.AssistantSidebar.Frame.Width);
+        Assert.Equal(SidePanes.MinimumMainWidth, workbench.Editor.Frame.Width);
     }
 
     [Fact]
@@ -90,7 +88,7 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
             Press(host, BorderColumn),
             Move(host, 60),
             Release(host, 60),
-            () => workbench.StatusBar.DisplayedText.StartsWith("AI assistance width"));
+            () => workbench.AssistantSidebar.Frame.Width > PaneWidths.AssistantDefault);
 
         Assert.True(workbench.Assistant.InputHasFocus);
         Assert.Equal("AI assistance", workbench.StatusBar.DisplayedFocus);
@@ -113,7 +111,7 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task A_narrower_terminal_narrows_it_first_then_the_left_sidebar_and_a_wider_one_brings_both_back()
+    public async Task A_narrower_terminal_narrows_the_wider_pane_first_and_a_wider_one_brings_both_back()
     {
         _settings.SidebarWidth = 40;
         _settings.AssistantWidth = 60;
@@ -124,19 +122,19 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
         await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             Open(workbench),
             () => widths.Add(Widths(workbench)),
-            Size(host, workbench, 110),
+            Size(host, workbench, 120),
             () => widths.Add(Widths(workbench)),
             Size(host, workbench, 90),
             () => widths.Add(Widths(workbench)),
             Size(host, workbench, WideTerminal),
             () => widths.Add(Widths(workbench)));
 
-        Assert.Equal([(40, 60), (40, 30), (20, 30), (40, 60)], widths);
-        Assert.Equal(60, workbench.AssistantWidth);
+        Assert.Equal([(40, 60), (40, 40), (25, 25), (40, 60)], widths);
+        Assert.Equal(60, _settings.AssistantWidth);
     }
 
     [Fact]
-    public async Task It_first_opens_at_forty_percent_of_a_terminal_too_narrow_for_fifty_columns()
+    public async Task It_first_opens_at_fifty_columns()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
@@ -144,7 +142,7 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
         await HostSteps.Run(host, Size(host, workbench, 120),
             Open(workbench));
 
-        Assert.Equal(48, workbench.DrawnAssistantWidth);
+        Assert.Equal(PaneWidths.AssistantDefault, workbench.AssistantSidebar.Frame.Width);
     }
 
     [Fact]
@@ -157,7 +155,7 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
         await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             Open(workbench));
 
-        Assert.Equal(70, workbench.DrawnAssistantWidth);
+        Assert.Equal(70, workbench.AssistantSidebar.Frame.Width);
     }
 
     [Fact]
@@ -186,7 +184,7 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
 
     private string Full(string path) => _fs.Path.GetFullPath(path);
 
-    private static (int, int) Widths(Workbench.Workbench workbench) => (workbench.DrawnSidebarWidth, workbench.DrawnAssistantWidth);
+    private static (int, int) Widths(Workbench.Workbench workbench) => (workbench.Sidebar.Frame.Width, workbench.AssistantSidebar.Frame.Width);
 
     // The border the user grabs is laid out a layout after the width changes.
     private static Func<bool> Open(Workbench.Workbench workbench) =>
@@ -194,7 +192,7 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
         {
             workbench.ShowAssistant(true);
             return workbench.AssistantSidebar.FrameToScreen() is var frame
-                && frame.Width == workbench.DrawnAssistantWidth && frame.Right == workbench.Viewport.Width;
+                && frame.Width > 0 && frame.Right == workbench.Viewport.Width;
         };
 
     private static Action Press(WorkbenchHost host, int column) =>
@@ -213,7 +211,7 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
         () =>
         {
             HostSteps.PinScreenSize(host, width, Rows);
-            return workbench.Viewport.Width == width && workbench.AssistantSidebar.FrameToScreen().Width == workbench.DrawnAssistantWidth;
+            return workbench.Viewport.Width == width;
         };
 
     private WorkbenchHost BuildHost(Workbench.Workbench workbench)

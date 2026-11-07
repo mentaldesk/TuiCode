@@ -1,5 +1,6 @@
 using MentalDesk.Tui;
 using MentalDesk.Tui.Chrome;
+using MentalDesk.Tui.Layout;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Workbench.Assistant;
@@ -11,6 +12,7 @@ using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Workspace;
+using PaneRegion = MentalDesk.Tui.Focus.FocusRegion;
 
 namespace TuiCode.Workbench;
 
@@ -49,18 +51,6 @@ public sealed class Workbench : Window
 
     public bool IsSidebarVisible { get; private set; } = true;
 
-    /// <summary>The width the user asked for (#209). A terminal too narrow for it clamps <see cref="DrawnSidebarWidth"/>, not this.</summary>
-    public int SidebarWidth { get; private set; } = SidebarSizing.Default;
-
-    /// <summary>The width actually laid out: <see cref="SidebarWidth"/> clamped to the terminal.</summary>
-    public int DrawnSidebarWidth { get; private set; } = SidebarSizing.Default;
-
-    /// <summary>The AI assistance sidebar's width the user dragged it to; null opens it at <see cref="AssistantSizing.DefaultFor"/>.</summary>
-    public int? AssistantWidth { get; private set; }
-
-    /// <summary>The AI assistance sidebar's width laid out, clamped to the terminal; 0 while it's hidden.</summary>
-    public int DrawnAssistantWidth { get; private set; }
-
     private readonly WorkspaceStateStore? _workspaceState;
     private readonly FilePositionStore? _positions;
 
@@ -83,7 +73,7 @@ public sealed class Workbench : Window
 
         sidebar.X = 0;
         sidebar.Y = Pos.Bottom(MenuBar);
-        sidebar.Width = SidebarSizing.Default;
+        sidebar.Width = PaneWidths.SidebarDefault;
         sidebar.Height = Dim.Fill(1);
 
         editor.X = Pos.Right(sidebar);
@@ -91,9 +81,9 @@ public sealed class Workbench : Window
         editor.Width = Dim.Fill();
         editor.Height = Dim.Fill(1);
 
-        Panel.X = Pos.Right(sidebar);
+        Panel.X = Pos.Left(editor);
         Panel.Y = Pos.Bottom(editor);
-        Panel.Width = Dim.Fill();
+        Panel.Width = Dim.Width(editor);
         Panel.Height = 0;
         Panel.Visible = false;
 
@@ -504,61 +494,16 @@ public sealed class Workbench : Window
         base.Dispose(disposing);
     }
 
-    /// <summary>Records the width the user asked for and lays out as much of it as the terminal allows.</summary>
-    public void SetSidebarWidth(int width)
-    {
-        SidebarWidth = Math.Max(SidebarSizing.Min, width);
-        ApplySidebarWidths();
-    }
-
-    /// <summary>The widest the left sidebar may be drawn now, leaving the AI sidebar its floor while it's open.</summary>
-    public int MaxSidebarWidth => SidebarSizing.MaxFor(Viewport.Width, IsAssistantShowing ? AssistantSizing.Min : 0);
-
-    /// <summary>Moves the width by <paramref name="columns"/> from what's on screen, clamped. Returns the new width.</summary>
-    public int NudgeSidebarWidth(int columns) => ResizeSidebarTo(DrawnSidebarWidth + columns);
-
-    /// <summary>Sets the width to <paramref name="width"/>, clamped to the terminal. Returns the new width.</summary>
-    public int ResizeSidebarTo(int width)
-    {
-        var clamped = SidebarSizing.Clamp(width, Viewport.Width, IsAssistantShowing ? AssistantSizing.Min : 0);
-        SetSidebarWidth(clamped);
-        return clamped;
-    }
-
-    /// <summary>Records the AI sidebar's width the user asked for; null goes back to the width it first opens at.</summary>
-    public void SetAssistantWidth(int? width)
-    {
-        AssistantWidth = width is { } w ? Math.Max(AssistantSizing.Min, w) : null;
-        ApplySidebarWidths();
-    }
-
-    /// <summary>The widest the AI sidebar may be drawn now, beside the left sidebar as it's drawn.</summary>
-    public int MaxAssistantWidth => AssistantSizing.MaxFor(Viewport.Width, IsSidebarVisible ? DrawnSidebarWidth : 0);
-
-    /// <summary>Sets the AI sidebar's width to <paramref name="width"/>, clamped to the terminal. Returns the new width.</summary>
-    public int ResizeAssistantTo(int width)
-    {
-        var clamped = Math.Clamp(width, AssistantSizing.Min, MaxAssistantWidth);
-        SetAssistantWidth(clamped);
-        return clamped;
-    }
-
-    /// <summary>True when <paramref name="column"/> is the AI sidebar's left border, where a drag starts.</summary>
-    public bool IsOnAssistantBorder(int column) => IsAssistantShowing && column == AssistantSidebar.FrameToScreen().Left;
-
-    /// <summary>The width that puts the AI sidebar's left border under screen column <paramref name="column"/>.</summary>
-    public int AssistantWidthForBorderAt(int column) => AssistantSidebar.FrameToScreen().Right - column;
-
-    /// <summary>True when <paramref name="column"/> is the sidebar's right border — the one column a drag starts in (#252).</summary>
-    public bool IsOnSidebarBorder(int column) => IsSidebarVisible && column == Sidebar.FrameToScreen().Right - 1;
-
-    /// <summary>The width that puts the sidebar's right border under screen column <paramref name="column"/>.</summary>
-    public int SidebarWidthForBorderAt(int column) => column - Sidebar.FrameToScreen().Left + 1;
+    /// <summary>Hands the widths of both side panes and the editor to the library, which reads the saved ones now.</summary>
+    public SidePanes ArrangePanes(Func<PaneRegion?> focused, Action<string> say, ISettingsService settings) =>
+        new SidePanes(this, focused, say, () => PaneWidths.Read(settings), widths => PaneWidths.Write(settings, widths))
+            .AddSide(Sidebar, PaneWidths.Sidebar, PaneWidths.SidebarDefault)
+            .AddMain(Editor)
+            .AddSide(AssistantSidebar, PaneWidths.Assistant, PaneWidths.AssistantDefault);
 
     protected override void OnSubViewsLaidOut(LayoutEventArgs args)
     {
         base.OnSubViewsLaidOut(args);
-        ApplySidebarWidths();
         ApplyPanelHeight();
     }
 
@@ -584,7 +529,6 @@ public sealed class Workbench : Window
     {
         if (IsAssistantShowing == showing) return;
         AssistantSidebar.Visible = showing;
-        ApplySidebarWidths();
         SaveWorkspaceState();
         AssistantShowingChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -602,36 +546,11 @@ public sealed class Workbench : Window
         SetNeedsLayout();
     }
 
-    private void ApplySidebarWidths()
-    {
-        var assistant = IsAssistantShowing ? AssistantWidth ?? AssistantSizing.DefaultFor(Viewport.Width) : (int?)null;
-        // Nothing to clamp against before the first layout, and the default would draw for a frame.
-        var (left, right) = Viewport.Width > 0
-            ? SidebarSizing.Fit(Viewport.Width, IsSidebarVisible ? SidebarWidth : null, assistant)
-            : (SidebarWidth, assistant ?? 0);
-        if (IsSidebarVisible && left != DrawnSidebarWidth)
-        {
-            DrawnSidebarWidth = left;
-            Sidebar.Width = left;
-            SetNeedsLayout();
-        }
-        if (right == DrawnAssistantWidth) return;
-        DrawnAssistantWidth = right;
-        AssistantSidebar.X = Pos.AnchorEnd(right);
-        AssistantSidebar.Width = right;
-        Editor.Width = Dim.Fill(right);
-        Panel.Width = Dim.Fill(right);
-        SetNeedsLayout();
-    }
-
     public void SetSidebarVisible(bool visible)
     {
         if (IsSidebarVisible == visible) return;
         IsSidebarVisible = visible;
         Sidebar.Visible = visible;
-        Editor.X = visible ? Pos.Right(Sidebar) : 0;
-        Panel.X = Editor.X;
-        ApplySidebarWidths();
         SetNeedsLayout();
         RefreshReviewIfShowing();
         SaveWorkspaceState();

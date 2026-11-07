@@ -50,10 +50,10 @@ public sealed class CommandMenu
         [CommandIds.CopyPermalink] = 'm', [CommandIds.OpenOnGitHub] = 'h',
 
         [CommandIds.ShowExplorer] = 'e', [CommandIds.FindGlobally] = 'f', [CommandIds.FocusUsages] = 'u',
-        [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenSidebar] = 'w',
-        [CommandIds.NarrowSidebar] = 'n', [CommandIds.RefreshExplorer] = 'p', [CommandIds.ToggleGutter] = 'g',
+        [CommandIds.FocusReview] = 'r', [CommandIds.ToggleSidebar] = 's', [CommandIds.WidenPane] = 'w',
+        [CommandIds.NarrowPane] = 'n', [CommandIds.ResetPaneWidth] = 'i', [CommandIds.RefreshExplorer] = 'p', [CommandIds.ToggleGutter] = 'g',
         [CommandIds.ToggleWordWrap] = 't', [CommandIds.ToggleFold] = 'b', [CommandIds.FoldAll] = 'l', [CommandIds.UnfoldAll] = 'd', [CommandIds.MoveToOtherGroup] = 'm', [CommandIds.FocusOtherGroup] = 'o',
-        [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'i', [CommandIds.RevealInExplorer] = 'x',
+        [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'y', [CommandIds.RevealInExplorer] = 'x',
         [CommandIds.FocusAssistant] = 'a', [CommandIds.AiAssistance] = 'h', [CommandIds.ToggleToolCalls] = 'c',
 
         [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToType] = 'y', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.QuickInfo] = 'i',
@@ -109,7 +109,7 @@ public sealed class CommandMenu
         [
             CommandIds.ShowExplorer, CommandIds.FindGlobally, CommandIds.FocusUsages, CommandIds.FocusReview, CommandIds.FocusAssistant,
             Separator,
-            CommandIds.ToggleSidebar, CommandIds.WidenSidebar, CommandIds.NarrowSidebar,
+            CommandIds.ToggleSidebar, CommandIds.WidenPane, CommandIds.NarrowPane, CommandIds.ResetPaneWidth,
             Separator,
             CommandIds.ToggleFileHistory, CommandIds.RevealInExplorer, CommandIds.AiAssistance, CommandIds.ToggleToolCalls,
             Separator,

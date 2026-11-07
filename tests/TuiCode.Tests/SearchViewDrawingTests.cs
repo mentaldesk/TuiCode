@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Layout;
 using System.Text;
 using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
@@ -9,7 +10,7 @@ namespace TuiCode.Tests;
 // The Find pane's input rows, through a TG driver — serialised (#77).
 public class SearchViewDrawingTests : StaticConfigurationTest
 {
-    private const int Columns = SidebarSizing.Min;
+    private const int Columns = SidePanes.MinimumWidth;
 
     private readonly IApplication _app = Application.Create().Init(DriverRegistry.Names.ANSI);
     private readonly SearchView _view = new() { Width = Dim.Fill(), Height = Dim.Fill() };
