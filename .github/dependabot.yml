@@ -1,8 +1,14 @@
 version: 2
 updates:
   - package-ecosystem: nuget
-    directory: /src/TuiCode.Workbench
+    directories:
+      - /src/TuiCode.Workbench
+      - /src/TuiCode.Search
     schedule:
       interval: daily
     allow:
       - dependency-name: MentalDesk.Tui
+    groups:
+      mentaldesk-tui:
+        patterns:
+          - MentalDesk.Tui

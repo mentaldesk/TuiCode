@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using TuiCode.Abstractions;
 using TuiCode.Search;
 
@@ -34,12 +35,12 @@ public sealed class FindBarView : View
         Border.Thickness = new Thickness(0, 0, 0, 1);
 
         _queryLabel = new VerbatimLabel { X = 1, Y = 0, Text = "Find" };
-        _query = new TextField { X = LabelWidth, Y = 0, Width = Dim.Fill(OptionsWidth + SideWidth) };
+        _query = new PlaceholderField { X = LabelWidth, Y = 0, Width = Dim.Fill(OptionsWidth + SideWidth) };
         _matchCase = new FindOption("_Case") { X = Pos.AnchorEnd(OptionsWidth + SideWidth - 1), Y = 0 };
         _wholeWord = new FindOption("_Word") { X = Pos.Right(_matchCase) + 2, Y = 0 };
         _status = new VerbatimLabel { X = Pos.AnchorEnd(SideWidth), Y = 0, Width = SideWidth, Text = string.Empty };
         _replaceLabel = new VerbatimLabel { X = 1, Y = 1, Text = "Replace", Visible = false };
-        _replacement = new TextField { X = LabelWidth, Y = 1, Width = Dim.Fill(OptionsWidth + SideWidth), Visible = false };
+        _replacement = new PlaceholderField { X = LabelWidth, Y = 1, Width = Dim.Fill(OptionsWidth + SideWidth), Visible = false };
 
         Add(_queryLabel, _query, _matchCase, _wholeWord, _status, _replaceLabel, _replacement);
 

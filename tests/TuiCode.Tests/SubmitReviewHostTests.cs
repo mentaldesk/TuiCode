@@ -1,3 +1,5 @@
+using MentalDesk.Tui.Fields;
+using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using MentalDesk.Tui.Loading;
@@ -52,7 +54,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
             () => Dialog(workbench) is { Loaded: true },
-            () => { shows = Dialog(workbench)!.SummaryBox.ShowsFocus; },
+            () => { shows = Dialog(workbench)!.SummaryBox.BorderStyle == LineStyle.Heavy; },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(shows);
@@ -106,7 +108,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.CursorRight),
             () => Dialog(workbench)!.Verdict == GitHubReviewVerdict.RequestChanges,
             () => host.App.InjectKey(Key.Tab),
-            () => { summaryFocused = Dialog(workbench)!.SubViews.SelectMany(Descendants).OfType<InputView>().Single().HasFocus; },
+            () => { summaryFocused = Dialog(workbench)!.SubViews.SelectMany(Descendants).OfType<MultiLineField>().Single().HasFocus; },
             () => host.App.InjectKey(Key.Esc),
             () => Dialog(workbench) is null);
 

@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Services;
 
@@ -62,7 +63,7 @@ public sealed class ActionView : Window
 
         var filterLabel = new VerbatimLabel { X = 1, Y = 0, Text = "Filter:" };
 
-        _search = new TextField
+        _search = new PlaceholderField
         {
             X = Pos.Right(filterLabel) + 1,
             Y = 0,
