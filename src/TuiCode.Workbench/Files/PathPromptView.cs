@@ -1,47 +1,32 @@
+using MentalDesk.Tui.Dialogs;
 using MentalDesk.Tui.Fields;
 using System.Globalization;
 using TuiCode.Abstractions;
-using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Files;
 
 /// <summary>
 /// Modal prompt for a path relative to the workspace root, used to create an entry (New File or
-/// Folder) and to rename or move one (#101). A single text field; Enter confirms, Esc cancels.
-///
-/// Owns its own <see cref="ICommandService"/> + <see cref="IKeybindingService"/>; the
-/// <see cref="WorkbenchHost"/> pushes <see cref="Scope"/> on open and pops it on close.
+/// Folder) and to rename or move one (#101). A single text field; Ctrl+Enter confirms, Esc cancels.
 /// </summary>
-public sealed class PathPromptView : Window
+public sealed class PathPromptView : AppDialog
 {
-    private readonly TextField _input;
-    private readonly VerbatimLabel _error;
+    private const int ContentRows = 4;
 
-    private readonly ICommandService _scopeCommands;
-    private readonly IKeybindingService _scopeKeybindings;
+    private readonly TextField _input;
+    private readonly VerbatimLabel _label;
 
     private bool? _isDirectory;
     private NamePart _selected;
 
-    public IKeybindingService Scope => _scopeKeybindings;
-
-    public event EventHandler? Cancelled;
     public event EventHandler<string>? Submitted;
 
-    public PathPromptView(string title, string hint, string prefill)
+    public PathPromptView(string title, string hint, string prefill, string confirm)
+        : base(title, 60, ContentRows)
     {
         prefill ??= string.Empty;
 
-        Title = title;
-        BorderStyle = LineStyle.Single;
-        X = Pos.Center();
-        Y = Pos.Center();
-        Width = 60;
-        Height = 7;
-        // Required for descendant focus — same reason as the other modals.
-        CanFocus = true;
-
-        var hintLabel = new VerbatimLabel
+        _label = new VerbatimLabel
         {
             X = 1,
             Y = 0,
@@ -59,25 +44,22 @@ public sealed class PathPromptView : Window
         // Park the caret at the end so typing appends to the pre-filled path.
         _input.InsertionPoint = prefill.Length;
 
-        _error = new VerbatimLabel
-        {
-            X = 1,
-            Y = 3,
-            Width = Dim.Fill(1),
-            Text = string.Empty,
-        };
+        Add(_label, _input);
+        Check(_input, _label, () => Path.Trim().Trim('/', '\\').Length == 0 ? "Path is needed" : null);
 
-        _input.TextChanged += (_, _) => _error.Text = string.Empty;
-        Add(hintLabel, _input, _error);
+        Commands.Register(CommandIds.PathPromptConfirm, confirm, OnConfirm);
+        Commands.Register(CommandIds.PathPromptCycleSelection, "Cycle selection", CycleSelection);
+        Keys.Bind("Ctrl+Enter", CommandIds.PathPromptConfirm);
+        Keys.Bind("F2", CommandIds.PathPromptCycleSelection);
 
-        _scopeCommands = new CommandService();
-        _scopeKeybindings = new KeybindingService(_scopeCommands);
-        RegisterScopeBindings();
+        var go = CommandButton(ButtonKind.Primary, CommandIds.PathPromptConfirm);
+        go.IsDefault = false;
+        AddButtonRow(ContentRows - 1, go, CommandButton(ButtonKind.Secondary, CancelId));
     }
 
     public string Path => _input.Text ?? string.Empty;
 
-    internal string Error => _error.Text ?? string.Empty;
+    internal VerbatimLabel FieldLabel => _label;
 
     public string SelectedText => _input.SelectedText ?? string.Empty;
 
@@ -96,31 +78,15 @@ public sealed class PathPromptView : Window
         return focused;
     }
 
-    /// <summary>Surface a failure (e.g. the path already exists) and keep the modal open.</summary>
-    public void ShowError(string message) => _error.Text = message;
+    /// <summary>Marks the path with why the disk refused it, keeping the modal open.</summary>
+    public void ShowError(string message) => Refuse(_input, $"Path: {char.ToLowerInvariant(message[0])}{message[1..]}");
 
-    private void RegisterScopeBindings()
-    {
-        _scopeCommands.Register(CommandIds.PathPromptCancel, () => Cancelled?.Invoke(this, EventArgs.Empty));
-        _scopeCommands.Register(CommandIds.PathPromptConfirm, OnConfirm);
-        _scopeCommands.Register(CommandIds.PathPromptCycleSelection, CycleSelection);
-
-        _scopeKeybindings.Bind("Esc", CommandIds.PathPromptCancel);
-        _scopeKeybindings.Bind("Enter", CommandIds.PathPromptConfirm);
-        _scopeKeybindings.Bind("F2", CommandIds.PathPromptCycleSelection);
-    }
+    /// <summary>Closes the prompt once the host has done what it was asked.</summary>
+    public void Finish() => Accept();
 
     private void OnConfirm()
     {
-        var raw = Path.Trim();
-        // An empty (or slash-only) path names nothing — treat Enter as cancel.
-        if (raw.Trim('/', '\\').Length == 0)
-        {
-            Cancelled?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-
-        Submitted?.Invoke(this, raw);
+        if (Checked()) Submitted?.Invoke(this, Path.Trim());
     }
 
     private void CycleSelection()

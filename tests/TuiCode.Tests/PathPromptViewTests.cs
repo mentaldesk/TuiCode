@@ -23,7 +23,7 @@ public class PathPromptViewTests
     [Fact]
     public void SelectName_selects_the_name_without_its_extension()
     {
-        using var view = new PathPromptView("Move or Rename", "Path", "src/widget.cs");
+        using var view = new PathPromptView("Move or Rename", "Path", "src/widget.cs", "Move");
 
         view.SelectName(isDirectory: false);
 
@@ -33,7 +33,7 @@ public class PathPromptViewTests
     [Fact]
     public void F2_cycles_the_selection_through_the_name_the_extension_and_back()
     {
-        using var view = new PathPromptView("Move or Rename", "Path", "src/widget.cs");
+        using var view = new PathPromptView("Move or Rename", "Path", "src/widget.cs", "Move");
         view.SelectName(isDirectory: false);
         var seen = new List<string>();
 

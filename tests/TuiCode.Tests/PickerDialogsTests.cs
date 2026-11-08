@@ -140,7 +140,7 @@ public class PickerDialogsTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Go_to_line_shows_Enter_Go_to_and_Esc_Cancel_below_the_field()
+    public void Go_to_line_shows_Ctrl_Enter_Go_to_and_Esc_Cancel_below_the_field()
     {
         using var view = new GoToLineView(10, 1);
 
@@ -148,7 +148,7 @@ public class PickerDialogsTests : StaticConfigurationTest
         var field = view.SubViews.OfType<TextField>().Single();
         var buttons = view.SubViews.OfType<Button>().ToList();
 
-        Assert.Equal(["Enter Go to", "Esc Cancel"], buttons.Select(b => b.Text.Trim()));
+        Assert.Equal(["Ctrl+Enter Go to", "Esc Cancel"], buttons.Select(b => b.Text.Trim()));
         Assert.All(buttons, b => Assert.True(b.Frame.Y > field.Frame.Y));
     }
 
@@ -162,7 +162,7 @@ public class PickerDialogsTests : StaticConfigurationTest
         using var view = new GoToLineView(10, 1);
         view.SubViews.OfType<TextField>().Single().Text = typed;
 
-        view.Scope.Handle(Key.Enter);
+        view.Scope.Handle(Key.Enter.WithCtrl);
 
         Assert.Equal(accepted, view.Confirmed);
         if (accepted) Assert.Equal((row, column), view.Target);

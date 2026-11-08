@@ -174,7 +174,7 @@ public class PathPickerHostTests : StaticConfigurationTest
                 title = Prompt(workbench)!.Title;
                 foreach (var c in "lib") host.App.InjectKey(new Key(c));
             },
-            () => host.App.InjectKey(Key.Enter),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Prompt(workbench) is null);
 
         Assert.Equal("New folder", title);

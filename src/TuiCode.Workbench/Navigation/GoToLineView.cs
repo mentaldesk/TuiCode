@@ -15,6 +15,7 @@ public sealed class GoToLineView : AppDialog
     private const int ContentRows = 4;
 
     private readonly TextField _input;
+    private readonly VerbatimLabel _label;
     private readonly int _totalLines;
 
     public GoToLineView(int totalLines, int currentLine)
@@ -23,7 +24,7 @@ public sealed class GoToLineView : AppDialog
         if (totalLines < 1) totalLines = 1;
         _totalLines = totalLines;
 
-        var hint = new VerbatimLabel
+        _label = new VerbatimLabel
         {
             X = 1,
             Y = 0,
@@ -31,11 +32,14 @@ public sealed class GoToLineView : AppDialog
             Text = $"Line[:Col]  (1-{totalLines}, current: {currentLine})",
         };
         _input = new PlaceholderField { X = 1, Y = 1, Width = Dim.Fill(1) };
-        Add(hint, _input);
+        Add(_label, _input);
+        Check(_input, _label, Refusal);
 
         Commands.Register(GoId, "Go to", OnConfirm);
-        Keys.Bind("Enter", GoId);
-        AddButtonRow(ContentRows - 1, CommandButton(ButtonKind.Primary, GoId), CommandButton(ButtonKind.Secondary, CancelId));
+        Keys.Bind("Ctrl+Enter", GoId);
+        var go = CommandButton(ButtonKind.Primary, GoId);
+        go.IsDefault = false;
+        AddButtonRow(ContentRows - 1, go, CommandButton(ButtonKind.Secondary, CancelId));
     }
 
     /// <summary>Zero-based, for <c>EditorTab.MoveCursor</c>; set once <see cref="AppDialog.Confirmed"/>.</summary>
@@ -43,28 +47,24 @@ public sealed class GoToLineView : AppDialog
 
     public bool FocusInput() => _input.SetFocus();
 
+    internal VerbatimLabel FieldLabel => _label;
+
+    private string Typed => _input.Text?.Trim() ?? string.Empty;
+
+    private string? Refusal()
+    {
+        if (Typed.Length == 0) return "Line is needed";
+        var range = $"Line must be 1\u2013{_totalLines}";
+        if (!TryParse(Typed, out var line, out _))
+            return int.TryParse(Typed, out _) ? range : "Line must be a number, or LINE:COL";
+        return line > _totalLines ? range : null;
+    }
+
     private void OnConfirm()
     {
-        var raw = _input.Text?.Trim() ?? string.Empty;
-        if (raw.Length == 0)
-        {
-            Cancel();
-            return;
-        }
-
-        if (!TryParse(raw, out var line, out var col))
-        {
-            ShowAlert("Expected: LINE or LINE:COL", Severity.Error);
-            return;
-        }
-
-        if (line < 1 || line > _totalLines)
-        {
-            ShowAlert($"Line out of range (1-{_totalLines})", Severity.Error);
-            return;
-        }
-
-        Target = (line - 1, Math.Max(0, col - 1));
+        if (!Checked()) return;
+        TryParse(Typed, out var line, out var col);
+        Target = (line - 1, col - 1);
         Accept();
     }
 

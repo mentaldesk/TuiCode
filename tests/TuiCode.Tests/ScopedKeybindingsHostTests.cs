@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Dialogs;
+using MentalDesk.Tui.Theming;
 using System.Drawing;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
@@ -510,6 +511,83 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             () => workbench.SubViews.OfType<GoToLineView>().Any(),
             () => host.App.InjectKey(Key.Esc),
             () => !workbench.SubViews.OfType<GoToLineView>().Any());
+    }
+
+    [Theory]
+    [InlineData("", "Line is needed")]
+    [InlineData("abc", "Line must be a number, or LINE:COL")]
+    [InlineData("4", "Line must be 1\u20133")]
+    [InlineData("0", "Line must be 1\u20133")]
+    public async Task Go_to_line_refuses_a_wrong_line_by_marking_the_field(string typed, string message)
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData(ThreeLines));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        GoToLineView Dialog() => workbench.SubViews.OfType<GoToLineView>().Single();
+        TextField Field() => Dialog().SubViews.OfType<TextField>().Single();
+        var said = "";
+        string? marked = null, cleared = "unset";
+        var focused = false;
+        var kept = "";
+
+        await HostSteps.Run(host,
+            () => { workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")).FocusContent(); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.G.WithCtrl),
+            () => host.App.InjectKey(Key.L),
+            () => workbench.SubViews.OfType<GoToLineView>().Any(),
+            () => { Field().Text = typed; },
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog().Alert.Lines > 0,
+            () =>
+            {
+                said = Dialog().Alert.Message;
+                marked = Dialog().FieldLabel.SchemeName;
+                focused = Field().HasFocus;
+                kept = Field().Text;
+                Field().Text = "2";
+            },
+            () => Dialog().Alert.Lines == 0,
+            () => { cleared = Dialog().FieldLabel.SchemeName; host.App.InjectKey(Key.Enter.WithCtrl); },
+            () => !workbench.SubViews.OfType<GoToLineView>().Any());
+
+        Assert.Equal(message, said);
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.True(focused);
+        Assert.Equal(typed, kept);
+        Assert.NotEqual(SchemeNames.Error, cleared);
+        Assert.Equal(1, workbench.Editor.Group.ActiveTab!.CursorRow);
+    }
+
+    [Fact]
+    public async Task Enter_does_not_confirm_go_to_line_and_Ctrl_Enter_does()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData(ThreeLines));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var open = false;
+        var row = -1;
+
+        await HostSteps.Run(host,
+            () => { workbench.Editor.Open(_fs.FileInfo.New("/work/a.txt")).FocusContent(); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => host.App.InjectKey(Key.G.WithCtrl),
+            () => host.App.InjectKey(Key.L),
+            () => workbench.SubViews.OfType<GoToLineView>().Any(),
+            () => host.App.InjectKey(Key.D2),
+            () => host.App.InjectKey(Key.Enter),
+            () => { },
+            () =>
+            {
+                open = workbench.SubViews.OfType<GoToLineView>().Any();
+                row = workbench.Editor.Group.ActiveTab!.CursorRow;
+                host.App.InjectKey(Key.Enter.WithCtrl);
+            },
+            () => !workbench.SubViews.OfType<GoToLineView>().Any());
+
+        Assert.True(open);
+        Assert.Equal(0, row);
+        Assert.Equal(1, workbench.Editor.Group.ActiveTab!.CursorRow);
     }
 
     [Fact]

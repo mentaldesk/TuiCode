@@ -2367,14 +2367,13 @@ public sealed class WorkbenchHost : IDisposable
         var explorer = _workbench.Sidebar.Explorer;
         if (explorer.Root is null) return;
 
-        var view = new PathPromptView("New folder", "Path (relative to root)", explorer.NewEntryPrefill());
-        view.Cancelled += (_, _) => ClosePathPrompt(view);
+        var view = new PathPromptView("New folder", "Path (relative to root)", explorer.NewEntryPrefill(), "Create");
         view.Submitted += (_, relativePath) =>
         {
             try
             {
                 explorer.Create(FilePaths.IsDirectoryPath(relativePath) ? relativePath : relativePath + "/");
-                ClosePathPrompt(view);
+                view.Finish();
                 _workbench.Sidebar.ShowTab(SidebarTab.Explorer);
                 FocusSidebar();
             }
@@ -2393,21 +2392,15 @@ public sealed class WorkbenchHost : IDisposable
         var fromExplorer = ExplorerIsContext;
         if (FileCommandTarget(fromExplorer, "renamed") is not { } item) return;
 
-        var view = new PathPromptView("Move or Rename", "Path (relative to root)", _workbench.Sidebar.Explorer.RelativePath(item));
+        var view = new PathPromptView("Move or Rename", "Path (relative to root)", _workbench.Sidebar.Explorer.RelativePath(item), "Move");
         view.SelectName(item is IDirectoryInfo);
-        view.Cancelled += (_, _) =>
-        {
-            ClosePathPrompt(view);
-            if (fromExplorer) FocusSidebar();
-        };
         view.Submitted += (_, relativePath) =>
         {
             try
             {
                 var moved = _workbench.Move(item, relativePath);
                 _history.Rebase(item.FullName, moved.FullName);
-                ClosePathPrompt(view);
-                if (fromExplorer) FocusSidebar();
+                view.Finish();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
@@ -2415,7 +2408,7 @@ public sealed class WorkbenchHost : IDisposable
             }
         };
 
-        ShowPathPrompt(view);
+        ShowPathPrompt(view, () => { if (fromExplorer) FocusSidebar(); });
     }
 
     private void RefreshExplorer()
@@ -2458,22 +2451,16 @@ public sealed class WorkbenchHost : IDisposable
         if (fromExplorer) FocusSidebar();
     }
 
-    private void ShowPathPrompt(PathPromptView view)
+    private void ShowPathPrompt(PathPromptView view, Action? closed = null)
     {
         _activePathPrompt = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activePathPrompt = null;
+            FocusCallingRegion();
+            closed?.Invoke();
+        });
         view.FocusInput();
-    }
-
-    private void ClosePathPrompt(PathPromptView view)
-    {
-        if (!ReferenceEquals(_activePathPrompt, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activePathPrompt = null;
-        FocusCallingRegion();
     }
 
     // Ctrl+S never overwrites someone else's newer file without asking (#267), clean tab or not: a clean
@@ -3905,7 +3892,6 @@ public sealed class WorkbenchHost : IDisposable
 
         var view = new SubmitReviewView();
         (string Root, int Number)? found = null;
-        view.Cancelled += (_, _) => CloseSubmitReview(view);
         view.Submitted += (_, review) =>
         {
             if (found is not var (repoRoot, number)) return;
@@ -3922,14 +3908,17 @@ public sealed class WorkbenchHost : IDisposable
                     return;
                 }
                 ClearDrafts();
-                CloseSubmitReview(view);
+                view.Finish();
                 _workbench.StatusBar.ShowMessage($"Review submitted on #{number}");
             });
         };
 
         _activeSubmitReview = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeSubmitReview = null;
+            FocusCallingRegion();
+        });
         view.FocusSummary();
 
         void Load()
@@ -4169,7 +4158,6 @@ public sealed class WorkbenchHost : IDisposable
         }
 
         var view = new CommentView(thread);
-        view.Cancelled += (_, _) => CloseComment(view, fromReviewTab);
         view.Added += (_, body) =>
         {
             view.ShowBusy();
@@ -4184,16 +4172,13 @@ public sealed class WorkbenchHost : IDisposable
                 }
                 // Closed first: rebuilding the Review tab under an open modal drops TG's focus, and the
                 // editor's Tabs then makes whichever tab takes it active (#191).
-                CloseComment(view, fromReviewTab);
+                view.Finish();
                 ShowReply(thread, posting.Result.Value);
                 _workbench.StatusBar.ShowMessage($"Replied on #{pullRequest.Number}");
             });
         };
 
-        _activeComment = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusBody();
+        ShowComment(view, fromReviewTab);
     }
 
     /// <summary>Puts a posted reply on its thread wherever the thread is shown, rather than refetching them all.</summary>
@@ -4212,25 +4197,21 @@ public sealed class WorkbenchHost : IDisposable
     {
         if (_activeComment is not null) return;
         var view = new CommentView(path, line, draft);
-        view.Cancelled += (_, _) => CloseComment(view);
         view.Added += (_, body) =>
         {
             if (draft is null) Drafts.Add(path, line, body);
             else Drafts.Replace(draft, body);
-            CloseComment(view);
+            view.Finish();
             ShowDrafts(diff, path);
         };
         view.Deleted += (_, _) =>
         {
             if (draft is not null) Drafts.Remove(draft);
-            CloseComment(view);
+            view.Finish();
             ShowDrafts(diff, path);
         };
 
-        _activeComment = view;
-        _workbench.Add(view);
-        _scopes.Push(view.Scope);
-        view.FocusBody();
+        ShowComment(view, fromReviewTab: false);
     }
 
     /// <summary>Once a review is posted its drafts are GitHub's; they go from the diffs and the Review tab too.</summary>
@@ -4249,25 +4230,16 @@ public sealed class WorkbenchHost : IDisposable
         _workbench.Sidebar.Review.ShowDraftReview(Drafts.Line);
     }
 
-    private void CloseComment(CommentView view, bool fromReviewTab = false)
+    private void ShowComment(CommentView view, bool fromReviewTab)
     {
-        if (!ReferenceEquals(_activeComment, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeComment = null;
-        if (fromReviewTab) MoveFocus(FocusRegion.Review);
-        else FocusEditorBody();
-    }
-
-    private void CloseSubmitReview(SubmitReviewView view)
-    {
-        if (!ReferenceEquals(_activeSubmitReview, view)) return;
-        _scopes.Pop(view.Scope);
-        _workbench.Remove(view);
-        view.Dispose();
-        _activeSubmitReview = null;
-        FocusCallingRegion();
+        _activeComment = view;
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeComment = null;
+            if (fromReviewTab) MoveFocus(FocusRegion.Review);
+            else FocusEditorBody();
+        });
+        view.FocusBody();
     }
 
     private void OpenRecentFolder()

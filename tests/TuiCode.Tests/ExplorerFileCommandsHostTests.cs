@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Dialogs;
+using MentalDesk.Tui.Theming;
 using TuiCode.Abstractions;
 using Terminal.Gui.Views;
 using TuiCode.Editor;
@@ -255,7 +256,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
                 prefill = (Prompt(workbench)!.Path, Prompt(workbench)!.SelectedText);
                 foreach (var c in "renamed") host.App.InjectKey(new Key(c));
             },
-            () => host.App.InjectKey(Key.Enter),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Prompt(workbench) is null);
 
         Assert.Equal(("src/old.cs", "old"), prefill);
@@ -268,13 +269,12 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task A_clashing_rename_keeps_the_prompt_open_with_the_reason()
+    public async Task Enter_does_not_confirm_the_path_prompt()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("a"));
-        _fs.AddFile("/work/b.txt", new MockFileData("b"));
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var error = "";
+        var open = false;
 
         await HostSteps.Run(host,
             () => SelectInExplorer(workbench, "a.txt"),
@@ -282,14 +282,88 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
             () => Prompt(workbench) is not null,
             () => host.App.InjectKey(Key.B),
             () => host.App.InjectKey(Key.Enter),
+            () => { },
             () =>
             {
-                error = string.Join('|', Prompt(workbench)!.SubViews.OfType<Label>().Select(l => l.Text));
+                open = Prompt(workbench) is not null;
                 host.App.InjectKey(Key.Esc);
             },
             () => Prompt(workbench) is null);
 
-        Assert.Contains("'b.txt' already exists.", error);
+        Assert.True(open);
+        Assert.True(_fs.File.Exists("/work/a.txt"));
+    }
+
+    [Fact]
+    public async Task An_empty_path_marks_the_field_and_keeps_the_prompt_open()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("a"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var said = "";
+        string? marked = null;
+        var focused = false;
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "a.txt"),
+            () => host.App.InjectKey(Key.F2),
+            () => Prompt(workbench) is not null,
+            () => { Prompt(workbench)!.SubViews.OfType<TextField>().Single().Text = ""; },
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Prompt(workbench)!.Alert.Lines > 0,
+            () =>
+            {
+                said = Prompt(workbench)!.Alert.Message;
+                marked = Prompt(workbench)!.FieldLabel.SchemeName;
+                focused = Prompt(workbench)!.SubViews.OfType<TextField>().Single().HasFocus;
+                host.App.InjectKey(Key.Esc);
+            },
+            () => Prompt(workbench) is null);
+
+        Assert.Equal("Path is needed", said);
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.True(focused);
+        Assert.True(_fs.File.Exists("/work/a.txt"));
+    }
+
+    [Fact]
+    public async Task A_clashing_rename_keeps_the_prompt_open_with_the_reason()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("a"));
+        _fs.AddFile("/work/b.txt", new MockFileData("b"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        string error = "", typed = "";
+        string? marked = null, cleared = "unset";
+        var focused = false;
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "a.txt"),
+            () => host.App.InjectKey(Key.F2),
+            () => Prompt(workbench) is not null,
+            () => host.App.InjectKey(Key.B),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () =>
+            {
+                error = Prompt(workbench)!.Alert.Message;
+                marked = Prompt(workbench)!.FieldLabel.SchemeName;
+                typed = Prompt(workbench)!.Path;
+                focused = Prompt(workbench)!.SubViews.OfType<TextField>().Single().HasFocus;
+                host.App.InjectKey(Key.C);
+            },
+            () => Prompt(workbench)!.Alert.Lines == 0,
+            () =>
+            {
+                cleared = Prompt(workbench)!.FieldLabel.SchemeName;
+                host.App.InjectKey(Key.Esc);
+            },
+            () => Prompt(workbench) is null);
+
+        Assert.Equal("Path: there's already a file named b.txt", error);
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.Equal("b.txt", typed);
+        Assert.True(focused);
+        Assert.NotEqual(SchemeNames.Error, cleared);
         Assert.True(_fs.File.Exists("/work/a.txt"));
     }
 
@@ -434,7 +508,7 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
     }
 
     [Theory]
-    [InlineData("taken", "'dest/a.txt' already exists.")]
+    [InlineData("taken", "There's already a file named dest/a.txt")]
     [InlineData("into-itself", "Can't move 'src' into itself.")]
     public async Task A_refused_paste_shows_the_reason_and_keeps_the_cut(string scenario, string reason)
     {
