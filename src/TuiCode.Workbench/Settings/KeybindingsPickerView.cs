@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using Terminal.Gui.Drivers;
 using TuiCode.Abstractions;
 using MentalDesk.Tui.Dialogs;
@@ -58,7 +59,7 @@ public sealed class KeybindingsPickerView : View
         // Without this, _list.SetFocus() returns false and clicks don't transfer focus into the picker.
         CanFocus = true;
 
-        _search = new TextField
+        _search = new PlaceholderField
         {
             X = 0,
             Y = 0,

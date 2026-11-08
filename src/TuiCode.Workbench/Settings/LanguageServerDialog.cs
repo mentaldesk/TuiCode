@@ -40,9 +40,9 @@ public sealed class LanguageServerDialog : AppDialog
 
         var fieldsTop = _form.Options.Count + 1;
         var commandLabel = new VerbatimLabel { X = 1, Y = fieldsTop, Text = "Command:" };
-        _command = new TextField { X = FieldColumn, Y = fieldsTop, Width = Dim.Fill(1), Text = _form.Command };
+        _command = new PlaceholderField { X = FieldColumn, Y = fieldsTop, Width = Dim.Fill(1), Text = _form.Command };
         var argumentsLabel = new VerbatimLabel { X = 1, Y = fieldsTop + 1, Text = "Arguments:" };
-        _arguments = new TextField { X = FieldColumn, Y = fieldsTop + 1, Width = Dim.Fill(1), Text = _form.Arguments };
+        _arguments = new PlaceholderField { X = FieldColumn, Y = fieldsTop + 1, Width = Dim.Fill(1), Text = _form.Arguments };
         _command.TextChanged += (_, _) => OnFieldsChanged();
         _arguments.TextChanged += (_, _) => OnFieldsChanged();
 
