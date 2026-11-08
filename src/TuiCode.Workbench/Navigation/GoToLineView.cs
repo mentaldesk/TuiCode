@@ -1,3 +1,4 @@
+using System.Numerics;
 using MentalDesk.Tui.Fields;
 using MentalDesk.Tui;
 using MentalDesk.Tui.Dialogs;
@@ -54,11 +55,13 @@ public sealed class GoToLineView : AppDialog
     private string? Refusal()
     {
         if (Typed.Length == 0) return "Line is needed";
-        var range = $"Line must be 1\u2013{_totalLines}";
-        if (!TryParse(Typed, out var line, out _))
-            return int.TryParse(Typed, out _) ? range : "Line must be a number, or LINE:COL";
-        return line > _totalLines ? range : null;
+        var parts = Typed.Split(':', 2);
+        if (!BigInteger.TryParse(parts[0], out var line) || (parts.Length == 2 && !IsColumn(parts[1])))
+            return "Line must be a number, or LINE:COL";
+        return line < 1 || line > _totalLines ? $"Line must be 1\u2013{_totalLines}" : null;
     }
+
+    private static bool IsColumn(string typed) => int.TryParse(typed, out var column) && column >= 1;
 
     private void OnConfirm()
     {

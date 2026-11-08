@@ -158,6 +158,8 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         var fs = root.FileSystem;
         var fullPath = EntryPaths.Resolve(fs, root, relativePath);
 
+        if (!FilePaths.IsSameOrUnder(fullPath, root.FullName))
+            throw new IOException($"'{relativePath.Trim()}' is outside the workspace.");
         if (fs.File.Exists(fullPath) || fs.Directory.Exists(fullPath))
             throw new IOException(AlreadyThere(fs, fullPath, relativePath));
 

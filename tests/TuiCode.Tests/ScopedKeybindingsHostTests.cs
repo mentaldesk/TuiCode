@@ -518,6 +518,10 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
     [InlineData("abc", "Line must be a number, or LINE:COL")]
     [InlineData("4", "Line must be 1\u20133")]
     [InlineData("0", "Line must be 1\u20133")]
+    [InlineData("0:5", "Line must be 1\u20133")]
+    [InlineData("-1:5", "Line must be 1\u20133")]
+    [InlineData("99999999999", "Line must be 1\u20133")]
+    [InlineData("2:x", "Line must be a number, or LINE:COL")]
     public async Task Go_to_line_refuses_a_wrong_line_by_marking_the_field(string typed, string message)
     {
         _fs.AddFile("/work/a.txt", new MockFileData(ThreeLines));

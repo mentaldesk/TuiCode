@@ -327,6 +327,35 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_new_folder_outside_the_workspace_is_refused_with_the_path_marked()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("a"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var said = "";
+        string? marked = null;
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "a.txt"),
+            () => host.App.InjectKey(Key.N.WithCtrl.WithShift),
+            () => Prompt(workbench) is not null,
+            () => { Prompt(workbench)!.SubViews.OfType<TextField>().Single().Text = "../x"; },
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Prompt(workbench) is { Alert.Lines: > 0 } || Prompt(workbench) is null,
+            () =>
+            {
+                said = Prompt(workbench)?.Alert.Message ?? "closed";
+                marked = Prompt(workbench)?.FieldLabel.SchemeName;
+                if (Prompt(workbench) is not null) host.App.InjectKey(Key.Esc);
+            },
+            () => Prompt(workbench) is null);
+
+        Assert.Equal("Path: '../x/' is outside the workspace.", said);
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.False(_fs.Directory.Exists("/x"));
+    }
+
+    [Fact]
     public async Task A_clashing_rename_keeps_the_prompt_open_with_the_reason()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("a"));
