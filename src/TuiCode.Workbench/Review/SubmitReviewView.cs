@@ -16,10 +16,10 @@ public sealed class SubmitReviewView : Window
 {
     private const string MissingSummary = "Comment and Request changes need a summary.";
     private const int DialogWidth = 70;
-    private const int DialogHeight = 16 + InputView.Frame;
+    private const int DialogHeight = 16 + MultiLineBox.Frame;
 
     private readonly OptionSelector<GitHubReviewVerdict> _verdict;
-    private readonly InputView _summary;
+    private readonly MultiLineField _summary;
     private readonly LoadStateView _state;
     private readonly VerbatimLabel _drafts;
     private readonly Button[] _buttons;
@@ -58,14 +58,14 @@ public sealed class SubmitReviewView : Window
 
         _drafts = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(2), Text = string.Empty, Visible = false };
 
-        _summary = new InputView
+        _summary = new MultiLineField
         {
             X = 1,
             Y = 2,
             Width = Dim.Fill(1),
             Height = Dim.Fill(),
             CanFocus = false,
-        };
+        }.HeavyWhileFocused();
         var form = new View { Width = Dim.Fill(), Height = Dim.Fill(), CanFocus = true };
         form.Add(_verdict, _summary);
         _state = new LoadStateView(form, "Loading pull request…") { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(Foot) };
@@ -109,7 +109,7 @@ public sealed class SubmitReviewView : Window
     internal string DraftsText => _drafts.Text;
 
     internal LoadStateView State => _state;
-    internal InputView SummaryBox => _summary;
+    internal MultiLineField SummaryBox => _summary;
     internal bool Loaded => _state.State == LoadState.Loaded;
 
     public void ShowLoading()

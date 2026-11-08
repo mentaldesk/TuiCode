@@ -409,6 +409,44 @@ public class FindAndSearchHostTests : StaticConfigurationTest
         Assert.Empty(afterEsc);
     }
 
+    [Fact]
+    public async Task The_find_field_paints_its_caret_and_closing_it_gives_the_editor_its_terminal_cursor_back()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("foo\nfoo\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        EditorTab? tab = null;
+        Cursor? before = null, inField = null, after = null;
+        Terminal.Gui.Drawing.Attribute? painted = null, expected = null;
+
+        await HostSteps.Run(host,
+            () => { workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")); tab = workbench.Editor.Group.ActiveTab; },
+            () => { tab!.FocusContent(); },
+            () => { },
+            () => { before = host.App.Driver!.GetCursor(); host.App.InjectKey(Key.F.WithCtrl); },
+            () => workbench.SubViewsDeep().OfType<FindBarView>().SingleOrDefault()?.HasFocus == true,
+            () => { foreach (var c in "fo") host.App.InjectKey(new Key(c)); },
+            () => { },
+            () =>
+            {
+                inField = host.App.Driver!.GetCursor();
+                var field = (MentalDesk.Tui.Fields.PlaceholderField)host.App.Navigation!.GetFocused()!;
+                var cell = field.ViewportToScreen(new System.Drawing.Point(2, 0));
+                painted = host.App.Driver.Contents![cell.Y, cell.X].Attribute;
+                expected = PaintedCaretColours.Of(field);
+                host.App.InjectKey(Key.Esc);
+            },
+            () => tab!.ContentHasFocus,
+            () => { },
+            () => { after = host.App.Driver!.GetCursor(); });
+
+        Assert.NotEqual(CursorStyle.Hidden, before!.Style);
+        Assert.Equal(CursorStyle.Hidden, inField!.Style);
+        Assert.Equal(expected, painted);
+        Assert.Equal(before.Style, after!.Style);
+        Assert.Equal(tab!.Code.CaretOnScreen, after.Position);
+    }
+
     private static string[] TreeRows(WorkbenchHost host, SearchView search)
     {
         var contents = host.App.Driver!.Contents!;

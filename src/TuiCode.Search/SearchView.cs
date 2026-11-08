@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Fields;
 using TuiCode.Icons;
 
 namespace TuiCode.Search;
@@ -84,9 +85,9 @@ public sealed class SearchView : View
         CanFocus = true;
 
         var queryLabel = new VerbatimLabel { X = 0, Y = 0, Text = "Find" };
-        _query = new TextField { X = LabelWidth, Y = 0, Width = Dim.Fill() };
+        _query = new PlaceholderField { X = LabelWidth, Y = 0, Width = Dim.Fill() };
         _replaceLabel = new VerbatimLabel { X = 0, Y = 1, Text = "Replace", Visible = false };
-        _replacement = new TextField { X = LabelWidth, Y = 1, Width = Dim.Fill(), Visible = false };
+        _replacement = new PlaceholderField { X = LabelWidth, Y = 1, Width = Dim.Fill(), Visible = false };
         _matchCase = new FindOption("_Case") { X = LabelWidth, Y = 1 };
         _wholeWord = new FindOption("_Word") { X = Pos.Right(_matchCase) + 2, Y = 1 };
         _ignoredFiles = new FindOption("Ignored files") { X = LabelWidth, Y = 2 };
