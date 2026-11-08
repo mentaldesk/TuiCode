@@ -121,7 +121,8 @@ public class ReplyToThreadHostTests : StaticConfigurationTest
             () => Dialog(workbench) is not null,
             () => host.App.InjectKey(Key.Enter.WithCtrl),
             () => Dialog(workbench)!.Alert.Message == "Reply is needed",
-            () => host.App.InjectKey(Key.Esc));
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
 
         Assert.Empty(_gitHub.Replies);
     }
