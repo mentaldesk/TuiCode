@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Layout;
 using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Explorer;
@@ -16,7 +17,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
     private const int Rows = 24;
 
     // The sidebar starts at column 0, so its right border is the last column it occupies.
-    private const int BorderColumn = SidebarSizing.Default - 1;
+    private const int BorderColumn = PaneWidths.SidebarDefault - 1;
     private const int BorderRow = 5;
 
     private readonly MockFileSystem _fs = new();
@@ -32,17 +33,17 @@ public class SidebarDragHostTests : StaticConfigurationTest
         await HostSteps.Run(host, Size(host, workbench, WideTerminal),
             Press(host, BorderColumn),
             Move(host, 39),
-            () => widths.Add(workbench.DrawnSidebarWidth),
+            () => widths.Add(workbench.Sidebar.Frame.Width),
             Move(host, 44),
-            () => widths.Add(workbench.DrawnSidebarWidth),
+            () => widths.Add(workbench.Sidebar.Frame.Width),
             Release(host, 44),
-            () => widths.Add(workbench.DrawnSidebarWidth));
+            () => widths.Add(workbench.Sidebar.Frame.Width));
 
         Assert.Equal([40, 45, 45], widths);
     }
 
     [Fact]
-    public async Task Releasing_saves_the_width_and_reports_it()
+    public async Task Releasing_saves_the_width_and_says_nothing_about_it()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
@@ -54,7 +55,6 @@ public class SidebarDragHostTests : StaticConfigurationTest
 
         Assert.Equal(45, _settings.SidebarWidth);
         Assert.Equal(1, _settings.SaveCount);
-        Assert.Equal("Sidebar width: 45", workbench.StatusBar.DisplayedText);
     }
 
     [Fact]
@@ -67,8 +67,8 @@ public class SidebarDragHostTests : StaticConfigurationTest
             Press(host, BorderColumn),
             Move(host, 44));
 
-        Assert.Equal(45, workbench.DrawnSidebarWidth);
-        Assert.Equal(SidebarSizing.Default, _settings.SidebarWidth);
+        Assert.Equal(45, workbench.Sidebar.Frame.Width);
+        Assert.Equal(PaneWidths.SidebarDefault, _settings.SidebarWidth);
         Assert.Equal(0, _settings.SaveCount);
     }
 
@@ -82,8 +82,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
             Press(host, BorderColumn),
             Release(host, WideTerminal - 1));
 
-        Assert.Equal(WideTerminal - SidebarSizing.EditorFloor, workbench.DrawnSidebarWidth);
-        Assert.Equal("Sidebar width: 80 (maximum — the editor needs 40 columns)", workbench.StatusBar.DisplayedText);
+        Assert.Equal(WideTerminal - SidePanes.MinimumMainWidth, workbench.Sidebar.Frame.Width);
     }
 
     [Fact]
@@ -96,8 +95,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
             Press(host, BorderColumn),
             Release(host, 0));
 
-        Assert.Equal(SidebarSizing.Min, workbench.DrawnSidebarWidth);
-        Assert.Equal("Sidebar width: 15 (minimum)", workbench.StatusBar.DisplayedText);
+        Assert.Equal(SidePanes.MinimumWidth, workbench.Sidebar.Frame.Width);
     }
 
     // On a terminal too narrow for both floors the sidebar's wins, so the drag can't move it at all.
@@ -108,17 +106,16 @@ public class SidebarDragHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
 
         await HostSteps.Run(host, Size(host, workbench, 50),
-            BorderSettledAt(workbench, SidebarSizing.Min),
-            Press(host, SidebarSizing.Min - 1),
+            BorderSettledAt(workbench, SidePanes.MinimumWidth),
+            Press(host, SidePanes.MinimumWidth - 1),
             Release(host, 49));
 
-        Assert.Equal(SidebarSizing.Min, workbench.DrawnSidebarWidth);
-        Assert.Equal("Sidebar width: 15 (minimum)", workbench.StatusBar.DisplayedText);
+        Assert.Equal(SidePanes.MinimumWidth, workbench.Sidebar.Frame.Width);
     }
 
     [Theory]
     [InlineData(5)] // inside the explorer tree
-    [InlineData(SidebarSizing.Default + 10)] // in the editor
+    [InlineData(PaneWidths.SidebarDefault + 10)] // in the editor
     public async Task A_press_that_misses_the_border_resizes_nothing(int column)
     {
         using var workbench = BuildWorkbench();
@@ -129,8 +126,30 @@ public class SidebarDragHostTests : StaticConfigurationTest
             Move(host, 60),
             Release(host, 60));
 
-        Assert.Equal(SidebarSizing.Default, workbench.DrawnSidebarWidth);
+        Assert.Equal(PaneWidths.SidebarDefault, workbench.Sidebar.Frame.Width);
         Assert.Equal(0, _settings.SaveCount);
+    }
+
+    [Fact]
+    public async Task A_press_on_the_border_shows_no_arrange_buttons_and_leaves_the_status_bars_focus()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("alpha\n"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var focus = "";
+        var buttons = -1;
+
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/a.txt")),
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            Press(host, BorderColumn),
+            Move(host, 44),
+            () => workbench.Sidebar.Frame.Width == 45,
+            () => { focus = workbench.StatusBar.DisplayedFocus; buttons = workbench.Sidebar.Border!.View!.SubViews.Count; },
+            Release(host, 44));
+
+        Assert.Equal("Editor", focus);
+        Assert.Equal(0, buttons);
     }
 
     [Fact]
@@ -145,7 +164,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
             Release(host, 60));
 
         Assert.False(workbench.IsSidebarVisible);
-        Assert.Equal(SidebarSizing.Default, workbench.DrawnSidebarWidth);
+        Assert.Equal(PaneWidths.SidebarDefault, _settings.SidebarWidth);
         Assert.Equal(0, _settings.SaveCount);
     }
 
@@ -164,7 +183,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Esc));
 
         Assert.True(covered, "the settings overlay didn't open");
-        Assert.Equal(SidebarSizing.Default, workbench.DrawnSidebarWidth);
+        Assert.Equal(PaneWidths.SidebarDefault, workbench.Sidebar.Frame.Width);
         Assert.Equal(0, _settings.SaveCount);
     }
 
@@ -186,7 +205,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
 
         Assert.True(focused);
         Assert.Equal((1, 4), (workbench.Editor.Group.ActiveTab!.CursorRow, workbench.Editor.Group.ActiveTab!.CursorColumn));
-        Assert.Equal(61, workbench.DrawnSidebarWidth);
+        Assert.Equal(61, workbench.Sidebar.Frame.Width);
     }
 
     [Fact]
@@ -211,7 +230,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
         Assert.True(focused);
         Assert.NotNull(selected);
         Assert.Equal(selected, workbench.Sidebar.Explorer.SelectedObject?.FullName);
-        Assert.Equal(45, workbench.DrawnSidebarWidth);
+        Assert.Equal(45, workbench.Sidebar.Frame.Width);
     }
 
     private static Action Press(WorkbenchHost host, int column) =>
@@ -229,7 +248,7 @@ public class SidebarDragHostTests : StaticConfigurationTest
     // A resize reaches the sidebar on the layout it triggers, and its Frame — the border the user
     // grabs — on the one after, so waiting on the width it lands at covers both.
     private static Func<bool> BorderSettledAt(Workbench.Workbench workbench, int width) =>
-        () => workbench.DrawnSidebarWidth == width && workbench.Sidebar.FrameToScreen().Width == width;
+        () => workbench.Sidebar.Frame.Width == width && workbench.Sidebar.FrameToScreen().Width == width;
 
     // Resizing the terminal takes effect on the next layout, and a driver may report a size of its
     // own after startup, so it's pinned and the step waits until the workbench is laid out at it.

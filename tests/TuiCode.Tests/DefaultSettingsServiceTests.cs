@@ -1,3 +1,4 @@
+using TuiCode.Workbench;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
@@ -361,7 +362,7 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
 
     [Theory]
     [InlineData("{}")]
-    [InlineData("{ \"AssistantWidth\": 12 }")]
+    [InlineData("{ \"AssistantWidth\": 14 }")]
     [InlineData("{ \"AssistantWidth\": \"wide\" }")]
     public void An_AI_assistance_width_never_dragged_or_under_its_floor_loads_as_none(string json)
     {
@@ -372,11 +373,20 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     }
 
     [Fact]
+    public void An_AI_assistance_width_of_fifteen_loads()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(SettingsPath(fs), new MockFileData("{ \"AssistantWidth\": 15 }"));
+
+        Assert.Equal(15, new DefaultSettingsService(fs).AssistantWidth);
+    }
+
+    [Fact]
     public void A_default_sidebar_width_is_not_written()
     {
         var fs = new MockFileSystem();
         fs.AddFile(SettingsPath(fs), new MockFileData("{ \"SidebarWidth\": 45 }"));
-        var svc = new DefaultSettingsService(fs) { SidebarWidth = SidebarSizing.Default };
+        var svc = new DefaultSettingsService(fs) { SidebarWidth = PaneWidths.SidebarDefault };
 
         svc.Save();
 
@@ -392,7 +402,7 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         var fs = new MockFileSystem();
         fs.AddFile(SettingsPath(fs), new MockFileData(json));
 
-        Assert.Equal(SidebarSizing.Default, new DefaultSettingsService(fs).SidebarWidth);
+        Assert.Equal(PaneWidths.SidebarDefault, new DefaultSettingsService(fs).SidebarWidth);
     }
 
     // A width past the spinner's maximum is legitimate on a wide terminal, so loading keeps it.
