@@ -4,8 +4,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MentalDesk.Tui;
 using MentalDesk.Tui.Chrome;
 using MentalDesk.Tui.Dialogs;
+using MentalDesk.Tui.Layout;
 using MentalDesk.Tui.Paths;
 using LoadState = MentalDesk.Tui.Loading.LoadState;
+using PaneRegion = MentalDesk.Tui.Focus.FocusRegion;
 using KeyColumn = MentalDesk.Tui.Keys.KeyColumn;
 using KeyRow = MentalDesk.Tui.Keys.KeyRow;
 using KeysDialog = MentalDesk.Tui.Keys.KeysDialog;
@@ -90,6 +92,7 @@ public sealed class WorkbenchHost : IDisposable
     private long _menuShownAt;
     private readonly FindController _find;
     private readonly FocusService _focus;
+    private readonly SidePanes _panes;
     private readonly DiskChanges _diskChanges;
     private readonly CommittedBaselines _baselines;
     private readonly FileHistoryPanel _fileHistory;
@@ -140,9 +143,6 @@ public sealed class WorkbenchHost : IDisposable
     private AskContext? _askContext;
     private bool _answering;
     private bool _launchedFromExplorer;
-    private Func<int, int>? _dragTo;
-    private Action<int>? _dragReport;
-    private bool _dragReleased;
     private bool _userBoundLegacyCtrlSlash;
     private bool _disposed;
 
@@ -217,6 +217,7 @@ public sealed class WorkbenchHost : IDisposable
         _focus = new FocusService(FocusedView);
         _find = new FindController(_workbench.Editor.Groups, _scopes, _keybindings);
         _find.Closed += (_, _) => FocusEditorBody();
+        _panes = _workbench.ArrangePanes(FocusedPane, message => _workbench.StatusBar.ShowMessage(message), _settings);
         _workbench.FolderOpened += (_, folder) => ShowPlace(folder.FullName);
         _workbench.StatusBar.Bar.UnreadErrorsChanged += (_, _) => Title.UnseenErrors = _workbench.StatusBar.Bar.UnreadErrors;
 
@@ -227,8 +228,6 @@ public sealed class WorkbenchHost : IDisposable
         _menu.Closed += (_, picked) => OnMenuClosed(picked);
         ApplyKeybindings(_settings.KeybindingOverrides);
         _workbench.Editor.Groups.Settings = _settings.Editor;
-        _workbench.SetSidebarWidth(_settings.SidebarWidth);
-        _workbench.SetAssistantWidth(_settings.AssistantWidth);
         ApplyTokenTheme();
         _settings.ThemeChanged += (_, _) => ApplyTokenTheme();
 
@@ -308,7 +307,6 @@ public sealed class WorkbenchHost : IDisposable
         _folderWatcher.Follow(explorer.ExpandedFolders);
 
         _app.Keyboard.KeyDown += OnAppKeyDown;
-        _app.Mouse.MouseEvent += OnAppMouseEvent;
         // TG raises no event for most programmatic cursor moves (find, multi-caret, line moves), so poll.
         _app.Iteration += OnIteration;
         _keybindings.ChordChanged += OnChordChanged;
@@ -611,61 +609,6 @@ public sealed class WorkbenchHost : IDisposable
         && !_workbench.HasDialog
         && _menu.OpenByLetter(key.NoAlt);
 
-    // Handled here short-circuits App.RaiseMouseEvent before any view sees the event, which is what keeps
-    // the drag off the editor's cursor, the trees' selection and focus (#252, and see AGENTS.md).
-    private void OnAppMouseEvent(object? sender, Mouse mouse)
-    {
-        // Terminal.Gui follows the release with a click where the pointer is, which would move the keys there.
-        if (_dragReleased && mouse.Flags.HasFlag(MouseFlags.LeftButtonClicked))
-        {
-            _dragReleased = false;
-            mouse.Handled = true;
-            return;
-        }
-        _dragReleased = false;
-        if (_dragTo is { } dragTo)
-        {
-            if (mouse.Flags.HasFlag(MouseFlags.LeftButtonReleased))
-            {
-                _dragTo = null;
-                _dragReleased = true;
-                _dragReport?.Invoke(dragTo(mouse.ScreenPosition.X));
-            }
-            else if (mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed))
-            {
-                dragTo(mouse.ScreenPosition.X);
-            }
-            else
-            {
-                // The button went up out of sight; drop the drag rather than fold the next press into it.
-                _dragTo = null;
-                return;
-            }
-            mouse.Handled = true;
-            return;
-        }
-
-        if (!mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed)) return;
-        var column = mouse.ScreenPosition.X;
-        if (OnBorderOf(mouse, _workbench.Sidebar) && _workbench.IsOnSidebarBorder(column))
-            (_dragTo, _dragReport) = (DragSidebarTo, ReportSidebarWidth);
-        else if (OnBorderOf(mouse, _workbench.AssistantSidebar) && _workbench.IsOnAssistantBorder(column))
-            (_dragTo, _dragReport) = (DragAssistantTo, ReportAssistantWidth);
-        else return;
-        mouse.Handled = true;
-    }
-
-    // TG reports the deepest view under the pointer, so requiring the part's own border also rules
-    // out a modal covering that column.
-    private static bool OnBorderOf(Mouse mouse, View part) =>
-        mouse.View is AdornmentView { Adornment: { } adornment } && ReferenceEquals(adornment.Parent, part);
-
-    private int DragSidebarTo(int column) =>
-        _workbench.ResizeSidebarTo(_workbench.SidebarWidthForBorderAt(column));
-
-    private int DragAssistantTo(int column) =>
-        _workbench.ResizeAssistantTo(_workbench.AssistantWidthForBorderAt(column));
-
     private Key NormalizeWindowsCtrlEnter(Key key) =>
         _environment.IsWindows && key.KeyCode == WindowsCtrlLineFeed ? new Key(CtrlEnter) : key;
 
@@ -734,8 +677,9 @@ public sealed class WorkbenchHost : IDisposable
 
         _commands.Register(CommandIds.ToggleSidebar, "Show or hide sidebar", ToggleSidebar, CommandScope.Global, null,
             () => _workbench.IsSidebarVisible ? "Hide sidebar" : "Show sidebar");
-        _commands.Register(CommandIds.WidenSidebar, "Widen sidebar", () => NudgeSidebar(SidebarSizing.Step));
-        _commands.Register(CommandIds.NarrowSidebar, "Narrow sidebar", () => NudgeSidebar(-SidebarSizing.Step));
+        _commands.Register(CommandIds.WidenPane, "Widen pane", _panes.Widen, CommandScope.Global, () => _panes.CanResize);
+        _commands.Register(CommandIds.NarrowPane, "Narrow pane", _panes.Narrow, CommandScope.Global, () => _panes.CanResize);
+        _commands.Register(CommandIds.ResetPaneWidth, "Reset pane width", _panes.Reset, CommandScope.Global, () => _panes.CanResize);
         _commands.Register(CommandIds.FocusSidebar, "Focus sidebar", FocusSidebar);
         _commands.Register(CommandIds.ShowExplorer, "Show explorer", () => ShowSidebarTab(SidebarTab.Explorer));
         _commands.Register(CommandIds.FindGlobally, "Find globally", () => OpenFindPane(replace: false));
@@ -1243,36 +1187,6 @@ public sealed class WorkbenchHost : IDisposable
             FocusEditorBody();
     }
 
-    private void NudgeSidebar(int columns)
-    {
-        if (!_workbench.IsSidebarVisible)
-        {
-            _workbench.StatusBar.ShowMessage($"Sidebar is hidden — use {CommandMnemonics.For(CommandIds.ToggleSidebar)} to show it");
-            return;
-        }
-
-        ReportSidebarWidth(_workbench.NudgeSidebarWidth(columns));
-    }
-
-    private void ReportSidebarWidth(int width)
-    {
-        _settings.SidebarWidth = width;
-        _settings.Save();
-        _workbench.StatusBar.ShowMessage($"Sidebar width: {width}{LimitSuffix(width, SidebarSizing.Min, _workbench.MaxSidebarWidth)}");
-    }
-
-    private void ReportAssistantWidth(int width)
-    {
-        _settings.AssistantWidth = width;
-        _settings.Save();
-        _workbench.StatusBar.ShowMessage($"AI assistance width: {width}{LimitSuffix(width, AssistantSizing.Min, _workbench.MaxAssistantWidth)}");
-    }
-
-    private static string LimitSuffix(int width, int min, int max) =>
-        width <= min ? " (minimum)"
-        : width >= max ? $" (maximum — the editor needs {SidebarSizing.EditorFloor} columns)"
-        : string.Empty;
-
     private void ToggleGutter()
     {
         var groups = _workbench.Editor.Groups;
@@ -1516,7 +1430,7 @@ public sealed class WorkbenchHost : IDisposable
         view.Dispose();
         _activeSettings = null;
         _workbench.Editor.Groups.Settings = _settings.Editor;
-        _workbench.SetSidebarWidth(_settings.SidebarWidth);
+        _panes.SetWidth(_workbench.Sidebar, _settings.SidebarWidth);
         _workbench.Languages?.Configure(_settings.LanguageServers);
         _assistant?.Configure(AgentPresets.Resolve(_settings.Assistant));
         ApplyToolCallsSetting();
@@ -1582,6 +1496,11 @@ public sealed class WorkbenchHost : IDisposable
         try { _commands.TryExecute(commandId); }
         finally { _launchedFromExplorer = false; }
     }
+
+    private PaneRegion? FocusedPane() =>
+        InSidebar(_focus.Region) ? PaneWidths.Sidebar
+        : _focus.Region == FocusRegion.Assistant ? PaneWidths.Assistant
+        : null;
 
     private void OnMenuOpened()
     {
@@ -4412,7 +4331,6 @@ public sealed class WorkbenchHost : IDisposable
         _disposed = true;
         foreach (var registration in _terminating) registration.Dispose();
         _app.Keyboard.KeyDown -= OnAppKeyDown;
-        _app.Mouse.MouseEvent -= OnAppMouseEvent;
         _app.Iteration -= OnIteration;
         _keybindings.ChordChanged -= OnChordChanged;
         _workbench.Editor.Groups.CursorMoved -= OnEditorCursorMoved;

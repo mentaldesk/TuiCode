@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Layout;
 using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Settings;
@@ -26,7 +27,7 @@ public sealed class InterfaceSettingsView : View
         var caption = new VerbatimLabel { X = 0, Y = 0, Text = "Sidebar width" };
         _sidebarWidth = new NumericUpDown<int> { X = ControlColumn, Y = 0, Value = sidebarWidth };
         _sidebarWidth.ValueChanging += (_, e) =>
-            e.Handled = e.NewValue is < SidebarSizing.Min or > SidebarSizing.SettingsMax;
+            e.Handled = e.NewValue is < SidePanes.MinimumWidth or > PaneWidths.SettingsMax;
         var units = new VerbatimLabel { X = Pos.Right(_sidebarWidth) + 1, Y = 0, Text = "columns" };
 
         _altOpensMenu = new CheckBox

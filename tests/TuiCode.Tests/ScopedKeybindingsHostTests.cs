@@ -371,13 +371,13 @@ public class ScopedKeybindingsHostTests : StaticConfigurationTest
             CommandIds.CloseActiveEditor, CommandIds.CloseAllTabs, CommandIds.CloseOtherTabs,
             CommandIds.FindGlobally, CommandIds.FindInFile, CommandIds.FocusEditorBody,
             CommandIds.FocusEditorTabStrip, CommandIds.FocusOtherGroup, CommandIds.FocusReview, CommandIds.FocusSidebar, CommandIds.FocusUsages, CommandIds.AiAssistance, CommandIds.FocusAssistant, CommandIds.GoToType,
-            CommandIds.JoinGroups, CommandIds.MoveToOtherGroup, CommandIds.NarrowSidebar,
+            CommandIds.JoinGroups, CommandIds.MoveToOtherGroup, CommandIds.NarrowPane,
             CommandIds.New, CommandIds.NewFolder, CommandIds.NextEditor, CommandIds.Open, CommandIds.OpenPullRequest, CommandIds.OpenRecentFolder,
             CommandIds.OpenFilePath, CommandIds.OpenSettings, CommandIds.OpenWorktree, CommandIds.PreviousEditor, CommandIds.PullRequestOverview,
             CommandIds.Quit, CommandIds.RefreshExplorer, CommandIds.ReopenClosedEditor, CommandIds.ReplaceGlobally, CommandIds.ReplaceInFile, CommandIds.SaveActiveEditor, CommandIds.SaveAll,
             CommandIds.ShowAbout, CommandIds.ShowActions, CommandIds.ShowDiagnostics, CommandIds.ShowLog, CommandIds.ShowMessages,
             CommandIds.ShowExplorer, CommandIds.ShowHelp, CommandIds.ShowMenu, CommandIds.ShowMnemonics,
-            CommandIds.SubmitReview, CommandIds.SuspendToShell, CommandIds.ToggleFileHistory, CommandIds.ToggleGutter, CommandIds.ToggleSidebar, CommandIds.ToggleViewed, CommandIds.WatchTutorials, CommandIds.WidenSidebar,
+            CommandIds.SubmitReview, CommandIds.SuspendToShell, CommandIds.ToggleFileHistory, CommandIds.ToggleGutter, CommandIds.ToggleSidebar, CommandIds.ToggleViewed, CommandIds.WatchTutorials, CommandIds.WidenPane, CommandIds.ResetPaneWidth,
             // Gated on a find box having the keys: the bar's keys are in Editor, the pane's in Find.
             CommandIds.ToggleMatchCase, CommandIds.ToggleWholeWord, CommandIds.ToggleIgnoredFiles,
             // Run on a file tab and a diff tab alike, whose keys are in Editor and Diff.
