@@ -1497,12 +1497,10 @@ public sealed class WorkbenchHost : IDisposable
         finally { _launchedFromExplorer = false; }
     }
 
-    private PaneRegion? FocusedPane() => _focus.Region switch
-    {
-        FocusRegion.Explorer or FocusRegion.Find or FocusRegion.Usages or FocusRegion.Review => PaneWidths.Sidebar,
-        FocusRegion.Assistant => PaneWidths.Assistant,
-        _ => null,
-    };
+    private PaneRegion? FocusedPane() =>
+        InSidebar(_focus.Region) ? PaneWidths.Sidebar
+        : _focus.Region == FocusRegion.Assistant ? PaneWidths.Assistant
+        : null;
 
     private void OnMenuOpened()
     {

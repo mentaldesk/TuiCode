@@ -4,6 +4,7 @@ using TuiCode.Explorer;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Parts;
 using TuiCode.Workbench.Services;
+using TuiCode.Workbench.Settings;
 using TuiCode.Workbench.Workspace;
 using Point = System.Drawing.Point;
 
@@ -92,6 +93,26 @@ public class AssistantSidebarHostTests : StaticConfigurationTest
 
         Assert.True(workbench.Assistant.InputHasFocus);
         Assert.Equal("AI assistance", workbench.StatusBar.DisplayedFocus);
+    }
+
+    [Fact]
+    public async Task A_press_where_a_modal_covers_its_border_resizes_nothing()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var covered = false;
+
+        await HostSteps.Run(host, Size(host, workbench, WideTerminal),
+            Open(workbench),
+            () => { if (Key.TryParse("Ctrl+,", out var open)) host.App.InjectKey(open); },
+            () => { covered = workbench.SubViews.OfType<SettingsView>().Any(); },
+            Press(host, BorderColumn),
+            Release(host, 60),
+            () => host.App.InjectKey(Key.Esc));
+
+        Assert.True(covered, "the settings overlay didn't open");
+        Assert.Equal(PaneWidths.AssistantDefault, workbench.AssistantSidebar.Frame.Width);
+        Assert.Equal(0, _settings.SaveCount);
     }
 
     [Fact]

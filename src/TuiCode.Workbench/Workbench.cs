@@ -71,14 +71,10 @@ public sealed class Workbench : Window
         Title = string.Empty;
         BorderStyle = LineStyle.None;
 
-        sidebar.X = 0;
         sidebar.Y = Pos.Bottom(MenuBar);
-        sidebar.Width = PaneWidths.SidebarDefault;
         sidebar.Height = Dim.Fill(1);
 
-        editor.X = Pos.Right(sidebar);
         editor.Y = Pos.Bottom(MenuBar);
-        editor.Width = Dim.Fill();
         editor.Height = Dim.Fill(1);
 
         Panel.X = Pos.Left(editor);
@@ -87,9 +83,7 @@ public sealed class Workbench : Window
         Panel.Height = 0;
         Panel.Visible = false;
 
-        AssistantSidebar.X = Pos.AnchorEnd(0);
         AssistantSidebar.Y = Pos.Bottom(MenuBar);
-        AssistantSidebar.Width = 0;
         AssistantSidebar.Height = Dim.Fill(1);
         AssistantSidebar.Visible = false;
 

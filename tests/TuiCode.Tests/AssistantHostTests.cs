@@ -534,7 +534,7 @@ public class AssistantHostTests : StaticConfigurationTest
             () => OpenFile(workbench),
             () => host.App.InjectKey(Key.G.WithCtrl),
             () => host.App.InjectKey(Key.A),
-            () => view.InputHasFocus && workbench.AssistantSidebar.Frame.Width == workbench.AssistantSidebar.Frame.Width);
+            () => view.InputHasFocus && workbench.AssistantSidebar.Frame.Width > 0);
 
         var frame = workbench.AssistantSidebar.Frame;
         Assert.Equal((Columns - frame.Width, 1, 30 - 2), (frame.X, frame.Y, frame.Height));
