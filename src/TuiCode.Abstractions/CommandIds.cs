@@ -17,8 +17,10 @@ public static class CommandIds
     public const string JoinGroups = "workbench.action.joinAllGroups";
 
     public const string ToggleSidebar = "workbench.action.toggleSidebar";
-    public const string WidenSidebar = "workbench.action.widenSidebar";
-    public const string NarrowSidebar = "workbench.action.narrowSidebar";
+    // The ids from when these resized only the sidebar, so a key already bound to them still works.
+    public const string WidenPane = "workbench.action.widenSidebar";
+    public const string NarrowPane = "workbench.action.narrowSidebar";
+    public const string ResetPaneWidth = "workbench.action.resetPaneWidth";
     public const string FocusSidebar = "workbench.action.focusSidebar";
     public const string FocusEditorBody = "workbench.action.focusEditorBody";
     public const string FocusEditorTabStrip = "workbench.action.focusEditorTabStrip";

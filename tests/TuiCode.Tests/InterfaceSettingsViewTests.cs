@@ -42,8 +42,34 @@ public class InterfaceSettingsViewTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Enter.WithCtrl));
 
         Assert.Equal(41, _settings.SidebarWidth);
-        Assert.Equal(41, workbench.DrawnSidebarWidth);
+        Assert.Equal(41, workbench.Sidebar.Frame.Width);
         Assert.Equal(1, _settings.SaveCount);
+    }
+
+    [Fact]
+    public async Task The_spinner_starts_from_what_the_commands_set_and_they_carry_on_from_it()
+    {
+        using var workbench = BuildWorkbench();
+        var commands = new CommandService();
+        using var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(), _settings,
+            driverName: DriverRegistry.Names.ANSI);
+        var opened = 0;
+
+        await HostSteps.Run(host, Size(host),
+            () => commands.TryExecute(CommandIds.ShowExplorer),
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => commands.TryExecute(CommandIds.WidenPane),
+            () => workbench.Sidebar.Frame.Width == 35,
+            OpenInterfaceSettings(host, workbench),
+            () => { opened = Panel(workbench).Current; },
+            () => host.App.InjectKey(Key.CursorUp),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => workbench.Sidebar.Frame.Width == 36 && workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => commands.TryExecute(CommandIds.WidenPane),
+            () => workbench.Sidebar.Frame.Width == 41);
+
+        Assert.Equal(35, opened);
+        Assert.Equal(41, _settings.SidebarWidth);
     }
 
     [Fact]
@@ -58,12 +84,12 @@ public class InterfaceSettingsViewTests : StaticConfigurationTest
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal(40, _settings.SidebarWidth);
-        Assert.Equal(40, workbench.DrawnSidebarWidth);
+        Assert.Equal(40, workbench.Sidebar.Frame.Width);
     }
 
     [Theory]
-    [InlineData(SidebarSizing.SettingsMax, "CursorUp")]
-    [InlineData(SidebarSizing.Min, "CursorDown")]
+    [InlineData(PaneWidths.SettingsMax, "CursorUp")]
+    [InlineData(MentalDesk.Tui.Layout.SidePanes.MinimumWidth, "CursorDown")]
     public async Task The_spinner_stays_within_its_limits(int width, string key)
     {
         _settings.SidebarWidth = width;

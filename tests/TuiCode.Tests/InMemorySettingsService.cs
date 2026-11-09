@@ -1,3 +1,4 @@
+using TuiCode.Workbench;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Themes;
 
@@ -33,7 +34,7 @@ internal sealed class InMemorySettingsService : ISettingsService
 
     public EditorSettings Editor { get; set; } = EditorSettings.Default;
 
-    public int SidebarWidth { get; set; } = SidebarSizing.Default;
+    public int SidebarWidth { get; set; } = PaneWidths.SidebarDefault;
 
     public int? AssistantWidth { get; set; }
 
