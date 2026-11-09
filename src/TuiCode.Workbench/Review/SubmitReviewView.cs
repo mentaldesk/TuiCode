@@ -43,7 +43,11 @@ public sealed class SubmitReviewView : AppDialog
         _drafts = new VerbatimLabel { X = 1, Y = ContentRows - 2, Text = string.Empty, Visible = false };
 
         _summaryLabel = new VerbatimLabel { X = 1, Y = 1, Text = SummaryName };
-        _verdict.ValueChanged += (_, _) => _summaryLabel.Text = SummaryName;
+        _verdict.ValueChanged += (_, _) =>
+        {
+            _summaryLabel.Text = SummaryName;
+            Recheck();
+        };
         _summary = new MultiLineField
         {
             X = 1,

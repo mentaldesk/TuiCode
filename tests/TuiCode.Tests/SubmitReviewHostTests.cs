@@ -167,6 +167,42 @@ public class SubmitReviewHostTests : StaticConfigurationTest
         Assert.Equal([(_git.Root, 187, GitHubReviewVerdict.Approve, "")], _gitHub.Reviews);
     }
 
+    [Fact]
+    public async Task Choosing_Approve_clears_a_refused_summarys_mark()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string? marked = null, afterApprove = "unset";
+        var alertAfterApprove = -1;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is { Loaded: true },
+            () => Choose(host, GitHubReviewVerdict.RequestChanges),
+            () => Dialog(workbench)!.Verdict == GitHubReviewVerdict.RequestChanges,
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench)!.Alert.Message == "Summary is needed for Comment and Request changes",
+            () => { marked = Dialog(workbench)!.SummaryLabel.SchemeName; },
+            () =>
+            {
+                host.App.InjectKey(Key.Tab.WithShift);
+                host.App.InjectKey(Key.CursorLeft);
+                host.App.InjectKey(Key.Tab);
+            },
+            () => Dialog(workbench)!.Verdict == GitHubReviewVerdict.Approve,
+            () =>
+            {
+                afterApprove = Dialog(workbench)!.SummaryLabel.SchemeName;
+                alertAfterApprove = Dialog(workbench)!.Alert.Lines;
+            },
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.NotEqual(SchemeNames.Error, afterApprove);
+        Assert.Equal(0, alertAfterApprove);
+    }
+
     private static IEnumerable<View> Descendants(View view) => view.SubViews.SelectMany(Descendants).Prepend(view);
 
     [Theory]
