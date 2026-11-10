@@ -327,6 +327,70 @@ public class ExplorerFileCommandsHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task An_empty_new_folder_path_marks_the_field_and_keeps_the_prompt_open()
+    {
+        _fs.AddFile("/work/a.txt", new MockFileData("a"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var said = "";
+        string? marked = null;
+        var focused = false;
+        var entries = 0;
+
+        await HostSteps.Run(host,
+            () => SelectInExplorer(workbench, "a.txt"),
+            () => host.App.InjectKey(Key.N.WithCtrl.WithShift),
+            () => Prompt(workbench) is not null,
+            () => { Prompt(workbench)!.SubViews.OfType<TextField>().Single().Text = ""; },
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Prompt(workbench)!.Alert.Lines > 0,
+            () =>
+            {
+                said = Prompt(workbench)!.Alert.Message;
+                marked = Prompt(workbench)!.FieldLabel.SchemeName;
+                focused = Prompt(workbench)!.SubViews.OfType<TextField>().Single().HasFocus;
+                entries = _fs.Directory.GetFileSystemEntries("/work").Length;
+                host.App.InjectKey(Key.Esc);
+            },
+            () => Prompt(workbench) is null);
+
+        Assert.Equal("Path is needed", said);
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.True(focused);
+        Assert.Equal(1, entries);
+    }
+
+    [Fact]
+    public async Task A_new_folder_that_exists_is_refused_with_the_path_marked_and_the_prompt_kept()
+    {
+        _fs.AddFile("/work/lib/a.txt", new MockFileData("a"));
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        string said = "", typed = "";
+        string? marked = null;
+
+        await HostSteps.Run(host,
+            () => host.App.InjectKey(Key.N.WithCtrl.WithShift),
+            () => Prompt(workbench) is not null,
+            () => { Prompt(workbench)!.SubViews.OfType<TextField>().Single().Text = "lib"; },
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Prompt(workbench) is { Alert.Lines: > 0 } || Prompt(workbench) is null,
+            () =>
+            {
+                said = Prompt(workbench)?.Alert.Message ?? "closed";
+                marked = Prompt(workbench)?.FieldLabel.SchemeName;
+                typed = Prompt(workbench)?.Path ?? "";
+                if (Prompt(workbench) is not null) host.App.InjectKey(Key.Esc);
+            },
+            () => Prompt(workbench) is null);
+
+        Assert.Equal("Path: there's already a folder named lib/", said);
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.Equal("lib", typed);
+        Assert.True(_fs.File.Exists("/work/lib/a.txt"));
+    }
+
+    [Fact]
     public async Task A_new_folder_outside_the_workspace_is_refused_with_the_path_marked()
     {
         _fs.AddFile("/work/a.txt", new MockFileData("a"));
