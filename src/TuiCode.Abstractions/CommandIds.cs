@@ -130,15 +130,12 @@ public static class CommandIds
     public const string ToggleIgnoredFiles = "search.action.toggleIgnoredFiles";
 
     public const string SubmitReviewConfirm = "submitReview.action.confirm";
-    public const string SubmitReviewCancel = "submitReview.action.cancel";
     public const string SubmitReviewRetry = "submitReview.action.retry";
 
     public const string CommentConfirm = "comment.action.confirm";
-    public const string CommentCancel = "comment.action.cancel";
     public const string CommentDelete = "comment.action.delete";
 
     public const string PathPromptConfirm = "pathPrompt.action.confirm";
-    public const string PathPromptCancel = "pathPrompt.action.cancel";
     public const string PathPromptCycleSelection = "pathPrompt.action.cycleSelection";
 
     public const string DeleteFile = "explorer.action.deleteFile";

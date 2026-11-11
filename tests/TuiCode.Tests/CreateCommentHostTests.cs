@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Fields;
+using MentalDesk.Tui.Theming;
 using Terminal.Gui.Drawing;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 using Terminal.Gui.Drivers;
@@ -251,10 +252,53 @@ public class CreateCommentHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.CreateComment),
             () => Dialog(workbench) is not null,
             () => host.App.InjectKey(Key.Enter.WithCtrl),
-            () => Dialog(workbench)!.Status == "A comment needs something to say.",
+            () => Dialog(workbench)!.Alert.Message == "Comment is needed",
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Empty(workbench.Editor.Group.ActiveDiffTab!.Drafts);
+    }
+
+    [Fact]
+    public async Task An_empty_comment_marks_its_label_and_typing_clears_the_mark()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string? marked = null, cleared = "unset", said = "unset";
+        var focused = false;
+        var height = 0;
+        var usual = 0;
+
+        await OpenDiff(host, workbench, commands);
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.CreateComment),
+            () => Dialog(workbench) is not null,
+            () => { usual = Dialog(workbench)!.Frame.Height; },
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench)!.Alert.Message == "Comment is needed",
+            () => { marked = Dialog(workbench)!.FieldLabel.SchemeName; focused = Dialog(workbench)!.BodyBox.HasFocus; },
+            () => Type(host, "x"),
+            () => Dialog(workbench)!.Alert.Lines == 0,
+            () => { },
+            () => { cleared = Dialog(workbench)!.FieldLabel.SchemeName; said = Dialog(workbench)!.Alert.Message; height = Dialog(workbench)!.Frame.Height; },
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.True(focused);
+        Assert.NotEqual(SchemeNames.Error, cleared);
+        Assert.Equal("", said);
+        Assert.Equal(usual, height);
+        Assert.Empty(workbench.Editor.Group.ActiveDiffTab!.Drafts);
+    }
+
+    [Fact]
+    public void The_comment_box_is_labelled_for_what_goes_in_it()
+    {
+        using var comment = new CommentView("src/a.txt", 1);
+        using var reply = new CommentView(new GitHubReviewThread("src/a.txt", 1, false, false, [new GitHubComment("octocat", default, "Hm.")]));
+
+        Assert.Equal("Comment", comment.FieldLabel.Text);
+        Assert.Equal("Reply", reply.FieldLabel.Text);
     }
 
     [Fact]
@@ -339,7 +383,7 @@ public class CreateCommentHostTests : StaticConfigurationTest
             () => Submit(workbench) is { Loaded: true },
             () => Type(host, "Nearly there"),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
-            () => Submit(workbench)!.Status == _gitHub.ReviewError,
+            () => Submit(workbench)!.Alert.Message == $"Summary: {_gitHub.ReviewError}",
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal([new DraftComment("src/a.txt", 1, "Rename this?")], workbench.Editor.Group.ActiveDiffTab!.Drafts);
@@ -384,11 +428,10 @@ public class CreateCommentHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task Tab_leaves_the_comment_box_for_the_buttons_without_typing_a_tab()
+    public async Task Tab_in_the_comment_box_does_not_type_a_tab()
     {
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
-        View? focused = null;
         var body = "";
 
         await OpenDiff(host, workbench, commands);
@@ -397,11 +440,10 @@ public class CreateCommentHostTests : StaticConfigurationTest
             () => Dialog(workbench) is not null,
             () => Type(host, "Hi"),
             () => host.App.InjectKey(Key.Tab),
-            () => { focused = Dialog(workbench)!.MostFocused; body = Dialog(workbench)!.Body; },
+            () => { body = Dialog(workbench)!.Body; },
             () => host.App.InjectKey(Key.Esc),
             () => Dialog(workbench) is null);
 
-        Assert.IsType<Button>(focused, exactMatch: false);
         Assert.Equal("Hi", body);
     }
 

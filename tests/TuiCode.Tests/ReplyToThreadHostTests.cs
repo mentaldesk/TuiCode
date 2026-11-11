@@ -1,3 +1,4 @@
+using MentalDesk.Tui.Theming;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
@@ -100,9 +101,11 @@ public class ReplyToThreadHostTests : StaticConfigurationTest
             () => Dialog(workbench) is not null,
             () => Type(host, "It does now."),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
-            () => Dialog(workbench)!.Status == _gitHub.ReplyError);
+            () => Dialog(workbench)!.Alert.Message == $"Reply: {_gitHub.ReplyError}");
 
         Assert.Equal("It does now.", Dialog(workbench)!.Body);
+        Assert.Equal(SchemeNames.Error, Dialog(workbench)!.FieldLabel.SchemeName);
+        Assert.True(Dialog(workbench)!.BodyBox.HasFocus);
         Assert.Equal(0, workbench.Editor.Group.ActiveDiffTab!.CurrentThread!.Replies);
     }
 
@@ -117,8 +120,9 @@ public class ReplyToThreadHostTests : StaticConfigurationTest
             () => commands.TryExecute(CommandIds.CreateComment),
             () => Dialog(workbench) is not null,
             () => host.App.InjectKey(Key.Enter.WithCtrl),
-            () => Dialog(workbench)!.Status == "A reply needs something to say.",
-            () => host.App.InjectKey(Key.Esc));
+            () => Dialog(workbench)!.Alert.Message == "Reply is needed",
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
 
         Assert.Empty(_gitHub.Replies);
     }
