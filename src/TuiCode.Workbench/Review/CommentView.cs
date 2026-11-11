@@ -1,8 +1,8 @@
+using MentalDesk.Tui;
+using MentalDesk.Tui.Dialogs;
 using MentalDesk.Tui.Fields;
-using ButtonKind = MentalDesk.Tui.Dialogs.ButtonKind;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
-using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Review;
 
@@ -12,25 +12,16 @@ namespace TuiCode.Workbench.Review;
 /// a reply instead (#189), which the host posts straight away and reports back on through
 /// <see cref="ShowError"/>, so a refused reply keeps the dialog and its text.
 /// </summary>
-public sealed class CommentView : Window
+public sealed class CommentView : AppDialog
 {
-    private const string MissingBody = "A comment needs something to say.";
-    private const string MissingReply = "A reply needs something to say.";
     private const int DialogWidth = 70;
-    private const int DialogHeight = 12 + MultiLineBox.Frame;
+    private const int BodyRows = 8 + MultiLineBox.Frame;
+    private const int ContentRows = BodyRows + 3;
 
     private readonly MultiLineField _body;
-    private readonly AlertView _alert;
-    private readonly Button[] _buttons;
+    private readonly VerbatimLabel _label;
     private readonly Button _confirm;
-    private readonly string _missing;
-
-    private readonly ICommandService _scopeCommands;
-    private readonly IKeybindingService _scopeKeybindings;
-
-    public IKeybindingService Scope => _scopeKeybindings;
-
-    public event EventHandler? Cancelled;
+    private readonly string _field;
 
     /// <summary>What the draft or reply should say; the host adds it, replaces the one being edited, or posts it.</summary>
     public event EventHandler<string>? Added;
@@ -39,72 +30,54 @@ public sealed class CommentView : Window
     public event EventHandler? Deleted;
 
     public CommentView(string path, int line, DraftComment? draft = null)
-        : this($"Comment on {path}:{line}", "Add", MissingBody, draft?.Body, deletable: draft is not null)
+        : this($"Comment on {path}:{line}", "Add", "Comment", draft?.Body, deletable: draft is not null)
     {
     }
 
     /// <summary>Replying to <paramref name="thread"/> (#189): the same dialog, posted rather than drafted.</summary>
     public CommentView(GitHubReviewThread thread)
-        : this($"Reply to {thread.First?.Author}", "Reply", MissingReply, null, deletable: false)
+        : this($"Reply to {thread.First?.Author}", "Reply", "Reply", null, deletable: false)
     {
     }
 
-    private CommentView(string title, string confirm, string missing, string? written, bool deletable)
+    private CommentView(string title, string confirm, string field, string? written, bool deletable)
+        : base(title, DialogWidth, ContentRows)
     {
-        Title = title;
-        _missing = missing;
-        BorderStyle = LineStyle.Single;
-        X = Pos.Center();
-        Y = Pos.Center();
-        Width = DialogWidth;
-        Height = DialogHeight;
-        CanFocus = true;
-
-        written ??= string.Empty;
+        _field = field;
+        _label = new VerbatimLabel { X = 1, Y = 0, Text = field };
         _body = new MultiLineField
         {
             X = 1,
-            Y = 0,
+            Y = 1,
             Width = Dim.Fill(1),
-            Height = Dim.Fill(2),
-            Text = written,
+            Height = BodyRows,
+            Text = written ?? string.Empty,
         }.HeavyWhileFocused();
+        Add(_label, _body);
+        Check(_body, _label, () => string.IsNullOrWhiteSpace(Body) ? $"{field} is needed" : null);
 
-        _scopeCommands = new CommandService();
-        _scopeKeybindings = new KeybindingService(_scopeCommands);
-        _scopeCommands.Register(CommandIds.CommentCancel, () => Cancelled?.Invoke(this, EventArgs.Empty));
-        _scopeCommands.Register(CommandIds.CommentConfirm, OnAdd);
-        _scopeKeybindings.Bind("Esc", CommandIds.CommentCancel);
-        _scopeKeybindings.Bind("Ctrl+Enter", CommandIds.CommentConfirm);
+        Commands.Register(CommandIds.CommentConfirm, confirm, OnAdd);
+        Keys.Bind("Ctrl+Enter", CommandIds.CommentConfirm);
+        _confirm = CommandButton(ButtonKind.Primary, CommandIds.CommentConfirm);
+        _confirm.IsDefault = false;
+        var cancel = CommandButton(ButtonKind.Secondary, CancelId);
         if (deletable)
         {
-            _scopeCommands.Register(CommandIds.CommentDelete, OnDelete);
-            _scopeKeybindings.Bind("Ctrl+D", CommandIds.CommentDelete);
+            Commands.Register(CommandIds.CommentDelete, "Delete", OnDelete);
+            Keys.Bind("Ctrl+D", CommandIds.CommentDelete);
+            AddButtonRow(ContentRows - 1, _confirm, CommandButton(ButtonKind.Danger, CommandIds.CommentDelete), cancel);
         }
-
-        _confirm = Foot(KeyedButton.Of(ButtonKind.Primary, _scopeKeybindings, CommandIds.CommentConfirm, confirm), 1, OnAdd);
-        var delete = deletable ? Foot(KeyedButton.Of(ButtonKind.Danger, _scopeKeybindings, CommandIds.CommentDelete, "Delete"), Pos.Right(_confirm) + 1, OnDelete) : null;
-        var cancel = Foot(KeyedButton.Of(ButtonKind.Secondary, _scopeKeybindings, CommandIds.CommentCancel, "Cancel"), Pos.Right(delete ?? _confirm) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
-        _buttons = delete is null ? [_confirm, cancel] : [_confirm, delete, cancel];
-
-        // Below the buttons, not beside them: the dialog grows for an alert rather than the body shrinking.
-        _alert = new AlertView(DialogWidth - 2) { X = 0, Y = Pos.AnchorEnd() };
-
-        Add(_body, _alert);
-        foreach (var button in _buttons) Add(button);
-    }
-
-    private static Button Foot(Button button, Pos x, Action accepted)
-    {
-        button.X = x;
-        button.Y = Pos.AnchorEnd(1);
-        button.Accepting += (_, e) => { e.Handled = true; accepted(); };
-        return button;
+        else
+        {
+            AddButtonRow(ContentRows - 1, _confirm, cancel);
+        }
     }
 
     public string Body => _body.Text ?? string.Empty;
 
-    internal string Status => _alert.Message;
+    internal VerbatimLabel FieldLabel => _label;
+
+    internal MultiLineField BodyBox => _body;
 
     /// <summary>Editing starts where the draft left off: the caret only stays put once the box has focus.</summary>
     public bool FocusBody()
@@ -114,42 +87,27 @@ public sealed class CommentView : Window
         return focused;
     }
 
-    /// <summary>Shows why GitHub refused a reply; the dialog stays open with whatever was typed (#189).</summary>
+    /// <summary>Marks the box with why GitHub refused a reply; the dialog stays open with whatever was typed (#189).</summary>
     public void ShowError(string message)
     {
-        Alert(message, AlertSeverity.Error);
         _confirm.Enabled = true;
+        Refuse(_body, $"{_field}: {message}");
     }
 
     /// <summary>Shows that the reply is on its way, and refuses a second one while it is (#189).</summary>
     public void ShowBusy()
     {
-        Alert("Replying…", AlertSeverity.Info);
+        ShowAlert("Replying…", Severity.Info);
         _confirm.Enabled = false;
     }
 
-    private void Alert(string message, AlertSeverity severity)
-    {
-        _alert.Show(message, severity);
-        Height = DialogHeight + _alert.Lines;
-        _body.Height = Dim.Fill(_alert.Lines + 2);
-        foreach (var button in _buttons) button.Y = Pos.AnchorEnd(_alert.Lines + 1);
-        SetNeedsLayout();
-    }
+    /// <summary>Closes the dialog once the host has done what it was asked.</summary>
+    public void Finish() => Accept();
 
     private void OnDelete() => Deleted?.Invoke(this, EventArgs.Empty);
 
     private void OnAdd()
     {
-        if (!_confirm.Enabled) return;
-
-        var body = Body.Trim();
-        if (body.Length == 0)
-        {
-            Alert(_missing, AlertSeverity.Error);
-            _body.SetFocus();
-            return;
-        }
-        Added?.Invoke(this, body);
+        if (_confirm.Enabled && Checked()) Added?.Invoke(this, Body.Trim());
     }
 }

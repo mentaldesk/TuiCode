@@ -310,7 +310,7 @@ public class RevealJumpSiteHostTests : StaticConfigurationTest
     {
         commands.TryExecute(CommandIds.GoToLine);
         foreach (var c in line.ToString(CultureInfo.InvariantCulture)) host.App.InjectKey(new Key(c));
-        host.App.InjectKey(Key.Enter);
+        host.App.InjectKey(Key.Enter.WithCtrl);
     }
 
     private void OpenLongFile(Workbench.Workbench workbench)

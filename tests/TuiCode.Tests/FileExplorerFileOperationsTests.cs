@@ -186,7 +186,7 @@ public class FileExplorerFileOperationsTests
 
         var ex = Assert.Throws<IOException>(() => explorer.Move(Node(explorer, "a.cs"), target));
 
-        Assert.Contains("already exists", ex.Message);
+        Assert.Contains("There's already a", ex.Message);
         Assert.True(fs.File.Exists("/work/a.cs"));
     }
 

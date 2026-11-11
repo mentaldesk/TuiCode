@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Fields;
+using MentalDesk.Tui.Theming;
 using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
@@ -115,6 +116,93 @@ public class SubmitReviewHostTests : StaticConfigurationTest
         Assert.True(summaryFocused);
     }
 
+    [Theory]
+    [InlineData(GitHubReviewVerdict.Comment)]
+    [InlineData(GitHubReviewVerdict.RequestChanges)]
+    public async Task An_empty_summary_marks_its_label_and_typing_clears_the_mark(GitHubReviewVerdict verdict)
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string? marked = null, cleared = "unset";
+        var focused = false;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is { Loaded: true },
+            () => Choose(host, verdict),
+            () => Dialog(workbench)!.Verdict == verdict,
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench)!.Alert.Message == "Summary is needed for Comment and Request changes",
+            () => { marked = Dialog(workbench)!.SummaryLabel.SchemeName; focused = Dialog(workbench)!.SummaryBox.HasFocus; },
+            () => Type(host, "x"),
+            () => Dialog(workbench)!.Alert.Lines == 0,
+            () => { cleared = Dialog(workbench)!.SummaryLabel.SchemeName; },
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.True(focused);
+        Assert.NotEqual(SchemeNames.Error, cleared);
+        Assert.Empty(_gitHub.Reviews);
+    }
+
+    [Fact]
+    public async Task The_summary_is_optional_only_while_Approve_is_selected()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        var labels = new List<string>();
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is { Loaded: true },
+            () => labels.Add(Dialog(workbench)!.SummaryLabel.Text),
+            () => Choose(host, GitHubReviewVerdict.Approve),
+            () => Dialog(workbench)!.Verdict == GitHubReviewVerdict.Approve,
+            () => labels.Add(Dialog(workbench)!.SummaryLabel.Text),
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal(["Summary", "Summary (optional)"], labels);
+        Assert.Equal([(_git.Root, 187, GitHubReviewVerdict.Approve, "")], _gitHub.Reviews);
+    }
+
+    [Fact]
+    public async Task Choosing_Approve_clears_a_refused_summarys_mark()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        string? marked = null, afterApprove = "unset";
+        var alertAfterApprove = -1;
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.SubmitReview),
+            () => Dialog(workbench) is { Loaded: true },
+            () => Choose(host, GitHubReviewVerdict.RequestChanges),
+            () => Dialog(workbench)!.Verdict == GitHubReviewVerdict.RequestChanges,
+            () => host.App.InjectKey(Key.Enter.WithCtrl),
+            () => Dialog(workbench)!.Alert.Message == "Summary is needed for Comment and Request changes",
+            () => { marked = Dialog(workbench)!.SummaryLabel.SchemeName; },
+            () =>
+            {
+                host.App.InjectKey(Key.Tab.WithShift);
+                host.App.InjectKey(Key.CursorLeft);
+                host.App.InjectKey(Key.Tab);
+            },
+            () => Dialog(workbench)!.Verdict == GitHubReviewVerdict.Approve,
+            () =>
+            {
+                afterApprove = Dialog(workbench)!.SummaryLabel.SchemeName;
+                alertAfterApprove = Dialog(workbench)!.Alert.Lines;
+            },
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.NotEqual(SchemeNames.Error, afterApprove);
+        Assert.Equal(0, alertAfterApprove);
+    }
+
     private static IEnumerable<View> Descendants(View view) => view.SubViews.SelectMany(Descendants).Prepend(view);
 
     [Theory]
@@ -131,7 +219,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => Choose(host, verdict),
             () => Dialog(workbench)!.Verdict == verdict,
             () => host.App.InjectKey(Key.Enter.WithCtrl),
-            () => Dialog(workbench)!.Status == "Comment and Request changes need a summary.",
+            () => Dialog(workbench)!.Alert.Message == "Summary is needed for Comment and Request changes",
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Empty(_gitHub.Reviews);
@@ -144,17 +232,26 @@ public class SubmitReviewHostTests : StaticConfigurationTest
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench, out var commands);
         var summary = "";
+        string? marked = null;
+        var focused = false;
 
         await HostSteps.Run(host,
             () => commands.TryExecute(CommandIds.SubmitReview),
             () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Ship it"),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
-            () => Dialog(workbench)!.Status == "GraphQL: Can not approve your own pull request",
-            () => { summary = Dialog(workbench)!.Summary; },
+            () => Dialog(workbench)!.Alert.Message == "Summary: GraphQL: Can not approve your own pull request",
+            () =>
+            {
+                summary = Dialog(workbench)!.Summary;
+                marked = Dialog(workbench)!.SummaryLabel.SchemeName;
+                focused = Dialog(workbench)!.SummaryBox.HasFocus;
+            },
             () => host.App.InjectKey(Key.Esc));
 
         Assert.Equal("Ship it", summary);
+        Assert.Equal(SchemeNames.Error, marked);
+        Assert.True(focused);
         Assert.Null(Dialog(workbench));
     }
 
@@ -172,7 +269,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
             () => Dialog(workbench) is { Loaded: true },
             () => Type(host, "Ship it"),
             () => host.App.InjectKey(Key.Enter.WithCtrl),
-            () => Dialog(workbench)!.Status == _gitHub.ReviewError,
+            () => Dialog(workbench)!.Alert.Message == $"Summary: {_gitHub.ReviewError}",
             () => Alert(workbench).Frame.Height > 1,
             () => { alert = Alert(workbench).Frame; cancel = Button(workbench, "Esc Cancel").Frame; },
             () => host.App.InjectKey(Key.Esc));
@@ -384,8 +481,7 @@ public class SubmitReviewHostTests : StaticConfigurationTest
         host.App.InjectKey(Key.Tab);
     }
 
-    private static AlertView Alert(Workbench.Workbench workbench) =>
-        Dialog(workbench)!.SubViews.OfType<AlertView>().Single();
+    private static MentalDesk.Tui.Dialogs.AlertView Alert(Workbench.Workbench workbench) => Dialog(workbench)!.Alert;
 
     private static Button Button(Workbench.Workbench workbench, string text) =>
         Dialog(workbench)!.SubViews.OfType<Button>().Single(button => button.Text.Trim() == text);

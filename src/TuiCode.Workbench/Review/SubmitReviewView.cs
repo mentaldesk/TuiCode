@@ -1,9 +1,9 @@
-using ButtonKind = MentalDesk.Tui.Dialogs.ButtonKind;
+using MentalDesk.Tui;
+using MentalDesk.Tui.Dialogs;
 using MentalDesk.Tui.Fields;
 using MentalDesk.Tui.Loading;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
-using TuiCode.Workbench.Services;
 
 namespace TuiCode.Workbench.Review;
 
@@ -12,41 +12,25 @@ namespace TuiCode.Workbench.Review;
 /// which it hands over with <see cref="Load"/> (#525). The host posts the review and reports back through <see cref="ShowError"/>, so a refused review
 /// keeps the dialog and its text.
 /// </summary>
-public sealed class SubmitReviewView : Window
+public sealed class SubmitReviewView : AppDialog
 {
-    private const string MissingSummary = "Comment and Request changes need a summary.";
     private const int DialogWidth = 70;
-    private const int DialogHeight = 16 + MultiLineBox.Frame;
+    private const int ContentRows = 14 + MultiLineBox.Frame;
 
     private readonly OptionSelector<GitHubReviewVerdict> _verdict;
+    private readonly VerbatimLabel _summaryLabel;
     private readonly MultiLineField _summary;
     private readonly LoadStateView _state;
     private readonly VerbatimLabel _drafts;
-    private readonly Button[] _buttons;
-    private readonly AlertView _alert;
     private readonly Button _submit;
     private Action? _retry;
-
-    private readonly ICommandService _scopeCommands;
-    private readonly IKeybindingService _scopeKeybindings;
-
-    public IKeybindingService Scope => _scopeKeybindings;
-
-    public event EventHandler? Cancelled;
 
     /// <summary>The review to post; the host does the work and closes the dialog once GitHub has it.</summary>
     public event EventHandler<(GitHubReviewVerdict Verdict, string Summary)>? Submitted;
 
     public SubmitReviewView()
+        : base("Submit review", DialogWidth, ContentRows)
     {
-        Title = "Submit review";
-        BorderStyle = LineStyle.Single;
-        X = Pos.Center();
-        Y = Pos.Center();
-        Width = DialogWidth;
-        Height = DialogHeight;
-        CanFocus = true;
-
         _verdict = new OptionSelector<GitHubReviewVerdict>
         {
             X = 1,
@@ -56,8 +40,14 @@ public sealed class SubmitReviewView : Window
             Value = GitHubReviewVerdict.Comment,
         }.SelectOnArrows();
 
-        _drafts = new VerbatimLabel { X = 1, Y = Pos.AnchorEnd(2), Text = string.Empty, Visible = false };
+        _drafts = new VerbatimLabel { X = 1, Y = ContentRows - 2, Text = string.Empty, Visible = false };
 
+        _summaryLabel = new VerbatimLabel { X = 1, Y = 1, Text = SummaryName };
+        _verdict.ValueChanged += (_, _) =>
+        {
+            _summaryLabel.Text = SummaryName;
+            Recheck();
+        };
         _summary = new MultiLineField
         {
             X = 1,
@@ -67,44 +57,30 @@ public sealed class SubmitReviewView : Window
             CanFocus = false,
         }.HeavyWhileFocused();
         var form = new View { Width = Dim.Fill(), Height = Dim.Fill(), CanFocus = true };
-        form.Add(_verdict, _summary);
-        _state = new LoadStateView(form, "Loading pull request…") { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(Foot) };
+        form.Add(_verdict, _summaryLabel, _summary);
+        _state = new LoadStateView(form, "Loading pull request…") { X = 0, Y = 0, Width = Dim.Fill(), Height = ContentRows - Foot };
+        Add(_state, _drafts);
+        Check(_summary, _summaryLabel, () =>
+            string.IsNullOrWhiteSpace(Summary) && Verdict != GitHubReviewVerdict.Approve ? "Summary is needed for Comment and Request changes" : null);
 
-        _scopeCommands = new CommandService();
-        _scopeKeybindings = new KeybindingService(_scopeCommands);
-        _scopeCommands.Register(CommandIds.SubmitReviewCancel, () => Cancelled?.Invoke(this, EventArgs.Empty));
-        _scopeCommands.Register(CommandIds.SubmitReviewConfirm, OnSubmit);
-        _scopeKeybindings.Bind("Esc", CommandIds.SubmitReviewCancel);
-        _scopeKeybindings.Bind("Ctrl+Enter", CommandIds.SubmitReviewConfirm);
-        _scopeCommands.Register(CommandIds.SubmitReviewRetry, "Retry", () => _retry?.Invoke(), CommandScope.Global,
-            () => _retry is not null && _state.State == LoadState.Failed);
-        _scopeKeybindings.Bind("r", CommandIds.SubmitReviewRetry);
+        Commands.Register(CommandIds.SubmitReviewConfirm, "Submit", OnSubmit);
+        Keys.Bind("Ctrl+Enter", CommandIds.SubmitReviewConfirm);
+        Commands.Register(CommandIds.SubmitReviewRetry, "Retry", () => _retry?.Invoke(),
+            isEnabled: () => _retry is not null && _state.State == LoadState.Failed);
+        Keys.Bind("r", CommandIds.SubmitReviewRetry);
 
-        _submit = Place(KeyedButton.Of(ButtonKind.Primary, _scopeKeybindings, CommandIds.SubmitReviewConfirm, "Submit"), 1, OnSubmit);
+        _submit = CommandButton(ButtonKind.Primary, CommandIds.SubmitReviewConfirm);
+        _submit.IsDefault = false;
         _submit.Enabled = false;
         _submit.Visible = false;
-        var cancel = Place(KeyedButton.Of(ButtonKind.Secondary, _scopeKeybindings, CommandIds.SubmitReviewCancel, "Cancel"), Pos.Right(_submit) + 1, () => Cancelled?.Invoke(this, EventArgs.Empty));
-        _buttons = [_submit, cancel];
-
-        // Below the buttons, not beside them: the dialog grows for an alert rather than the summary shrinking.
-        _alert = new AlertView(DialogWidth - 2) { X = 0, Y = Pos.AnchorEnd() };
-
-        Add(_state, _drafts, _submit, cancel, _alert);
-    }
-
-    private static Button Place(Button button, Pos x, Action accepted)
-    {
-        button.X = x;
-        button.Y = Pos.AnchorEnd(1);
-        button.Accepting += (_, e) => { e.Handled = true; accepted(); };
-        return button;
+        AddButtonRow(ContentRows - 1, _submit, CommandButton(ButtonKind.Secondary, CancelId));
     }
 
     public GitHubReviewVerdict Verdict => _verdict.Value ?? GitHubReviewVerdict.Comment;
 
     public string Summary => _summary.Text ?? string.Empty;
 
-    internal string Status => _alert.Message;
+    internal VerbatimLabel SummaryLabel => _summaryLabel;
 
     internal string DraftsText => _drafts.Text;
 
@@ -129,7 +105,7 @@ public sealed class SubmitReviewView : Window
         _summary.CanFocus = true;
         _state.ShowContent();
         _summary.SetFocus();
-        LayoutFoot();
+        _state.Height = ContentRows - Foot;
     }
 
     public void ShowNoPullRequest() => ShowLoadFailed("No pull request for this branch", null);
@@ -142,49 +118,30 @@ public sealed class SubmitReviewView : Window
 
     public bool FocusSummary() => _summary.SetFocus();
 
-    /// <summary>Shows why GitHub refused the review; the dialog stays open with whatever was typed.</summary>
+    /// <summary>Marks the summary with why GitHub refused the review; the dialog stays open with whatever was typed.</summary>
     public void ShowError(string message)
     {
-        Alert(message, AlertSeverity.Error);
         _submit.Enabled = true;
+        Refuse(_summary, $"Summary: {message}");
     }
 
     /// <summary>Shows what the host is doing, and refuses a second submit while it does it.</summary>
     public void ShowBusy()
     {
-        Alert("Submitting…", AlertSeverity.Info);
+        ShowAlert("Submitting…", Severity.Info);
         _submit.Enabled = false;
     }
+
+    /// <summary>Closes the dialog once the host has done what it was asked.</summary>
+    public void Finish() => Accept();
+
+    private string SummaryName => Verdict == GitHubReviewVerdict.Approve ? "Summary (optional)" : "Summary";
 
     /// <summary>Rows under the summary: the buttons, and the drafts line when there is one.</summary>
     private int Foot => _drafts.Visible ? 3 : 2;
 
-    private void Alert(string message, AlertSeverity severity)
-    {
-        _alert.Show(message, severity);
-        LayoutFoot();
-    }
-
-    private void LayoutFoot()
-    {
-        Height = DialogHeight + _alert.Lines;
-        _state.Height = Dim.Fill(_alert.Lines + Foot);
-        foreach (var button in _buttons) button.Y = Pos.AnchorEnd(_alert.Lines + 1);
-        if (_drafts.Visible) _drafts.Y = Pos.AnchorEnd(_alert.Lines + 2);
-        SetNeedsLayout();
-    }
-
     private void OnSubmit()
     {
-        if (!_submit.Enabled) return;
-
-        var summary = Summary.Trim();
-        if (summary.Length == 0 && Verdict != GitHubReviewVerdict.Approve)
-        {
-            Alert(MissingSummary, AlertSeverity.Error);
-            _summary.SetFocus();
-            return;
-        }
-        Submitted?.Invoke(this, (Verdict, summary));
+        if (_submit.Enabled && Checked()) Submitted?.Invoke(this, (Verdict, Summary.Trim()));
     }
 }

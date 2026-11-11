@@ -158,8 +158,10 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         var fs = root.FileSystem;
         var fullPath = EntryPaths.Resolve(fs, root, relativePath);
 
+        if (!FilePaths.IsSameOrUnder(fullPath, root.FullName))
+            throw new IOException($"'{relativePath.Trim()}' is outside the workspace.");
         if (fs.File.Exists(fullPath) || fs.Directory.Exists(fullPath))
-            throw new IOException($"'{relativePath}' already exists.");
+            throw new IOException(AlreadyThere(fs, fullPath, relativePath));
 
         if (directory)
         {
@@ -176,6 +178,9 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         return Reveal(root, fullPath)
             ?? throw new IOException($"Created '{relativePath}' but could not locate it in the tree.");
     }
+
+    private static string AlreadyThere(IFileSystem fs, string fullPath, string shown) =>
+        $"There's already a {(fs.Directory.Exists(fullPath) ? "folder" : "file")} named {shown}";
 
     public bool IsRoot(IFileSystemInfo item) =>
         Root is { } root && FilePaths.IsSameOrUnder(root.FullName, item.FullName);
@@ -241,7 +246,7 @@ public sealed class FileExplorerView : TreeView<IFileSystemInfo>
         if (!caseOnly && item is IDirectoryInfo && FilePaths.IsSameOrUnder(target, source))
             throw new IOException($"Can't move '{item.Name}' into itself.");
         if (!caseOnly && (fs.File.Exists(target) || fs.Directory.Exists(target)))
-            throw new IOException($"'{shown}' already exists.");
+            throw new IOException(AlreadyThere(fs, target, shown));
 
         var targetParent = fs.Path.GetDirectoryName(target);
         if (!string.IsNullOrEmpty(targetParent))
