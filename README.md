@@ -35,7 +35,16 @@ scoop install tuicode
 
 Other channels (winget, Linux packagers) are tracked in [#43](https://github.com/mentaldesk/TuiCode/issues/43) and [#44](https://github.com/mentaldesk/TuiCode/issues/44). In the meantime, pre-built single-file binaries for every supported RID are attached to each [GitHub Release](https://github.com/mentaldesk/TuiCode/releases).
 
-Debian or Ubuntu, as a system package: download `tuicode_<version>_amd64.deb` (or `_arm64.deb`) from the [latest release](https://github.com/mentaldesk/TuiCode/releases/latest), then:
+Debian or Ubuntu, from the signed apt repository, so `sudo apt upgrade` keeps it up to date:
+
+```bash
+curl -fsSL https://mentaldesk.github.io/apt/key.asc | sudo tee /etc/apt/keyrings/mentaldesk.asc >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/mentaldesk.asc] https://mentaldesk.github.io/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/mentaldesk.list
+sudo apt update && sudo apt install tuicode
+```
+
+Or, without the repository, download `tuicode_<version>_amd64.deb` (or `_arm64.deb`) from the [latest release](https://github.com/mentaldesk/TuiCode/releases/latest), then:
 
 ```bash
 sudo apt install ./tuicode_<version>_amd64.deb
