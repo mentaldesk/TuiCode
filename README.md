@@ -20,21 +20,6 @@ It installs the latest release to `~/.local/bin/tuicode`, after checking its SHA
 
 TuiCode runs on glibc 2.35 or newer: Debian 12, Ubuntu 22.04, current Fedora and Arch, and anything newer. It doesn't need `libicu`.
 
-macOS via [Homebrew](https://brew.sh) (it works on Linux too):
-
-```bash
-brew install mentaldesk/tap/tuicode
-```
-
-Windows via [Scoop](https://scoop.sh):
-
-```powershell
-scoop bucket add mentaldesk https://github.com/mentaldesk/scoop-bucket
-scoop install tuicode
-```
-
-Other channels (winget, Linux packagers) are tracked in [#43](https://github.com/mentaldesk/TuiCode/issues/43) and [#44](https://github.com/mentaldesk/TuiCode/issues/44). In the meantime, pre-built single-file binaries for every supported RID are attached to each [GitHub Release](https://github.com/mentaldesk/TuiCode/releases).
-
 Debian or Ubuntu, from the signed apt repository, so `sudo apt upgrade` keeps it up to date:
 
 ```bash
@@ -57,6 +42,21 @@ sudo dnf install https://github.com/mentaldesk/TuiCode/releases/download/v<versi
 ```
 
 Installing a newer package upgrades it in place, and `sudo apt remove tuicode` / `sudo dnf remove tuicode` uninstalls it.
+
+macOS via [Homebrew](https://brew.sh) (it works on Linux too):
+
+```bash
+brew install mentaldesk/tap/tuicode
+```
+
+Windows via [Scoop](https://scoop.sh):
+
+```powershell
+scoop bucket add mentaldesk https://github.com/mentaldesk/scoop-bucket
+scoop install tuicode
+```
+
+Pre-built single-file binaries for every supported RID are attached to each [GitHub Release](https://github.com/mentaldesk/TuiCode/releases). winget is tracked in [#75](https://github.com/mentaldesk/TuiCode/issues/75).
 
 ## Running
 
