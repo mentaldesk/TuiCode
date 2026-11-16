@@ -61,6 +61,9 @@ public sealed class LanguageServer : IDisposable
 
     public event EventHandler? StateChanged;
 
+    /// <summary>The server's problems for an open file, replacing any it reported before. Raised through <c>post</c>.</summary>
+    public event EventHandler<FileProblems>? ProblemsReported;
+
     public void Start()
     {
         var process = _launcher.Launch(Spec.Command, Spec.Arguments, Root);
@@ -136,6 +139,7 @@ public sealed class LanguageServer : IDisposable
                 },
                 ["textDocument"] = new JsonObject
                 {
+                    ["publishDiagnostics"] = new JsonObject(),
                     ["synchronization"] = new JsonObject { ["didSave"] = true },
                     ["definition"] = new JsonObject { ["linkSupport"] = true },
                     ["documentSymbol"] = new JsonObject { ["hierarchicalDocumentSymbolSupport"] = true },
@@ -160,6 +164,11 @@ public sealed class LanguageServer : IDisposable
 
     private void OnNotification(string method, JsonNode? parameters)
     {
+        if (method == "textDocument/publishDiagnostics")
+        {
+            Reported(LspDiagnostics.Parse(parameters));
+            return;
+        }
         if (method != "$/progress" || parameters?["token"] is not { } token) return;
         var kind = parameters["value"]?["kind"]?.GetValue<string>();
         lock (_gate)
@@ -169,6 +178,12 @@ public sealed class LanguageServer : IDisposable
             else return;
         }
         UpdateReadiness();
+    }
+
+    private void Reported(FileProblems? problems)
+    {
+        if (problems is null || !IsOpen(problems.Path)) return;
+        _post(() => ProblemsReported?.Invoke(this, problems));
     }
 
     // Decided and set under one lock, so a check that read the flags earlier can't overwrite a later one.

@@ -54,6 +54,7 @@ internal sealed partial class CodeEditor : TextEditor
     private Attribute _highlight;
     private Attribute _selected;
     private Attribute _cellAttribute;
+    private ProblemColours? _problemColours;
     private readonly TokenPalette _palette = new();
     private long _selectionStart;
     private long _selectionEnd;
@@ -94,6 +95,17 @@ internal sealed partial class CodeEditor : TextEditor
 
     /// <summary>Row → half-open [start, end) grapheme-column ranges to highlight.</summary>
     public Dictionary<int, List<(int Start, int End)>> Highlights { get; } = new();
+
+    /// <summary>The language server's problems by line, underlined as they're drawn.</summary>
+    public IReadOnlyDictionary<int, ProblemLine> Problems
+    {
+        get;
+        set
+        {
+            field = value;
+            SetNeedsDraw();
+        }
+    } = new Dictionary<int, ProblemLine>();
 
     /// <summary>The buffer's lines, terminators excluded. Updated in place by edits; an unchanged line keeps its string instance.</summary>
     public IReadOnlyList<string> LineStrings => _lines;
@@ -415,6 +427,7 @@ internal sealed partial class CodeEditor : TextEditor
         _editable = GetAttributeForRole(VisualRole.Editable);
         _highlight = GetAttributeForRole(VisualRole.Highlight);
         _selected = GetAttributeForRole(VisualRole.Active);
+        _problemColours = Problems.Count > 0 ? ProblemColours.For(Syntax?.Highlighter) : null;
         (_selectionStart, _selectionEnd) = SelectionBounds();
         PrepareCaretSelections();
         PrepareSyntax();
@@ -466,7 +479,9 @@ internal sealed partial class CodeEditor : TextEditor
         Move(0, row);
 
         var tokens = Syntax?.TokensFor(idxRow);
-        var chars = tokens is null ? 0 : CharsBefore(line, idxCol);
+        var problems = _problemColours is null ? null : Problems.GetValueOrDefault(idxRow);
+        var lineChars = problems is null ? 0 : _lines[idxRow].Length;
+        var chars = tokens is null && problems is null ? 0 : CharsBefore(line, idxCol);
         var token = 0;
         var attributeToken = -1;
         _cellAttribute = _editable;
@@ -475,27 +490,28 @@ internal sealed partial class CodeEditor : TextEditor
         {
             var text = line[idxCol];
             var cols = text.GetColumns(false);
+            var at = chars;
+            chars += text.Length;
 
             if (tokens is { Length: > 0 })
             {
-                while (token + 2 < tokens.Length && tokens[token + 2] <= chars)
+                while (token + 2 < tokens.Length && tokens[token + 2] <= at)
                     token += 2;
                 if (token != attributeToken)
                 {
                     _cellAttribute = _palette.Apply(_editable, tokens[token + 1]);
                     attributeToken = token;
                 }
-                chars += text.Length;
             }
 
-            if (_drawingPinned)
-                SetAttribute(_cellAttribute);
-            else if (InSelection(idxCol, idxRow))
-                SetAttribute(_selected);
-            else if (IsHighlighted(idxCol, idxRow))
-                SetAttribute(_highlight);
-            else
-                SetAttribute(BracketAttribute(idxCol, idxRow) ?? _cellAttribute);
+            var selected = !_drawingPinned && InSelection(idxCol, idxRow);
+            var attribute = _drawingPinned ? _cellAttribute
+                : selected ? _selected
+                : IsHighlighted(idxCol, idxRow) ? _highlight
+                : BracketAttribute(idxCol, idxRow) ?? _cellAttribute;
+            if (problems is not null && ProblemLines.At(problems, at, chars, lineChars) is { } severity)
+                attribute = selected ? attribute with { Style = attribute.Style | TextStyle.Underline } : _problemColours!.Underline(attribute, severity);
+            SetAttribute(attribute);
 
             if (text == "\t")
             {

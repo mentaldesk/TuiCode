@@ -322,6 +322,59 @@ public class QuickInfoHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task On_a_problem_it_shows_the_problem_then_a_rule_then_the_hover()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        IReadOnlyList<string> rows = [];
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => Ready(workbench),
+            () => _server.Publish(_fs.Path.GetFullPath("/work/Caller.cs"), Problem()),
+            () => Tab(workbench).Problems.Count == 1,
+            () => { Tab(workbench).MoveCursor(4, 26); Execute(host); },
+            () => Box(workbench) is not null,
+            () => { rows = Box(workbench)!.Rows; host.App.InjectKey(Key.Esc); },
+            () => Box(workbench) is null);
+
+        Assert.Equal(["✖ CS0117 'Diff' has no Hunks", "", "int Hunks() => 0;", "", "About Hunks."], rows);
+    }
+
+    [Fact]
+    public async Task On_a_problem_with_no_hover_it_still_shows_the_problem()
+    {
+        _server.Hover = (_, _) => null;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        IReadOnlyList<string> rows = [];
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => Ready(workbench),
+            () => _server.Publish(_fs.Path.GetFullPath("/work/Caller.cs"), Problem()),
+            () => Tab(workbench).Problems.Count == 1,
+            () => { Tab(workbench).MoveCursor(4, 26); Execute(host); },
+            () => Box(workbench) is not null,
+            () => { rows = Box(workbench)!.Rows; host.App.InjectKey(Key.Esc); },
+            () => Box(workbench) is null);
+
+        Assert.Equal(["✖ CS0117 'Diff' has no Hunks"], rows);
+    }
+
+    private static JsonObject Problem() => new()
+    {
+        ["range"] = new JsonObject
+        {
+            ["start"] = new JsonObject { ["line"] = 4, ["character"] = 25 },
+            ["end"] = new JsonObject { ["line"] = 4, ["character"] = 30 },
+        },
+        ["severity"] = 1,
+        ["code"] = "CS0117",
+        ["message"] = "'Diff' has no Hunks",
+    };
+
+    [Fact]
     public async Task A_file_without_a_server_says_there_is_none()
     {
         using var workbench = BuildWorkbench();

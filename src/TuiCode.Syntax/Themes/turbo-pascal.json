@@ -13,6 +13,9 @@
     "diffEditor.removedTextBackground": "#550000",
     "diffEditor.insertedTextBackground": "#005500",
     "editorCommentsWidget.rangeBackground": "#AA00AA",
-    "editorBracketMatch.background": "#555555"
+    "editorBracketMatch.background": "#555555",
+    "editorError.foreground": "#FF5555",
+    "editorWarning.foreground": "#FFAA55",
+    "editorInfo.foreground": "#55FFFF"
   }
 }

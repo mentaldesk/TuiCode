@@ -130,6 +130,11 @@ public sealed class LanguageServers : IDisposable
         var root = _root ?? tab.File.DirectoryName ?? tab.File.FullName;
         var server = new LanguageServer(spec, root, _launcher, _post) { QuietLoad = QuietLoad, StopTimeout = StopTimeout };
         server.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
+        server.ProblemsReported += (_, reported) =>
+        {
+            foreach (var (tab, synced) in _tabs)
+                if (synced.Server == server && synced.Path == reported.Path) tab.Problems = reported.Problems;
+        };
         _servers[spec.LanguageId] = server;
         server.Start();
         return server;
@@ -156,6 +161,7 @@ public sealed class LanguageServers : IDisposable
         tab.ContentChanged -= synced.Edited;
         tab.Saved -= synced.Saved;
         _changed.Remove(tab);
+        tab.Problems = [];
         synced.Server.Close(synced.Path);
     }
 

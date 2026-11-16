@@ -6,15 +6,18 @@ using TuiCode.Workbench.Languages;
 
 namespace TuiCode.Workbench.Navigation;
 
-/// <summary>A row of the box: prose, or row <see cref="Offset"/> chars into line <see cref="Line"/> of code block <see cref="Block"/>.</summary>
-public sealed record QuickInfoRow(string Text, int Block = -1, int Line = -1, int Offset = 0)
+/// <summary>
+/// A row of the box: prose, or row <see cref="Offset"/> chars into line <see cref="Line"/> of code block <see cref="Block"/>.
+/// A problem's first row starts with its <see cref="Mark"/>; a <see cref="Rule"/> separates the problems from the hover.
+/// </summary>
+public sealed record QuickInfoRow(string Text, int Block = -1, int Line = -1, int Offset = 0, ProblemSeverity? Mark = null, bool Rule = false)
 {
     public bool IsCode => Block >= 0;
 }
 
 public sealed record QuickInfoBlock(string Language, IReadOnlyList<string> Lines);
 
-/// <summary>Quick info's answer laid out for its box: the signature's code rows, then the doc comment wrapped.</summary>
+/// <summary>Quick info's answer laid out for its box: the problems at the caret, then the signature's code rows, then the doc comment wrapped.</summary>
 public sealed record QuickInfo(IReadOnlyList<QuickInfoRow> Rows, IReadOnlyList<QuickInfoBlock> Blocks)
 {
     public const int MaxHeight = 12;
@@ -29,16 +32,22 @@ public sealed record QuickInfo(IReadOnlyList<QuickInfoRow> Rows, IReadOnlyList<Q
 
     public int Width => Rows.Count == 0 ? 0 : Rows.Max(r => r.Text.GetColumns());
 
-    public static QuickInfo Lay(IReadOnlyList<HoverPart> parts, int maxWidth)
+    public static QuickInfo Lay(IReadOnlyList<HoverPart> parts, int maxWidth) => Lay([], parts, maxWidth);
+
+    public static QuickInfo Lay(IReadOnlyList<Problem> problems, IReadOnlyList<HoverPart> parts, int maxWidth)
     {
         maxWidth = Math.Max(maxWidth, 1);
         var code = parts.Where(p => p.IsCode).SelectMany(p => p.Text.Split('\n')).Select(l => Expand(l).GetColumns()).DefaultIfEmpty(0).Max();
         var proseWidth = Math.Min(maxWidth, Math.Max(code, ProseWidth));
         var rows = new List<QuickInfoRow>();
         var blocks = new List<QuickInfoBlock>();
+        foreach (var problem in problems) Hang(rows, problem, proseWidth);
+        if (problems.Count > 0 && parts.Count > 0) rows.Add(new QuickInfoRow("", Rule: true));
+        var first = true;
         foreach (var part in parts)
         {
-            if (rows.Count > 0) rows.Add(new QuickInfoRow(""));
+            if (!first) rows.Add(new QuickInfoRow(""));
+            first = false;
             if (part.IsCode)
             {
                 var lines = part.Text.Split('\n').Select(Expand).ToList();
@@ -90,6 +99,17 @@ public sealed record QuickInfo(IReadOnlyList<QuickInfoRow> Rows, IReadOnlyList<Q
             var end = row + 1 < starts.Length ? starts[row + 1] : graphemes.Count;
             rows.Add(new QuickInfoRow(string.Concat(graphemes.Skip(starts[row]).Take(end - starts[row])).TrimEnd()));
         }
+    }
+
+    private static void Hang(List<QuickInfoRow> rows, Problem problem, int width)
+    {
+        var indent = problem.Mark.GetColumns() + 1;
+        var from = rows.Count;
+        Wrap(rows, Expand(problem.Summary), Math.Max(width - indent, 1));
+        for (var row = from; row < rows.Count; row++)
+            rows[row] = row == from
+                ? rows[row] with { Text = problem.Mark + " " + rows[row].Text, Mark = problem.Severity }
+                : rows[row] with { Text = new string(' ', indent) + rows[row].Text };
     }
 
     private static void WrapCode(List<QuickInfoRow> rows, int block, int line, string text, int width)
