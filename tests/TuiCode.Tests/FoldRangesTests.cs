@@ -102,6 +102,14 @@ public class FoldRangesTests
     }
 
     [Fact]
+    public void A_shorter_fence_inside_a_markdown_code_block_doesnt_close_it()
+    {
+        string[] lines = ["## One", "````md", "```", "# not a heading", "````", "## Two", "x"];
+
+        Assert.Equal([0, 5], Find(Markdown, lines).Select(r => r.Start));
+    }
+
+    [Fact]
     public void Badly_indented_input_doesnt_throw()
     {
         string[] lines = ["    }", "{", "\t\tdeep", "  ", "}", ")", "#endregion", "#region", "end"];

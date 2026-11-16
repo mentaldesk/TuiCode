@@ -368,7 +368,8 @@ internal sealed partial class CodeEditor
         if (pieces.Length != carets.Length) pieces = [.. carets.Select(_ => text)];
         var ranks = Enumerable.Range(0, carets.Length).OrderBy(i => carets[i].Start.Y).ThenBy(i => carets[i].Start.X).ToArray();
         var url = Syntax?.Language.Id == "markdown" ? MarkdownLinkPaste.Url(text) : null;
-        var links = carets.Select(c => url is not null ? LinkText(c) : null).ToArray();
+        var code = url is not null ? MarkdownFences.CodeLines(_lines) : null;
+        var links = carets.Select(c => code is not null ? LinkText(c, code) : null).ToArray();
 
         AtEachCaret(i =>
         {
@@ -376,12 +377,12 @@ internal sealed partial class CodeEditor
             Document!.Insert(CaretOffset, links[i] is { } label ? $"[{label}]({url})" : pieces[Array.IndexOf(ranks, i)]);
         });
 
-        string? LinkText(Caret caret)
+        string? LinkText(Caret caret, bool[] code)
         {
-            if (caret.Anchor is null || caret.Start.Y != caret.End.Y) return null;
+            if (caret.Anchor is null || caret.Start.Y != caret.End.Y || code[caret.Start.Y]) return null;
             var line = LineText(caret.Start.Y);
             var (start, end) = (CharsBefore(line, caret.Start.X), CharsBefore(line, caret.End.X));
-            return MarkdownLinkPaste.CanWrap(_lines, caret.Start.Y, start, end) ? line[start..end] : null;
+            return MarkdownLinkPaste.CanWrap(line, start, end) ? line[start..end] : null;
         }
 
         static string[] Split(string text)

@@ -14,6 +14,7 @@ public class MarkdownLinkPasteUrlTests
     [InlineData("http://example.com", "http://example.com")]
     [InlineData("  https://example.com\n", "https://example.com")]
     [InlineData("HTTPS://example.com", "HTTPS://example.com")]
+    [InlineData("https://en.wikipedia.org/wiki/Fold_(higher-order_function)", "https://en.wikipedia.org/wiki/Fold_(higher-order_function)")]
     public void Url_takes_an_http_address_trimmed(string clipboard, string expected) =>
         Assert.Equal(expected, MarkdownLinkPaste.Url(clipboard));
 
@@ -28,6 +29,8 @@ public class MarkdownLinkPasteUrlTests
     [InlineData("ftp://example.com")]
     [InlineData(@"C:\Users\me\a.txt")]
     [InlineData("/usr/local/bin")]
+    [InlineData("https://example.com/a)")]
+    [InlineData("https://example.com/(a")]
     public void Url_refuses_anything_but_one_http_address(string clipboard) =>
         Assert.Null(MarkdownLinkPaste.Url(clipboard));
 }
@@ -101,7 +104,14 @@ public class MarkdownLinkPasteTests : StaticConfigurationTest
     [InlineData("see [the docs](https://old.example.com) now", 5, 8)]
     [InlineData("see [the docs](https://old.example.com) now", 15, 38)]
     [InlineData("see ![logo](logo.png) now", 6, 10)]
-    public void A_url_replaces_the_selection_when_it_is_a_url_or_in_code_or_a_link(string line, int start, int end)
+    [InlineData("see https://old.example.com now", 12, 15)]
+    [InlineData("see www.example.com now", 8, 15)]
+    [InlineData("see <https://old.example.com> now", 13, 16)]
+    [InlineData("see [the docs][ref] now", 5, 8)]
+    [InlineData("see [the docs][] now", 5, 8)]
+    [InlineData("a b] c", 2, 6)]
+    [InlineData("a [b c", 2, 6)]
+    public void A_url_replaces_the_selection_when_it_is_in_a_url_code_or_a_link_or_has_an_unbalanced_bracket(string line, int start, int end)
     {
         var view = View("markdown", line);
         view.SetCarets([Selecting(0, start, end)]);
@@ -148,6 +158,28 @@ public class MarkdownLinkPasteTests : StaticConfigurationTest
         Paste(view, Url);
 
         Assert.Equal(["````", "```", Url, "````", $"[docs]({Url})"], view.LineStrings);
+    }
+
+    [Fact]
+    public void A_url_with_an_unbalanced_parenthesis_replaces_the_selection()
+    {
+        var view = View("markdown", "the docs");
+        view.SetCarets([Selecting(0, 4, 8)]);
+
+        Paste(view, "https://example.com/a)");
+
+        Assert.Equal(["the https://example.com/a)"], view.LineStrings);
+    }
+
+    [Fact]
+    public void Selected_text_with_balanced_brackets_becomes_a_link()
+    {
+        var view = View("markdown", "see a [b] c");
+        view.SetCarets([Selecting(0, 4, 11)]);
+
+        Paste(view, Url);
+
+        Assert.Equal([$"see [a [b] c]({Url})"], view.LineStrings);
     }
 
     [Fact]
