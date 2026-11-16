@@ -1,11 +1,12 @@
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace TuiCode.Workbench.Languages;
 
 /// <summary>A place in a file: 0-based line, and the column in UTF-16 chars, as LSP counts them.</summary>
 public readonly record struct SourceLocation(string Path, int Line, int Character);
 
-public static class LspLocations
+public static partial class LspLocations
 {
     public static string ToUri(string path) => IsDecompiled(path) ? path : new Uri(path).AbsoluteUri;
 
@@ -13,8 +14,15 @@ public static class LspLocations
     public static bool IsDecompiled(string path) =>
         path.StartsWith("csharp:/", StringComparison.Ordinal) && path.Contains("/decompiled/", StringComparison.Ordinal);
 
+    /// <summary>Compares paths as the file system does: ignoring case on Windows, where servers lower-case the drive letter.</summary>
+    public static StringComparer PathComparer { get; } = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
     public static string? ToPath(string uri) =>
-        Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && parsed.IsFile ? parsed.LocalPath : null;
+        Uri.TryCreate(EscapedDrive().Replace(uri, "file:///$1:", 1), UriKind.Absolute, out var parsed) && parsed.IsFile ? parsed.LocalPath : null;
+
+    // vscode-uri, which TypeScript and Pyright use, escapes the drive's colon: file:///c%3A/...
+    [GeneratedRegex("^file:///([A-Za-z])%3[Aa]")]
+    private static partial Regex EscapedDrive();
 
     /// <summary>A definition result, whichever of its shapes: a Location, Locations, LocationLinks or null. Duplicates go.</summary>
     public static IReadOnlyList<SourceLocation> Parse(JsonNode? result)

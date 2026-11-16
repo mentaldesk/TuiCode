@@ -133,7 +133,7 @@ public sealed class LanguageServers : IDisposable
         server.ProblemsReported += (_, reported) =>
         {
             foreach (var (tab, synced) in _tabs)
-                if (synced.Server == server && synced.Path == reported.Path) tab.Problems = reported.Problems;
+                if (synced.Server == server && LspLocations.PathComparer.Equals(synced.Path, reported.Path)) tab.Problems = reported.Problems;
         };
         _servers[spec.LanguageId] = server;
         server.Start();

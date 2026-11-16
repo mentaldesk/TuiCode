@@ -29,9 +29,9 @@ public sealed class LanguageServer : IDisposable
     private readonly ILanguageServerLauncher _launcher;
     private readonly Action<Action> _post;
     private readonly Lock _gate = new();
-    private readonly Dictionary<string, Document> _documents = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Document> _documents = new(LspLocations.PathComparer);
     private readonly HashSet<string> _progress = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _aliases = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _aliases = new(LspLocations.PathComparer);
     private ILanguageServerProcess? _process;
     private JsonRpcConnection? _connection;
     private bool _initialized;

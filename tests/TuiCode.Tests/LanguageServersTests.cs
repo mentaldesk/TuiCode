@@ -255,6 +255,23 @@ public class LanguageServersTests
         await Until(() => widget.Problems.Count == 0);
     });
 
+    [Theory]
+    [InlineData(":")]
+    [InlineData("%3A")]
+    public Task Problems_reach_the_tab_when_the_server_lower_cases_the_drive_letter(string colon) => OneThread.Run(async () =>
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows paths have a drive letter.");
+        using var group = new EditorGroup(Syntax);
+        using var languages = Languages(group);
+        var widget = Open(group, "/work/Widget.cs");
+        await Until(() => _fake.Documents.ContainsKey(Full("/work/Widget.cs")));
+        var uri = LspLocations.ToUri(Full("/work/Widget.cs"));
+
+        _fake.PublishUri($"file:///{char.ToLowerInvariant(uri[8])}{colon}{uri[10..]}", LanguageServerTests.Error());
+
+        await Until(() => widget.Problems.Count == 1);
+    });
+
     private LanguageServers Languages(EditorGroup group) =>
         new(new EditorGroups(group, new EditorGroup()), _fake, action => action(), (_, action) => _scheduled.Add(action)) { QuietLoad = TimeSpan.FromMinutes(1), StopTimeout = Timeout };
 
