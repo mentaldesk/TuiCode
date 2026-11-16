@@ -51,7 +51,7 @@ internal static partial class MarkdownLinkPaste
         return false;
     }
 
-    [GeneratedRegex(@"^ {0,3}(`{3,}|~{3,})(.*)$")]
+    [GeneratedRegex(@"^\s*(?:>\s*)*(`{3,}|~{3,})(.*)$")]
     private static partial Regex Fence();
 
     [GeneratedRegex(@"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)")]

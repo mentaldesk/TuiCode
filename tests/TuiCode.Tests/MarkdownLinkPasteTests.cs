@@ -125,6 +125,20 @@ public class MarkdownLinkPasteTests : StaticConfigurationTest
         Assert.Equal(["intro", open, $"call {Url}", close, $"after [docs]({Url})"], view.LineStrings);
     }
 
+    [Theory]
+    [InlineData("1. Step", "    ```", "    call docs", "    ```")]
+    [InlineData("Quote", "> ```", "> call docs", "> ```")]
+    public void A_url_replaces_the_selection_inside_a_nested_fenced_code_block(string intro, string open, string code, string close)
+    {
+        var view = View("markdown", intro, open, code, close, "after docs");
+        var docs = code.IndexOf("docs", StringComparison.Ordinal);
+        view.SetCarets([Selecting(2, docs, docs + 4), Selecting(4, 6, 10)]);
+
+        Paste(view, Url);
+
+        Assert.Equal([intro, open, code[..docs] + Url, close, $"after [docs]({Url})"], view.LineStrings);
+    }
+
     [Fact]
     public void A_shorter_fence_inside_a_block_leaves_it_open()
     {
