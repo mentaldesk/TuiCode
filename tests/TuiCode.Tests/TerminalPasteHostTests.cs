@@ -4,6 +4,7 @@ using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using TuiCode.Editor;
 using TuiCode.Explorer;
+using TuiCode.Syntax;
 using TuiCode.Workbench;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
@@ -130,6 +131,30 @@ public class TerminalPasteHostTests : StaticConfigurationTest
         Assert.Equal(["a", "b", "c"], Tab(workbench).Lines);
     }
 
+    [Fact]
+    public async Task A_url_pasted_over_a_phrase_in_markdown_makes_it_a_link_as_ctrl_V_does()
+    {
+        const string url = "https://example.com";
+        using var workbench = Workbench();
+        using var host = Host(workbench);
+        string[] pasted = [];
+
+        await HostSteps.Run(host,
+            () => Open(workbench, "Read the docs.", "a.md", new Caret(new Point(13, 0), new Point(9, 0))),
+            () => Editing(host, workbench),
+            () => Paste(host, url),
+            () =>
+            {
+                pasted = [.. Tab(workbench).Lines];
+                host.App.InjectKey(Key.Z.WithCtrl);
+                host.App.Clipboard!.SetClipboardData(url);
+                host.App.InjectKey(Key.V.WithCtrl);
+            });
+
+        Assert.Equal([$"Read the [docs]({url})."], pasted);
+        Assert.Equal([$"Read the [docs]({url})."], Tab(workbench).Lines);
+    }
+
     private static bool InDialog(WorkbenchHost host)
     {
         for (var view = host.App.Navigation!.GetFocused(); view is not null; view = view.SuperView)
@@ -146,17 +171,20 @@ public class TerminalPasteHostTests : StaticConfigurationTest
 
     private static EditorTab Tab(Workbench.Workbench workbench) => workbench.Editor.Group.ActiveTab!;
 
-    private static void Open(Workbench.Workbench workbench, string content, params Caret[] carets)
+    private static void Open(Workbench.Workbench workbench, string content, params Caret[] carets) =>
+        Open(workbench, content, "a.txt", carets);
+
+    private static void Open(Workbench.Workbench workbench, string content, string name, params Caret[] carets)
     {
         var fs = new MockFileSystem();
-        fs.AddFile("/work/a.txt", new MockFileData(content));
-        workbench.OpenFile(fs.FileInfo.New("/work/a.txt"));
+        fs.AddFile($"/work/{name}", new MockFileData(content));
+        workbench.OpenFile(fs.FileInfo.New($"/work/{name}"));
         Tab(workbench).FocusContent();
         Tab(workbench).Code.SetCarets(carets);
     }
 
     private static Workbench.Workbench Workbench() =>
-        new(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());
+        new(new SidebarPart(new FileExplorerView()), new EditorPart(new SyntaxHighlighter(GrammarBundle.Load())), new StatusBarPart());
 
     private static WorkbenchHost Host(Workbench.Workbench workbench)
     {

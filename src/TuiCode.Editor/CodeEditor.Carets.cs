@@ -367,12 +367,22 @@ internal sealed partial class CodeEditor
         var pieces = text == _copiedText && _copiedPieces.Length == carets.Length ? _copiedPieces : Split(text);
         if (pieces.Length != carets.Length) pieces = [.. carets.Select(_ => text)];
         var ranks = Enumerable.Range(0, carets.Length).OrderBy(i => carets[i].Start.Y).ThenBy(i => carets[i].Start.X).ToArray();
+        var url = Syntax?.Language.Id == "markdown" ? MarkdownLinkPaste.Url(text) : null;
+        var links = carets.Select(c => url is not null ? LinkText(c) : null).ToArray();
 
         AtEachCaret(i =>
         {
             if (HasSelection) InvokeCommand(Command.DeleteCharLeft);
-            Document!.Insert(CaretOffset, pieces[Array.IndexOf(ranks, i)]);
+            Document!.Insert(CaretOffset, links[i] is { } label ? $"[{label}]({url})" : pieces[Array.IndexOf(ranks, i)]);
         });
+
+        string? LinkText(Caret caret)
+        {
+            if (caret.Anchor is null || caret.Start.Y != caret.End.Y) return null;
+            var line = LineText(caret.Start.Y);
+            var (start, end) = (CharsBefore(line, caret.Start.X), CharsBefore(line, caret.End.X));
+            return MarkdownLinkPaste.CanWrap(_lines, caret.Start.Y, start, end) ? line[start..end] : null;
+        }
 
         static string[] Split(string text)
         {
