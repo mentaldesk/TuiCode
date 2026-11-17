@@ -121,6 +121,7 @@ public class ConflictHostTests : StaticConfigurationTest
     public async Task Keeping_a_side_and_saving_leaves_the_file_unmerged()
     {
         using var repo = new TempRepo(init: true);
+        repo.Git("config", "core.autocrlf", "false");
         repo.Commit("a.cs", "one\n", "First");
         repo.Git("checkout", "-q", "-b", "feature");
         repo.Commit("a.cs", "mine\n", "Feature");
