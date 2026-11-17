@@ -165,22 +165,9 @@ public sealed class FoldRanges
     private static void AddSections(IReadOnlyList<string> lines, List<FoldRange> ranges)
     {
         List<(int Line, int Level)> headings = [];
-        string? fence = null;
+        var code = MarkdownFences.CodeLines(lines);
         for (var i = 0; i < lines.Count; i++)
-        {
-            var trimmed = lines[i].TrimStart();
-            if (fence is not null)
-            {
-                if (trimmed.StartsWith(fence, StringComparison.Ordinal)) fence = null;
-                continue;
-            }
-            if (trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal))
-            {
-                fence = trimmed[..3];
-                continue;
-            }
-            if (HeadingLevel(lines[i]) is { } level) headings.Add((i, level));
-        }
+            if (!code[i] && HeadingLevel(lines[i]) is { } level) headings.Add((i, level));
 
         for (var h = 0; h < headings.Count; h++)
         {
