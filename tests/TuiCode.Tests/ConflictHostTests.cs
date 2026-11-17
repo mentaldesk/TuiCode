@@ -117,11 +117,37 @@ public class ConflictHostTests : StaticConfigurationTest
         Assert.Equal(1, tab!.CursorRow);
     }
 
-    private Workbench.Workbench BuildWorkbench()
+    [Fact]
+    public async Task Keeping_a_side_and_saving_leaves_the_file_unmerged()
+    {
+        using var repo = new TempRepo(init: true);
+        repo.Commit("a.cs", "one\n", "First");
+        repo.Git("checkout", "-q", "-b", "feature");
+        repo.Commit("a.cs", "mine\n", "Feature");
+        repo.Git("checkout", "-q", "main");
+        repo.Commit("a.cs", "theirs\n", "Main");
+        repo.Git("checkout", "-q", "feature");
+        repo.TryGit("merge", "main");
+        var disk = new FileSystem();
+        using var workbench = BuildWorkbench(disk.DirectoryInfo.New(repo.Path));
+        using var host = BuildHost(workbench, out var commands, out _);
+        EditorTab? tab = null;
+
+        await HostSteps.Run(host,
+            () => { tab = workbench.Editor.Open(disk.FileInfo.New(repo.File("a.cs"))); tab.FocusContent(); tab.MoveCursor(1, 0); },
+            () => commands.TryExecute(CommandIds.KeepCurrentChange),
+            () => commands.TryExecute(CommandIds.SaveActiveEditor),
+            () => !tab!.IsDirty);
+
+        Assert.Equal("mine\n", File.ReadAllText(repo.File("a.cs")));
+        Assert.Equal("UU a.cs", repo.Git("status", "--porcelain=v1"));
+    }
+
+    private Workbench.Workbench BuildWorkbench(IDirectoryInfo? root = null)
     {
         var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()),
             new EditorPart(new SyntaxHighlighter(GrammarBundle.Load())), new StatusBarPart());
-        workbench.Sidebar.Explorer.Open(_fs.DirectoryInfo.New("/work"));
+        workbench.Sidebar.Explorer.Open(root ?? _fs.DirectoryInfo.New("/work"));
         return workbench;
     }
 
