@@ -27,8 +27,7 @@ internal sealed class TempRepo : IDisposable
     {
         Write(relative, content);
         Git("add", relative);
-        Git("-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false",
-            "commit", "-q", "-m", message);
+        Git("-c", "commit.gpgsign=false", "commit", "-q", "-m", message);
     }
 
     public string Git(params string[] arguments)
@@ -48,6 +47,9 @@ internal sealed class TempRepo : IDisposable
         info.ArgumentList.Add(Path);
         foreach (var argument in arguments)
             info.ArgumentList.Add(argument);
+        // A merge checks the committer before it starts, and CI runners have none configured.
+        info.Environment["GIT_AUTHOR_NAME"] = info.Environment["GIT_COMMITTER_NAME"] = "Test";
+        info.Environment["GIT_AUTHOR_EMAIL"] = info.Environment["GIT_COMMITTER_EMAIL"] = "test@example.com";
         using var process = Process.Start(info)!;
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEnd();
