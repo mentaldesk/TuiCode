@@ -217,6 +217,61 @@ public class LanguageServersTests
         Assert.Equal(["textDocument/didClose", "shutdown", "exit"], _fake.Methods.TakeLast(3));
     });
 
+    [Fact]
+    public Task Problems_reach_the_tab_and_closing_it_clears_them_until_the_server_reports_them_again() => OneThread.Run(async () =>
+    {
+        using var group = new EditorGroup(Syntax);
+        using var languages = Languages(group);
+        var widget = Open(group, "/work/Widget.cs");
+        await Until(() => _fake.Documents.ContainsKey(Full("/work/Widget.cs")));
+
+        _fake.Publish(Full("/work/Widget.cs"), LanguageServerTests.Error());
+        await Until(() => widget.Problems.Count == 1);
+        group.CloseEditor(widget);
+        var afterClose = widget.Problems;
+        await Until(() => !_fake.Documents.ContainsKey(Full("/work/Widget.cs")));
+        var reopened = Open(group, "/work/Widget.cs");
+        await Until(() => _fake.Documents.ContainsKey(Full("/work/Widget.cs")));
+        var beforeReport = reopened.Problems;
+        _fake.Publish(Full("/work/Widget.cs"), LanguageServerTests.Error());
+        await Until(() => reopened.Problems.Count == 1);
+
+        Assert.Empty(afterClose);
+        Assert.Empty(beforeReport);
+    });
+
+    [Fact]
+    public Task An_empty_report_clears_the_tabs_problems() => OneThread.Run(async () =>
+    {
+        using var group = new EditorGroup(Syntax);
+        using var languages = Languages(group);
+        var widget = Open(group, "/work/Widget.cs");
+        await Until(() => _fake.Documents.ContainsKey(Full("/work/Widget.cs")));
+        _fake.Publish(Full("/work/Widget.cs"), LanguageServerTests.Error());
+        await Until(() => widget.Problems.Count == 1);
+
+        _fake.Publish(Full("/work/Widget.cs"));
+
+        await Until(() => widget.Problems.Count == 0);
+    });
+
+    [Theory]
+    [InlineData(":")]
+    [InlineData("%3A")]
+    public Task Problems_reach_the_tab_when_the_server_lower_cases_the_drive_letter(string colon) => OneThread.Run(async () =>
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows paths have a drive letter.");
+        using var group = new EditorGroup(Syntax);
+        using var languages = Languages(group);
+        var widget = Open(group, "/work/Widget.cs");
+        await Until(() => _fake.Documents.ContainsKey(Full("/work/Widget.cs")));
+        var uri = LspLocations.ToUri(Full("/work/Widget.cs"));
+
+        _fake.PublishUri($"file:///{char.ToLowerInvariant(uri[8])}{colon}{uri[10..]}", LanguageServerTests.Error());
+
+        await Until(() => widget.Problems.Count == 1);
+    });
+
     private LanguageServers Languages(EditorGroup group) =>
         new(new EditorGroups(group, new EditorGroup()), _fake, action => action(), (_, action) => _scheduled.Add(action)) { QuietLoad = TimeSpan.FromMinutes(1), StopTimeout = Timeout };
 

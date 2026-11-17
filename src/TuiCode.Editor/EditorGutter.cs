@@ -80,6 +80,8 @@ internal sealed class EditorGutter : View
         var modified = ThemeColor("editorGutter.modifiedBackground") ?? DefaultModified;
         var deleted = ThemeColor("editorGutter.deletedBackground") ?? DefaultDeleted;
         _pinned = [.. _text.Pinned];
+        var problems = _text.Problems;
+        var problemColours = problems.Count > 0 ? ProblemColours.For(_syntax) : null;
 
         for (var row = 0; row < Viewport.Height; row++)
         {
@@ -101,7 +103,9 @@ internal sealed class EditorGutter : View
                 LineChange.Deleted => deleted,
                 _ => editable.Foreground,
             };
-            var number = change is LineChange.Added or LineChange.Modified ? background with { Foreground = marker }
+            var number = problemColours is not null && !continuation && problems.TryGetValue(line, out var problem)
+                ? background with { Foreground = problemColours.Of(problem.Worst) }
+                : change is LineChange.Added or LineChange.Modified ? background with { Foreground = marker }
                 : line == _text.CurrentRow ? background with { Foreground = activeLineNumber }
                 : lineNumber is { } color ? background with { Foreground = color }
                 : background with { Style = background.Style | TextStyle.Faint };

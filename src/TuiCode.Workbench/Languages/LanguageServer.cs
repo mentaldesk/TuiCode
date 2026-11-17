@@ -29,9 +29,9 @@ public sealed class LanguageServer : IDisposable
     private readonly ILanguageServerLauncher _launcher;
     private readonly Action<Action> _post;
     private readonly Lock _gate = new();
-    private readonly Dictionary<string, Document> _documents = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Document> _documents = new(LspLocations.PathComparer);
     private readonly HashSet<string> _progress = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _aliases = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _aliases = new(LspLocations.PathComparer);
     private ILanguageServerProcess? _process;
     private JsonRpcConnection? _connection;
     private bool _initialized;
@@ -60,6 +60,9 @@ public sealed class LanguageServer : IDisposable
     public TimeSpan StopTimeout { get; init; } = TimeSpan.FromSeconds(1);
 
     public event EventHandler? StateChanged;
+
+    /// <summary>The server's problems for an open file, replacing any it reported before. Raised through <c>post</c>.</summary>
+    public event EventHandler<FileProblems>? ProblemsReported;
 
     public void Start()
     {
@@ -136,6 +139,7 @@ public sealed class LanguageServer : IDisposable
                 },
                 ["textDocument"] = new JsonObject
                 {
+                    ["publishDiagnostics"] = new JsonObject(),
                     ["synchronization"] = new JsonObject { ["didSave"] = true },
                     ["definition"] = new JsonObject { ["linkSupport"] = true },
                     ["documentSymbol"] = new JsonObject { ["hierarchicalDocumentSymbolSupport"] = true },
@@ -160,6 +164,11 @@ public sealed class LanguageServer : IDisposable
 
     private void OnNotification(string method, JsonNode? parameters)
     {
+        if (method == "textDocument/publishDiagnostics")
+        {
+            Reported(LspDiagnostics.Parse(parameters));
+            return;
+        }
         if (method != "$/progress" || parameters?["token"] is not { } token) return;
         var kind = parameters["value"]?["kind"]?.GetValue<string>();
         lock (_gate)
@@ -169,6 +178,12 @@ public sealed class LanguageServer : IDisposable
             else return;
         }
         UpdateReadiness();
+    }
+
+    private void Reported(FileProblems? problems)
+    {
+        if (problems is null || !IsOpen(problems.Path)) return;
+        _post(() => ProblemsReported?.Invoke(this, problems));
     }
 
     // Decided and set under one lock, so a check that read the flags earlier can't overwrite a later one.

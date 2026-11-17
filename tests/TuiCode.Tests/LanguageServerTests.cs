@@ -217,6 +217,49 @@ public class LanguageServerTests
         Assert.Equal(LanguageServerState.Ready, server.State);
     }
 
+    [Fact]
+    public async Task Problems_for_an_open_file_are_reported_and_for_a_file_not_open_ignored()
+    {
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        var reported = new System.Collections.Concurrent.ConcurrentQueue<FileProblems>();
+        server.ProblemsReported += (_, problems) => reported.Enqueue(problems);
+        server.Open(Widget, "class Widget { nam }");
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        _fake.Publish(Path.GetFullPath("/work/Other.cs"), Error());
+        _fake.Publish(Widget, Error());
+        await Until(() => !reported.IsEmpty);
+
+        var only = Assert.Single(reported);
+        Assert.Equal(Widget, only.Path);
+        Assert.Equal(new TuiCode.Editor.Problem(0, 15, 0, 18, TuiCode.Editor.ProblemSeverity.Error, "CS0103", "nam"), only.Problems.Single());
+    }
+
+    [Fact]
+    public async Task It_tells_the_server_it_takes_problems()
+    {
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        Assert.NotNull(_fake.Received("initialize").Single()!["capabilities"]!["textDocument"]!["publishDiagnostics"]);
+    }
+
+    internal static System.Text.Json.Nodes.JsonObject Error() => new()
+    {
+        ["range"] = new System.Text.Json.Nodes.JsonObject
+        {
+            ["start"] = new System.Text.Json.Nodes.JsonObject { ["line"] = 0, ["character"] = 15 },
+            ["end"] = new System.Text.Json.Nodes.JsonObject { ["line"] = 0, ["character"] = 18 },
+        },
+        ["severity"] = 1,
+        ["code"] = "CS0103",
+        ["message"] = "nam",
+    };
+
     private LanguageServer Server(TimeSpan? quietLoad = null) =>
         new(LanguageServerSpec.CSharp, Root, _fake, action => action()) { QuietLoad = quietLoad ?? TimeSpan.FromMinutes(1), StopTimeout = Timeout };
 

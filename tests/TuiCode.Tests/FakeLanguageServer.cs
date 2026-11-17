@@ -114,6 +114,17 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 
     public void FinishLoading() => Progress(Current, "end");
 
+    /// <summary>The server reports <paramref name="diagnostics"/> for <paramref name="path"/>, replacing what it said before.</summary>
+    public void Publish(string path, params JsonObject[] diagnostics) => PublishUri(LspLocations.ToUri(path), diagnostics);
+
+    /// <summary>As <see cref="Publish"/>, naming the file by <paramref name="uri"/> spelt as the server spells it.</summary>
+    public void PublishUri(string uri, params JsonObject[] diagnostics) =>
+        Current.Connection.Notify("textDocument/publishDiagnostics", new JsonObject
+        {
+            ["uri"] = uri,
+            ["diagnostics"] = new JsonArray([.. diagnostics.Cast<JsonNode>()]),
+        });
+
     /// <summary>The server process dies.</summary>
     public void Crash() => Current.Exit();
 

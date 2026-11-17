@@ -1798,23 +1798,25 @@ public sealed class WorkbenchHost : IDisposable
         if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
         var status = _workbench.StatusBar;
         var (row, column) = (tab.CursorRow, tab.CursorColumn);
+        var problems = tab.ProblemsAtCursor();
         var request = ++_quickInfoRequest;
         server.HoverAsync(tab.File.FullName, row, tab.CursorCharacter).ContinueWith(answer => _app.Invoke(() =>
         {
             if (_disposed || request != _quickInfoRequest) return;
-            if (answer.Exception?.InnerException is { } error) status.ShowMessage($"Quick info failed: {error.Message}", Severity.Error);
-            else if (answer.Result is []) status.ShowMessage("Nothing to show here");
-            else if (_workbench.Editor.Group.ActiveTab == tab && (tab.CursorRow, tab.CursorColumn) == (row, column)) OpenQuickInfo(tab, answer.Result);
+            var hover = answer.IsCompletedSuccessfully ? answer.Result : [];
+            if (problems is [] && answer.Exception?.InnerException is { } error) status.ShowMessage($"Quick info failed: {error.Message}", Severity.Error);
+            else if (problems is [] && hover is []) status.ShowMessage("Nothing to show here");
+            else if (_workbench.Editor.Group.ActiveTab == tab && (tab.CursorRow, tab.CursorColumn) == (row, column)) OpenQuickInfo(tab, problems, hover);
         }), TaskScheduler.Default);
     }
 
-    private void OpenQuickInfo(EditorTab tab, IReadOnlyList<HoverPart> answer)
+    private void OpenQuickInfo(EditorTab tab, IReadOnlyList<Problem> problems, IReadOnlyList<HoverPart> answer)
     {
         CloseQuickInfo();
         if (_workbench.HasDialog || _menu.IsOpen || _focus.Region != FocusRegion.Editor || tab.CaretOnScreen is not { } caret
             || _scopes.Top is not { } below) return;
         var text = tab.TextOnScreen;
-        var info = QuickInfo.Lay(answer, text.Width - QuickInfo.Frame - 1);
+        var info = QuickInfo.Lay(problems, answer, text.Width - QuickInfo.Frame - 1);
         var view = new QuickInfoView(info, _workbench.Editor.Group.Syntax, tab.Grammar);
         var (width, height) = view.Wanted;
         var box = QuickInfo.Place(text, caret, width, height);

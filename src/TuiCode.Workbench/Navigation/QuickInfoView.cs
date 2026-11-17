@@ -1,5 +1,6 @@
 using Terminal.Gui.Text;
 using TuiCode.Abstractions;
+using TuiCode.Editor;
 using TuiCode.Syntax;
 using TuiCode.Workbench.Controls;
 using TuiCode.Workbench.Services;
@@ -13,6 +14,7 @@ public sealed class QuickInfoView : View
     private readonly QuickInfo _info;
     private readonly Func<string, SyntaxLanguage?> _language;
     private readonly CodeBlockColours _code;
+    private readonly ProblemColours _problems;
     private readonly ICommandService _scopeCommands;
     private readonly IKeybindingService _scopeKeybindings;
     private readonly Button _goTo;
@@ -29,6 +31,7 @@ public sealed class QuickInfoView : View
     {
         _info = info;
         _code = new CodeBlockColours(syntax);
+        _problems = ProblemColours.For(syntax);
         _language = fence => _code.ForFence(fence) ?? fileGrammar;
         Title = "Quick info";
         BorderStyle = LineStyle.Single;
@@ -121,10 +124,25 @@ public sealed class QuickInfoView : View
             AddStr(new string(' ', Viewport.Width));
             if (index >= _info.Rows.Count) continue;
             var line = _info.Rows[index];
+            if (line.Rule)
+            {
+                Move(1, row);
+                AddStr(new string('─', Math.Max(Viewport.Width - 2, 0)));
+                continue;
+            }
             if (!line.IsCode)
             {
                 Move(1, row);
-                AddStr(line.Text);
+                var text = line.Text;
+                if (line.Mark is { } severity)
+                {
+                    SetAttribute(normal with { Foreground = _problems.Of(severity) });
+                    var mark = text.EnumerateRunes().First().ToString();
+                    AddStr(mark);
+                    SetAttribute(normal);
+                    text = text[mark.Length..];
+                }
+                AddStr(text);
                 continue;
             }
             var block = _info.Blocks[line.Block];

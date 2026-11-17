@@ -669,6 +669,25 @@ public sealed class EditorTab : FrameView
         SetNeedsLayout();
     }
 
+    /// <summary>What the language server last said is wrong in the file, as it was then; empty clears it.</summary>
+    public IReadOnlyList<Problem> Problems
+    {
+        get;
+        set
+        {
+            field = value;
+            _text.Problems = ProblemLines.Of(value);
+            _gutter.SetNeedsDraw();
+        }
+    } = [];
+
+    /// <summary>The problems the caret is on, worst first.</summary>
+    public IReadOnlyList<Problem> ProblemsAtCursor()
+    {
+        var (row, character) = (CursorRow, CursorCharacter);
+        return [.. Problems.Where(p => p.Covers(row, character)).OrderBy(p => p.Severity)];
+    }
+
     /// <summary>Paint every match with the highlight colour (find-in-file). An empty set clears it.</summary>
     public void SetHighlights(IEnumerable<TextMatch> matches)
     {

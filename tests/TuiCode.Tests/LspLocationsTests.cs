@@ -69,4 +69,8 @@ public class LspLocationsTests
 
     private static JsonNode? Parse(string json) =>
         JsonNode.Parse(json.Replace("URI_A", LspLocations.ToUri(A)).Replace("URI_B", LspLocations.ToUri(B)));
+
+    [Fact]
+    public void An_escaped_drive_colon_names_the_same_file() =>
+        Assert.Equal(LspLocations.ToPath("file:///c:/work/A.ts"), LspLocations.ToPath("file:///c%3A/work/A.ts"));
 }
