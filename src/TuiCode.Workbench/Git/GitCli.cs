@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using TuiCode.Abstractions;
+using TuiCode.Editor;
 
 namespace TuiCode.Workbench.Git;
 
@@ -226,6 +227,40 @@ public sealed class GitCli(IFileSystem fileSystem, string executable = "git", Ti
         return run.Failure is null && run.ExitCode == 0
             ? GitResult<IReadOnlyDictionary<string, GitLineCount>>.Success(ParseLineCounts(run.Output))
             : GitResult<IReadOnlyDictionary<string, GitLineCount>>.Failure(ErrorMessage(run));
+    }
+
+    public async Task<GitResult<IReadOnlyDictionary<string, int>>> GetConflictsAsync(string repoRoot, CancellationToken cancellationToken = default)
+    {
+        var run = await RunAsync(repoRoot, ["status", "--porcelain=v1", "-z", "--untracked-files=no"], cancellationToken);
+        if (run.Failure is not null || run.ExitCode != 0)
+            return GitResult<IReadOnlyDictionary<string, int>>.Failure(ErrorMessage(run));
+
+        var conflicts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var path in ParseUnmerged(run.Output))
+        {
+            var file = fileSystem.Path.Combine(repoRoot, path);
+            conflicts[path] = fileSystem.File.Exists(file) ? MergeConflicts.Count(fileSystem.File.ReadAllText(file)) : 0;
+        }
+        return GitResult<IReadOnlyDictionary<string, int>>.Success(conflicts);
+    }
+
+    /// <summary>The unmerged paths in <c>status --porcelain=v1 -z</c>: <c>DD</c>, <c>AU</c>, <c>UD</c>, <c>UA</c>, <c>DU</c>, <c>AA</c> and <c>UU</c>.</summary>
+    internal static IReadOnlyList<string> ParseUnmerged(string output)
+    {
+        var fields = output.Split('\0');
+        var unmerged = new List<string>();
+        for (var i = 0; i < fields.Length; i++)
+        {
+            var entry = fields[i];
+            if (entry.Length < 4) continue;
+            var status = entry[..2];
+            if (status is "DD" or "AU" or "UD" or "UA" or "DU" or "AA" or "UU")
+                unmerged.Add(entry[3..]);
+            // A rename or copy is followed by its old path, in a field of its own.
+            else if (status[0] is 'R' or 'C')
+                i++;
+        }
+        return unmerged;
     }
 
     /// <summary>Diffs with untracked, not-ignored files added as intent-to-add to a throwaway copy of the index.</summary>

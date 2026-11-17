@@ -570,6 +570,46 @@ public sealed class EditorTab : FrameView
     /// <summary>Replaces <paramref name="count"/> lines from <paramref name="start"/> with <paramref name="lines"/>, as one undo step (#245).</summary>
     public void ReplaceLines(int start, int count, IReadOnlyList<string> lines) => _text.ReplaceLines(start, count, lines);
 
+    /// <summary>The file's merge conflicts, read from its markers (#693).</summary>
+    public IReadOnlyList<MergeConflict> Conflicts => _text.Conflicts;
+
+    public MergeConflict? ConflictAtCursor => _text.ConflictAt(CursorRow);
+
+    /// <summary>Replaces the conflict the cursor is in with what <paramref name="keep"/> keeps; false when it isn't in one.</summary>
+    public bool KeepConflict(ConflictKeep keep)
+    {
+        if (ConflictAtCursor is not { } conflict) return false;
+        _text.KeepConflict(conflict, keep);
+        return true;
+    }
+
+    /// <summary>Moves to the next (<paramref name="step"/> 1) or previous (-1) conflict's first line; false when there's none that way.</summary>
+    public bool MoveToConflict(int step)
+    {
+        var row = CursorRow;
+        var target = step > 0
+            ? Conflicts.FirstOrDefault(c => c.Start > row)
+            : Conflicts.LastOrDefault(c => c.Start < row);
+        if (target is null) return false;
+        MoveCursor(target.Start, 0);
+        RevealLines(target.Start, target.End);
+        return true;
+    }
+
+    /// <summary>What the status bar says about the conflicts (#693): <c>Conflict 2 of 3</c>, <c>3 conflicts</c>, or null with none.</summary>
+    public string? ConflictStatus
+    {
+        get
+        {
+            var conflicts = Conflicts;
+            if (conflicts.Count == 0) return null;
+            var row = CursorRow;
+            for (var i = 0; i < conflicts.Count; i++)
+                if (conflicts[i].Contains(row)) return $"Conflict {i + 1} of {conflicts.Count}";
+            return Plural.Count(conflicts.Count, "conflict");
+        }
+    }
+
     public bool HasSecondaryCursors => _text.HasSecondaryCarets;
 
     /// <summary>Whether the cursor is on a folded row (#477), so Toggle fold would unfold it.</summary>

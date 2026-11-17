@@ -55,6 +55,12 @@ public interface IGitCli
     /// <summary>The lines each file in <see cref="GetChangedFilesAsync"/> adds and removes, keyed by its (new) repo-relative path.</summary>
     Task<GitResult<IReadOnlyDictionary<string, GitLineCount>>> GetLineCountsAsync(string path, string revision, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The files a merge has left unmerged in the repo at <paramref name="repoRoot"/> (#693), by repo-relative path, each
+    /// with how many conflict blocks its working copy still has; empty when nothing is unmerged.
+    /// </summary>
+    Task<GitResult<IReadOnlyDictionary<string, int>>> GetConflictsAsync(string repoRoot, CancellationToken cancellationToken = default);
+
     /// <summary>The content of <paramref name="repoPath"/> (relative to <paramref name="repoRoot"/>) at <paramref name="revision"/>, or null when it isn't there.</summary>
     Task<GitResult<string?>> ShowRepoFileAsync(string repoRoot, string repoPath, string revision, CancellationToken cancellationToken = default);
 

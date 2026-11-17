@@ -9,6 +9,7 @@ public sealed class StatusBarPart : View
     private string? _help;
     private string? _grammar;
     private string? _diff;
+    private string? _conflicts;
     private string? _wrap;
     private string? _mode;
     private (int Row, int Column)? _cursor;
@@ -84,6 +85,16 @@ public sealed class StatusBarPart : View
         ShowState();
     }
 
+    /// <summary>Where the cursor is among the active file's merge conflicts (#693); null hides it.</summary>
+    public void SetConflictStatus(string? status)
+    {
+        if (status == _conflicts) return;
+        _conflicts = status;
+        ShowState();
+    }
+
+    internal string? DisplayedConflicts => _conflicts;
+
     /// <summary>The active file's grammar; null hides it.</summary>
     public void SetGrammar(string? grammar)
     {
@@ -150,7 +161,7 @@ public sealed class StatusBarPart : View
     public void SetChord(string? chord) => Bar.SetChord(chord);
 
     private IEnumerable<string> StateParts() =>
-        new[] { _grammar, _mode, _wrap, _diff, _position }.Where(part => !string.IsNullOrEmpty(part)).OfType<string>();
+        new[] { _conflicts, _grammar, _mode, _wrap, _diff, _position }.Where(part => !string.IsNullOrEmpty(part)).OfType<string>();
 
     private void ShowState() =>
         Bar.Hints.Show(StateParts().Append(_help).OfType<string>().Select(text => (text, (Action?)null)));

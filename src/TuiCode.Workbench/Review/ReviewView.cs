@@ -199,8 +199,8 @@ public sealed class ReviewView : View
         if (e.Cells is not { } cells || start < 0 || start >= cells.Count) return;
 
         var row = cells[start].Attribute ?? default;
-        var change = _icons?.ForChange(file.Change.Kind, _syntax?.EditorColors);
-        var mark = change ?? new FileIcon(file.Mark.ToString());
+        var change = file.Conflicted ? null : _icons?.ForChange(file.Change.Kind, _syntax?.EditorColors);
+        var mark = file.Conflicted ? ConflictMark() : change ?? new FileIcon(file.Mark.ToString());
         var icons = _icons?.ForFile(file.Name) is { } type ? [mark, type] : new[] { mark };
         var faint = file.Viewed || (change is not null && file.Change.Kind == GitChangeKind.Deleted);
         var name = faint ? Styled(row, TextStyle.Faint) : row;
@@ -223,7 +223,8 @@ public sealed class ReviewView : View
         }
 
         var counts = new List<Cell>();
-        foreach (var (text, color) in file.Counts)
+        if (file.ConflictsText is { } conflicts) counts.AddRange(CellsOf(conflicts, row));
+        else foreach (var (text, color) in file.Counts)
         {
             if (counts.Count > 0) counts.Add(Space(row));
             counts.AddRange(CellsOf(text, color is { } kind ? CountColor(kind, text, row) : Styled(row, TextStyle.Faint)));
@@ -240,7 +241,11 @@ public sealed class ReviewView : View
         cells.Clear();
         cells.AddRange([.. lead, .. CellsOf(label, name), .. tail, .. Enumerable.Repeat(Space(row), pad), .. counts]);
         foreach (var icon in icons.Reverse()) IconDrawing.Prepend(e, icon);
+        if (file.Conflicted && SchemeManager.TryGetScheme("Error", out var error) && e.IndexOfModelText is var at and >= 0 && at < cells.Count)
+            cells[at] = cells[at] with { Attribute = error.Normal };
     }
+
+    private FileIcon ConflictMark() => _icons?.ForConflict() ?? new FileIcon("⚠");
 
     private void DrawFolder(DrawTreeViewLineEventArgs<ReviewNode> e, ReviewFolderNode folder)
     {
@@ -476,7 +481,7 @@ public sealed class ReviewView : View
         {
             _headerText = review.Header;
             _totalsText = review.TotalsLine;
-            _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads, review.LineCounts, review.Viewed));
+            _files.AddObjects(ReviewTree.Build(review.Changes, review.Threads, review.LineCounts, review.Viewed, review.Conflicts));
             _files.ExpandAll();
             _files.SelectedObject = _selectWhenLoaded is { } restored
                 ? FindFile(restored) ?? InPlaceOf(restored)

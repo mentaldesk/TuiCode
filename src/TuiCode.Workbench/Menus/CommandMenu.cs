@@ -43,6 +43,8 @@ public sealed class CommandMenu
         [CommandIds.ToggleLineComment] = 't', [CommandIds.FindInFile] = 'f', [CommandIds.ReplaceInFile] = 'r',
         [CommandIds.ReplaceGlobally] = 'g', [CommandIds.ToggleMatchCase] = 's', [CommandIds.ToggleWholeWord] = 'w',
         [CommandIds.ToggleIgnoredFiles] = 'n', [CommandIds.ChangeGrammar] = 'c',
+        [CommandIds.KeepCurrentChange] = 'k', [CommandIds.KeepIncomingChange] = 'e', [CommandIds.KeepBothChanges] = 'b',
+        [CommandIds.NextMergeConflict] = 'x', [CommandIds.PreviousMergeConflict] = 'p',
 
         [CommandIds.AddCursorAbove] = 'a', [CommandIds.AddCursorBelow] = 'b', [CommandIds.RemoveSecondaryCursors] = 'r',
         [CommandIds.ClearSelection] = 'c', [CommandIds.ToggleColumnSelect] = 't', [CommandIds.SelectNextOccurrence] = 's',
@@ -89,6 +91,9 @@ public sealed class CommandMenu
         [
             CommandIds.MoveLinesUp, CommandIds.MoveLinesDown, CommandIds.DuplicateLinesUp, CommandIds.DuplicateLinesDown,
             CommandIds.IndentLines, CommandIds.OutdentLines, CommandIds.ToggleLineComment,
+            Separator,
+            CommandIds.KeepCurrentChange, CommandIds.KeepIncomingChange, CommandIds.KeepBothChanges,
+            CommandIds.NextMergeConflict, CommandIds.PreviousMergeConflict,
             Separator,
             CommandIds.FindInFile, CommandIds.ReplaceInFile, CommandIds.ReplaceGlobally,
             CommandIds.ToggleMatchCase, CommandIds.ToggleWholeWord, CommandIds.ToggleIgnoredFiles,

@@ -130,6 +130,44 @@ public class GitCliTests
     }
 
     [Fact]
+    public void ParseUnmerged_reads_every_unmerged_status_and_nothing_else()
+    {
+        var output = "UU both.cs\0AA added both.cs\0DU we deleted.cs\0UD they deleted.cs\0AU au.cs\0UA ua.cs\0DD dd.cs\0"
+            + "M  staged.cs\0 M unstaged.cs\0R  new.cs\0UU old.cs\0A  added.cs\0";
+
+        Assert.Equal(
+            ["both.cs", "added both.cs", "we deleted.cs", "they deleted.cs", "au.cs", "ua.cs", "dd.cs"],
+            GitCli.ParseUnmerged(output));
+    }
+
+    [Fact]
+    public async Task A_merge_s_unmerged_files_are_listed_with_how_many_conflicts_each_still_has()
+    {
+        const string middle = "2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n";
+        using var repo = new TempRepo(init: true);
+        repo.Commit("src/a.cs", "1\n" + middle + "12\n", "First");
+        repo.Commit("clean.cs", "same\n", "Clean");
+        repo.Git("checkout", "-q", "-b", "feature");
+        repo.Commit("src/a.cs", "one\n" + middle + "twelve\n", "Feature");
+        repo.Git("checkout", "-q", "main");
+        repo.Commit("src/a.cs", "uno\n" + middle + "doce\n", "Main");
+        repo.Commit("clean.cs", "changed\n", "Main clean");
+        repo.Git("checkout", "-q", "feature");
+        repo.TryGit("merge", "main");
+        var git = new GitCli(new FileSystem());
+
+        var conflicts = await git.GetConflictsAsync(repo.Path, TestContext.Current.CancellationToken);
+
+        Assert.Equal(new Dictionary<string, int> { ["src/a.cs"] = 2 }, conflicts.Value);
+
+        repo.Write("src/a.cs", "one\n" + middle + "doce\n");
+        repo.Git("add", "src/a.cs");
+        var concluded = await git.GetConflictsAsync(repo.Path, TestContext.Current.CancellationToken);
+
+        Assert.Empty(concluded.Value);
+    }
+
+    [Fact]
     public async Task A_repo_s_worktrees_are_listed_main_first_with_their_branch_or_detached_head()
     {
         using var repo = new TempRepo(init: true);

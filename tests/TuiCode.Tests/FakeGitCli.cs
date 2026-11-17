@@ -121,6 +121,11 @@ internal sealed class FakeGitCli : IGitCli
             ? GitResult<IReadOnlyDictionary<string, GitLineCount>>.Failure(error)
             : GitResult<IReadOnlyDictionary<string, GitLineCount>>.Success(LineCountsByRevision.GetValueOrDefault(revision) ?? LineCounts));
 
+    public Dictionary<string, int> Conflicts { get; } = new(StringComparer.Ordinal);
+
+    public Task<GitResult<IReadOnlyDictionary<string, int>>> GetConflictsAsync(string repoRoot, CancellationToken cancellationToken = default) =>
+        Task.FromResult(GitResult<IReadOnlyDictionary<string, int>>.Success(new Dictionary<string, int>(Conflicts, StringComparer.Ordinal)));
+
     /// <summary>Worktree paths the fake has been asked to add, in order; a path already there isn't re-created.</summary>
     public List<string> Worktrees { get; } = [];
 

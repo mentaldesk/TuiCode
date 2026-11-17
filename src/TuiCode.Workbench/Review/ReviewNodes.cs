@@ -19,9 +19,17 @@ public sealed class ReviewFolderNode(string path, bool viewed = false) : ReviewN
 
 public sealed class ReviewFileNode(
     GitChange change, IReadOnlyList<GitHubReviewThread>? threads = null, GitLineCount? lines = null,
-    GitHubViewedState viewed = GitHubViewedState.Unviewed) : ReviewNode
+    GitHubViewedState viewed = GitHubViewedState.Unviewed, int? conflicts = null) : ReviewNode
 {
     public GitChange Change { get; } = change;
+
+    /// <summary>How many conflict blocks the file still has while a merge leaves it unmerged (#693); null when it isn't.</summary>
+    public int? Conflicts { get; } = conflicts;
+
+    public bool Conflicted => Conflicts is not null;
+
+    /// <summary>What an unmerged file shows in place of its line counts, e.g. <c>2 conflicts</c>.</summary>
+    public string? ConflictsText => Conflicts is { } count ? Plural.Count(count, "conflict") : null;
 
     /// <summary>Whether the user has marked the file viewed on the PR (#396).</summary>
     public bool Viewed => viewed == GitHubViewedState.Viewed;
@@ -64,7 +72,7 @@ public sealed class ReviewFileNode(
 
     public string Name => Change.Path[(Change.Path.LastIndexOf('/') + 1)..];
 
-    public char Mark => Change.Kind switch
+    public char Mark => Conflicted ? '⚠' : Change.Kind switch
     {
         GitChangeKind.Added => 'A',
         GitChangeKind.Deleted => 'D',
@@ -147,7 +155,8 @@ internal static class ReviewTree
         IReadOnlyList<GitChange> changes,
         IReadOnlyList<GitHubReviewThread>? threads = null,
         IReadOnlyDictionary<string, GitLineCount>? lineCounts = null,
-        IReadOnlyDictionary<string, GitHubViewedState>? viewed = null)
+        IReadOnlyDictionary<string, GitHubViewedState>? viewed = null,
+        IReadOnlyDictionary<string, int>? conflicts = null)
     {
         var byPath = (threads ?? [])
             .GroupBy(t => t.Path, StringComparer.Ordinal)
@@ -156,7 +165,8 @@ internal static class ReviewTree
         {
             var on = byPath.GetValueOrDefault(c.Path) ?? [];
             var file = new ReviewFileNode(c, on, lineCounts?.TryGetValue(c.Path, out var lines) == true ? lines : null,
-                viewed?.GetValueOrDefault(c.Path) ?? GitHubViewedState.Unviewed);
+                viewed?.GetValueOrDefault(c.Path) ?? GitHubViewedState.Unviewed,
+                conflicts?.TryGetValue(c.Path, out var count) == true ? count : null);
             if (on.Where(t => t.Outdated).ToList() is { Count: > 0 } outdated)
                 file.Children.Add(new ReviewOutdatedNode(c, outdated));
             return file;
@@ -168,9 +178,13 @@ internal static class ReviewTree
             .Select(g =>
             {
                 var folder = new ReviewFolderNode(g.Key, files.Where(f => f.Change.Path.StartsWith($"{g.Key}/", StringComparison.Ordinal)).All(f => f.Viewed));
-                folder.Children.AddRange(g.OrderBy(f => f.Name, StringComparer.Ordinal));
+                folder.Children.AddRange(InOrder(g));
                 return (ReviewNode)folder;
             });
-        return [.. folders, .. files.Where(f => !f.Change.Path.Contains('/')).OrderBy(f => f.Name, StringComparer.Ordinal)];
+        return [.. folders, .. InOrder(files.Where(f => !f.Change.Path.Contains('/')))];
     }
+
+    // Unmerged files first (#693), then by name.
+    private static IEnumerable<ReviewFileNode> InOrder(IEnumerable<ReviewFileNode> files) =>
+        files.OrderBy(f => !f.Conflicted).ThenBy(f => f.Name, StringComparer.Ordinal);
 }

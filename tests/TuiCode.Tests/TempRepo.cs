@@ -33,6 +33,16 @@ internal sealed class TempRepo : IDisposable
 
     public string Git(params string[] arguments)
     {
+        var (exitCode, output, error) = Run(arguments);
+        Assert.True(exitCode == 0, error);
+        return output;
+    }
+
+    /// <summary>Runs git where a non-zero exit is expected, such as a merge that stops on conflicts.</summary>
+    public int TryGit(params string[] arguments) => Run(arguments).ExitCode;
+
+    private (int ExitCode, string Output, string Error) Run(string[] arguments)
+    {
         var info = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true };
         info.ArgumentList.Add("-C");
         info.ArgumentList.Add(Path);
@@ -42,8 +52,7 @@ internal sealed class TempRepo : IDisposable
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEnd();
         process.WaitForExit();
-        Assert.True(process.ExitCode == 0, error);
-        return output.Result.Trim();
+        return (process.ExitCode, output.Result.Trim(), error);
     }
 
     public void Dispose()

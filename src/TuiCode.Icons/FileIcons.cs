@@ -22,6 +22,9 @@ public sealed class FileIcons
     private static readonly FileIcon NerdThreadsSettled = new("\U000F1414");
     private static readonly FileIcon EmojiThreadsOpen = new("💬");
     private static readonly FileIcon EmojiThreadsSettled = new("💭");
+    // nf-cod-warning.
+    private static readonly FileIcon NerdConflict = new("\uea6c");
+    private static readonly FileIcon PlainConflict = new("⚠");
     // nf-cod-check.
     private static readonly FileIcon NerdViewed = new("\ueab2");
 
@@ -87,6 +90,9 @@ public sealed class FileIcons
 
     /// <summary>The mark on a file viewed in a PR's review (#396); null where a plain check mark stands in for it.</summary>
     public FileIcon? ForViewed() => Style == FileIconStyle.NerdFont ? NerdViewed : null;
+
+    /// <summary>The mark on a file a merge has left unmerged (#693), in place of its change mark; the caller colours it.</summary>
+    public FileIcon ForConflict() => Style == FileIconStyle.NerdFont ? NerdConflict : PlainConflict;
 
     /// <summary>
     /// What a branch did to a file (#320), coloured from <paramref name="themeColors"/> where the theme sets its
