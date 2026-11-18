@@ -78,14 +78,18 @@ public sealed record BranchReview(
         }
     }
 
-    /// <summary>The size of the change, e.g. <c>5 files  +214 −38</c> (#394); just the file count until the lines are counted.</summary>
+    /// <summary>The size of the change, e.g. <c>5 files  +214 −38</c> (#394), leaving out unmerged files' lines; just the file count until the lines are counted.</summary>
     public string TotalsLine
     {
         get
         {
             if (Changes.Count == 0) return string.Empty;
             var files = $"{Changes.Count} {Plural.Of(Changes.Count, "file")}";
-            if (LineCounts.Count > 0) files = $"{files}  +{LineCounts.Values.Sum(c => c.Added)} −{LineCounts.Values.Sum(c => c.Deleted)}";
+            if (LineCounts.Count > 0)
+            {
+                var counted = LineCounts.Where(c => !Conflicts.ContainsKey(c.Key)).Select(c => c.Value).ToList();
+                files = $"{files}  +{counted.Sum(c => c.Added)} −{counted.Sum(c => c.Deleted)}";
+            }
             return ConflictedCount is var conflicted and > 0 ? $"{files}  {conflicted} conflicted" : files;
         }
     }

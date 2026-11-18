@@ -593,7 +593,7 @@ public class ReviewViewTests
         Assert.Equal("3 conflicts", File(view, "Startup.cs").ConflictsText);
         Assert.Equal("1 conflict", File(view, "ProbeTests.cs").ConflictsText);
         Assert.Null(File(view, "Program.cs").ConflictsText);
-        Assert.Equal("4 files  +103 −9  2 conflicted", view.TotalsText);
+        Assert.Equal("4 files  +15 −3  2 conflicted", view.TotalsText);
     }
 
     [Fact]
