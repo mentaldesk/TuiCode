@@ -2062,14 +2062,14 @@ public sealed class WorkbenchHost : IDisposable
         ShowSidebarTab(SidebarTab.Usages);
         if (result.Skipped.Count > 0)
             _workbench.StatusBar.ShowMessage(
-                $"Renamed {oldName} to {newName}, except in {string.Join(", ", result.Skipped.Select(Path.GetFileName))}, which changed while renaming",
+                $"Renamed {oldName} to {newName}, but left {string.Join(", ", result.Skipped.Select(Path.GetFileName))} unchanged",
                 Severity.Error);
         else
             _workbench.StatusBar.ShowMessage($"Renamed {oldName} to {newName}");
     }
 
     private IReadOnlyList<string> LinesOf(IFileSystem fileSystem, string path) =>
-        _workbench.Editor.Group.Tabs.FirstOrDefault(t => t.File.FullName == path) is { } open
+        _workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path) is { } open
             ? open.Lines
             : [.. fileSystem.File.ReadLines(path)];
 

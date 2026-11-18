@@ -25,6 +25,7 @@ public class RenameSymbolHostTests : StaticConfigurationTest
 
     private readonly MockFileSystem _fs = new();
     private readonly FakeLanguageServer _server = new();
+    private readonly CommandService _commands = new();
 
     public RenameSymbolHostTests()
     {
@@ -153,6 +154,52 @@ public class RenameSymbolHostTests : StaticConfigurationTest
         Assert.Equal(("Report.cs", 4, 13), jumped);
         Assert.Contains(_server.Received("workspace/didChangeWatchedFiles"),
             p => p!["changes"]![0]!["uri"]!.GetValue<string>() == TuiCode.Workbench.Languages.LspLocations.ToUri(_fs.Path.GetFullPath("/work/Report.cs")));
+    }
+
+    [Fact]
+    public async Task With_the_editor_split_Usages_shows_the_renamed_lines_of_a_tab_in_the_other_group()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var pane = workbench.Sidebar.Usages;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, "Report.cs"),
+            () => OpenFile(workbench, "Diff.cs"),
+            () => _commands.TryExecute(CommandIds.MoveToOtherGroup),
+            () => workbench.Editor.Groups.IsSplit && Ready(workbench),
+            () => { Tab(workbench, "Diff.cs").MoveCursor(2, 10); Rs(host); },
+            () => Dialog(workbench) is not null,
+            () => Submit(host, workbench, "Count"),
+            () => pane.Files.Count > 0);
+
+        Assert.DoesNotContain(Tab(workbench, "Report.cs"), workbench.Editor.Group.Tabs);
+        Assert.Equal(["3  int Count() => 0;", "5  int Twice() => Count() * 2;", "5  Diff.Count();"],
+            pane.Files.SelectMany(f => f.Children).Select(u => u.ToString()));
+    }
+
+    [Fact]
+    public async Task A_file_the_rename_cant_write_is_named_in_the_status_bar_as_left_unchanged()
+    {
+        const string latin1 = "// caf\u00e9\r\n" + Report;
+        _fs.AddFile("/work/Report.cs", new MockFileData(System.Text.Encoding.Latin1.GetBytes(latin1)));
+        _server.Files[_fs.Path.GetFullPath("/work/Report.cs")] = latin1;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, "Diff.cs"),
+            () => Ready(workbench),
+            () => { Tab(workbench, "Diff.cs").MoveCursor(2, 10); Rs(host); },
+            () => Dialog(workbench) is not null,
+            () => Submit(host, workbench, "Count"),
+            () => ConfirmDialogs.Of(workbench) is not null,
+            ConfirmDialogs.Choose(host, workbench, "Rename"),
+            () => workbench.StatusBar.Message.StartsWith("Renamed", StringComparison.Ordinal));
+
+        Assert.Equal("Renamed Hunks to Count, but left Report.cs unchanged", workbench.StatusBar.Message);
+        Assert.Equal(Renamed, Tab(workbench, "Diff.cs").Lines);
+        Assert.Equal(System.Text.Encoding.Latin1.GetBytes(latin1), _fs.File.ReadAllBytes("/work/Report.cs"));
     }
 
     [Fact]
@@ -376,8 +423,7 @@ public class RenameSymbolHostTests : StaticConfigurationTest
 
     private WorkbenchHost BuildHost(Workbench.Workbench workbench)
     {
-        var commands = new CommandService();
-        var host = new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
+        var host = new WorkbenchHost(workbench, _commands, new KeybindingService(_commands), new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, languageServers: _server);
         HostSteps.PinScreenSize(host, 100, 30);
         return host;
