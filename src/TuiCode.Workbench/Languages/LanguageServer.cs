@@ -37,6 +37,7 @@ public sealed class LanguageServer : IDisposable
     private bool _initialized;
     private bool _loaded;
     private bool _stopping;
+    private JsonNode? _renameProvider;
 
     public LanguageServer(LanguageServerSpec spec, string root, ILanguageServerLauncher launcher, Action<Action> post)
     {
@@ -91,7 +92,8 @@ public sealed class LanguageServer : IDisposable
     {
         try
         {
-            await connection.RequestAsync("initialize", InitializeParams()).ConfigureAwait(false);
+            var answer = await connection.RequestAsync("initialize", InitializeParams()).ConfigureAwait(false);
+            lock (_gate) _renameProvider = answer?["capabilities"]?["renameProvider"]?.DeepClone();
         }
         catch (Exception e) when (e is JsonRpcException or IOException)
         {
@@ -131,6 +133,7 @@ public sealed class LanguageServer : IDisposable
                 ["workspace"] = new JsonObject
                 {
                     ["workspaceFolders"] = true,
+                    ["workspaceEdit"] = new JsonObject { ["documentChanges"] = true },
                     ["configuration"] = true,
                     ["symbol"] = new JsonObject
                     {
@@ -144,6 +147,7 @@ public sealed class LanguageServer : IDisposable
                     ["definition"] = new JsonObject { ["linkSupport"] = true },
                     ["documentSymbol"] = new JsonObject { ["hierarchicalDocumentSymbolSupport"] = true },
                     ["hover"] = new JsonObject { ["contentFormat"] = new JsonArray("markdown", "plaintext") },
+                    ["rename"] = new JsonObject { ["prepareSupport"] = true },
                 },
                 ["experimental"] = new JsonObject { ["csharp"] = new JsonObject { ["metadataUris"] = true } },
             },
@@ -309,6 +313,44 @@ public sealed class LanguageServer : IDisposable
             ["textDocument"] = new JsonObject { ["uri"] = UriOf(location.Path) },
         }).ConfigureAwait(false);
         return LspSymbols.QualifiedName(symbols, location.Line, location.Character);
+    }
+
+    /// <summary>Whether the server said it can rename.</summary>
+    public bool CanRename
+    {
+        get { lock (_gate) return _renameProvider is JsonObject || _renameProvider?.GetValueKind() == System.Text.Json.JsonValueKind.True; }
+    }
+
+    private bool CanPrepareRename
+    {
+        get { lock (_gate) return (_renameProvider as JsonObject)?["prepareProvider"]?.GetValueKind() == System.Text.Json.JsonValueKind.True; }
+    }
+
+    /// <summary>What can be renamed at <paramref name="line"/> and UTF-16 <paramref name="character"/>: the default when the server doesn't say, null when it says nothing can.</summary>
+    public async Task<RenameTarget?> PrepareRenameAsync(string path, int line, int character) =>
+        CanPrepareRename
+            ? LspRename.ParsePrepare(await RequestAsync("textDocument/prepareRename", Position(path, line, character)).ConfigureAwait(false))
+            : new RenameTarget(null, null);
+
+    /// <summary>The edits that rename the symbol at <paramref name="line"/> and UTF-16 <paramref name="character"/> to <paramref name="newName"/>.</summary>
+    public async Task<IReadOnlyList<FileEdit>> RenameAsync(string path, int line, int character, string newName)
+    {
+        var parameters = Position(path, line, character);
+        parameters["newName"] = newName;
+        return LspRename.ParseWorkspaceEdit(await RequestAsync("textDocument/rename", parameters).ConfigureAwait(false));
+    }
+
+    /// <summary>Tells the server that files it doesn't have open changed on disk.</summary>
+    public void FilesChanged(IEnumerable<string> paths)
+    {
+        lock (_gate)
+        {
+            if (!_initialized) return;
+            _connection?.Notify("workspace/didChangeWatchedFiles", new JsonObject
+            {
+                ["changes"] = new JsonArray([.. paths.Select(p => (JsonNode)new JsonObject { ["uri"] = LspLocations.ToUri(p), ["type"] = 2 })]),
+            });
+        }
     }
 
     /// <summary>The types in the folder whose names match <paramref name="query"/>, as the server matches them.</summary>

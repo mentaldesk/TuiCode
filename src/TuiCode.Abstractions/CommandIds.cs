@@ -99,6 +99,7 @@ public static class CommandIds
     public const string QuickInfoPageUp = "quickInfo.action.pageUp";
     public const string QuickInfoPageDown = "quickInfo.action.pageDown";
     public const string FindUsages = "workbench.action.findUsages";
+    public const string RenameSymbol = "workbench.action.renameSymbol";
     public const string AiAssistance = "workbench.action.aiAssistance";
     public const string FocusAssistant = "workbench.action.focusAssistant";
     public const string AssistantSend = "assistant.action.send";

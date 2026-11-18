@@ -53,6 +53,21 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
     /// <summary>Answers workspace/symbol with an error.</summary>
     public bool FailWorkspaceSymbol { get; set; }
 
+    /// <summary>The <c>renameProvider</c> capability it answers initialize with; null leaves it out.</summary>
+    public JsonNode? RenameProvider { get; set; } = new JsonObject { ["prepareProvider"] = true };
+
+    /// <summary>Answers rename with <c>documentChanges</c>, a file creation among them, rather than <c>changes</c>.</summary>
+    public bool RenamesAsDocumentChanges { get; set; }
+
+    /// <summary>Answers prepareRename with this error.</summary>
+    public string? PrepareRenameError { get; set; }
+
+    /// <summary>Answers rename with this error.</summary>
+    public string? RenameError { get; set; }
+
+    /// <summary>Runs as rename is answered, after the edits are worked out.</summary>
+    public Action? Renaming { get; set; }
+
     /// <summary>Every workspace/symbol query asked, in order.</summary>
     public ConcurrentQueue<string> SymbolQueries { get; } = new();
 
@@ -146,7 +161,11 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
         return method switch
         {
             "initialize" when InitializeError is { } error => throw new JsonRpcException(-32603, error),
-            "initialize" => new JsonObject { ["capabilities"] = new JsonObject { ["definitionProvider"] = true } },
+            "initialize" => new JsonObject { ["capabilities"] = Capabilities() },
+            "textDocument/prepareRename" when PrepareRenameError is { } error => throw new JsonRpcException(-32603, error),
+            "textDocument/prepareRename" => PrepareRename(parameters!),
+            "textDocument/rename" when RenameError is { } error => throw new JsonRpcException(-32603, error),
+            "textDocument/rename" => Rename(parameters!),
             "textDocument/definition" => Definitions(parameters!),
             "textDocument/references" => References(parameters!),
             "textDocument/documentSymbol" => Symbols(parameters!),
@@ -154,6 +173,66 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             "csharp/metadata" => Metadata(parameters!),
             _ => null,
         };
+    }
+
+    private JsonObject Capabilities()
+    {
+        var capabilities = new JsonObject { ["definitionProvider"] = true };
+        if (RenameProvider is { } rename) capabilities["renameProvider"] = rename.DeepClone();
+        return capabilities;
+    }
+
+    private JsonObject? PrepareRename(JsonNode parameters)
+    {
+        if (WordAt(parameters) is not { } word) return null;
+        var line = parameters["position"]!["line"]!.GetValue<int>();
+        var character = parameters["position"]!["character"]!.GetValue<int>();
+        var text = Lines(Sources()[Path(parameters["textDocument"]!)])[line];
+        var match = WordPattern().Matches(text).First(m => m.Index <= character && character <= m.Index + m.Length);
+        return new JsonObject { ["range"] = Range(line, match.Index, line, match.Index + word.Length), ["placeholder"] = word };
+    }
+
+    // Every whole-word use outside comments and strings, in every file it knows.
+    private JsonObject? Rename(JsonNode parameters)
+    {
+        if (WordAt(parameters) is not { } word) return null;
+        var newName = parameters["newName"]!.GetValue<string>();
+        var byFile = new List<(string File, JsonArray Edits)>();
+        foreach (var (file, text) in Sources().Where(s => !LspLocations.IsDecompiled(s.Key)).OrderBy(s => s.Key, StringComparer.Ordinal))
+        {
+            var edits = new JsonArray();
+            var fileLines = Lines(text);
+            for (var row = 0; row < fileLines.Length; row++)
+            {
+                var code = CodeOnly(fileLines[row]);
+                foreach (Match match in Regex.Matches(code, $@"\b{Regex.Escape(word)}\b"))
+                    edits.Add(new JsonObject { ["range"] = Range(row, match.Index, row, match.Index + word.Length), ["newText"] = newName });
+            }
+            if (edits.Count > 0) byFile.Add((file, edits));
+        }
+        Renaming?.Invoke();
+        if (!RenamesAsDocumentChanges)
+        {
+            var changes = new JsonObject();
+            foreach (var (file, edits) in byFile) changes[LspLocations.ToUri(file)] = edits;
+            return new JsonObject { ["changes"] = changes };
+        }
+        var documentChanges = new JsonArray(new JsonObject { ["kind"] = "create", ["uri"] = LspLocations.ToUri("/work/New.cs") });
+        foreach (var (file, edits) in byFile)
+            documentChanges.Add(new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = LspLocations.ToUri(file), ["version"] = null },
+                ["edits"] = edits,
+            });
+        return new JsonObject { ["documentChanges"] = documentChanges };
+    }
+
+    // The line with its comment and the insides of its strings blanked out, keeping every column where it was.
+    private static string CodeOnly(string line)
+    {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        var code = comment < 0 ? line : line[..comment] + new string(' ', line.Length - comment);
+        return Regex.Replace(code, "\"[^\"]*\"", m => new string(' ', m.Length));
     }
 
     private void OnNotification(InProcessServer server, string method, JsonNode? parameters)
