@@ -217,7 +217,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             foreach (var (file, edits) in byFile) changes[LspLocations.ToUri(file)] = edits;
             return new JsonObject { ["changes"] = changes };
         }
-        var documentChanges = new JsonArray(new JsonObject { ["kind"] = "create", ["uri"] = LspLocations.ToUri("/work/New.cs") });
+        var documentChanges = new JsonArray(new JsonObject { ["kind"] = "create", ["uri"] = LspLocations.ToUri(System.IO.Path.GetFullPath("/work/New.cs")) });
         foreach (var (file, edits) in byFile)
             documentChanges.Add(new JsonObject
             {
