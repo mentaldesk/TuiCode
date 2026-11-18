@@ -167,6 +167,11 @@ public static class CommandIds
     public const string ToggleFold = "editor.toggleFold";
     public const string FoldAll = "editor.foldAll";
     public const string UnfoldAll = "editor.unfoldAll";
+    public const string KeepCurrentChange = "merge-conflict.accept.current";
+    public const string KeepIncomingChange = "merge-conflict.accept.incoming";
+    public const string KeepBothChanges = "merge-conflict.accept.both";
+    public const string NextMergeConflict = "merge-conflict.next";
+    public const string PreviousMergeConflict = "merge-conflict.previous";
 
     public const string ChangeGrammar = "workbench.action.changeGrammar";
 

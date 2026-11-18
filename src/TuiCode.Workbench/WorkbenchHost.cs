@@ -652,6 +652,8 @@ public sealed class WorkbenchHost : IDisposable
         bool EditorOpen() => Group.ActiveTab is not null || Group.ActiveDiffTab is not null;
         bool NotPastChange() => Group.ActiveDiffTab is not { RightLabel: not null };
         bool FileOpen() => Group.ActiveTab is not null;
+        bool InConflict() => Group.ActiveTab?.ConflictAtCursor is not null;
+        bool HasConflicts() => Group.ActiveTab is { Conflicts.Count: > 0 };
         bool Reviewing() => review.Review is { PullRequest: not null };
 
         _commands.Register(CommandIds.Quit, "Quit", Quit);
@@ -823,6 +825,12 @@ public sealed class WorkbenchHost : IDisposable
         // No default keys (#477).
         _commands.Register(CommandIds.FoldAll, "Fold all", () => EditActiveTab(FoldAll), CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.UnfoldAll, "Unfold all", () => EditActiveTab(UnfoldAll), CommandScope.Editor, FileOpen);
+        // No default keys (#693).
+        _commands.Register(CommandIds.KeepCurrentChange, "Keep current change", () => EditActiveTab(tab => tab.KeepConflict(ConflictKeep.Current)), CommandScope.Editor, InConflict);
+        _commands.Register(CommandIds.KeepIncomingChange, "Keep incoming change", () => EditActiveTab(tab => tab.KeepConflict(ConflictKeep.Incoming)), CommandScope.Editor, InConflict);
+        _commands.Register(CommandIds.KeepBothChanges, "Keep both changes", () => EditActiveTab(tab => tab.KeepConflict(ConflictKeep.Both)), CommandScope.Editor, InConflict);
+        _commands.Register(CommandIds.NextMergeConflict, "Next merge conflict", () => EditActiveTab(tab => MoveToConflict(tab, 1)), CommandScope.Editor, HasConflicts);
+        _commands.Register(CommandIds.PreviousMergeConflict, "Previous merge conflict", () => EditActiveTab(tab => MoveToConflict(tab, -1)), CommandScope.Editor, HasConflicts);
         _commands.Register(CommandIds.AddCursorAbove, "Add cursor above", () => AddCursor(LineDirection.Up), CommandScope.Editor);
         _commands.Register(CommandIds.AddCursorBelow, "Add cursor below", () => AddCursor(LineDirection.Down), CommandScope.Editor);
         _commands.Register(CommandIds.RemoveSecondaryCursors, "Remove secondary cursors", () => Group.ActiveTab?.RemoveSecondaryCursors(),
@@ -1386,6 +1394,12 @@ public sealed class WorkbenchHost : IDisposable
     {
         var unfolded = tab.UnfoldAll();
         _workbench.StatusBar.ShowMessage(unfolded == 0 ? "Nothing is folded" : $"Unfolded {Blocks(unfolded)}");
+    }
+
+    private void MoveToConflict(EditorTab tab, int step)
+    {
+        if (!tab.MoveToConflict(step))
+            _workbench.StatusBar.ShowMessage(step > 0 ? "Last conflict in file" : "First conflict in file");
     }
 
     private static string Blocks(int count) => count == 1 ? "1 block" : $"{count} blocks";

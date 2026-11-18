@@ -18,6 +18,12 @@ public sealed record BranchReview(
     /// <summary>The lines each file adds and removes, by path (#393): empty until they've loaded, or when git couldn't count them.</summary>
     public IReadOnlyDictionary<string, GitLineCount> LineCounts { get; init; } = new Dictionary<string, GitLineCount>();
 
+    /// <summary>The files a merge has left unmerged, by path, with how many conflict blocks each still has (#693).</summary>
+    public IReadOnlyDictionary<string, int> Conflicts { get; init; } = new Dictionary<string, int>();
+
+    /// <summary>How many of the listed files are unmerged.</summary>
+    public int ConflictedCount => Changes.Count(c => Conflicts.ContainsKey(c.Path));
+
     /// <summary>The user's viewed state for each of the PR's files, by path (#396): null until it's loaded, and without a PR.</summary>
     public IReadOnlyDictionary<string, GitHubViewedState>? Viewed { get; init; }
 
@@ -72,15 +78,19 @@ public sealed record BranchReview(
         }
     }
 
-    /// <summary>The size of the change, e.g. <c>5 files  +214 −38</c> (#394); just the file count until the lines are counted.</summary>
+    /// <summary>The size of the change, e.g. <c>5 files  +214 −38</c> (#394), leaving out unmerged files' lines; just the file count until the lines are counted.</summary>
     public string TotalsLine
     {
         get
         {
             if (Changes.Count == 0) return string.Empty;
             var files = $"{Changes.Count} {Plural.Of(Changes.Count, "file")}";
-            if (LineCounts.Count == 0) return files;
-            return $"{files}  +{LineCounts.Values.Sum(c => c.Added)} −{LineCounts.Values.Sum(c => c.Deleted)}";
+            if (LineCounts.Count > 0)
+            {
+                var counted = LineCounts.Where(c => !Conflicts.ContainsKey(c.Key)).Select(c => c.Value).ToList();
+                files = $"{files}  +{counted.Sum(c => c.Added)} −{counted.Sum(c => c.Deleted)}";
+            }
+            return ConflictedCount is var conflicted and > 0 ? $"{files}  {conflicted} conflicted" : files;
         }
     }
 
@@ -128,7 +138,11 @@ public sealed record BranchReview(
         var changes = await git.GetChangedFilesAsync(repoRoot, baseCommit, cancellationToken);
         if (changes.Error is { } changesError) return GitResult<BranchReview?>.Failure(changesError);
 
-        return GitResult<BranchReview?>.Success(new BranchReview(repoRoot, branch.Value ?? "HEAD", baseBranch, baseCommit, changes.Value));
+        var conflicts = await git.GetConflictsAsync(repoRoot, cancellationToken);
+        return GitResult<BranchReview?>.Success(new BranchReview(repoRoot, branch.Value ?? "HEAD", baseBranch, baseCommit, changes.Value)
+        {
+            Conflicts = conflicts.Succeeded ? conflicts.Value : new Dictionary<string, int>(),
+        });
     }
 
     /// <summary>

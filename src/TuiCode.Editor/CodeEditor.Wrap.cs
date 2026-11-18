@@ -294,6 +294,7 @@ internal sealed partial class CodeEditor
             {
                 var col = DrawRow(cells, line, row, right, FirstVisibleGlyph(cells), cells.Length);
                 DrawFoldSummary(line, row, col, right);
+                DrawConflictHint(line, row, col, right);
                 row++;
                 continue;
             }
@@ -301,7 +302,9 @@ internal sealed partial class CodeEditor
             for (; sub < starts.Length && row < bottom; sub++, row++)
             {
                 var col = DrawRow(cells, line, row, right, (0, 0, starts[sub]), sub + 1 < starts.Length ? starts[sub + 1] : cells.Length);
-                if (sub == starts.Length - 1) DrawFoldSummary(line, row, col, right);
+                if (sub < starts.Length - 1) continue;
+                DrawFoldSummary(line, row, col, right);
+                DrawConflictHint(line, row, col, right);
             }
         }
     }
@@ -309,7 +312,7 @@ internal sealed partial class CodeEditor
     // Clicks and drags land on the row they're on, wrapped or not, and Alt+Click adds or removes a caret.
     protected override bool OnMouseEvent(Mouse mouse)
     {
-        if (OnPinnedMouse(mouse)) return true;
+        if (OnPinnedMouse(mouse) || OnKeepWordMouse(mouse)) return true;
         var flags = mouse.Flags;
         SyncRowMapping();
         if (_mapped && (flags.HasFlag(MouseFlags.WheeledDown) || flags.HasFlag(MouseFlags.WheeledUp)))

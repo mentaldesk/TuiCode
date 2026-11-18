@@ -566,6 +566,51 @@ public class ReviewViewTests
         Assert.Equal("a.cs", view.SelectedFile?.Path);
     }
 
+    [Fact]
+    public async Task During_a_merge_each_unmerged_file_shows_its_conflicts_first_in_its_folder_and_in_the_totals()
+    {
+        _git.Changes =
+        [
+            new GitChange(GitChangeKind.Modified, "src/Api/Program.cs"),
+            new GitChange(GitChangeKind.Modified, "src/Api/Startup.cs"),
+            new GitChange(GitChangeKind.Added, "tests/ProbeTests.cs"),
+            new GitChange(GitChangeKind.Modified, "tests/HealthTests.cs"),
+        ];
+        _git.LineCounts = new Dictionary<string, GitLineCount>
+        {
+            ["src/Api/Program.cs"] = new(10, 2),
+            ["src/Api/Startup.cs"] = new(40, 6),
+            ["tests/ProbeTests.cs"] = new(48, 0),
+            ["tests/HealthTests.cs"] = new(5, 1),
+        };
+        _git.Conflicts["src/Api/Startup.cs"] = 3;
+        _git.Conflicts["tests/ProbeTests.cs"] = 1;
+        using var view = Build();
+
+        await view.Refresh();
+
+        Assert.Equal(["src/Api", "  ⚠ Startup.cs", "  M Program.cs", "tests", "  ⚠ ProbeTests.cs", "  M HealthTests.cs"], Rows(view));
+        Assert.Equal("3 conflicts", File(view, "Startup.cs").ConflictsText);
+        Assert.Equal("1 conflict", File(view, "ProbeTests.cs").ConflictsText);
+        Assert.Null(File(view, "Program.cs").ConflictsText);
+        Assert.Equal("4 files  +15 −3  2 conflicted", view.TotalsText);
+    }
+
+    [Fact]
+    public async Task Once_the_merge_is_concluded_the_files_are_ordinary_changes_again()
+    {
+        _git.Changes = [new GitChange(GitChangeKind.Modified, "a.cs"), new GitChange(GitChangeKind.Modified, "b.cs")];
+        _git.Conflicts["b.cs"] = 1;
+        using var view = Build();
+        await view.Refresh();
+
+        _git.Conflicts.Clear();
+        await view.Refresh();
+
+        Assert.Equal(["M a.cs", "M b.cs"], Rows(view));
+        Assert.Equal("2 files", view.TotalsText);
+    }
+
     private static GitHubReviewThread Thread(bool resolved) =>
         new("a.txt", 1, resolved, false, [new GitHubComment("octocat", default, "Look at this")]);
 

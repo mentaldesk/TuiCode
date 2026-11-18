@@ -212,6 +212,8 @@ internal sealed partial class CodeEditor : TextEditor
                 _lines.Add(Read(i));
                 LineChars += _lines[i].Length;
             }
+            _markerLines = 0;
+            CountMarkers(_lines, 1);
             RecordStray();
             return;
         }
@@ -222,6 +224,8 @@ internal sealed partial class CodeEditor : TextEditor
             LineChars -= _lines[i].Length;
         foreach (var line in fresh)
             LineChars += line.Length;
+        CountMarkers(_lines.Skip(first).Take(removed), -1);
+        CountMarkers(fresh, 1);
         _lines.RemoveRange(first, removed);
         _lines.InsertRange(first, fresh);
         // A line break inserted between \r and \n moves the line above too.
@@ -229,6 +233,8 @@ internal sealed partial class CodeEditor : TextEditor
         {
             var above = Keep(_lines[first - 1], Read(first - 1));
             LineChars += above.Length - _lines[first - 1].Length;
+            CountMarkers([_lines[first - 1]], -1);
+            CountMarkers([above], 1);
             _lines[first - 1] = above;
         }
         RecordStray();
@@ -432,6 +438,7 @@ internal sealed partial class CodeEditor : TextEditor
         PrepareCaretSelections();
         PrepareSyntax();
         PrepareBrackets();
+        PrepareConflicts();
 
         var right = Viewport.Width;
         var bottom = Viewport.Height;
@@ -445,7 +452,8 @@ internal sealed partial class CodeEditor : TextEditor
             for (var idxRow = Viewport.Y; idxRow < Lines && row < bottom; idxRow++, row++)
             {
                 var line = Graphemes(idxRow);
-                DrawRow(line, idxRow, row, right, FirstVisibleGlyph(line), line.Length);
+                var col = DrawRow(line, idxRow, row, right, FirstVisibleGlyph(line), line.Length);
+                DrawConflictHint(idxRow, row, col, right);
             }
         }
         DrawPinned(right);
@@ -473,6 +481,21 @@ internal sealed partial class CodeEditor : TextEditor
 
     // Tab stops count from first.ColWidths.
     private int DrawRow(string[] line, int idxRow, int row, int right, (int ColWidths, int Col, int Index) first, int end)
+    {
+        if (ConflictRow(idxRow) is not { } tinted) return DrawRowOver(line, idxRow, row, right, first, end);
+        var editable = _editable;
+        _editable = tinted;
+        try
+        {
+            return DrawRowOver(line, idxRow, row, right, first, end);
+        }
+        finally
+        {
+            _editable = editable;
+        }
+    }
+
+    private int DrawRowOver(string[] line, int idxRow, int row, int right, (int ColWidths, int Col, int Index) first, int end)
     {
         var (colWidths, col, idxCol) = first;
         var wasPreviousWideGlyphNegativeCol = false;

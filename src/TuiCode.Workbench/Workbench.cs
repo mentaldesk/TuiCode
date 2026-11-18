@@ -254,9 +254,21 @@ public sealed class Workbench : Window
         var tab = Editor.Group.ActiveTab;
         StatusBar.SetPosition(tab is null ? null : (tab.CursorRow, tab.CursorColumn));
         StatusBar.SetSelection(tab?.CaretCount ?? 1, tab?.CountSelection()?.Characters);
+        ShowConflicts(tab);
         StatusBar.SetDiffStatus(Editor.Group.ActiveDiffTab is { IsFocused: true } diff
             ? string.Join("  •  ", new[] { BranchReview.SpotLabel(diff.Review, Sidebar.Review.Review), diff.History?.Label, diff.LineCounts, diff.ChangeStatus }.Where(part => !string.IsNullOrEmpty(part)))
             : null);
+    }
+
+    private (EditorTab? Tab, int Count) _conflicts;
+
+    private void ShowConflicts(EditorTab? tab)
+    {
+        var count = tab?.Conflicts.Count ?? 0;
+        if (tab is not null && ReferenceEquals(tab, _conflicts.Tab) && _conflicts.Count > 0 && count == 0)
+            StatusBar.ShowMessage($"No conflicts left in {tab.File.Name}");
+        _conflicts = (tab, count);
+        StatusBar.SetConflictStatus(tab?.ConflictStatus);
     }
 
     /// <summary>A file has been opened in the editor; the host moves the keys into it through the focus service (#228).</summary>
