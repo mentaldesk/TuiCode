@@ -63,6 +63,7 @@ public class DecompiledSourceHostTests : StaticConfigurationTest
         const string clock = "class Clock\n{\n    void Go(IClock c) { c.Now(); }\n}\n";
         _fs.AddFile("/work/Clock.cs", new MockFileData(clock));
         _server.Files[_fs.Path.GetFullPath("/work/Clock.cs")] = clock;
+        _server.Files[_fs.Path.GetFullPath("/work/IClock.cs")] = "interface IClock\n{\n    int Now();\n}\n";
         _server.Library["csharp:/work/App.csproj/decompiled/System.SystemClock.cs"] = new DecompiledSource("System.Runtime", "System.SystemClock",
             "namespace System;\n\npublic class SystemClock : IClock\n{\n    public int Now() => 1;\n}\n");
         using var workbench = BuildWorkbench();

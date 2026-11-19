@@ -1796,7 +1796,7 @@ public sealed class WorkbenchHost : IDisposable
 
     /// <summary>
     /// The implementations, csharp-ls's decompiled source for each <c>csharp:/</c> one, and the symbol named after its type.
-    /// The declaration itself is left out: csharp-ls answers with it when nothing implements it.
+    /// A lone answer that is the declaration itself counts as none: csharp-ls gives it when nothing implements it.
     /// </summary>
     private static async Task<(string? Name, IReadOnlyList<SourceLocation> Locations, Dictionary<string, DecompiledSource?> Sources)> ImplementationsAsync(
         LanguageServer server, string path, int row, int character, string? symbol)
@@ -1811,7 +1811,7 @@ public sealed class WorkbenchHost : IDisposable
                 name = await server.SymbolNameAsync(definition).ConfigureAwait(false);
         }
         catch (Exception e) when (e is JsonRpcException or IOException) { }
-        var locations = found.Where(l => !definitions.Contains(l)).ToList();
+        IReadOnlyList<SourceLocation> locations = found is [var only] && definitions is [var declared, ..] && only == declared ? [] : found;
         var sources = new Dictionary<string, DecompiledSource?>(StringComparer.Ordinal);
         foreach (var uri in locations.Select(l => l.Path).Where(LspLocations.IsDecompiled).Distinct())
             sources[uri] = await server.DecompiledAsync(uri).ConfigureAwait(false);
