@@ -18,6 +18,7 @@ public sealed class RenameSymbolView : AppDialog
     public RenameSymbolView(string name)
         : base($"Rename {name}", 60, ContentRows)
     {
+        HotKeySpecifier = VerbatimLabel.NoHotKey;
         OldName = name;
         _label = new VerbatimLabel { X = 1, Y = 0, Width = Dim.Fill(1), Text = "New name:" };
         _input = new PlaceholderField { X = 1, Y = 1, Width = Dim.Fill(1), Text = name };

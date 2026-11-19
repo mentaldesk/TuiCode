@@ -57,6 +57,45 @@ public class RenameSymbolHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Rs_just_past_a_name_renames_that_name()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        RenameSymbolView? view = null;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, "Diff.cs"),
+            () => Ready(workbench),
+            () => { workbench.Editor.Group.ActiveTab!.MoveCursor(2, 13); Rs(host); },
+            () => (view = Dialog(workbench)) is not null,
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal("Hunks", view!.NewName);
+        Assert.Equal(8, _server.Received("textDocument/prepareRename").Single()!["position"]!["character"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task A_name_starting_with_an_underscore_keeps_it_in_the_title()
+    {
+        Add("/work/Foo.cs", "class Foo\n{\n    private int _bar;\n}\n");
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        RenameSymbolView? view = null;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, "Foo.cs"),
+            () => Ready(workbench),
+            () => { workbench.Editor.Group.ActiveTab!.MoveCursor(2, 20); Rs(host); },
+            () => (view = Dialog(workbench)) is not null,
+            () => host.App.InjectKey(Key.Esc),
+            () => Dialog(workbench) is null);
+
+        Assert.Equal("_bar", view!.NewName);
+        Assert.Equal(Key.Empty, view.HotKey);
+    }
+
+    [Fact]
     public async Task With_every_file_open_Ctrl_Enter_renames_in_the_tabs_unsaved_and_Ctrl_Z_takes_a_tab_back()
     {
         using var workbench = BuildWorkbench();

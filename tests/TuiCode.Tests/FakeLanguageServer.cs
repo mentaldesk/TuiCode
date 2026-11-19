@@ -182,6 +182,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
         return capabilities;
     }
 
+    // Like csharp-ls, which says a place just past a name can't be renamed.
     private JsonObject? PrepareRename(JsonNode parameters)
     {
         if (WordAt(parameters) is not { } word) return null;
@@ -189,6 +190,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
         var character = parameters["position"]!["character"]!.GetValue<int>();
         var text = Lines(Sources()[Path(parameters["textDocument"]!)])[line];
         var match = WordPattern().Matches(text).First(m => m.Index <= character && character <= m.Index + m.Length);
+        if (character == match.Index + match.Length) return null;
         return new JsonObject { ["range"] = Range(line, match.Index, line, match.Index + word.Length), ["placeholder"] = word };
     }
 

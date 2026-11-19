@@ -1968,7 +1968,8 @@ public sealed class WorkbenchHost : IDisposable
             status.ShowMessage($"Can't rename this: the {server.Spec.Name} language server doesn't rename");
             return;
         }
-        var (path, row, character) = (tab.File.FullName, tab.CursorRow, tab.CursorCharacter);
+        var (path, row) = (tab.File.FullName, tab.CursorRow);
+        var character = IdentifierStart(tab.Lines[row], tab.CursorCharacter) ?? tab.CursorCharacter;
         var word = IdentifierAt(tab.Lines[row], character);
         var request = ++_renameRequest;
         server.PrepareRenameAsync(path, row, character).ContinueWith(answer => _app.Invoke(() =>
@@ -2135,16 +2136,23 @@ public sealed class WorkbenchHost : IDisposable
     }
 
     /// <summary>The identifier <paramref name="index"/> is in or just after, or null on whitespace and punctuation.</summary>
+    private static bool IdentifierPart(char c) => char.IsLetterOrDigit(c) || c == '_';
+
+    /// <summary>Where the identifier under <paramref name="index"/>, or just before it, starts; null when there's none.</summary>
+    internal static int? IdentifierStart(string line, int index)
+    {
+        index = Math.Min(index, line.Length);
+        if (index == line.Length || !IdentifierPart(line[index])) index--;
+        if (index < 0 || !IdentifierPart(line[index])) return null;
+        while (index > 0 && IdentifierPart(line[index - 1])) index--;
+        return index;
+    }
+
     internal static string? IdentifierAt(string line, int index)
     {
-        static bool Part(char c) => char.IsLetterOrDigit(c) || c == '_';
-        index = Math.Min(index, line.Length);
-        if (index == line.Length || !Part(line[index])) index--;
-        if (index < 0 || !Part(line[index])) return null;
-        var start = index;
-        while (start > 0 && Part(line[start - 1])) start--;
-        var end = index;
-        while (end + 1 < line.Length && Part(line[end + 1])) end++;
+        if (IdentifierStart(line, index) is not { } start) return null;
+        var end = start;
+        while (end + 1 < line.Length && IdentifierPart(line[end + 1])) end++;
         return line[start..(end + 1)];
     }
 
