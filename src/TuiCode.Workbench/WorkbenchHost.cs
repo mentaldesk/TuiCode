@@ -2135,7 +2135,6 @@ public sealed class WorkbenchHost : IDisposable
         _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn), explicitJump: true);
     }
 
-    /// <summary>The identifier <paramref name="index"/> is in or just after, or null on whitespace and punctuation.</summary>
     private static bool IdentifierPart(char c) => char.IsLetterOrDigit(c) || c == '_';
 
     /// <summary>Where the identifier under <paramref name="index"/>, or just before it, starts; null when there's none.</summary>
@@ -2148,6 +2147,7 @@ public sealed class WorkbenchHost : IDisposable
         return index;
     }
 
+    /// <summary>The identifier <paramref name="index"/> is in or just after, or null on whitespace and punctuation.</summary>
     internal static string? IdentifierAt(string line, int index)
     {
         if (IdentifierStart(line, index) is not { } start) return null;
