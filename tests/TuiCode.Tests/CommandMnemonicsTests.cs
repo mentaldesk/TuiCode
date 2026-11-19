@@ -1,4 +1,5 @@
 using TuiCode.Abstractions;
+using TuiCode.Workbench.Mnemonics;
 
 namespace TuiCode.Tests;
 
@@ -11,19 +12,24 @@ public class CommandMnemonicsTests
         Assert.Equal(mnemonics.Count, mnemonics.Distinct().Count());
     }
 
-    // The auto-execute rule (MnemonicResolver.ResolveExact) only works if no complete
-    // mnemonic is a prefix of another — otherwise the shorter one could never fire without Enter.
     [Fact]
-    public void No_mnemonic_is_a_prefix_of_another()
+    public void Every_mnemonic_is_reachable_and_only_q_needs_Enter()
     {
-        var mnemonics = CommandMnemonics.All.Select(kv => kv.Value).ToList();
-        foreach (var a in mnemonics)
-            foreach (var b in mnemonics)
+        var entries = CommandMnemonics.All.Select(kv => new MnemonicEntry(kv.Key, kv.Value, kv.Key)).ToList();
+        var needsEnter = new List<string>();
+        foreach (var entry in entries)
+        {
+            var ran = new List<string>();
+            using var view = new MnemonicView(entries, ran.Add);
+            foreach (var c in entry.Mnemonic) view.Scope.Handle(new Key(c));
+            if (ran.Count == 0)
             {
-                if (ReferenceEquals(a, b) || a == b) continue;
-                Assert.False(b.StartsWith(a, StringComparison.Ordinal),
-                    $"Mnemonic '{a}' is a prefix of '{b}' — one of them would be unreachable.");
+                needsEnter.Add(entry.Mnemonic);
+                view.Scope.Handle(Key.Enter);
             }
+            Assert.Equal([entry.CommandId], ran);
+        }
+        Assert.Equal(["q"], needsEnter);
     }
 
     [Fact]
@@ -56,6 +62,8 @@ public class CommandMnemonicsTests
         Assert.Equal("rg", CommandMnemonics.For(CommandIds.ReplaceGlobally));
         Assert.Equal("tui", CommandMnemonics.For(CommandIds.ShowAbout));
         Assert.Equal("sts", CommandMnemonics.For(CommandIds.SuspendToShell));
+        Assert.Equal("gi", CommandMnemonics.For(CommandIds.GoToImplementation));
+        Assert.Equal("qi", CommandMnemonics.For(CommandIds.QuickInfo));
     }
 
     [Fact]

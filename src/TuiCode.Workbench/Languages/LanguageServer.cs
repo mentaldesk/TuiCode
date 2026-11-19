@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace TuiCode.Workbench.Languages;
@@ -7,6 +8,9 @@ public sealed record LanguageServerSpec(string LanguageId, string Name, string C
 {
     public static readonly LanguageServerSpec CSharp = new(
         "csharp", "C#", KnownLanguageServers.CSharpLs.Command, KnownLanguageServers.CSharpLs.Arguments, KnownLanguageServers.CSharpLs.Install);
+
+    /// <summary>The server's name in a sentence: <c>Pyright</c> for <c>pyright-langserver</c>.</summary>
+    public string Title => KnownLanguageServers.WithCommand(LanguageId, Command) is { } known ? known.Title ?? known.Name : Command;
 
     public string Loading => $"{Command} is loading the {(LanguageId == "csharp" ? "solution" : "folder")}…";
 
@@ -44,6 +48,7 @@ public sealed class LanguageServer : IDisposable
         Root = root;
         _launcher = launcher;
         _post = post;
+        Title = spec.Title;
     }
 
     public LanguageServerSpec Spec { get; }
@@ -58,6 +63,12 @@ public sealed class LanguageServer : IDisposable
 
     /// <summary>How long stopping waits for the server to answer shutdown, and then to exit, before ending it.</summary>
     public TimeSpan StopTimeout { get; init; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>Whether the server answers <c>textDocument/implementation</c>, as its initialize result says.</summary>
+    public bool FindsImplementations { get; private set; }
+
+    /// <summary>What the server calls itself, or else what TuiCode knows it as.</summary>
+    public string Title { get; private set; }
 
     public event EventHandler? StateChanged;
 
@@ -91,7 +102,9 @@ public sealed class LanguageServer : IDisposable
     {
         try
         {
-            await connection.RequestAsync("initialize", InitializeParams()).ConfigureAwait(false);
+            var initialized = await connection.RequestAsync("initialize", InitializeParams()).ConfigureAwait(false);
+            FindsImplementations = initialized?["capabilities"]?["implementationProvider"]?.GetValueKind() is JsonValueKind.Object or JsonValueKind.True;
+            Title = initialized?["serverInfo"]?["name"]?.GetValue<string>() is { Length: > 0 } name ? name : Spec.Title;
         }
         catch (Exception e) when (e is JsonRpcException or IOException)
         {
@@ -142,6 +155,7 @@ public sealed class LanguageServer : IDisposable
                     ["publishDiagnostics"] = new JsonObject(),
                     ["synchronization"] = new JsonObject { ["didSave"] = true },
                     ["definition"] = new JsonObject { ["linkSupport"] = true },
+                    ["implementation"] = new JsonObject { ["linkSupport"] = true },
                     ["documentSymbol"] = new JsonObject { ["hierarchicalDocumentSymbolSupport"] = true },
                     ["hover"] = new JsonObject { ["contentFormat"] = new JsonArray("markdown", "plaintext") },
                 },
@@ -288,6 +302,12 @@ public sealed class LanguageServer : IDisposable
     /// <summary>Where the symbol at <paramref name="line"/> and UTF-16 <paramref name="character"/> is defined.</summary>
     public async Task<IReadOnlyList<SourceLocation>> DefinitionAsync(string path, int line, int character) =>
         LspLocations.Parse(await RequestAsync("textDocument/definition", Position(path, line, character)).ConfigureAwait(false));
+
+    /// <summary>What implements the interface, abstract member or type at <paramref name="line"/> and UTF-16 <paramref name="character"/>; nothing from a server that can't say.</summary>
+    public async Task<IReadOnlyList<SourceLocation>> ImplementationAsync(string path, int line, int character) =>
+        FindsImplementations
+            ? LspLocations.Parse(await RequestAsync("textDocument/implementation", Position(path, line, character)).ConfigureAwait(false))
+            : [];
 
     /// <summary>What the server says the symbol at <paramref name="line"/> and UTF-16 <paramref name="character"/> is.</summary>
     public async Task<IReadOnlyList<HoverPart>> HoverAsync(string path, int line, int character) =>

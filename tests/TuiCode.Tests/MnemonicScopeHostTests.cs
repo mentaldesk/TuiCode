@@ -190,11 +190,8 @@ public class MnemonicScopeHostTests : StaticConfigurationTest
     }
 
     /// <summary>
-    /// The guard that lets us narrow the list without carrying a second, unfiltered copy of the table:
-    /// over the real commands, no scope's subset makes <see cref="MnemonicResolver.ResolveExact"/> fire
-    /// on a prefix the full set wouldn't. It holds because the table is prefix-free
-    /// (<c>CommandMnemonicsTests.No_mnemonic_is_a_prefix_of_another</c>) — if that ever stops being true,
-    /// this fails and the second table is back on the table.
+    /// Over the real commands, no scope's subset makes <see cref="MnemonicResolver.ResolveExact"/> fire
+    /// on a prefix the full set wouldn't, given the whole table as the host gives it (#699).
     /// </summary>
     [Fact]
     public async Task Narrowing_the_list_never_makes_a_mnemonic_fire_a_keystroke_earlier()
@@ -217,12 +214,30 @@ public class MnemonicScopeHostTests : StaticConfigurationTest
         Assert.NotEmpty(everything);
         foreach (var scope in Enum.GetValues<CommandScope>())
         {
-            var narrowed = new MnemonicResolver(WorkbenchHost.MnemonicsInScope(commands, scope));
+            var narrowed = new MnemonicResolver(WorkbenchHost.MnemonicsInScope(commands, scope), CommandMnemonics.All.Select(m => m.Value));
             foreach (var prefix in prefixes)
                 Assert.True(narrowed.ResolveExact(prefix) is null || full.ResolveExact(prefix) is not null,
-                    $"'{prefix}' fires in {scope} but not against every command — the mnemonic table is no "
-                    + "longer prefix-free, so filtering the leader's list can no longer be safe on its own.");
+                    $"'{prefix}' fires in {scope} but not against every command.");
         }
+    }
+
+    [Fact]
+    public async Task Q_waits_for_Enter_even_where_qi_isnt_offered()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench, out var commands);
+        IReadOnlyList<string> listed = [];
+
+        await HostSteps.Run(host,
+            () => commands.TryExecute(CommandIds.FocusSidebar),
+            () => workbench.StatusBar.DisplayedFocus == "Explorer",
+            () => host.App.InjectKey(Key.Space.WithCtrl),
+            () => Leader(workbench) is not null,
+            () => host.App.InjectKey(Key.Q),
+            () => { listed = Leader(workbench)?.Mnemonics ?? []; host.App.InjectKey(Key.Esc); },
+            () => Leader(workbench) is null);
+
+        Assert.Equal(["q"], listed);
     }
 
     [Theory]

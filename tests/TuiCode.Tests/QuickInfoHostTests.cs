@@ -12,7 +12,7 @@ using TuiCode.Workbench.Services;
 
 namespace TuiCode.Tests;
 
-// Drives `gi` / Ctrl+G I (#591) through the host against a fake language server. Boots a TG Application — serialised (#77).
+// Drives `qi` / Ctrl+G Q (#591, #699) through the host against a fake language server. Boots a TG Application — serialised (#77).
 public class QuickInfoHostTests : StaticConfigurationTest
 {
     private const string Caller = """
@@ -390,7 +390,7 @@ public class QuickInfoHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public void Gi_is_on_Ctrl_G_I_in_the_editor_right_after_Go_to_definition_in_the_Go_menu()
+    public void Qi_is_on_Ctrl_G_Q_in_the_editor_right_after_Go_to_implementation_in_the_Go_menu_with_hotkey_Q()
     {
         using var workbench = BuildWorkbench();
         var commands = new CommandService();
@@ -400,10 +400,11 @@ public class QuickInfoHostTests : StaticConfigurationTest
 
         Assert.Equal("Quick info", commands.Registered.Single(c => c.Id == CommandIds.QuickInfo).Label);
         Assert.Equal(CommandScope.Editor, commands.ScopeOf(CommandIds.QuickInfo));
-        Assert.Equal("gi", CommandMnemonics.For(CommandIds.QuickInfo));
-        Assert.Equal("Ctrl+G i", keybindings.Bindings.Single(b => b.CommandId == CommandIds.QuickInfo).Display);
+        Assert.Equal("qi", CommandMnemonics.For(CommandIds.QuickInfo));
+        Assert.Equal("Ctrl+G q", keybindings.Bindings.Single(b => b.CommandId == CommandIds.QuickInfo).Display);
         var go = host.Menu.Items.Select(i => i.Id).ToList();
-        Assert.Equal(go.IndexOf(CommandIds.GoToDefinition) + 1, go.IndexOf(CommandIds.QuickInfo));
+        Assert.Equal(go.IndexOf(CommandIds.GoToImplementation) + 1, go.IndexOf(CommandIds.QuickInfo));
+        Assert.Equal('q', TuiCode.Workbench.Menus.CommandMenu.Letters[CommandIds.QuickInfo]);
     }
 
     private void Add(string path, string content)
@@ -418,7 +419,7 @@ public class QuickInfoHostTests : StaticConfigurationTest
     private static void Execute(WorkbenchHost host)
     {
         host.App.InjectKey(Key.G.WithCtrl);
-        host.App.InjectKey(Key.I);
+        host.App.InjectKey(Key.Q);
     }
 
     private static QuickInfoView? Box(Workbench.Workbench workbench) => workbench.SubViews.OfType<QuickInfoView>().SingleOrDefault();

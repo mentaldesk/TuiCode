@@ -15,13 +15,13 @@ public sealed record DefinitionRow(SourceLocation Location, string Place, string
     }
 }
 
-/// <summary>Picks one of several definitions, such as a partial class's; the host does the move once it closes.</summary>
+/// <summary>Picks one of several definitions or implementations, such as a partial class's; the host does the move once it closes.</summary>
 public sealed class DefinitionPickerView : PickerDialog<DefinitionRow>
 {
     private const int DialogWidth = 66;
 
-    public DefinitionPickerView(string symbol, IReadOnlyList<DefinitionRow> rows)
-        : base($"Definitions of {symbol}", DialogWidth, Math.Min(18, rows.Count + 4), rows, r => $"{r.Place}  {r.Code}", "Go to",
+    public DefinitionPickerView(string title, IReadOnlyList<DefinitionRow> rows)
+        : base(title, DialogWidth, Math.Min(18, rows.Count + 4), rows, r => $"{r.Place}  {r.Code}", "Go to",
             r => r.Display(rows.Max(d => d.Place.Length), PickerList.Width(DialogWidth)))
     {
         Commands.Register(CancelId, "Cancel", ClearOrCancel);

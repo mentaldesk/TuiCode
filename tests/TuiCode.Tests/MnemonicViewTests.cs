@@ -64,6 +64,45 @@ public class MnemonicViewTests
     }
 
     [Fact]
+    public void Q_waits_listing_q_and_qi_and_Enter_quits()
+    {
+        var ran = new List<string>();
+        using var view = new MnemonicView([new("cmd.quit", "q", "Quit"), new("cmd.quickInfo", "qi", "Quick info")], ran.Add);
+
+        Type(view, 'q');
+        Assert.Empty(ran);
+        Assert.Equal(["q", "qi"], view.Mnemonics);
+
+        view.Scope.Handle(Key.Enter);
+        Assert.Equal(["cmd.quit"], ran);
+    }
+
+    [Fact]
+    public void Qi_runs_quick_info_without_Enter()
+    {
+        var ran = new List<string>();
+        using var view = new MnemonicView([new("cmd.quit", "q", "Quit"), new("cmd.quickInfo", "qi", "Quick info")], ran.Add);
+
+        Type(view, 'q');
+        Type(view, 'i');
+
+        Assert.Equal(["cmd.quickInfo"], ran);
+    }
+
+    [Fact]
+    public void Enter_on_an_incomplete_prefix_with_several_matches_does_nothing()
+    {
+        var ran = new List<string>();
+        using var view = new MnemonicView([new("cmd.focusEditor", "fe", "Focus editor"), new("cmd.focusTabs", "ft", "Focus tabs")], ran.Add);
+
+        Type(view, 'f');
+        view.Scope.Handle(Key.Enter);
+
+        Assert.Empty(ran);
+        Assert.Equal(["fe", "ft"], view.Mnemonics);
+    }
+
+    [Fact]
     public void Backspace_re_widens_the_list()
     {
         using var view = Build(out _);
