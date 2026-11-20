@@ -51,6 +51,9 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 
     public string? HoldHoverOf { get; set; }
 
+    /// <summary>Holds every implementation request until it's set, while answering the rest.</summary>
+    public ManualResetEventSlim? HoldImplementation { get; set; }
+
     /// <summary>Answers workspace/symbol as WorkspaceSymbol[] rather than SymbolInformation[].</summary>
     public bool WorkspaceSymbols { get; set; }
 
@@ -108,6 +111,14 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                         return Answer(server, method, parameters);
                     })
                     : Task.FromResult(Answer(server, method, parameters));
+        if (HoldImplementation is { } holdImplementation)
+            server.Connection.AsyncRequestHandler = (method, parameters) => method == "textDocument/implementation"
+                ? Task.Run(() =>
+                {
+                    holdImplementation.Wait(TimeSpan.FromSeconds(30));
+                    return Answer(server, method, parameters);
+                })
+                : Task.FromResult(Answer(server, method, parameters));
         if (HoldWorkspaceSymbol is { } held)
             server.Connection.AsyncRequestHandler = (method, parameters) => method == "workspace/symbol"
                 ? Task.Run(() =>

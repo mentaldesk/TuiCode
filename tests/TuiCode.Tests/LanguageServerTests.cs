@@ -165,12 +165,18 @@ public class LanguageServerTests
     }
 
     [Theory]
-    [InlineData(null, "csharp-ls")]
-    [InlineData("csharp-ls 0.16", "csharp-ls 0.16")]
-    public async Task Its_title_is_the_name_it_gives_else_the_name_TuiCode_knows_it_by(string? given, string title)
+    [InlineData("csharp-ls", null, "csharp-ls")]
+    [InlineData("csharp-ls", "csharp-ls 0.16", "csharp-ls")]
+    [InlineData("my-lsp", null, "my-lsp")]
+    [InlineData("my-lsp", "My LSP", "My LSP")]
+    public async Task Its_title_is_the_name_TuiCode_knows_it_by_else_the_name_it_gives(string command, string? given, string title)
     {
         _fake.ServerName = given;
-        using var server = Server();
+        using var server = new LanguageServer(LanguageServerSpec.CSharp with { Command = command }, Root, _fake, action => action())
+        {
+            QuietLoad = TimeSpan.FromMinutes(1),
+            StopTimeout = Timeout,
+        };
         var ready = Reached(server, LanguageServerState.Ready);
         server.Start();
         await ready.WaitAsync(Timeout);

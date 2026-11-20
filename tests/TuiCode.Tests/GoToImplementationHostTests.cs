@@ -70,6 +70,26 @@ public class GoToImplementationHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task It_asks_for_the_definition_without_waiting_for_the_implementations_and_a_single_jump_skips_the_name()
+    {
+        using var release = new ManualResetEventSlim();
+        _server.HoldImplementation = release;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var symbolsBefore = 0;
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, "Caller.cs"),
+            () => Ready(workbench),
+            () => { symbolsBefore = _server.Received("textDocument/documentSymbol").Count(); Tab(workbench).MoveCursor(5, 24); Execute(host); },
+            () => _server.Received("textDocument/definition").Any(),
+            () => release.Set(),
+            () => Tab(workbench).File.Name == "SystemClock.cs");
+
+        Assert.Equal(symbolsBefore, _server.Received("textDocument/documentSymbol").Count());
+    }
+
+    [Fact]
     public async Task The_mnemonic_gi_does_the_same()
     {
         using var workbench = BuildWorkbench();
@@ -162,7 +182,7 @@ public class GoToImplementationHostTests : StaticConfigurationTest
 
     [Theory]
     [InlineData(null, "csharp-ls can't find implementations")]
-    [InlineData("Pyright", "Pyright can't find implementations")]
+    [InlineData("csharp-ls 0.16", "csharp-ls can't find implementations")]
     public async Task A_server_that_cant_find_implementations_is_never_asked_and_says_so(string? name, string message)
     {
         _server.FindsImplementations = false;

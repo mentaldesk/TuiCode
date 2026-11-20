@@ -1801,17 +1801,19 @@ public sealed class WorkbenchHost : IDisposable
     private static async Task<(string? Name, IReadOnlyList<SourceLocation> Locations, Dictionary<string, DecompiledSource?> Sources)> ImplementationsAsync(
         LanguageServer server, string path, int row, int character, string? symbol)
     {
-        var found = await server.ImplementationAsync(path, row, character).ConfigureAwait(false);
+        var asked = server.ImplementationAsync(path, row, character);
+        var declaration = server.DefinitionAsync(path, row, character);
+        var found = await asked.ConfigureAwait(false);
         IReadOnlyList<SourceLocation> definitions = [];
-        string? name = null;
-        try
-        {
-            definitions = await server.DefinitionAsync(path, row, character).ConfigureAwait(false);
-            if (symbol is not null && definitions is [var definition, ..])
-                name = await server.SymbolNameAsync(definition).ConfigureAwait(false);
-        }
+        try { definitions = await declaration.ConfigureAwait(false); }
         catch (Exception e) when (e is JsonRpcException or IOException) { }
         IReadOnlyList<SourceLocation> locations = found is [var only] && definitions is [var declared, ..] && only == declared ? [] : found;
+        string? name = null;
+        if (locations is not [_] && symbol is not null && definitions is [var definition, ..])
+        {
+            try { name = await server.SymbolNameAsync(definition).ConfigureAwait(false); }
+            catch (Exception e) when (e is JsonRpcException or IOException) { }
+        }
         var sources = new Dictionary<string, DecompiledSource?>(StringComparer.Ordinal);
         foreach (var uri in locations.Select(l => l.Path).Where(LspLocations.IsDecompiled).Distinct())
             sources[uri] = await server.DecompiledAsync(uri).ConfigureAwait(false);

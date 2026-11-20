@@ -67,7 +67,7 @@ public sealed class LanguageServer : IDisposable
     /// <summary>Whether the server answers <c>textDocument/implementation</c>, as its initialize result says.</summary>
     public bool FindsImplementations { get; private set; }
 
-    /// <summary>What the server calls itself, or else what TuiCode knows it as.</summary>
+    /// <summary>What TuiCode knows the server as, or else what it calls itself.</summary>
     public string Title { get; private set; }
 
     public event EventHandler? StateChanged;
@@ -104,7 +104,9 @@ public sealed class LanguageServer : IDisposable
         {
             var initialized = await connection.RequestAsync("initialize", InitializeParams()).ConfigureAwait(false);
             FindsImplementations = initialized?["capabilities"]?["implementationProvider"]?.GetValueKind() is JsonValueKind.Object or JsonValueKind.True;
-            Title = initialized?["serverInfo"]?["name"]?.GetValue<string>() is { Length: > 0 } name ? name : Spec.Title;
+            if (KnownLanguageServers.WithCommand(Spec.LanguageId, Spec.Command) is null
+                && initialized?["serverInfo"]?["name"]?.GetValue<string>() is { Length: > 0 } name)
+                Title = name;
         }
         catch (Exception e) when (e is JsonRpcException or IOException)
         {
