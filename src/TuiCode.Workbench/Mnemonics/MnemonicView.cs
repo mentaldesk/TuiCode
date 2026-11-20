@@ -10,7 +10,8 @@ namespace TuiCode.Workbench.Mnemonics;
 /// hands it that set, so a command out of scope isn't listed, can't be reached, and can't capture a
 /// keystroke (#285). As the user types, the list filters to mnemonics with the typed prefix and the
 /// command fires the instant the prefix is unambiguous — no Enter needed (see
-/// <see cref="MnemonicResolver.ResolveExact"/>). Esc cancels; Backspace edits.
+/// <see cref="MnemonicResolver.ResolveExact"/>). Enter runs a complete mnemonic a longer one starts with
+/// (<c>q</c> under <c>qi</c>). Esc cancels; Backspace edits.
 ///
 /// Unlike <see cref="Actions.ActionView"/> this captures raw keystrokes via a
 /// <see cref="KeyCaptureScope"/> rather than a focused TextField. That keeps execution on the
@@ -37,12 +38,12 @@ public sealed class MnemonicView : Window
     /// <summary>Fired after the view wants to be removed (Esc, or after a command was dispatched).</summary>
     public event EventHandler? Closed;
 
-    public MnemonicView(IEnumerable<MnemonicEntry> entries, Action<string> execute)
+    public MnemonicView(IEnumerable<MnemonicEntry> entries, Action<string> execute, IEnumerable<string>? every = null)
     {
         ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(execute);
 
-        _resolver = new MnemonicResolver(entries);
+        _resolver = new MnemonicResolver(entries, every);
         _execute = execute;
         _scope = new KeyCaptureScope(OnKey);
 
@@ -95,12 +96,11 @@ public sealed class MnemonicView : Window
             return;
         }
 
-        // Enter commits the lone remaining match. Useful for a reserved family with a single
-        // member today (e.g. "c" → "cf"): you needn't type the second key once it's unambiguous.
+        // Enter runs the complete mnemonic typed, else the lone remaining match ("c" → "cf").
         if (key == Key.Enter)
         {
-            if (_visible.Count == 1)
-                Execute(_visible[0]);
+            if ((_resolver.Complete(_input.ToString()) ?? (_visible.Count == 1 ? _visible[0] : null)) is { } entry)
+                Execute(entry);
             return;
         }
 

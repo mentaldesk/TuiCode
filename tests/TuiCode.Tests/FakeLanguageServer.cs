@@ -9,11 +9,21 @@ namespace TuiCode.Tests;
 /// Launches in-process fake language servers. Each keeps the documents it's told about, and answers a definition
 /// with every declaration (<c>class X</c>, <c>void X</c>, ...) of the word at the position, in those documents and
 /// in <see cref="Files"/>. References are every other whole-word use of it, and document symbols the file's first class
-/// with its methods.
+/// with its methods. Implementations of a type are the classes naming it after their <c>:</c>, and of a member its
+/// declarations with a body; with none, it answers with the declaration, as csharp-ls does.
 /// </summary>
 internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 {
     private readonly ConcurrentQueue<(string Method, JsonNode? Params)> _received = new();
+
+    /// <summary>Whether initialize says it answers <c>textDocument/implementation</c>.</summary>
+    public bool FindsImplementations { get; set; } = true;
+
+    /// <summary>The <c>serverInfo.name</c> initialize gives, if any.</summary>
+    public string? ServerName { get; set; }
+
+    /// <summary>Answers implementations as LocationLinks rather than Locations.</summary>
+    public bool ImplementationLinks { get; set; }
 
     /// <summary>Not installed: every launch fails.</summary>
     public bool Missing { get; set; }
@@ -40,6 +50,9 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
     public ManualResetEventSlim? HoldHover { get; set; }
 
     public string? HoldHoverOf { get; set; }
+
+    /// <summary>Holds every implementation request until it's set, while answering the rest.</summary>
+    public ManualResetEventSlim? HoldImplementation { get; set; }
 
     /// <summary>Answers workspace/symbol as WorkspaceSymbol[] rather than SymbolInformation[].</summary>
     public bool WorkspaceSymbols { get; set; }
@@ -113,6 +126,14 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                         return Answer(server, method, parameters);
                     })
                     : Task.FromResult(Answer(server, method, parameters));
+        if (HoldImplementation is { } holdImplementation)
+            server.Connection.AsyncRequestHandler = (method, parameters) => method == "textDocument/implementation"
+                ? Task.Run(() =>
+                {
+                    holdImplementation.Wait(TimeSpan.FromSeconds(30));
+                    return Answer(server, method, parameters);
+                })
+                : Task.FromResult(Answer(server, method, parameters));
         if (HoldWorkspaceSymbol is { } held)
             server.Connection.AsyncRequestHandler = (method, parameters) => method == "workspace/symbol"
                 ? Task.Run(() =>
@@ -161,7 +182,8 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
         return method switch
         {
             "initialize" when InitializeError is { } error => throw new JsonRpcException(-32603, error),
-            "initialize" => new JsonObject { ["capabilities"] = Capabilities() },
+            "initialize" => Initialized(),
+            "textDocument/implementation" => Implementations(parameters!),
             "textDocument/prepareRename" when PrepareRenameError is { } error => throw new JsonRpcException(-32603, error),
             "textDocument/prepareRename" => PrepareRename(parameters!),
             "textDocument/rename" when RenameError is { } error => throw new JsonRpcException(-32603, error),
@@ -173,13 +195,6 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             "csharp/metadata" => Metadata(parameters!),
             _ => null,
         };
-    }
-
-    private JsonObject Capabilities()
-    {
-        var capabilities = new JsonObject { ["definitionProvider"] = true };
-        if (RenameProvider is { } rename) capabilities["renameProvider"] = rename.DeepClone();
-        return capabilities;
     }
 
     // Like csharp-ls, which says a place just past a name can't be renamed.
@@ -261,6 +276,45 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
         }
         // Recorded once handled, so a test that has seen it can rely on what it did.
         _received.Enqueue((method, parameters?.DeepClone()));
+    }
+
+    private JsonObject Initialized()
+    {
+        var capabilities = new JsonObject { ["definitionProvider"] = true };
+        if (FindsImplementations) capabilities["implementationProvider"] = new JsonObject();
+        if (RenameProvider is { } rename) capabilities["renameProvider"] = rename.DeepClone();
+        var result = new JsonObject { ["capabilities"] = capabilities };
+        if (ServerName is not null) result["serverInfo"] = new JsonObject { ["name"] = ServerName };
+        return result;
+    }
+
+    private JsonArray Implementations(JsonNode parameters)
+    {
+        if (WordAt(parameters) is not { } word) return [];
+        var name = Regex.Escape(word);
+        var found = new JsonArray();
+        foreach (var (file, text) in Sources().OrderBy(s => s.Key, StringComparer.Ordinal))
+        {
+            var fileLines = Lines(text);
+            for (var row = 0; row < fileLines.Length; row++)
+            {
+                var match = Regex.Match(fileLines[row], $@"\bclass\s+(\w+)\s*:[^{{]*\b{name}\b");
+                var at = match.Success ? match.Groups[1] : null;
+                if (at is null && Regex.Match(fileLines[row], $@"\b(?:void|int|string)\s+({name})\s*\([^;]*(?:=>|\{{)") is { Success: true } member)
+                    at = member.Groups[1];
+                if (at is null) continue;
+                var location = Location(file, row, at.Index, at.Length);
+                found.Add(ImplementationLinks
+                    ? new JsonObject
+                    {
+                        ["targetUri"] = location["uri"]!.DeepClone(),
+                        ["targetRange"] = location["range"]!.DeepClone(),
+                        ["targetSelectionRange"] = location["range"]!.DeepClone(),
+                    }
+                    : location);
+            }
+        }
+        return found.Count > 0 ? found : Definitions(parameters);
     }
 
     private JsonArray Definitions(JsonNode parameters)
@@ -378,7 +432,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
         var members = new JsonArray();
         for (var row = 0; row < lines.Length; row++)
         {
-            if (type is null && Regex.Match(lines[row], @"\bclass\s+(\w+)") is { Success: true } declaration)
+            if (type is null && Regex.Match(lines[row], @"\b(?:class|interface)\s+(\w+)") is { Success: true } declaration)
                 type = Symbol(declaration.Groups[1].Value, 5, Range(0, 0, lines.Length, 0), Range(row, declaration.Groups[1].Index, row, declaration.Groups[1].Index + declaration.Groups[1].Length));
             else if (type is not null && Regex.Match(lines[row], @"\b(?:void|int|string)\s+(\w+)\(") is { Success: true } member)
                 members.Add(Symbol($"{member.Groups[1].Value}()", 6, Range(row, 0, row + 1, 0), Range(row, member.Groups[1].Index, row, member.Groups[1].Index + member.Groups[1].Length)));

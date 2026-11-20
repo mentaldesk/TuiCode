@@ -124,6 +124,70 @@ public class LanguageServerTests
         Assert.Equal([new SourceLocation(Path.GetFullPath("/work/Gadget.cs"), 2, 9)], found);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Implementation_asks_at_the_position_and_reads_back_locations_or_links(bool links)
+    {
+        _fake.ImplementationLinks = links;
+        _fake.Files[Path.GetFullPath("/work/IGadget.cs")] = "interface IGadget\n{\n    void Run();\n}";
+        _fake.Files[Path.GetFullPath("/work/Gadget.cs")] = "class Gadget : IGadget\n{\n    public void Run() { }\n}";
+        _fake.Files[Path.GetFullPath("/work/Gizmo.cs")] = "class Gizmo : IGadget\n{\n    public void Run() => Spin();\n}";
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Open(Widget, "class Widget { void Go(IGadget g) { g.Run(); } }");
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        var found = await server.ImplementationAsync(Widget, 0, 39);
+
+        Assert.True(server.FindsImplementations);
+        Assert.Equal([new SourceLocation(Path.GetFullPath("/work/Gadget.cs"), 2, 16), new SourceLocation(Path.GetFullPath("/work/Gizmo.cs"), 2, 16)], found);
+        var capability = _fake.Received("initialize").Single()!["capabilities"]!["textDocument"]!["implementation"]!;
+        Assert.True(capability["linkSupport"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task A_server_that_doesnt_offer_implementations_is_never_asked_for_them()
+    {
+        _fake.FindsImplementations = false;
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Open(Widget, "class Widget { void Go(IGadget g) { g.Run(); } }");
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        var found = await server.ImplementationAsync(Widget, 0, 39);
+
+        Assert.False(server.FindsImplementations);
+        Assert.Empty(found);
+        Assert.DoesNotContain("textDocument/implementation", _fake.Methods);
+    }
+
+    [Theory]
+    [InlineData("csharp-ls", null, "csharp-ls")]
+    [InlineData("csharp-ls", "csharp-ls 0.16", "csharp-ls")]
+    [InlineData("my-lsp", null, "my-lsp")]
+    [InlineData("my-lsp", "My LSP", "My LSP")]
+    public async Task Its_title_is_the_name_TuiCode_knows_it_by_else_the_name_it_gives(string command, string? given, string title)
+    {
+        _fake.ServerName = given;
+        using var server = new LanguageServer(LanguageServerSpec.CSharp with { Command = command }, Root, _fake, action => action())
+        {
+            QuietLoad = TimeSpan.FromMinutes(1),
+            StopTimeout = Timeout,
+        };
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        Assert.Equal(title, server.Title);
+    }
+
+    [Fact]
+    public void Pyright_is_called_Pyright_in_a_sentence() =>
+        Assert.Equal("Pyright", new LanguageServerSpec("python", "Python", "pyright-langserver", ["--stdio"], null).Title);
+
     [Fact]
     public async Task It_tells_the_server_it_can_rename_with_prepareRename_and_document_changes()
     {

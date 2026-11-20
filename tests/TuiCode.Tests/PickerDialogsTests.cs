@@ -231,7 +231,7 @@ public class PickerDialogsTests : StaticConfigurationTest
         RecentFolderList.Row("/Users/me/code/keyboards/vault", Home),
     ]);
 
-    private static DefinitionPickerView DefinitionPicker() => new("Widget",
+    private static DefinitionPickerView DefinitionPicker() => new("Definitions of Widget",
     [
         new DefinitionRow(new SourceLocation("/work/Widget.Draw.cs", 2, 0), "Widget.Draw.cs:3", "partial class Widget"),
         new DefinitionRow(new SourceLocation("/work/Widget.cs", 0, 0), "Widget.cs:1", "partial class Widget"),

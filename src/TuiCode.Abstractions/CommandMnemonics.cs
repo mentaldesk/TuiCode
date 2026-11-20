@@ -9,9 +9,8 @@ namespace TuiCode.Abstractions;
 /// A mnemonic is the command label's initials (<c>fg</c> for "Find globally", <c>nt</c> for
 /// "Next tab"); a label that doesn't give usable initials is the thing to change.
 ///
-/// Invariant: no complete mnemonic is a prefix of another. That lets the dialog
-/// auto-execute the instant the typed sequence uniquely identifies a command, with no
-/// terminating Enter. Mnemonics therefore come in families under a shared first key
+/// The dialog runs a mnemonic the instant it's typed, unless a longer one starts with it
+/// (<c>q</c> under <c>qi</c>): that one waits for Enter. Mnemonics come in families under a shared first key
 /// (<c>c</c>lose, <c>o</c>pen, <c>f</c>ocus, <c>t</c>oggle, …) that have room to
 /// grow: <c>cf</c> close file leaves <c>co</c>/<c>ca</c>/<c>cs</c> free for future
 /// close-other/all/sidebar commands. <c>q</c> (quit) and <c>?</c> (help) are the only
@@ -109,7 +108,8 @@ public static class CommandMnemonics
             [CommandIds.GoToType] = "gt",
             [CommandIds.GoToMatchingBracket] = "gm",
             [CommandIds.GoToDefinition] = "gd",
-            [CommandIds.QuickInfo] = "gi",
+            [CommandIds.GoToImplementation] = "gi",
+            [CommandIds.QuickInfo] = "qi",
             [CommandIds.FindUsages] = "gu",
             [CommandIds.AiAssistance] = "ai",
             [CommandIds.FocusAssistant] = "fi",

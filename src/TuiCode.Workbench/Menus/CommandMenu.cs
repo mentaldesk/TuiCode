@@ -58,7 +58,7 @@ public sealed class CommandMenu
         [CommandIds.JoinGroups] = 'j', [CommandIds.ToggleFileHistory] = 'y', [CommandIds.RevealInExplorer] = 'x',
         [CommandIds.FocusAssistant] = 'a', [CommandIds.AiAssistance] = 'h', [CommandIds.ToggleToolCalls] = 'c',
 
-        [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToType] = 'y', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.QuickInfo] = 'i',
+        [CommandIds.GoToLine] = 'g', [CommandIds.GoToSymbol] = 's', [CommandIds.GoToType] = 'y', [CommandIds.GoToMatchingBracket] = 'm', [CommandIds.GoToDefinition] = 'd', [CommandIds.GoToImplementation] = 'i', [CommandIds.QuickInfo] = 'q',
         [CommandIds.FindUsages] = 'f', [CommandIds.FollowLink] = 'l', [CommandIds.NavigateBack] = 'p',
         [CommandIds.NavigateForward] = 'n', [CommandIds.NextEditor] = 't', [CommandIds.PreviousEditor] = 'r',
 
@@ -128,7 +128,7 @@ public sealed class CommandMenu
         ]),
         ("_Go",
         [
-            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToType, CommandIds.GoToMatchingBracket, CommandIds.GoToDefinition, CommandIds.QuickInfo, CommandIds.FindUsages, CommandIds.FollowLink,
+            CommandIds.GoToLine, CommandIds.GoToSymbol, CommandIds.GoToType, CommandIds.GoToMatchingBracket, CommandIds.GoToDefinition, CommandIds.GoToImplementation, CommandIds.QuickInfo, CommandIds.FindUsages, CommandIds.FollowLink,
             Separator,
             CommandIds.NavigateBack, CommandIds.NavigateForward,
             Separator,

@@ -58,6 +58,31 @@ public class DecompiledSourceHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Gi_to_an_implementation_in_a_library_opens_its_decompiled_source_read_only()
+    {
+        const string clock = "class Clock\n{\n    void Go(IClock c) { c.Now(); }\n}\n";
+        _fs.AddFile("/work/Clock.cs", new MockFileData(clock));
+        _server.Files[_fs.Path.GetFullPath("/work/Clock.cs")] = clock;
+        _server.Files[_fs.Path.GetFullPath("/work/IClock.cs")] = "interface IClock\n{\n    int Now();\n}\n";
+        _server.Library["csharp:/work/App.csproj/decompiled/System.SystemClock.cs"] = new DecompiledSource("System.Runtime", "System.SystemClock",
+            "namespace System;\n\npublic class SystemClock : IClock\n{\n    public int Now() => 1;\n}\n");
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        (string Title, int Row, int Column, bool ReadOnly) opened = default;
+        var resting = "";
+
+        await HostSteps.Run(host,
+            () => workbench.OpenFile(_fs.FileInfo.New("/work/Clock.cs")),
+            () => Ready(workbench),
+            () => { Tab(workbench).MoveCursor(2, 27); Execute(host, Key.I); },
+            () => Tab(workbench).ReadOnly,
+            () => { opened = (Tab(workbench).Title, Tab(workbench).CursorRow, Tab(workbench).CursorColumn, Tab(workbench).ReadOnly); resting = workbench.StatusBar.DisplayedText; });
+
+        Assert.Equal(("SystemClock.cs [decompiled]", 4, 15, true), opened);
+        Assert.Equal("Decompiled from System.Runtime, read-only", resting);
+    }
+
+    [Fact]
     public async Task Gd_on_a_library_type_opens_its_decompiled_source_read_only_on_its_declaration_and_gp_goes_back()
     {
         using var workbench = BuildWorkbench();

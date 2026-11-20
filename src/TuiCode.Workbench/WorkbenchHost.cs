@@ -767,6 +767,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.GoToMatchingBracket, "Go to matching bracket", GoToMatchingBracket, CommandScope.Editor, FileOpen);
         // Enabled without a ready server, so the key can say what's missing; the menu dims it (IsAvailableFrom).
         _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.GoToImplementation, "Go to implementation", GoToImplementation, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.QuickInfo, "Quick info", ShowQuickInfo, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.RenameSymbol, "Rename symbol", RenameSymbol, CommandScope.Editor, FileOpen);
@@ -1120,7 +1121,8 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Ctrl+G A", CommandIds.AiAssistance);
         keybindings.Bind("Ctrl+G D", CommandIds.GoToDefinition);
         keybindings.Bind("Ctrl+G T", CommandIds.GoToType);
-        keybindings.Bind("Ctrl+G I", CommandIds.QuickInfo);
+        keybindings.Bind("Ctrl+G I", CommandIds.GoToImplementation);
+        keybindings.Bind("Ctrl+G Q", CommandIds.QuickInfo);
         keybindings.Bind("Ctrl+G U", CommandIds.FindUsages);
         keybindings.Bind("Enter", CommandIds.AssistantSend);
         keybindings.Bind("Ctrl+H", CommandIds.AssistantStop);
@@ -1531,7 +1533,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         var scope = _commands.ScopeOf(id);
         return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id)
-            && (id is not (CommandIds.GoToDefinition or CommandIds.QuickInfo or CommandIds.FindUsages or CommandIds.RenameSymbol) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
+            && (id is not (CommandIds.GoToDefinition or CommandIds.GoToImplementation or CommandIds.QuickInfo or CommandIds.FindUsages or CommandIds.RenameSymbol) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
     }
 
     private LanguageServer? ActiveLanguageServer() =>
@@ -1557,7 +1559,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var fromExplorer = _workbench.Sidebar.Explorer.HasFocus;
         var entries = MnemonicsInScope(_commands, FocusedScope());
-        var view = new MnemonicView(entries, commandId => RunLaunched(commandId, fromExplorer));
+        var view = new MnemonicView(entries, commandId => RunLaunched(commandId, fromExplorer), CommandMnemonics.All.Select(m => m.Value));
         view.Closed += (_, _) => CloseMnemonics(view);
         _activeMnemonics = view;
         _workbench.Add(view);
@@ -1765,9 +1767,61 @@ public sealed class WorkbenchHost : IDisposable
             else
             {
                 var (locations, sources, called) = answer.Result;
-                ShowDefinitions(tab, symbol, Overload(tab.File.FileSystem, Decompile(server, locations, sources), called));
+                ShowLocations(tab, Overload(tab.File.FileSystem, Decompile(server, locations, sources), called),
+                    symbol is null ? "Nothing to go to here" : $"No definition found for {symbol}", $"Definitions of {symbol ?? "symbol"}");
             }
         }), TaskScheduler.Default);
+    }
+
+    /// <summary>Go to implementation (<c>gi</c>): the code behind the interface, abstract member or type under the cursor.</summary>
+    private void GoToImplementation()
+    {
+        if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
+        var status = _workbench.StatusBar;
+        if (!server.FindsImplementations)
+        {
+            status.ShowMessage($"{server.Title} can't find implementations");
+            return;
+        }
+        var symbol = IdentifierAt(tab.Lines[tab.CursorRow], tab.CursorCharacter);
+        var request = ++_definitionRequest;
+        ImplementationsAsync(server, tab.File.FullName, tab.CursorRow, tab.CursorCharacter, symbol).ContinueWith(answer => _app.Invoke(() =>
+        {
+            if (_disposed || request != _definitionRequest) return;
+            if (answer.Exception?.InnerException is { } error) status.ShowMessage($"Go to implementation failed: {error.Message}", Severity.Error);
+            else
+            {
+                var (name, locations, sources) = answer.Result;
+                ShowLocations(tab, Decompile(server, locations, sources),
+                    name is null ? "Nothing to go to here" : $"No implementations of {name}", $"Implementations of {name ?? "symbol"}");
+            }
+        }), TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// The implementations, csharp-ls's decompiled source for each <c>csharp:/</c> one, and the symbol named after its type.
+    /// A lone answer that is the declaration itself counts as none: csharp-ls gives it when nothing implements it.
+    /// </summary>
+    private static async Task<(string? Name, IReadOnlyList<SourceLocation> Locations, Dictionary<string, DecompiledSource?> Sources)> ImplementationsAsync(
+        LanguageServer server, string path, int row, int character, string? symbol)
+    {
+        var asked = server.ImplementationAsync(path, row, character);
+        var declaration = server.DefinitionAsync(path, row, character);
+        var found = await asked.ConfigureAwait(false);
+        IReadOnlyList<SourceLocation> definitions = [];
+        try { definitions = await declaration.ConfigureAwait(false); }
+        catch (Exception e) when (e is JsonRpcException or IOException) { }
+        IReadOnlyList<SourceLocation> locations = found is [var only] && definitions is [var declared, ..] && only == declared ? [] : found;
+        string? name = null;
+        if (locations is not [_] && symbol is not null && definitions is [var definition, ..])
+        {
+            try { name = await server.SymbolNameAsync(definition).ConfigureAwait(false); }
+            catch (Exception e) when (e is JsonRpcException or IOException) { }
+        }
+        var sources = new Dictionary<string, DecompiledSource?>(StringComparer.Ordinal);
+        foreach (var uri in locations.Select(l => l.Path).Where(LspLocations.IsDecompiled).Distinct())
+            sources[uri] = await server.DecompiledAsync(uri).ConfigureAwait(false);
+        return (name ?? symbol, locations, sources);
     }
 
     /// <summary>The definitions, csharp-ls's decompiled source for each <c>csharp:/</c> one (#610), and which overload was called.</summary>
@@ -2074,14 +2128,14 @@ public sealed class WorkbenchHost : IDisposable
             ? open.Lines
             : [.. fileSystem.File.ReadLines(path)];
 
-    private void ShowDefinitions(EditorTab origin, string? symbol, IReadOnlyList<SourceLocation> locations)
+    private void ShowLocations(EditorTab origin, IReadOnlyList<SourceLocation> locations, string none, string title)
     {
         var fileSystem = origin.File.FileSystem;
         locations = [.. locations.Where(l => fileSystem.File.Exists(l.Path))];
         switch (locations)
         {
             case []:
-                _workbench.StatusBar.ShowMessage(symbol is null ? "Nothing to go to here" : $"No definition found for {symbol}");
+                _workbench.StatusBar.ShowMessage(none);
                 return;
             case [var only]:
                 JumpToDefinition(origin, only);
@@ -2091,7 +2145,7 @@ public sealed class WorkbenchHost : IDisposable
 
         var root = _workbench.Sidebar.Explorer.Root?.FullName;
         var rows = locations.Select(l => new DefinitionRow(l, $"{_workbench.Decompiled?.At(l.Path)?.Place ?? DisplayPath(l.Path, root)}:{l.Line + 1}", LineAt(fileSystem, l).Trim())).ToList();
-        var view = new DefinitionPickerView(symbol ?? "symbol", rows);
+        var view = new DefinitionPickerView(title, rows);
         _activeDefinitionPicker = view;
         HostedDialog.Show(_workbench, _scopes, view, () =>
         {
