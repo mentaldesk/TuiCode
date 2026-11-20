@@ -3,7 +3,8 @@ using TuiCode.Abstractions;
 namespace TuiCode.Workbench.Languages;
 
 /// <summary>A language server TuiCode can offer by name, with what to run and how to install it.</summary>
-public sealed record KnownLanguageServer(string Name, string Command, IReadOnlyList<string> Arguments, string Install)
+/// <param name="Title">The name in a sentence, where it isn't <paramref name="Name"/>.</param>
+public sealed record KnownLanguageServer(string Name, string Command, IReadOnlyList<string> Arguments, string Install, string? Title = null)
 {
     public LanguageServerSetting Setting { get; } = new(Command, Arguments);
 }
@@ -24,7 +25,7 @@ public static class KnownLanguageServers
     private static readonly KnownLanguageServer TypeScript = new(
         "typescript-language-server", "typescript-language-server", ["--stdio"], "npm install -g typescript-language-server typescript");
 
-    private static readonly KnownLanguageServer Pyright = new("pyright", "pyright-langserver", ["--stdio"], "npm install -g pyright");
+    private static readonly KnownLanguageServer Pyright = new("pyright", "pyright-langserver", ["--stdio"], "npm install -g pyright", "Pyright");
 
     private static readonly KnownLanguageServer Pylsp = new("pylsp", "pylsp", [], "pip install python-lsp-server");
 

@@ -98,6 +98,32 @@ public class MnemonicResolverTests
         Assert.Equal("cmd.renameFile", InScope().ResolveExact("mf")?.CommandId);
     }
 
+    [Fact]
+    public void ResolveExact_waits_on_a_mnemonic_a_longer_one_starts_with_and_Complete_gives_it()
+    {
+        var resolver = new MnemonicResolver([new("cmd.quit", "q", "Quit"), new("cmd.quickInfo", "qi", "Quick info")]);
+
+        Assert.Null(resolver.ResolveExact("q"));
+        Assert.Equal("cmd.quit", resolver.Complete("q")?.CommandId);
+        Assert.Equal("cmd.quickInfo", resolver.ResolveExact("qi")?.CommandId);
+    }
+
+    [Fact]
+    public void ResolveExact_still_waits_when_the_longer_one_is_out_of_scope()
+    {
+        var resolver = new MnemonicResolver([new("cmd.quit", "q", "Quit")], every: ["q", "qi"]);
+
+        Assert.Null(resolver.ResolveExact("q"));
+        Assert.Equal("cmd.quit", resolver.Complete("q")?.CommandId);
+    }
+
+    [Fact]
+    public void Complete_is_null_for_an_incomplete_prefix()
+    {
+        Assert.Null(Build().Complete("f"));
+        Assert.Null(Build().Complete(""));
+    }
+
     private static MnemonicResolver InScope() => new(new[]
     {
         new MnemonicEntry("cmd.quit", "q", "Quit"),

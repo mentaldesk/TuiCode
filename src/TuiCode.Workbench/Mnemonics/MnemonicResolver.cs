@@ -9,18 +9,20 @@ public sealed record MnemonicEntry(string CommandId, string Mnemonic, string Lab
 ///
 /// As the user types, the dialog feeds the accumulated prefix here. <see cref="Matching"/>
 /// drives the filtered hint list; <see cref="ResolveExact"/> decides when to fire a command
-/// without waiting for Enter: only when the prefix is itself a complete mnemonic and no other
-/// mnemonic shares it as a prefix. Because the <see cref="Abstractions.CommandMnemonics"/>
-/// table is prefix-free, "exactly one match and it equals the prefix" captures that precisely.
+/// without waiting for Enter: only when the prefix is itself a complete mnemonic and no longer
+/// mnemonic starts with it. One that does (<c>q</c> under <c>qi</c>) runs on Enter (<see cref="Complete"/>).
 /// </summary>
 public sealed class MnemonicResolver
 {
     private readonly IReadOnlyList<MnemonicEntry> _entries;
+    private readonly IReadOnlyList<string> _every;
 
-    public MnemonicResolver(IEnumerable<MnemonicEntry> entries)
+    /// <param name="every">Every mnemonic, in scope or not, so hiding a longer one never makes a shorter one fire early.</param>
+    public MnemonicResolver(IEnumerable<MnemonicEntry> entries, IEnumerable<string>? every = null)
     {
         ArgumentNullException.ThrowIfNull(entries);
         _entries = entries.OrderBy(e => e.Mnemonic, StringComparer.Ordinal).ToList();
+        _every = [.. (every ?? []).Concat(_entries.Select(e => e.Mnemonic))];
     }
 
     /// <summary>Every entry, ordered by mnemonic — the dialog's initial (unfiltered) list.</summary>
@@ -37,10 +39,12 @@ public sealed class MnemonicResolver
     /// matches nothing, or is still an incomplete/ambiguous lead-in (e.g. <c>c</c> while
     /// only <c>cf</c> exists, or <c>f</c> with fe/ft/f1… beneath it).
     /// </summary>
-    public MnemonicEntry? ResolveExact(string prefix)
-    {
-        if (string.IsNullOrEmpty(prefix)) return null;
-        var matches = Matching(prefix);
-        return matches.Count == 1 && matches[0].Mnemonic == prefix ? matches[0] : null;
-    }
+    public MnemonicEntry? ResolveExact(string prefix) =>
+        Complete(prefix) is { } entry && !_every.Any(m => m.Length > prefix.Length && m.StartsWith(prefix, StringComparison.Ordinal))
+            ? entry
+            : null;
+
+    /// <summary>The entry whose mnemonic is exactly <paramref name="prefix"/>, whether or not a longer one starts with it.</summary>
+    public MnemonicEntry? Complete(string prefix) =>
+        string.IsNullOrEmpty(prefix) ? null : _entries.FirstOrDefault(e => e.Mnemonic == prefix);
 }

@@ -91,6 +91,7 @@ public static class CommandIds
     public const string GoToMatchingBracket = "workbench.action.goToMatchingBracket";
 
     public const string GoToDefinition = "workbench.action.goToDefinition";
+    public const string GoToImplementation = "workbench.action.goToImplementation";
     public const string QuickInfo = "workbench.action.quickInfo";
     public const string QuickInfoClose = "quickInfo.action.close";
     public const string QuickInfoGoToDefinition = "quickInfo.action.goToDefinition";
