@@ -189,6 +189,94 @@ public class LanguageServerTests
         Assert.Equal("Pyright", new LanguageServerSpec("python", "Python", "pyright-langserver", ["--stdio"], null).Title);
 
     [Fact]
+    public async Task It_tells_the_server_it_can_rename_with_prepareRename_and_document_changes()
+    {
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        var capabilities = _fake.Received("initialize").Single()!["capabilities"]!;
+
+        Assert.True(capabilities["textDocument"]!["rename"]!["prepareSupport"]!.GetValue<bool>());
+        Assert.True(capabilities["workspace"]!["workspaceEdit"]!["documentChanges"]!.GetValue<bool>());
+        Assert.Null(capabilities["workspace"]!["workspaceEdit"]!["resourceOperations"]);
+    }
+
+    [Fact]
+    public async Task Rename_asks_prepareRename_first_where_the_server_offers_it_then_reads_back_the_edits()
+    {
+        _fake.Files[Path.GetFullPath("/work/Gadget.cs")] = "class Gadget\n{\n    void Run() { }\n}";
+        using var server = await Started("class Widget { void Go() { Run(); } }");
+
+        var target = await server.PrepareRenameAsync(Widget, 0, 28);
+        var edits = await server.RenameAsync(Widget, 0, 28, "Start");
+
+        Assert.True(server.CanRename);
+        Assert.Equal(new RenameTarget(new TextEdit(0, 27, 0, 30, ""), "Run"), target);
+        Assert.Equal(
+            [(Path.GetFullPath("/work/Gadget.cs"), new TextEdit(2, 9, 2, 12, "Start")), (Widget, new TextEdit(0, 27, 0, 30, "Start"))],
+            edits.SelectMany(f => f.Edits.Select(e => (f.Path, e))));
+        var rename = _fake.Received("textDocument/rename").Single()!;
+        Assert.Equal("Start", rename["newName"]!.GetValue<string>());
+        Assert.Equal(28, rename["position"]!["character"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task Without_prepareProvider_it_doesnt_ask_prepareRename()
+    {
+        _fake.RenameProvider = true;
+        using var server = await Started("class Widget { void Go() { Run(); } }");
+
+        var target = await server.PrepareRenameAsync(Widget, 0, 28);
+
+        Assert.True(server.CanRename);
+        Assert.Equal(new RenameTarget(null, null), target);
+        Assert.Empty(_fake.Received("textDocument/prepareRename"));
+    }
+
+    [Fact]
+    public async Task A_server_without_renameProvider_cant_rename()
+    {
+        _fake.RenameProvider = null;
+        using var server = await Started("class Widget { }");
+
+        Assert.False(server.CanRename);
+    }
+
+    [Fact]
+    public async Task Rename_reads_documentChanges_and_leaves_out_the_file_operations()
+    {
+        _fake.RenamesAsDocumentChanges = true;
+        using var server = await Started("class Widget { void Run() { Run(); } }");
+
+        var edits = await server.RenameAsync(Widget, 0, 21, "Start");
+
+        var file = Assert.Single(edits);
+        Assert.Equal(Widget, file.Path);
+        Assert.Equal([new TextEdit(0, 20, 0, 23, "Start"), new TextEdit(0, 28, 0, 31, "Start")], file.Edits);
+    }
+
+    [Fact]
+    public async Task A_rename_the_server_refuses_throws_in_its_words()
+    {
+        _fake.RenameError = "Start is already defined";
+        using var server = await Started("class Widget { void Run() { } }");
+
+        var refused = await Assert.ThrowsAsync<JsonRpcException>(() => server.RenameAsync(Widget, 0, 21, "Start"));
+
+        Assert.Equal("Start is already defined", refused.Message);
+    }
+
+    [Fact]
+    public async Task A_place_prepareRename_says_no_to_has_no_target()
+    {
+        using var server = await Started("class Widget { void Run() { } }");
+
+        Assert.Null(await server.PrepareRenameAsync(Widget, 0, 16));
+    }
+
+    [Fact]
     public async Task It_tells_the_server_it_can_show_decompiled_library_sources()
     {
         using var server = Server();
@@ -323,6 +411,16 @@ public class LanguageServerTests
         ["code"] = "CS0103",
         ["message"] = "nam",
     };
+
+    private async Task<LanguageServer> Started(string widget)
+    {
+        var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Open(Widget, widget);
+        server.Start();
+        await ready.WaitAsync(Timeout);
+        return server;
+    }
 
     private LanguageServer Server(TimeSpan? quietLoad = null) =>
         new(LanguageServerSpec.CSharp, Root, _fake, action => action()) { QuietLoad = quietLoad ?? TimeSpan.FromMinutes(1), StopTimeout = Timeout };

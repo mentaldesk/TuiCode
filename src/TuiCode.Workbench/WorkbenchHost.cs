@@ -38,6 +38,7 @@ using TuiCode.Workbench.Menus;
 using TuiCode.Workbench.Mnemonics;
 using TuiCode.Workbench.Navigation;
 using TuiCode.Workbench.Parts;
+using TuiCode.Workbench.Rename;
 using TuiCode.Workbench.Usages;
 using TuiCode.Workbench.Review;
 using TuiCode.Workbench.Services;
@@ -120,6 +121,8 @@ public sealed class WorkbenchHost : IDisposable
     private (EditorTab Tab, System.Drawing.Point? Caret, System.Drawing.Rectangle Text) _quickInfoAt;
     private int _quickInfoRequest;
     private IFileSystem? _usagesFileSystem;
+    private int _renameRequest;
+    private RenameSymbolView? _activeRename;
     private GrammarPickerView? _activeGrammarPicker;
     private DiagnosticsView? _activeDiagnostics;
     private string? _cursorColour;
@@ -767,6 +770,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.GoToImplementation, "Go to implementation", GoToImplementation, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.QuickInfo, "Quick info", ShowQuickInfo, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.RenameSymbol, "Rename symbol", RenameSymbol, CommandScope.Editor, FileOpen);
         // Global and ungated, so with no agent installed it can say so (#566).
         _commands.Register(CommandIds.AiAssistance, "AI assistance", AskAssistant, CommandScope.Global, null,
             () => _workbench.IsAssistantShowing ? "Hide AI assistance" : "Show AI assistance");
@@ -1529,7 +1533,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         var scope = _commands.ScopeOf(id);
         return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id)
-            && (id is not (CommandIds.GoToDefinition or CommandIds.GoToImplementation or CommandIds.QuickInfo or CommandIds.FindUsages) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
+            && (id is not (CommandIds.GoToDefinition or CommandIds.GoToImplementation or CommandIds.QuickInfo or CommandIds.FindUsages or CommandIds.RenameSymbol) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
     }
 
     private LanguageServer? ActiveLanguageServer() =>
@@ -2007,8 +2011,135 @@ public sealed class WorkbenchHost : IDisposable
         return (name ?? symbol, await usages.ConfigureAwait(false));
     }
 
+    /// <summary>Rename symbol (<c>rs</c>, #697): asks for the new name, then makes the server's rename across the folder.</summary>
+    private void RenameSymbol()
+    {
+        if (_activeRename is not null) return;
+        if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
+        var status = _workbench.StatusBar;
+        if (!server.CanRename)
+        {
+            status.ShowMessage($"Can't rename this: the {server.Spec.Name} language server doesn't rename");
+            return;
+        }
+        var (path, row) = (tab.File.FullName, tab.CursorRow);
+        var character = IdentifierStart(tab.Lines[row], tab.CursorCharacter) ?? tab.CursorCharacter;
+        var word = IdentifierAt(tab.Lines[row], character);
+        var request = ++_renameRequest;
+        server.PrepareRenameAsync(path, row, character).ContinueWith(answer => _app.Invoke(() =>
+        {
+            if (_disposed || request != _renameRequest || _activeRename is not null || _workbench.Editor.Group.ActiveTab != tab) return;
+            if (answer.Exception?.InnerException is { } error)
+            {
+                status.ShowMessage($"Can't rename this: {error.Message}");
+                return;
+            }
+            if (answer.Result is not { } target)
+            {
+                status.ShowMessage(OutsideEveryProject(tab, server)
+                    ? $"Can't rename this: {tab.File.Name} isn't in any C# project"
+                    : "Can't rename this");
+                return;
+            }
+            if ((target.Placeholder ?? TextIn(tab, target.Range) ?? word) is not { Length: > 0 } name)
+            {
+                status.ShowMessage("Nothing to rename here");
+                return;
+            }
+            OpenRenameSymbol(tab, server, (path, row, character), name);
+        }), TaskScheduler.Default);
+    }
+
+    /// <summary>Whether no folder from the file's up to the server's root holds a <c>.csproj</c>, which C# servers need to know a file.</summary>
+    private static bool OutsideEveryProject(EditorTab tab, LanguageServer server)
+    {
+        if (server.Spec.LanguageId != "csharp") return false;
+        var fileSystem = tab.File.FileSystem;
+        for (var folder = tab.File.Directory; folder is not null; folder = folder.Parent)
+        {
+            if (fileSystem.Directory.Exists(folder.FullName) && fileSystem.Directory.EnumerateFiles(folder.FullName, "*.csproj").Any()) return false;
+            if (LspLocations.PathComparer.Equals(folder.FullName.TrimEnd('/', '\\'), server.Root.TrimEnd('/', '\\'))) break;
+        }
+        return true;
+    }
+
+    private static string? TextIn(EditorTab tab, TextEdit? range)
+    {
+        if (range is not { } r || r.StartLine != r.EndLine || r.StartLine >= tab.Lines.Count) return null;
+        var line = tab.Lines[r.StartLine];
+        return r.StartCharacter <= r.EndCharacter && r.EndCharacter <= line.Length ? line[r.StartCharacter..r.EndCharacter] : null;
+    }
+
+    private void OpenRenameSymbol(EditorTab tab, LanguageServer server, (string Path, int Row, int Character) at, string name)
+    {
+        var view = new RenameSymbolView(name);
+        var fileSystem = tab.File.FileSystem;
+        var asking = false;
+        _activeRename = view;
+        view.Submitted += (_, newName) =>
+        {
+            if (asking) return;
+            asking = true;
+            _workbench.Languages!.Flush();
+            var openText = _workbench.Editor.Groups.Tabs
+                .GroupBy(t => t.File.FullName, LspLocations.PathComparer)
+                .ToDictionary(g => g.Key, g => string.Join('\n', g.First().Lines), LspLocations.PathComparer);
+            server.RenameAsync(at.Path, at.Row, at.Character, newName).ContinueWith(answer => _app.Invoke(() =>
+            {
+                asking = false;
+                if (_disposed || !ReferenceEquals(_activeRename, view)) return;
+                if (answer.Exception?.InnerException is { } error)
+                {
+                    view.ShowError(error.Message);
+                    return;
+                }
+                var rename = WorkspaceRename.Plan(answer.Result, openText, fileSystem);
+                if (rename.Files == 0)
+                {
+                    view.ShowError($"the {server.Spec.Name} language server found nothing to rename");
+                    return;
+                }
+                view.Finish();
+                if (rename.Closed.Count == 0)
+                {
+                    ApplyRename(server, rename, name, newName, fileSystem);
+                    return;
+                }
+                var closed = rename.Closed.Count;
+                Confirm("Rename symbol",
+                    $"Rename {name} to {newName}?\n{rename.Changes} {Plural.Of(rename.Changes, "change")} in {rename.Files} {Plural.Of(rename.Files, "file")}. "
+                    + (closed == 1 ? "1 file isn't open and is saved straight away." : $"{closed} files aren't open and are saved straight away."),
+                    [Main("Rename", ButtonKind.Primary, () => ApplyRename(server, rename, name, newName, fileSystem))]);
+            }), TaskScheduler.Default);
+        };
+        HostedDialog.Show(_workbench, _scopes, view, () =>
+        {
+            _activeRename = null;
+            FocusCallingRegion();
+        });
+        view.FocusInput();
+    }
+
+    private void ApplyRename(LanguageServer server, WorkspaceRename rename, string oldName, string newName, IFileSystem fileSystem)
+    {
+        var result = rename.Apply(_workbench.Editor.Groups.Tabs, fileSystem);
+        var written = result.Applied.Select(f => f.Path).Where(p => rename.Closed.Any(c => LspLocations.PathComparer.Equals(c.Path, p))).ToList();
+        if (written.Count > 0) server.FilesChanged(written);
+
+        var files = UsageTree.Build(result.ChangedLines(), p => LinesOf(fileSystem, p), _workbench.Sidebar.Explorer.Root?.FullName);
+        _usagesFileSystem = fileSystem;
+        _workbench.Sidebar.Usages.ShowRenamed(oldName, newName, result.Changes, files);
+        ShowSidebarTab(SidebarTab.Usages);
+        if (result.Skipped.Count > 0)
+            _workbench.StatusBar.ShowMessage(
+                $"Renamed {oldName} to {newName}, but left {string.Join(", ", result.Skipped.Select(Path.GetFileName))} unchanged",
+                Severity.Error);
+        else
+            _workbench.StatusBar.ShowMessage($"Renamed {oldName} to {newName}");
+    }
+
     private IReadOnlyList<string> LinesOf(IFileSystem fileSystem, string path) =>
-        _workbench.Editor.Group.Tabs.FirstOrDefault(t => t.File.FullName == path) is { } open
+        _workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path) is { } open
             ? open.Lines
             : [.. fileSystem.File.ReadLines(path)];
 
@@ -2073,17 +2204,24 @@ public sealed class WorkbenchHost : IDisposable
         _history.Visit(new CursorLocation(tab.File.FullName, tab.CursorRow, tab.CursorColumn), explicitJump: true);
     }
 
+    private static bool IdentifierPart(char c) => char.IsLetterOrDigit(c) || c == '_';
+
+    /// <summary>Where the identifier under <paramref name="index"/>, or just before it, starts; null when there's none.</summary>
+    internal static int? IdentifierStart(string line, int index)
+    {
+        index = Math.Min(index, line.Length);
+        if (index == line.Length || !IdentifierPart(line[index])) index--;
+        if (index < 0 || !IdentifierPart(line[index])) return null;
+        while (index > 0 && IdentifierPart(line[index - 1])) index--;
+        return index;
+    }
+
     /// <summary>The identifier <paramref name="index"/> is in or just after, or null on whitespace and punctuation.</summary>
     internal static string? IdentifierAt(string line, int index)
     {
-        static bool Part(char c) => char.IsLetterOrDigit(c) || c == '_';
-        index = Math.Min(index, line.Length);
-        if (index == line.Length || !Part(line[index])) index--;
-        if (index < 0 || !Part(line[index])) return null;
-        var start = index;
-        while (start > 0 && Part(line[start - 1])) start--;
-        var end = index;
-        while (end + 1 < line.Length && Part(line[end + 1])) end++;
+        if (IdentifierStart(line, index) is not { } start) return null;
+        var end = start;
+        while (end + 1 < line.Length && IdentifierPart(line[end + 1])) end++;
         return line[start..(end + 1)];
     }
 
