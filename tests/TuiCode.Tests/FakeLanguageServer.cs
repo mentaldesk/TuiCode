@@ -75,6 +75,9 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
     /// <summary>Answers prepareRename with this error.</summary>
     public string? PrepareRenameError { get; set; }
 
+    /// <summary>Answers every prepareRename with null, as csharp-ls does for a file outside its projects.</summary>
+    public bool PrepareRenameRefuses { get; set; }
+
     /// <summary>Answers rename with this error.</summary>
     public string? RenameError { get; set; }
 
@@ -185,7 +188,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             "initialize" => Initialized(),
             "textDocument/implementation" => Implementations(parameters!),
             "textDocument/prepareRename" when PrepareRenameError is { } error => throw new JsonRpcException(-32603, error),
-            "textDocument/prepareRename" => PrepareRename(parameters!),
+            "textDocument/prepareRename" => PrepareRenameRefuses ? null : PrepareRename(parameters!),
             "textDocument/rename" when RenameError is { } error => throw new JsonRpcException(-32603, error),
             "textDocument/rename" => Rename(parameters!),
             "textDocument/definition" => Definitions(parameters!),

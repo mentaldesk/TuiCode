@@ -2036,7 +2036,9 @@ public sealed class WorkbenchHost : IDisposable
             }
             if (answer.Result is not { } target)
             {
-                status.ShowMessage("Can't rename this");
+                status.ShowMessage(OutsideEveryProject(tab, server)
+                    ? $"Can't rename this: {tab.File.Name} isn't in any C# project"
+                    : "Can't rename this");
                 return;
             }
             if ((target.Placeholder ?? TextIn(tab, target.Range) ?? word) is not { Length: > 0 } name)
@@ -2046,6 +2048,19 @@ public sealed class WorkbenchHost : IDisposable
             }
             OpenRenameSymbol(tab, server, (path, row, character), name);
         }), TaskScheduler.Default);
+    }
+
+    /// <summary>Whether no folder from the file's up to the server's root holds a <c>.csproj</c>, which C# servers need to know a file.</summary>
+    private static bool OutsideEveryProject(EditorTab tab, LanguageServer server)
+    {
+        if (server.Spec.LanguageId != "csharp") return false;
+        var fileSystem = tab.File.FileSystem;
+        for (var folder = tab.File.Directory; folder is not null; folder = folder.Parent)
+        {
+            if (fileSystem.Directory.Exists(folder.FullName) && fileSystem.Directory.EnumerateFiles(folder.FullName, "*.csproj").Any()) return false;
+            if (LspLocations.PathComparer.Equals(folder.FullName.TrimEnd('/', '\\'), server.Root.TrimEnd('/', '\\'))) break;
+        }
+        return true;
     }
 
     private static string? TextIn(EditorTab tab, TextEdit? range)

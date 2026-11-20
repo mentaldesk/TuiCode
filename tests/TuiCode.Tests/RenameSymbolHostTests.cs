@@ -31,6 +31,7 @@ public class RenameSymbolHostTests : StaticConfigurationTest
     {
         Add("/work/Diff.cs", Diff);
         Add("/work/Report.cs", Report);
+        _fs.AddFile("/work/Work.csproj", new MockFileData("<Project Sdk=\"Microsoft.NET.Sdk\" />"));
     }
 
     [Fact]
@@ -321,6 +322,25 @@ public class RenameSymbolHostTests : StaticConfigurationTest
             () => { said = workbench.StatusBar.Message; });
 
         Assert.Equal("Can't rename this", said);
+        Assert.Null(Dialog(workbench));
+    }
+
+    [Fact]
+    public async Task In_a_file_outside_every_project_the_status_bar_says_so()
+    {
+        _fs.RemoveFile("/work/Work.csproj");
+        _fs.AddFile("/work/src/Lib/Lib.csproj", new MockFileData("<Project Sdk=\"Microsoft.NET.Sdk\" />"));
+        _server.PrepareRenameRefuses = true;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+
+        await HostSteps.Run(host,
+            () => OpenFile(workbench, "Diff.cs"),
+            () => Ready(workbench),
+            () => { Tab(workbench, "Diff.cs").MoveCursor(2, 10); Rs(host); },
+            () => workbench.StatusBar.Message.StartsWith("Can't rename", StringComparison.Ordinal));
+
+        Assert.Equal("Can't rename this: Diff.cs isn't in any C# project", workbench.StatusBar.Message);
         Assert.Null(Dialog(workbench));
     }
 
