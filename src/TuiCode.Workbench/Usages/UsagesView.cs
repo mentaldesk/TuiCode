@@ -16,10 +16,11 @@ public sealed class UsagesView : View
     private readonly TreeView<UsageNode> _tree;
     private string _title = "Find usages of a symbol to list them here";
     private string? _counted;
+    private string _separator = "  ";
 
     public event EventHandler<SourceLocation>? UsageActivated;
 
-    public string HeaderText => _counted is null ? _title : $"{_title}  {_counted}";
+    public string HeaderText => _counted is null ? _title : $"{_title}{_separator}{_counted}";
     public IReadOnlyList<UsageFileNode> Files { get; private set; } = [];
     public bool ResultsHaveFocus => _tree.HasFocus;
 
@@ -69,6 +70,10 @@ public sealed class UsagesView : View
         else Show($"Usages of {symbol}", UsageTree.Count(files), files);
     }
 
+    /// <summary>What a rename changed: <paramref name="changes"/> edits on the lines in <paramref name="files"/>.</summary>
+    public void ShowRenamed(string oldName, string newName, int changes, IReadOnlyList<UsageFileNode> files) =>
+        Show($"Renamed {oldName} → {newName}", $"{changes} in {files.Count} {Plural.Of(files.Count, "file")}", files, " · ");
+
     /// <summary>The first usage, or the tab itself while there are none.</summary>
     public bool FocusResults()
     {
@@ -77,8 +82,9 @@ public sealed class UsagesView : View
         return _tree.SetFocus();
     }
 
-    private void Show(string title, string? counted, IReadOnlyList<UsageFileNode> files)
+    private void Show(string title, string? counted, IReadOnlyList<UsageFileNode> files, string separator = "  ")
     {
+        _separator = separator;
         var hadFocus = _tree.HasFocus;
         Files = files;
         _title = title;

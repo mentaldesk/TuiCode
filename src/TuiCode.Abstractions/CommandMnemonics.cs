@@ -140,6 +140,7 @@ public static class CommandMnemonics
             [CommandIds.ReplaceInFile] = "rf",
             [CommandIds.FindGlobally] = "fg",
             [CommandIds.ReplaceGlobally] = "rg",
+            [CommandIds.RenameSymbol] = "rs",
         };
 
         // f1..f9 mirror the Ctrl+D1..Ctrl+D9 "focus editor tab N" bindings. Digits don't
