@@ -238,7 +238,7 @@ public class CompletionHostTests : StaticConfigurationTest
             () => Ready(workbench),
             () => { Tab(workbench).MoveCursor(Row, 8); },
             () => { Type(host, "s"); },
-            () => _server.Documents.Values.Any(d => d.Contains("        s\n", StringComparison.Ordinal)),
+            () => _server.Documents.Values.Any(d => d.ReplaceLineEndings("\n").Contains("        s\n", StringComparison.Ordinal)),
             () => { Type(host, "b."); },
             () => List(host) is not null,
             () => { before = Labels(List(host)!); hold.Set(); },
