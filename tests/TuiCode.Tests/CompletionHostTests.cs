@@ -319,6 +319,51 @@ public class CompletionHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Up_Down_PageUp_and_PageDown_move_the_selection()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var moves = new List<int?>();
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => Ready(workbench),
+            () => { Tab(workbench).MoveCursor(Row, 8); },
+            () => { Type(host, "sb."); },
+            () => List(host) is not null,
+            () => host.App.InjectKey(Key.PageDown),
+            () => { moves.Add(List(host)!.SelectedItem); host.App.InjectKey(Key.CursorUp); },
+            () => { moves.Add(List(host)!.SelectedItem); host.App.InjectKey(Key.PageUp); },
+            () => { moves.Add(List(host)!.SelectedItem); host.App.InjectKey(Key.CursorDown); },
+            () => { moves.Add(List(host)!.SelectedItem); });
+
+        Assert.Equal([3, 2, 0, 1], moves);
+        Assert.Equal("        sb.", Tab(workbench).Lines[Row]);
+    }
+
+    [Fact]
+    public async Task While_the_server_is_loading_nothing_opens_and_Show_completions_says_so()
+    {
+        _server.HoldLoading = true;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var said = "";
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => workbench.StatusBar.DisplayedState.Contains("C# ◌ loading", StringComparison.Ordinal),
+            () => { Tab(workbench).MoveCursor(Row, 8); },
+            () => { Type(host, "sb."); },
+            () => Tab(workbench).Lines[Row].EndsWith("sb.", StringComparison.Ordinal),
+            () => { },
+            () => { _commands!.TryExecute(CommandIds.ShowCompletions); said = workbench.StatusBar.Message; });
+
+        Assert.Null(List(host));
+        Assert.Empty(_server.Received("textDocument/completion"));
+        Assert.Equal("The C# language server is still loading", said);
+    }
+
+    [Fact]
     public async Task With_no_server_nothing_opens_and_Show_completions_says_what_Quick_info_says()
     {
         using var workbench = BuildWorkbench();
