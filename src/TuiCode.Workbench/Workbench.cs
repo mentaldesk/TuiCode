@@ -34,7 +34,7 @@ public sealed class Workbench : Window
 
     /// <summary>A dialog is open over the workbench: every view the host adds beside the six parts is one.</summary>
     public bool HasDialog => SubViews.Any(view => view != MenuBar && view != Sidebar && view != Editor && view != Panel && view != AssistantSidebar
-        && view != StatusBar && view is not QuickInfoView);
+        && view != StatusBar && view is not QuickInfoView && view is not CompletionView);
 
     /// <summary>The user has the History panel on (#534); it shows only while the active tab has history.</summary>
     public bool IsHistoryOn { get; private set; }

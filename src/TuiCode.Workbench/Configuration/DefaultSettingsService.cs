@@ -139,6 +139,8 @@ public sealed class DefaultSettingsService : ISettingsService
             root["WordWrap"] = Editor.WordWrap;
         if (Editor.StickyLines != defaults.StickyLines)
             root["StickyLines"] = Editor.StickyLines;
+        if (Editor.SuggestAsYouType != defaults.SuggestAsYouType)
+            root["SuggestAsYouType"] = Editor.SuggestAsYouType;
         if (Editor.WrapByLanguage.Count > 0)
         {
             var wrapByLanguage = new JsonObject();
@@ -264,6 +266,7 @@ public sealed class DefaultSettingsService : ISettingsService
             DetectIndentation = Read(root, "DetectIndentation", defaults.DetectIndentation),
             WordWrap = Read(root, "WordWrap", defaults.WordWrap),
             StickyLines = Read(root, "StickyLines", defaults.StickyLines),
+            SuggestAsYouType = Read(root, "SuggestAsYouType", defaults.SuggestAsYouType),
             WrapByLanguage = ReadWrapByLanguage(root),
         };
         // A width above the spinner's maximum is legitimate on a wide terminal, so only the floor is validated.

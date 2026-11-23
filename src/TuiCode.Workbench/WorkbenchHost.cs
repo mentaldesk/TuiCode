@@ -49,7 +49,7 @@ using FocusBorder = MentalDesk.Tui.Focus.FocusBorder;
 
 namespace TuiCode.Workbench;
 
-public sealed class WorkbenchHost : IDisposable
+public sealed partial class WorkbenchHost : IDisposable
 {
     private const int MaxIndexedEditorBindings = 9;
 
@@ -589,6 +589,8 @@ public sealed class WorkbenchHost : IDisposable
             return;
         }
 
+        if (TypesText(key) && _focus.Region == FocusRegion.Editor) QueueAfterTyping();
+
         if (TryOpenMenuByLetter(key))
         {
             key.Handled = true;
@@ -769,6 +771,7 @@ public sealed class WorkbenchHost : IDisposable
         _commands.Register(CommandIds.GoToDefinition, "Go to definition", GoToDefinition, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.GoToImplementation, "Go to implementation", GoToImplementation, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.QuickInfo, "Quick info", ShowQuickInfo, CommandScope.Editor, FileOpen);
+        _commands.Register(CommandIds.ShowCompletions, "Show completions", ShowCompletions, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.FindUsages, "Find usages", FindUsages, CommandScope.Editor, FileOpen);
         _commands.Register(CommandIds.RenameSymbol, "Rename symbol", RenameSymbol, CommandScope.Editor, FileOpen);
         // Global and ungated, so with no agent installed it can say so (#566).
@@ -896,7 +899,8 @@ public sealed class WorkbenchHost : IDisposable
     private KeyColumn? PlaceHelp()
     {
         Reconcile();
-        var help = _activeQuickInfo is not null ? HelpSheet.Place("Quick info", QuickInfoKeys) : _focus.Region switch
+        var help = _completion is not null ? HelpSheet.Place("Completions", CompletionKeys)
+            : _activeQuickInfo is not null ? HelpSheet.Place("Quick info", QuickInfoKeys) : _focus.Region switch
         {
             FocusRegion.FindBar => _find.Help(FindOptionKeys()),
             FocusRegion.Diff => DiffHelp(),
@@ -1533,7 +1537,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         var scope = _commands.ScopeOf(id);
         return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id)
-            && (id is not (CommandIds.GoToDefinition or CommandIds.GoToImplementation or CommandIds.QuickInfo or CommandIds.FindUsages or CommandIds.RenameSymbol) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
+            && (id is not (CommandIds.GoToDefinition or CommandIds.GoToImplementation or CommandIds.QuickInfo or CommandIds.ShowCompletions or CommandIds.FindUsages or CommandIds.RenameSymbol) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
     }
 
     private LanguageServer? ActiveLanguageServer() =>
@@ -2235,6 +2239,7 @@ public sealed class WorkbenchHost : IDisposable
         Reconcile();
         _activeSymbolPicker?.Advance();
         if (_activeQuickInfo is not null && ReferenceEquals(_scopes.Top, _quickInfoScope) && !QuickInfoStillFits()) CloseQuickInfo();
+        KeepCompletions();
         if (_workbench.IsAssistantShowing)
         {
             ShowingAssistant();

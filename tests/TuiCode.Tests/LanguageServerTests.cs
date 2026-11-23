@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using TuiCode.Workbench.Languages;
 
 namespace TuiCode.Tests;
@@ -274,6 +275,45 @@ public class LanguageServerTests
         using var server = await Started("class Widget { void Run() { } }");
 
         Assert.Null(await server.PrepareRenameAsync(Widget, 0, 16));
+    }
+
+    [Fact]
+    public async Task It_tells_the_server_it_takes_completions_as_plain_text_and_reads_its_trigger_characters()
+    {
+        _fake.TriggerCharacters = [".", "::"];
+        using var server = Server();
+        var ready = Reached(server, LanguageServerState.Ready);
+        server.Start();
+        await ready.WaitAsync(Timeout);
+
+        var completion = _fake.Received("initialize").Single()!["capabilities"]!["textDocument"]!["completion"]!;
+
+        Assert.False(completion["completionItem"]!["snippetSupport"]!.GetValue<bool>());
+        Assert.True(completion["contextSupport"]!.GetValue<bool>());
+        Assert.Equal(new HashSet<string> { ".", "::" }, server.TriggerCharacters);
+    }
+
+    [Theory]
+    [InlineData(null, false, 1, null)]
+    [InlineData(".", false, 2, ".")]
+    [InlineData(null, true, 3, null)]
+    public async Task Completion_asks_at_the_position_saying_what_started_it(string? trigger, bool again, int kind, string? character)
+    {
+        _fake.Complete = _ => new JsonObject
+        {
+            ["isIncomplete"] = true,
+            ["items"] = new JsonArray(new JsonObject { ["label"] = "Go", ["kind"] = 2 }),
+        };
+        using var server = await Started("class Widget { void Go() { this. } }");
+
+        var list = await server.CompletionAsync(Widget, 0, 32, trigger, again);
+
+        Assert.True(list.IsIncomplete);
+        Assert.Equal(["Go"], list.Items.Select(i => i.Label));
+        var asked = _fake.Received("textDocument/completion").Single()!;
+        Assert.Equal(32, asked["position"]!["character"]!.GetValue<int>());
+        Assert.Equal(kind, asked["context"]!["triggerKind"]!.GetValue<int>());
+        Assert.Equal(character, asked["context"]!["triggerCharacter"]?.GetValue<string>());
     }
 
     [Fact]

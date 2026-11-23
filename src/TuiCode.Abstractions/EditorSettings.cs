@@ -28,6 +28,9 @@ public sealed record EditorSettings
     /// <summary>Whether the class, method or heading you're inside stays pinned at the top of the editor (#474).</summary>
     public bool StickyLines { get; init; } = true;
 
+    /// <summary>Whether the list of what fits at the caret opens by itself as you type (#705); Show completions works either way.</summary>
+    public bool SuggestAsYouType { get; init; } = true;
+
     /// <summary>Languages that wrap whatever <see cref="WordWrap"/> says, keyed by grammar id (#381).</summary>
     public static IReadOnlyDictionary<string, bool> DefaultWrapByLanguage { get; } =
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["markdown"] = true, ["plaintext"] = true };
@@ -52,11 +55,12 @@ public sealed record EditorSettings
         && DetectIndentation == other.DetectIndentation
         && WordWrap == other.WordWrap
         && StickyLines == other.StickyLines
+        && SuggestAsYouType == other.SuggestAsYouType
         && WrapByLanguage.Count == other.WrapByLanguage.Count
         && WrapByLanguage.All(w => other.WrapByLanguage.TryGetValue(w.Key, out var v) && v == w.Value);
 
     public override int GetHashCode() =>
-        HashCode.Combine(IndentSize, InsertSpaces, LineEnding, InsertFinalNewline, DetectIndentation, WordWrap, StickyLines, WrapByLanguage.Count);
+        HashCode.Combine(IndentSize, InsertSpaces, LineEnding, InsertFinalNewline, DetectIndentation, WordWrap, StickyLines, HashCode.Combine(SuggestAsYouType, WrapByLanguage.Count));
 }
 
 public enum LineEnding

@@ -84,6 +84,15 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
     /// <summary>Runs as rename is answered, after the edits are worked out.</summary>
     public Action? Renaming { get; set; }
 
+    /// <summary>What completion answers, given its params; null answers null.</summary>
+    public Func<JsonNode, JsonNode?>? Complete { get; set; }
+
+    /// <summary>The <c>completionProvider.triggerCharacters</c> initialize gives.</summary>
+    public string[] TriggerCharacters { get; set; } = ["."];
+
+    /// <summary>Holds the first completion request until it's set, while answering the rest.</summary>
+    public ManualResetEventSlim? HoldFirstCompletion { get; set; }
+
     /// <summary>Every workspace/symbol query asked, in order.</summary>
     public ConcurrentQueue<string> SymbolQueries { get; } = new();
 
@@ -145,6 +154,18 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
                     return WorkspaceSymbol(extension, parameters!);
                 })
                 : Task.FromResult(Answer(server, method, parameters));
+        if (HoldFirstCompletion is { } holdCompletion)
+        {
+            var first = 0;
+            server.Connection.AsyncRequestHandler = (method, parameters) =>
+                method == "textDocument/completion" && Interlocked.Exchange(ref first, 1) == 0
+                    ? Task.Run(() =>
+                    {
+                        holdCompletion.Wait(TimeSpan.FromSeconds(30));
+                        return Answer(server, method, parameters);
+                    })
+                    : Task.FromResult(Answer(server, method, parameters));
+        }
         server.Connection.NotificationReceived += (method, parameters) => OnNotification(server, method, parameters);
         server.Connection.Start();
         Servers.Add(server);
@@ -196,6 +217,7 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             "textDocument/documentSymbol" => Symbols(parameters!),
             "textDocument/hover" => HoverAt(parameters!),
             "csharp/metadata" => Metadata(parameters!),
+            "textDocument/completion" => Complete?.Invoke(parameters!),
             _ => null,
         };
     }
@@ -283,7 +305,11 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
 
     private JsonObject Initialized()
     {
-        var capabilities = new JsonObject { ["definitionProvider"] = true };
+        var capabilities = new JsonObject
+        {
+            ["definitionProvider"] = true,
+            ["completionProvider"] = new JsonObject { ["triggerCharacters"] = new JsonArray([.. TriggerCharacters.Select(c => (JsonNode)c)]) },
+        };
         if (FindsImplementations) capabilities["implementationProvider"] = new JsonObject();
         if (RenameProvider is { } rename) capabilities["renameProvider"] = rename.DeepClone();
         var result = new JsonObject { ["capabilities"] = capabilities };
