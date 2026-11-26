@@ -92,10 +92,10 @@ public class DiffThreadTests : StaticConfigurationTest
         Assert.True(diff.ToggleThread());
         Assert.Equal(
         [
-            "┃ octocat · 2026-09-20 06:54   ",
+            "┃ octocat · 20 Sep 06:54       ",
             "┃ Does Esc stay global here?   ",
             "┃                              ",
-            "┃ hubot · 2026-09-20 06:54     ",
+            "┃ hubot · 20 Sep 06:54         ",
             "┃ Reply 1                      ",
         ], Render(diff)[3..8]);
 
@@ -141,7 +141,7 @@ public class DiffThreadTests : StaticConfigurationTest
 
         diff.Refresh();
 
-        Assert.Equal("┃ octocat · 2026-09-20 06:54   ", Render(diff)[3]);
+        Assert.Equal("┃ octocat · 20 Sep 06:54       ", Render(diff)[3]);
     }
 
     private static GitHubReviewThread Thread(int line, string author, string body, int replies = 0, bool resolved = false, bool outdated = false) =>
@@ -160,6 +160,7 @@ public class DiffThreadTests : StaticConfigurationTest
             App = _app,
             Width = Columns,
             Height = 9,
+            Times = new Times(new FakeClock(Posted.AddDays(1))),
         };
         diff.BeginInit();
         diff.EndInit();

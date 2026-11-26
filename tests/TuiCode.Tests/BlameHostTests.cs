@@ -48,8 +48,7 @@ public class BlameHostTests : StaticConfigurationTest
 
         Assert.Equal("Blame", shown!.Title);
         Assert.Equal("a.txt:2", shown.Location);
-        Assert.StartsWith("4a91c0e  Nicky Baumann  ", shown.Commit);
-        Assert.EndsWith("(2026-09-04)", shown.Commit);
+        Assert.Equal("4a91c0e  Nicky Baumann  4 Sep", shown.Commit);
         Assert.Equal("A clean tab shows what is actually on disk (#269)", shown.Subject);
         Assert.Equal("  2 │ bravo", shown.LineText);
         Assert.Equal("", shown.Status);
@@ -382,6 +381,9 @@ public class BlameHostTests : StaticConfigurationTest
         commands = new CommandService();
         keybindings = new KeybindingService(commands);
         return new WorkbenchHost(workbench, commands, keybindings, new InputScopeStack(),
-            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git);
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git)
+        {
+            Times = new Times(new FakeClock(new DateTimeOffset(2026, 11, 26, 12, 0, 0, TimeSpan.Zero))),
+        };
     }
 }

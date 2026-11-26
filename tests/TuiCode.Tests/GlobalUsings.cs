@@ -9,3 +9,4 @@ global using Xunit;
 global using KeyColumn = MentalDesk.Tui.Keys.KeyColumn;
 global using KeyRow = MentalDesk.Tui.Keys.KeyRow;
 global using KeysDialog = MentalDesk.Tui.Keys.KeysDialog;
+global using Times = MentalDesk.Tui.Times;

@@ -58,7 +58,7 @@ public class ButtonKindTests
     {
         Assert.Equal(
             [("Enter View change", SchemeNames.ButtonPrimary), ("Esc Close", SchemeNames.ButtonSecondary)],
-            Kinds(new BlameView("a.txt", 1, Blame("4a91c0e2b7d1f3e5a6c8b9d0e1f2a3b4c5d6e7f8"), DateTimeOffset.UnixEpoch)));
+            Kinds(new BlameView("a.txt", 1, Blame("4a91c0e2b7d1f3e5a6c8b9d0e1f2a3b4c5d6e7f8"), new Times(new FakeClock(DateTimeOffset.UnixEpoch)))));
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class ButtonKindTests
     {
         Assert.Equal(
             [("Esc Close", SchemeNames.ButtonPrimary)],
-            Kinds(new BlameView("a.txt", 1, Blame(new string('0', 40)), DateTimeOffset.UnixEpoch)));
+            Kinds(new BlameView("a.txt", 1, Blame(new string('0', 40)), new Times(new FakeClock(DateTimeOffset.UnixEpoch)))));
     }
 
     [Fact]

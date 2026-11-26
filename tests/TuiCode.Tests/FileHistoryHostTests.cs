@@ -62,8 +62,8 @@ public class FileHistoryHostTests : StaticConfigurationTest
         Assert.True(history.ListHasFocus);
         Assert.Equal("History: a.txt", history.Title);
         Assert.Equal(["Edit a", "Rename old to a", "Edit old", "Add old"], history.Listed.Select(c => c.Subject));
-        Assert.Equal("1111111  4 days ago    Ada  Edit a", history.Rows[0].TrimEnd());
-        Assert.Equal("4444444  24 hours ago  Cy   Add old", history.Rows[3].TrimEnd());
+        Assert.Equal("1111111   4d  Ada  Edit a", history.Rows[0].TrimEnd());
+        Assert.Equal("4444444  24h  Cy   Add old", history.Rows[3].TrimEnd());
 
         var editor = workbench.Editor.Frame;
         var panel = workbench.Panel.Frame;
@@ -341,6 +341,32 @@ public class FileHistoryHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_redraw_after_an_age_grows_a_digit_keeps_the_columns_it_opened_with()
+    {
+        _git.FileCommits[Full("/work/a.txt")] =
+        [
+            EditA with { Date = Day.AddMinutes(-9) },
+            AddOld with { Author = "Ada", Date = Day.AddHours(-3) },
+        ];
+        var clock = new FakeClock(Day);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var history = workbench.History;
+        IReadOnlyList<string> opened = [];
+
+        await HostSteps.Run(host,
+            () => HostSteps.PinScreenSize(host, 100, 30),
+            () => { history.Times = new Times(clock); Open(workbench, "/work/a.txt"); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => _commands.TryExecute(CommandIds.ToggleFileHistory),
+            () => history.Rows.Count == 2,
+            () => { opened = history.Rows; clock.Advance(TimeSpan.FromMinutes(1)); history.SetNeedsDraw(); });
+
+        Assert.Equal("1111111  9m  Ada  Edit a", opened[0].TrimEnd());
+        Assert.Equal(opened, history.Rows);
+    }
+
+    [Fact]
     public void Gh_is_Show_file_history_on_Ctrl_G_H()
     {
         using var workbench = BuildWorkbench();
@@ -373,13 +399,13 @@ public class FileHistoryHostTests : StaticConfigurationTest
     {
         var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());
         workbench.Sidebar.Explorer.Open(_fs.DirectoryInfo.New(Full("/work")));
-        workbench.History.Now = () => Day;
+        workbench.History.Times = new Times(new FakeClock(Day));
         return workbench;
     }
 
     private WorkbenchHost BuildHost(Workbench.Workbench workbench)
     {
-        workbench.History.Now = () => Day;
+        workbench.History.Times = new Times(new FakeClock(Day));
         return new WorkbenchHost(workbench, _commands, _keybindings, new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git);
     }

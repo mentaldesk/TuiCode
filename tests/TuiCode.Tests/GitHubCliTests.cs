@@ -95,7 +95,7 @@ public class GitHubCliTests
         Assert.Equal([false, true, true], threads.Select(t => t.Outdated));
         Assert.Equal([true, false, false], threads.Select(t => t.Resolved));
         Assert.Equal(1, threads[0].Replies);
-        Assert.Equal("octocat · 2026-09-20 06:54", threads[0].First!.Heading);
+        Assert.Equal(new DateTimeOffset(2026, 9, 20, 6, 54, 0, TimeSpan.Zero), threads[0].First!.Date);
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public class GitHubCliTests
 
         var reply = GitHubCli.ParseReply(json).Value;
 
-        Assert.Equal("hubot · 2026-09-20 08:54", reply.Heading);
+        Assert.Equal(new DateTimeOffset(2026, 9, 20, 8, 54, 0, TimeSpan.Zero), reply.Date);
         Assert.Equal("It does now.", reply.Body);
     }
 

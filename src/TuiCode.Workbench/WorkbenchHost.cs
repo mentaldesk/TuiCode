@@ -130,6 +130,8 @@ public sealed class WorkbenchHost : IDisposable
     private readonly ImageView _aboutImage = AboutView.CreateImage();
     private DocumentInfoView? _activeDocumentInfo;
     private BlameView? _activeBlame;
+
+    internal Times Times { get; set; } = new();
     private bool? _sixelSupported;
     private MnemonicView? _activeMnemonics;
     private PathPicker? _activePathPicker;
@@ -3391,7 +3393,7 @@ public sealed class WorkbenchHost : IDisposable
     private void OpenBlame(string name, int number, GitBlameLine line, IFileSystem fileSystem, string repoRoot)
     {
         if (_activeBlame is not null) return;
-        var view = new BlameView(name, number, line, DateTimeOffset.Now);
+        var view = new BlameView(name, number, line, Times);
         view.Closed += (_, _) => CloseBlame(view, refocus: true);
         view.OpenChange += (_, _) =>
         {
@@ -3728,7 +3730,7 @@ public sealed class WorkbenchHost : IDisposable
         var loading = Task.Run(() => _gitHub.GetConversationAsync(review.RepoRoot, pullRequest.Number));
         WhenDone(loading, () =>
         {
-            var text = loading.Result.Error ?? PullRequestOverview.Build(loading.Result.Value);
+            var text = loading.Result.Error ?? PullRequestOverview.Build(loading.Result.Value, Times);
             group.OpenDocument(file, text);
             _workbench.StatusBar.ShowMessage(title);
             FocusEditorBody();
@@ -3746,7 +3748,7 @@ public sealed class WorkbenchHost : IDisposable
         // The path only identifies the tab, so it takes neither the separators nor the colon of the title.
         var name = $"#{pullRequest.Number} outdated {node.Change.Path.Replace('/', ' ')}";
         var file = fileSystem.FileInfo.New(fileSystem.Path.Combine(review.RepoRoot, name));
-        group.OpenDocument(file, PullRequestOverview.BuildOutdated(pullRequest.Number, node.Change.Path, node.Threads), title);
+        group.OpenDocument(file, PullRequestOverview.BuildOutdated(pullRequest.Number, node.Change.Path, node.Threads, Times), title);
         FocusEditorBody();
     }
 

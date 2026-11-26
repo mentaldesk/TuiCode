@@ -4,6 +4,7 @@ updates:
     directories:
       - /src/TuiCode.Workbench
       - /src/TuiCode.Search
+      - /src/TuiCode.Abstractions
     schedule:
       interval: daily
     allow:

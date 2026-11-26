@@ -1,6 +1,6 @@
+using MentalDesk.Tui;
 using Terminal.Gui.Text;
 using TuiCode.Abstractions;
-using TuiCode.Workbench.Git;
 
 namespace TuiCode.Workbench.History;
 
@@ -33,25 +33,27 @@ internal static class FileHistory
                                      || c.Subject.Contains(filter, StringComparison.OrdinalIgnoreCase))];
     }
 
-    public static string Age(GitFileCommit commit, DateTimeOffset now) => BlameView.Ago(now - commit.Date);
+    public static string Age(GitFileCommit commit, Times times) => times.Age(commit.Date);
 
     /// <summary>The age and author columns' widths, as wide as the widest of <paramref name="commits"/>.</summary>
-    public static (int Age, int Author) Columns(IReadOnlyList<GitFileCommit> commits, DateTimeOffset now) =>
+    public static (int Age, int Author) Columns(IReadOnlyList<GitFileCommit> commits, Times times) =>
         commits.Count == 0
             ? (0, 0)
-            : (commits.Max(c => Age(c, now).GetColumns()), Math.Min(MaxAuthorWidth, commits.Max(c => c.Author.GetColumns())));
+            : (commits.Max(c => Age(c, times).GetColumns()), Math.Min(MaxAuthorWidth, commits.Max(c => c.Author.GetColumns())));
 
     /// <summary>Hash, age, author and subject in columns, cut at <paramref name="width"/>.</summary>
-    public static string Row(GitFileCommit commit, (int Age, int Author) columns, DateTimeOffset now, int width)
+    public static string Row(GitFileCommit commit, (int Age, int Author) columns, Times times, int width)
     {
         var gap = new string(' ', Gap);
         var row = string.Concat(
             commit.ShortHash, gap,
-            Pad(Age(commit, now), columns.Age), gap,
+            PadLeft(Age(commit, times), columns.Age), gap,
             Pad(Cut(commit.Author, columns.Author), columns.Author), gap,
             commit.Subject.Replace('\t', ' '));
         return Cut(row, width);
     }
+
+    private static string PadLeft(string text, int columns) => new string(' ', Math.Max(0, columns - text.GetColumns())) + text;
 
     private static string Pad(string text, int columns) => text + new string(' ', Math.Max(0, columns - text.GetColumns()));
 

@@ -1,3 +1,4 @@
+using MentalDesk.Tui;
 using TuiCode.Abstractions;
 
 namespace TuiCode.Editor;
@@ -13,7 +14,7 @@ public static class ReviewThreadRows
 {
     private const string Gutter = "┃";
 
-    public static IReadOnlyList<ThreadRow> For(GitHubReviewThread thread, bool expanded)
+    public static IReadOnlyList<ThreadRow> For(GitHubReviewThread thread, bool expanded, Times times)
     {
         if (!expanded)
         {
@@ -25,7 +26,7 @@ public static class ReviewThreadRows
         foreach (var comment in thread.Comments)
         {
             if (rows.Count > 0) rows.Add(new ThreadRow(Gutter));
-            rows.Add(new ThreadRow($"{Gutter} {comment.Heading}"));
+            rows.Add(new ThreadRow($"{Gutter} {comment.Heading(times)}"));
             foreach (var line in Lines(comment.Body))
                 rows.Add(new ThreadRow(line.Length == 0 ? Gutter : $"{Gutter} {line}"));
         }

@@ -1,4 +1,4 @@
-using System.Globalization;
+using MentalDesk.Tui;
 using ButtonKind = MentalDesk.Tui.Dialogs.ButtonKind;
 using TuiCode.Abstractions;
 using TuiCode.Workbench.Controls;
@@ -27,7 +27,7 @@ public sealed class BlameView : Window
     /// <summary>Focus moved elsewhere, a click in the editor say: the host closes the dialog and leaves the keys there.</summary>
     public event EventHandler? FocusLeft;
 
-    public BlameView(string file, int lineNumber, GitBlameLine blame, DateTimeOffset now)
+    public BlameView(string file, int lineNumber, GitBlameLine blame, Times times)
     {
         Title = "Blame";
         BorderStyle = LineStyle.Single;
@@ -40,7 +40,7 @@ public sealed class BlameView : Window
         LineText = $"  {lineNumber} │ {blame.Text.Replace("\t", "    ", StringComparison.Ordinal)}";
         if (blame.IsCommitted)
         {
-            Commit = $"{blame.ShortHash}  {blame.Author}  {When(blame.Date, now)}";
+            Commit = $"{blame.ShortHash}  {blame.Author}  {times.Ago(blame.Date)}";
             Subject = blame.Subject;
         }
 
@@ -89,28 +89,6 @@ public sealed class BlameView : Window
     internal string LineText { get; }
 
     internal string Status => _alert.Message;
-
-    /// <summary><c>3 weeks ago (2026-09-04)</c>, the date in the author's own time zone.</summary>
-    public static string When(DateTimeOffset date, DateTimeOffset now) =>
-        $"{Ago(now - date)} ({date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)})";
-
-    /// <summary>Rounded as <c>git log --date=relative</c> rounds it, though a year is only ever years.</summary>
-    internal static string Ago(TimeSpan elapsed)
-    {
-        var seconds = (long)Math.Max(0, elapsed.TotalSeconds);
-        if (seconds < 90) return Ago(seconds, "second");
-        var minutes = (seconds + 30) / 60;
-        if (minutes < 90) return Ago(minutes, "minute");
-        var hours = (minutes + 30) / 60;
-        if (hours < 36) return Ago(hours, "hour");
-        var days = (hours + 12) / 24;
-        if (days < 14) return Ago(days, "day");
-        if (days < 70) return Ago((days + 3) / 7, "week");
-        if (days < 365) return Ago((days + 15) / 30, "month");
-        return Ago((days + 183) / 365, "year");
-    }
-
-    private static string Ago(long count, string unit) => $"{count} {Plural.Of(count, unit)} ago";
 
     private static Button Foot(Button button, int y, Action accepted)
     {

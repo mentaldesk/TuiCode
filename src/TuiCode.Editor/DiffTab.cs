@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using MentalDesk.Tui;
 using Terminal.Gui.Text;
 using TuiCode.Abstractions;
 using TuiCode.Syntax;
@@ -204,6 +205,8 @@ public sealed class DiffTab : FrameView
 
     /// <summary>The review threads shown under the lines they're on, top to bottom (#186).</summary>
     public IReadOnlyList<GitHubReviewThread> Threads => _placed;
+
+    internal Times Times { get; set; } = new();
 
     /// <summary>The thread the current row belongs to, or null on a row of the diff itself.</summary>
     public GitHubReviewThread? CurrentThread => _current < _rows.Count ? _rows[_current].Thread : null;
@@ -535,7 +538,7 @@ public sealed class DiffTab : FrameView
                 foreach (var thread in threads)
                 {
                     _placed.Add(thread);
-                    foreach (var text in ReviewThreadRows.For(thread, _expanded.Contains(thread)))
+                    foreach (var text in ReviewThreadRows.For(thread, _expanded.Contains(thread), Times))
                         _rows.Add(new Row(i, thread, null, text));
                 }
             if (!draftsByRow.TryGetValue(i, out var onRow)) continue;
