@@ -18,6 +18,7 @@ public sealed class HistoryView : View
     private readonly LoadStateView _state;
     private IReadOnlyList<GitFileCommit> _commits = [];
     private IReadOnlyList<GitFileCommit> _visible = [];
+    private Source _source;
 
     /// <summary><c>Enter</c> on a row.</summary>
     public event EventHandler<GitFileCommit>? CommitActivated;
@@ -33,6 +34,7 @@ public sealed class HistoryView : View
         _note = new VerbatimLabel { X = Pos.AnchorEnd(0), Y = 0, Width = 0, Text = "" };
 
         _list = new CommitList(OnListKey) { Width = Dim.Fill(), Height = Dim.Fill() };
+        _list.Source = _source = new Source(this);
         _list.Accepting += (_, e) =>
         {
             e.Handled = true;
@@ -57,7 +59,7 @@ public sealed class HistoryView : View
     internal string Note => _note.Text ?? "";
     internal LoadStateView State => _state;
     internal IReadOnlyList<GitFileCommit> Listed => _visible;
-    internal IReadOnlyList<string> Rows => [.. Enumerable.Range(0, _visible.Count).Select(i => Row(i, _list.Viewport.Width))];
+    internal IReadOnlyList<string> Rows => [.. Enumerable.Range(0, _visible.Count).Select(i => _source.Text(i, _list.Viewport.Width))];
 
     /// <summary>Starts listing <paramref name="path"/>: empty and loading, the filter cleared.</summary>
     public void ShowLoading(string path, string name)
@@ -105,7 +107,7 @@ public sealed class HistoryView : View
     {
         var selected = SelectedCommit?.Hash;
         _visible = FileHistory.Filter(_commits, Filter);
-        _list.Source = new Source(this);
+        _list.Source = _source = new Source(this);
         if (_visible.Count == 0) return;
         var index = selected is null ? 0 : Index(_visible, selected);
         _list.SelectedItem = Math.Max(0, index);
@@ -165,22 +167,31 @@ public sealed class HistoryView : View
         _list.SelectedItem = Math.Clamp((_list.SelectedItem ?? -1) + delta, 0, _visible.Count - 1);
     }
 
-    private string Row(int item, int width) =>
-        FileHistory.Row(_visible[item], FileHistory.Columns(_visible, Times), Times, width);
-
     // TG's ListView jumps to a row on a typed key in OnKeyDown, before KeyDown subscribers see it.
     private sealed class CommitList(Func<Key, bool> onKey) : ListView
     {
         protected override bool OnKeyDown(Key key) => onKey(key) || base.OnKeyDown(key);
     }
 
-    private sealed class Source(HistoryView view) : IListDataSource
+    private sealed class Source : IListDataSource
     {
-        private readonly (int, int) _columns = FileHistory.Columns(view._visible, view.Times);
+        private readonly HistoryView _view;
+        private readonly Times _times;
+        private readonly (int, int) _columns;
+
+        // Ages are read at one instant, so a redraw can't widen one past its column.
+        public Source(HistoryView view)
+        {
+            _view = view;
+            _times = new Times(new FixedClock(view.Times.Clock));
+            _columns = FileHistory.Columns(view._visible, _times);
+        }
+
+        public string Text(int item, int width) => FileHistory.Row(_view._visible[item], _columns, _times, width);
 
         public event NotifyCollectionChangedEventHandler? CollectionChanged { add { } remove { } }
 
-        public int Count => view._visible.Count;
+        public int Count => _view._visible.Count;
 
         public int MaxItemLength => 0;
 
@@ -189,7 +200,7 @@ public sealed class HistoryView : View
         public void Render(ListView listView, bool selected, int item, int col, int row, int width, int viewportX = 0)
         {
             listView.Move(col, row);
-            var text = FileHistory.Row(view._visible[item], _columns, view.Times, width);
+            var text = Text(item, width);
             listView.AddStr(text + new string(' ', Math.Max(0, width - text.GetColumns())));
         }
 
@@ -197,8 +208,17 @@ public sealed class HistoryView : View
 
         public void SetMark(int item, bool value) { }
 
-        public IList ToList() => view._visible.Select(c => c.Subject).ToList();
+        public IList ToList() => _view._visible.Select(c => c.Subject).ToList();
 
         public void Dispose() { }
+    }
+
+    private sealed class FixedClock(TimeProvider clock) : TimeProvider
+    {
+        private readonly DateTimeOffset _now = clock.GetUtcNow();
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public override TimeZoneInfo LocalTimeZone => clock.LocalTimeZone;
     }
 }

@@ -341,6 +341,32 @@ public class FileHistoryHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task A_redraw_after_an_age_grows_a_digit_keeps_the_columns_it_opened_with()
+    {
+        _git.FileCommits[Full("/work/a.txt")] =
+        [
+            EditA with { Date = Day.AddMinutes(-9) },
+            AddOld with { Author = "Ada", Date = Day.AddHours(-3) },
+        ];
+        var clock = new FakeClock(Day);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var history = workbench.History;
+        IReadOnlyList<string> opened = [];
+
+        await HostSteps.Run(host,
+            () => HostSteps.PinScreenSize(host, 100, 30),
+            () => { history.Times = new Times(clock); Open(workbench, "/work/a.txt"); },
+            () => workbench.StatusBar.DisplayedFocus == "Editor",
+            () => _commands.TryExecute(CommandIds.ToggleFileHistory),
+            () => history.Rows.Count == 2,
+            () => { opened = history.Rows; clock.Advance(TimeSpan.FromMinutes(1)); history.SetNeedsDraw(); });
+
+        Assert.Equal("1111111  9m  Ada  Edit a", opened[0].TrimEnd());
+        Assert.Equal(opened, history.Rows);
+    }
+
+    [Fact]
     public void Gh_is_Show_file_history_on_Ctrl_G_H()
     {
         using var workbench = BuildWorkbench();
