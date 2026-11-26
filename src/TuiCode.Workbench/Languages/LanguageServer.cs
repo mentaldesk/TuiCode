@@ -42,6 +42,8 @@ public sealed class LanguageServer : IDisposable
     private bool _loaded;
     private bool _stopping;
     private JsonNode? _renameProvider;
+    private IReadOnlySet<string> _triggerCharacters = new HashSet<string>();
+    private bool _resolvesCompletions;
 
     public LanguageServer(LanguageServerSpec spec, string root, ILanguageServerLauncher launcher, Action<Action> post)
     {
@@ -105,7 +107,12 @@ public sealed class LanguageServer : IDisposable
         {
             var initialized = await connection.RequestAsync("initialize", InitializeParams()).ConfigureAwait(false);
             FindsImplementations = initialized?["capabilities"]?["implementationProvider"]?.GetValueKind() is JsonValueKind.Object or JsonValueKind.True;
-            lock (_gate) _renameProvider = initialized?["capabilities"]?["renameProvider"]?.DeepClone();
+            lock (_gate)
+            {
+                _renameProvider = initialized?["capabilities"]?["renameProvider"]?.DeepClone();
+                _triggerCharacters = LspCompletion.TriggerCharacters(initialized?["capabilities"]);
+                _resolvesCompletions = initialized?["capabilities"]?["completionProvider"]?["resolveProvider"]?.GetValueKind() == JsonValueKind.True;
+            }
             if (KnownLanguageServers.WithCommand(Spec.LanguageId, Spec.Command) is null
                 && initialized?["serverInfo"]?["name"]?.GetValue<string>() is { Length: > 0 } name)
                 Title = name;
@@ -164,6 +171,11 @@ public sealed class LanguageServer : IDisposable
                     ["documentSymbol"] = new JsonObject { ["hierarchicalDocumentSymbolSupport"] = true },
                     ["hover"] = new JsonObject { ["contentFormat"] = new JsonArray("markdown", "plaintext") },
                     ["rename"] = new JsonObject { ["prepareSupport"] = true },
+                    ["completion"] = new JsonObject
+                    {
+                        ["completionItem"] = new JsonObject { ["snippetSupport"] = false, ["insertReplaceSupport"] = true },
+                        ["contextSupport"] = true,
+                    },
                 },
                 ["experimental"] = new JsonObject { ["csharp"] = new JsonObject { ["metadataUris"] = true } },
             },
@@ -335,6 +347,35 @@ public sealed class LanguageServer : IDisposable
             ["textDocument"] = new JsonObject { ["uri"] = UriOf(location.Path) },
         }).ConfigureAwait(false);
         return LspSymbols.QualifiedName(symbols, location.Line, location.Character);
+    }
+
+    /// <summary>The characters the server says start completion, such as <c>.</c>.</summary>
+    public IReadOnlySet<string> TriggerCharacters
+    {
+        get { lock (_gate) return _triggerCharacters; }
+    }
+
+    /// <summary>
+    /// What fits at <paramref name="line"/> and UTF-16 <paramref name="character"/>: asked for there (<paramref name="trigger"/> null),
+    /// after typing <paramref name="trigger"/>, or again as the user types into an incomplete list.
+    /// </summary>
+    public async Task<CompletionList> CompletionAsync(string path, int line, int character, string? trigger = null, bool again = false)
+    {
+        var parameters = Position(path, line, character);
+        var context = new JsonObject { ["triggerKind"] = again ? 3 : trigger is null ? 1 : 2 };
+        if (trigger is not null && !again) context["triggerCharacter"] = trigger;
+        parameters["context"] = context;
+        return LspCompletion.Parse(await RequestAsync("textDocument/completion", parameters).ConfigureAwait(false));
+    }
+
+    /// <summary>The detail the server gives <paramref name="item"/> when asked for more, or null when it has none or can't say.</summary>
+    public async Task<string?> CompletionDetailAsync(JsonObject item)
+    {
+        bool resolves;
+        lock (_gate) resolves = _resolvesCompletions;
+        return resolves
+            ? LspCompletion.ResolvedDetail(await RequestAsync("completionItem/resolve", (JsonObject)item.DeepClone()).ConfigureAwait(false))
+            : null;
     }
 
     /// <summary>Whether the server said it can rename.</summary>

@@ -110,6 +110,7 @@ public static class CommandMnemonics
             [CommandIds.GoToDefinition] = "gd",
             [CommandIds.GoToImplementation] = "gi",
             [CommandIds.QuickInfo] = "qi",
+            [CommandIds.ShowCompletions] = "sc",
             [CommandIds.FindUsages] = "gu",
             [CommandIds.AiAssistance] = "ai",
             [CommandIds.FocusAssistant] = "fi",

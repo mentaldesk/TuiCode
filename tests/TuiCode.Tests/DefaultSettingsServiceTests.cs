@@ -258,7 +258,7 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
     public void Editor_settings_round_trip_through_the_settings_file()
     {
         var fs = new MockFileSystem();
-        var editor = new EditorSettings { IndentSize = 2, InsertSpaces = false, LineEnding = LineEnding.CRLF, InsertFinalNewline = false, DetectIndentation = false, WordWrap = true, StickyLines = false };
+        var editor = new EditorSettings { IndentSize = 2, InsertSpaces = false, LineEnding = LineEnding.CRLF, InsertFinalNewline = false, DetectIndentation = false, WordWrap = true, StickyLines = false, SuggestAsYouType = false };
         var svc = new DefaultSettingsService(fs) { Editor = editor };
 
         svc.Save();
@@ -303,6 +303,18 @@ public class DefaultSettingsServiceTests : StaticConfigurationTest
         svc.Save();
 
         Assert.False(fs.File.Exists(SettingsPath(fs)));
+    }
+
+    [Fact]
+    public void Suggesting_as_you_type_is_on_unless_the_settings_file_turns_it_off()
+    {
+        var fs = new MockFileSystem();
+        Assert.True(new DefaultSettingsService(fs).Editor.SuggestAsYouType);
+
+        new DefaultSettingsService(fs) { Editor = EditorSettings.Default with { SuggestAsYouType = false } }.Save();
+
+        Assert.False(new DefaultSettingsService(fs).Editor.SuggestAsYouType);
+        Assert.Contains("\"SuggestAsYouType\": false", fs.File.ReadAllText(SettingsPath(fs)));
     }
 
     [Fact]

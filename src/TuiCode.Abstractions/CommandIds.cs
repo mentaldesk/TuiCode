@@ -99,6 +99,13 @@ public static class CommandIds
     public const string QuickInfoDown = "quickInfo.action.down";
     public const string QuickInfoPageUp = "quickInfo.action.pageUp";
     public const string QuickInfoPageDown = "quickInfo.action.pageDown";
+    public const string ShowCompletions = "workbench.action.showCompletions";
+    public const string CompletionClose = "completion.action.close";
+    public const string CompletionAccept = "completion.action.accept";
+    public const string CompletionUp = "completion.action.up";
+    public const string CompletionDown = "completion.action.down";
+    public const string CompletionPageUp = "completion.action.pageUp";
+    public const string CompletionPageDown = "completion.action.pageDown";
     public const string FindUsages = "workbench.action.findUsages";
     public const string RenameSymbol = "workbench.action.renameSymbol";
     public const string AiAssistance = "workbench.action.aiAssistance";

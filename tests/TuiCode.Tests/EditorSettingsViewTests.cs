@@ -90,6 +90,24 @@ public class EditorSettingsViewTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Suggest_as_I_type_is_ticked_by_default_and_unticking_it_saves_it()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var shown = CheckState.UnChecked;
+
+        await HostSteps.Run(host,
+            OpenEditorSettings(host, workbench),
+            () => { shown = CheckBoxOf(workbench, "Suggest as I type").Value; },
+            () => CheckBoxOf(workbench, "Suggest as I type").SetFocus(),
+            () => host.App.InjectKey(Key.Space),
+            () => host.App.InjectKey(Key.Enter.WithCtrl));
+
+        Assert.Equal(CheckState.Checked, shown);
+        Assert.False(_settings.Editor.SuggestAsYouType);
+    }
+
+    [Fact]
     public async Task Saving_wrap_long_lines_wraps_files_opened_afterwards_but_not_open_ones()
     {
         var fs = new MockFileSystem();
@@ -189,6 +207,10 @@ public class EditorSettingsViewTests : StaticConfigurationTest
             }
         };
     }
+
+    private static CheckBox CheckBoxOf(Workbench.Workbench workbench, string text) =>
+        workbench.SubViews.OfType<SettingsView>().Single().SubViews.OfType<EditorSettingsView>().Single()
+            .SubViews.OfType<CheckBox>().Single(c => c.Text == text);
 
     private static CheckBox StickyCheckBox(Workbench.Workbench workbench) =>
         workbench.SubViews.OfType<SettingsView>().Single().SubViews.OfType<EditorSettingsView>().Single()
