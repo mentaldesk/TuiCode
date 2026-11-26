@@ -1,4 +1,4 @@
-using System.Globalization;
+using MentalDesk.Tui;
 
 namespace TuiCode.Abstractions;
 
@@ -109,11 +109,10 @@ public sealed record GitHubConversation(
 public sealed record GitHubComment(string Author, DateTimeOffset Date, string Body)
 {
     /// <summary>How a comment is headed wherever it's read: the Overview tab (#185) and an expanded thread (#186).</summary>
-    public string Heading => HeadingFor(Author, Date);
+    public string Heading(Times times) => HeadingFor(Author, Date, times);
 
     /// <summary>The same heading for something that isn't a comment, like the PR's own description.</summary>
-    public static string HeadingFor(string author, DateTimeOffset date) =>
-        $"{author} · {date.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}";
+    public static string HeadingFor(string author, DateTimeOffset date, Times times) => $"{author} · {times.At(date)}";
 }
 
 /// <summary>

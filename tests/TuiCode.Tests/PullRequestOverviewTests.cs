@@ -7,15 +7,20 @@ public class PullRequestOverviewTests
 {
     private static readonly DateTimeOffset Opened = new(2026, 9, 20, 6, 54, 0, TimeSpan.Zero);
 
+    // 13:30 on 26 Nov in a zone 13 hours ahead of UTC, so a time read in UTC would show.
+    private static readonly Times Times = new(new FakeClock(
+        new DateTimeOffset(2026, 11, 26, 0, 30, 0, TimeSpan.Zero),
+        TimeZoneInfo.CreateCustomTimeZone("Plus13", TimeSpan.FromHours(13), "Plus13", "Plus13")));
+
     [Fact]
     public void A_pull_request_with_no_comments_is_its_title_author_and_description()
     {
-        var text = PullRequestOverview.Build(Conversation("Shows the PR\n", []));
+        var text = PullRequestOverview.Build(Conversation("Shows the PR\n", []), Times);
 
         Assert.Equal("""
         # #183 Review tab shows the PR
 
-        jamescrosswell · 2026-09-20 06:54
+        jamescrosswell · 20 Sep 19:54
 
         Shows the PR
 
@@ -23,29 +28,29 @@ public class PullRequestOverviewTests
     }
 
     [Fact]
-    public void Each_comment_follows_in_order_under_a_rule_headed_by_its_author_and_date()
+    public void Each_comment_follows_in_order_under_a_rule_headed_by_its_author_and_local_time()
     {
         var text = PullRequestOverview.Build(Conversation("Shows the PR", [
-            new GitHubComment("octocat", Opened.AddHours(1), "Looks good."),
-            new GitHubComment("hubot", Opened.AddDays(1), "Merging.\r\nThanks!"),
-        ]));
+            new GitHubComment("octocat", new DateTimeOffset(2025, 11, 14, 9, 30, 0, TimeSpan.Zero), "Looks good."),
+            new GitHubComment("hubot", new DateTimeOffset(2026, 11, 25, 21, 0, 0, TimeSpan.Zero), "Merging.\r\nThanks!"),
+        ]), Times);
 
         Assert.Equal("""
         # #183 Review tab shows the PR
 
-        jamescrosswell · 2026-09-20 06:54
+        jamescrosswell · 20 Sep 19:54
 
         Shows the PR
 
         ---
 
-        octocat · 2026-09-20 07:54
+        octocat · 14 Nov 2025 22:30
 
         Looks good.
 
         ---
 
-        hubot · 2026-09-21 06:54
+        hubot · 10:00
 
         Merging.
         Thanks!
@@ -56,7 +61,7 @@ public class PullRequestOverviewTests
     [Fact]
     public void An_empty_description_says_so_rather_than_leaving_a_gap()
     {
-        var text = PullRequestOverview.Build(Conversation("   \n", []));
+        var text = PullRequestOverview.Build(Conversation("   \n", []), Times);
 
         Assert.Contains("*No description*", text);
     }

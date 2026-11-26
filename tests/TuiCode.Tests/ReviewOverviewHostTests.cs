@@ -45,7 +45,7 @@ public class ReviewOverviewHostTests : StaticConfigurationTest
         var tab = workbench.Editor.Group.ActiveDocumentTab!;
         // The document is LF on every OS; a raw literal here would be CRLF in a Windows checkout.
         Assert.Equal(
-            string.Join('\n', ["# #183 Review tab shows the PR", "", "jamescrosswell · 2026-09-20 06:54", "", "What it does.", ""]),
+            string.Join('\n', ["# #183 Review tab shows the PR", "", "jamescrosswell · 20 Sep 06:54", "", "What it does.", ""]),
             tab.Content);
         Assert.Empty(workbench.Editor.Group.Tabs);
         Assert.Equal([183], _gitHub.ConversationCalls);
@@ -184,6 +184,9 @@ public class ReviewOverviewHostTests : StaticConfigurationTest
     {
         commands = new CommandService();
         return new WorkbenchHost(workbench, commands, new KeybindingService(commands), new InputScopeStack(),
-            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git, gitHub: _gitHub);
+            new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git, gitHub: _gitHub)
+        {
+            Times = new Times(new FakeClock(new DateTimeOffset(2026, 11, 26, 0, 0, 0, TimeSpan.Zero))),
+        };
     }
 }

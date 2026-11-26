@@ -1,4 +1,5 @@
 using System.Text;
+using MentalDesk.Tui;
 using TuiCode.Abstractions;
 
 namespace TuiCode.Workbench.Review;
@@ -19,7 +20,7 @@ public static class PullRequestOverview
     public static string OutdatedTitleOf(int number, string path) => $"#{number} Outdated: {path}";
 
     /// <summary>The same reading as the Overview, for threads that have no line left to sit on (#186).</summary>
-    public static string BuildOutdated(int number, string path, IReadOnlyList<GitHubReviewThread> threads)
+    public static string BuildOutdated(int number, string path, IReadOnlyList<GitHubReviewThread> threads, Times times)
     {
         var text = new StringBuilder()
             .Append("# #").Append(number).Append(" outdated threads on ").Append(path).Append('\n');
@@ -27,22 +28,22 @@ public static class PullRequestOverview
         {
             text.Append('\n').Append(Rule).Append('\n');
             foreach (var comment in thread.Comments)
-                text.Append('\n').Append(comment.Heading).Append('\n')
+                text.Append('\n').Append(comment.Heading(times)).Append('\n')
                     .Append('\n').Append(Body(comment.Body)).Append('\n');
         }
         return text.ToString();
     }
 
-    public static string Build(GitHubConversation conversation)
+    public static string Build(GitHubConversation conversation, Times times)
     {
         // LF whatever the OS: this is a buffer to read, not a file written back to disk.
         var text = new StringBuilder()
             .Append("# #").Append(conversation.Number).Append(' ').Append(conversation.Title).Append('\n')
-            .Append('\n').Append(GitHubComment.HeadingFor(conversation.Author, conversation.Date)).Append('\n')
+            .Append('\n').Append(GitHubComment.HeadingFor(conversation.Author, conversation.Date, times)).Append('\n')
             .Append('\n').Append(Body(conversation.Body)).Append('\n');
         foreach (var comment in conversation.Comments)
             text.Append('\n').Append(Rule).Append('\n')
-                .Append('\n').Append(comment.Heading).Append('\n')
+                .Append('\n').Append(comment.Heading(times)).Append('\n')
                 .Append('\n').Append(Body(comment.Body)).Append('\n');
         return text.ToString();
     }

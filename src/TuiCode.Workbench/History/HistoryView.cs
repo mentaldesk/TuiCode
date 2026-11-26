@@ -1,4 +1,5 @@
 using MentalDesk.Tui.Fields;
+using MentalDesk.Tui;
 using System.Collections;
 using System.Collections.Specialized;
 using MentalDesk.Tui.Loading;
@@ -51,7 +52,7 @@ public sealed class HistoryView : View
 
     public bool ListHasFocus => _list.HasFocus;
 
-    internal Func<DateTimeOffset> Now { get; set; } = () => DateTimeOffset.Now;
+    internal Times Times { get; set; } = new();
     internal string Filter => _filter.Text ?? "";
     internal string Note => _note.Text ?? "";
     internal LoadStateView State => _state;
@@ -165,7 +166,7 @@ public sealed class HistoryView : View
     }
 
     private string Row(int item, int width) =>
-        FileHistory.Row(_visible[item], FileHistory.Columns(_visible, Now()), Now(), width);
+        FileHistory.Row(_visible[item], FileHistory.Columns(_visible, Times), Times, width);
 
     // TG's ListView jumps to a row on a typed key in OnKeyDown, before KeyDown subscribers see it.
     private sealed class CommitList(Func<Key, bool> onKey) : ListView
@@ -175,8 +176,7 @@ public sealed class HistoryView : View
 
     private sealed class Source(HistoryView view) : IListDataSource
     {
-        private readonly DateTimeOffset _now = view.Now();
-        private readonly (int, int) _columns = FileHistory.Columns(view._visible, view.Now());
+        private readonly (int, int) _columns = FileHistory.Columns(view._visible, view.Times);
 
         public event NotifyCollectionChangedEventHandler? CollectionChanged { add { } remove { } }
 
@@ -189,7 +189,7 @@ public sealed class HistoryView : View
         public void Render(ListView listView, bool selected, int item, int col, int row, int width, int viewportX = 0)
         {
             listView.Move(col, row);
-            var text = FileHistory.Row(view._visible[item], _columns, _now, width);
+            var text = FileHistory.Row(view._visible[item], _columns, view.Times, width);
             listView.AddStr(text + new string(' ', Math.Max(0, width - text.GetColumns())));
         }
 

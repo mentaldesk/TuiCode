@@ -39,7 +39,7 @@ public class VerbatimLabelTests : StaticConfigurationTest
         var blame = new GitBlameLine(
             "4a91c0e2b7d1f3e5a6c8b9d0e1f2a3b4c5d6e7f8", $"{text}_author", DateTimeOffset.UnixEpoch,
             $"Fix {text}", $"var x = {text};", $"{text}.cs", null);
-        using var view = new BlameView($"{text}.cs", 2, blame, DateTimeOffset.UnixEpoch);
+        using var view = new BlameView($"{text}.cs", 2, blame, new Times(new FakeClock(DateTimeOffset.UnixEpoch)));
 
         var screen = Render(view);
 

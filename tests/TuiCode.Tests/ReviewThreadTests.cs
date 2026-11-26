@@ -8,6 +8,7 @@ namespace TuiCode.Tests;
 public class ReviewThreadRowsTests
 {
     private static readonly DateTimeOffset Posted = new(2026, 9, 20, 6, 54, 0, TimeSpan.Zero);
+    private static readonly Times Times = new(new FakeClock(Posted.AddHours(3), TimeZoneInfo.CreateCustomTimeZone("Plus13", TimeSpan.FromHours(13), "Plus13", "Plus13")));
 
     [Fact]
     public void A_collapsed_thread_is_its_first_line_and_the_number_of_replies()
@@ -16,13 +17,13 @@ public class ReviewThreadRowsTests
 
         Assert.Equal(
             [new ThreadRow("┃ octocat: Does Esc stay global here?", "(2 replies)")],
-            ReviewThreadRows.For(thread, expanded: false));
+            ReviewThreadRows.For(thread, expanded: false, Times));
     }
 
     [Fact]
     public void A_thread_nobody_has_replied_to_says_nothing_about_replies()
     {
-        var rows = ReviewThreadRows.For(Thread(("octocat", "Just this.")), expanded: false);
+        var rows = ReviewThreadRows.For(Thread(("octocat", "Just this.")), expanded: false, Times);
 
         Assert.Null(Assert.Single(rows).Trailing);
     }
@@ -30,7 +31,7 @@ public class ReviewThreadRowsTests
     [Fact]
     public void One_reply_is_counted_in_the_singular()
     {
-        var rows = ReviewThreadRows.For(Thread(("octocat", "Why?"), ("hubot", "Because.")), expanded: false);
+        var rows = ReviewThreadRows.For(Thread(("octocat", "Why?"), ("hubot", "Because.")), expanded: false, Times);
 
         Assert.Equal("(1 reply)", Assert.Single(rows).Trailing);
     }
@@ -40,15 +41,15 @@ public class ReviewThreadRowsTests
     {
         var thread = Thread(("octocat", "Does Esc stay global?\r\nIt matters."), ("hubot", "It does."));
 
-        var rows = ReviewThreadRows.For(thread, expanded: true);
+        var rows = ReviewThreadRows.For(thread, expanded: true, Times);
 
         Assert.Equal(
         [
-            "┃ octocat · 2026-09-20 06:54",
+            "┃ octocat · 19:54",
             "┃ Does Esc stay global?",
             "┃ It matters.",
             "┃",
-            "┃ hubot · 2026-09-20 06:54",
+            "┃ hubot · 19:54",
             "┃ It does.",
         ], rows.Select(r => r.Text));
     }

@@ -1,14 +1,14 @@
 namespace TuiCode.Tests;
 
 // Timers fire synchronously inside Advance.
-internal sealed class FakeClock : TimeProvider
+internal sealed class FakeClock(DateTimeOffset? now = null, TimeZoneInfo? zone = null) : TimeProvider
 {
     private readonly List<Timer> _timers = [];
-    private DateTimeOffset _now = new(2026, 10, 23, 10, 42, 7, TimeSpan.Zero);
+    private DateTimeOffset _now = now ?? new(2026, 10, 23, 10, 42, 7, TimeSpan.Zero);
 
     public override DateTimeOffset GetUtcNow() => _now;
 
-    public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+    public override TimeZoneInfo LocalTimeZone { get; } = zone ?? TimeZoneInfo.Utc;
 
     public void Advance(TimeSpan by)
     {

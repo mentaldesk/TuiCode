@@ -62,8 +62,8 @@ public class FileHistoryHostTests : StaticConfigurationTest
         Assert.True(history.ListHasFocus);
         Assert.Equal("History: a.txt", history.Title);
         Assert.Equal(["Edit a", "Rename old to a", "Edit old", "Add old"], history.Listed.Select(c => c.Subject));
-        Assert.Equal("1111111  4 days ago    Ada  Edit a", history.Rows[0].TrimEnd());
-        Assert.Equal("4444444  24 hours ago  Cy   Add old", history.Rows[3].TrimEnd());
+        Assert.Equal("1111111   4d  Ada  Edit a", history.Rows[0].TrimEnd());
+        Assert.Equal("4444444  24h  Cy   Add old", history.Rows[3].TrimEnd());
 
         var editor = workbench.Editor.Frame;
         var panel = workbench.Panel.Frame;
@@ -373,13 +373,13 @@ public class FileHistoryHostTests : StaticConfigurationTest
     {
         var workbench = new Workbench.Workbench(new SidebarPart(new FileExplorerView()), new EditorPart(), new StatusBarPart());
         workbench.Sidebar.Explorer.Open(_fs.DirectoryInfo.New(Full("/work")));
-        workbench.History.Now = () => Day;
+        workbench.History.Times = new Times(new FakeClock(Day));
         return workbench;
     }
 
     private WorkbenchHost BuildHost(Workbench.Workbench workbench)
     {
-        workbench.History.Now = () => Day;
+        workbench.History.Times = new Times(new FakeClock(Day));
         return new WorkbenchHost(workbench, _commands, _keybindings, new InputScopeStack(),
             new InMemorySettingsService(), driverName: DriverRegistry.Names.ANSI, git: _git);
     }

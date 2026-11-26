@@ -6,6 +6,7 @@ namespace TuiCode.Tests;
 public class FileHistoryTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
+    private static readonly Times Times = new(new FakeClock(Now));
 
     private static readonly GitFileCommit[] Commits =
     [
@@ -25,18 +26,33 @@ public class FileHistoryTests
     [Fact]
     public void Row_lines_up_hash_age_author_and_subject_and_cuts_only_at_the_edge()
     {
-        var columns = FileHistory.Columns(Commits, Now);
+        var columns = FileHistory.Columns(Commits, Times);
 
-        Assert.Equal("4a91c0e  2 days ago   James Crosswell  Suspend to shell", FileHistory.Row(Commits[0], columns, Now, 80));
-        Assert.Equal("9b14c2e  3 hours ago  a-team-app[bot]  Open a file from the command line", FileHistory.Row(Commits[1], columns, Now, 80));
-        Assert.Equal("9b14c2e  3 hours ago  a-team-app[bot]  Open a fil…", FileHistory.Row(Commits[1], columns, Now, 50));
+        Assert.Equal("4a91c0e  2d  James Crosswell  Suspend to shell", FileHistory.Row(Commits[0], columns, Times, 80));
+        Assert.Equal("9b14c2e  3h  a-team-app[bot]  Open a file from the command line", FileHistory.Row(Commits[1], columns, Times, 80));
+        Assert.Equal("9b14c2e  3h  a-team-app[bot]  Open a file from th…", FileHistory.Row(Commits[1], columns, Times, 50));
     }
 
+    [Theory]
+    [InlineData(30, "now")]
+    [InlineData(5 * 60, "5m")]
+    [InlineData(3 * 60 * 60, "3h")]
+    [InlineData(2 * 86400, "2d")]
+    [InlineData(4 * 86400, "4d")]
+    [InlineData(40 * 86400, "3 Sep")]
+    [InlineData(400 * 86400, "8 Sep 2025")]
+    public void Age_reads_the_short_way(long seconds, string age) =>
+        Assert.Equal(age, FileHistory.Age(Commits[0] with { Date = Now.AddSeconds(-seconds) }, Times));
+
     [Fact]
-    public void Age_reads_how_long_ago_the_commit_was()
+    public void The_age_column_is_as_wide_as_the_widest_age_and_right_aligned()
     {
-        Assert.Equal("2 days ago", FileHistory.Age(Commits[0], Now));
-        Assert.Equal("3 weeks ago", FileHistory.Age(Commits[0] with { Date = Now.AddDays(-21) }, Now));
-        Assert.Equal("3 months ago", FileHistory.Age(Commits[0] with { Date = Now.AddDays(-90) }, Now));
+        GitFileCommit[] commits = [Commits[1], Commits[0] with { Date = Now.AddDays(-400) }];
+
+        var columns = FileHistory.Columns(commits, Times);
+
+        Assert.Equal("8 Sep 2025".Length, columns.Age);
+        Assert.StartsWith("9b14c2e          3h  ", FileHistory.Row(commits[0], columns, Times, 80));
+        Assert.StartsWith("4a91c0e  8 Sep 2025  ", FileHistory.Row(commits[1], columns, Times, 80));
     }
 }
