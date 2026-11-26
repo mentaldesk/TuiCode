@@ -27,6 +27,17 @@ public class LspSymbolsTests
     public void QualifiedName_names_a_declaration_after_its_type_without_namespaces_or_parameters(int line, int character, string name) =>
         Assert.Equal(name, LspSymbols.QualifiedName(CsharpLs, line, character));
 
+    [Theory]
+    [InlineData(6, "LineDiff.Hunks", "Hunks", 4, 22)]
+    [InlineData(10, "LineDiff.Twice", "Twice", 9, 22)]
+    [InlineData(1, "LineDiff", "LineDiff", 2, 20)]
+    public void Enclosing_names_the_innermost_member_a_line_is_in_and_where_its_name_is(int line, string name, string word, int at, int character) =>
+        Assert.Equal((name, word, at, character), LspSymbols.Enclosing(CsharpLs, line));
+
+    [Fact]
+    public void Enclosing_is_null_outside_every_type() =>
+        Assert.Null(LspSymbols.Enclosing(CsharpLs, 0));
+
     [Fact]
     public void QualifiedName_is_null_where_nothing_is_declared() =>
         Assert.Null(LspSymbols.QualifiedName(CsharpLs, 6, 8));

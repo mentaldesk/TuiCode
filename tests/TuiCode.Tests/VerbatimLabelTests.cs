@@ -76,7 +76,7 @@ public class VerbatimLabelTests : StaticConfigurationTest
     public void Find_usages_names_the_symbol_with_every_underscore()
     {
         using var view = new UsagesView { Width = 60, Height = 10 };
-        view.ShowUsages("__cache_", []);
+        view.ShowUsages(view.StartLooking("__cache_"), "__cache_", [], textMatches: false);
 
         Assert.Contains("No usages of __cache_", Render(view));
         AssertNoLabelHotKeys(view);

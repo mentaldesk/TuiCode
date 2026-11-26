@@ -87,6 +87,9 @@ public sealed class LanguageServers : IDisposable
     public LanguageServer? ServerFor(EditorTab tab) =>
         SpecFor(tab) is { } spec ? _servers.GetValueOrDefault(spec.LanguageId) : null;
 
+    public LanguageServer? ServerFor(SyntaxLanguage language) =>
+        SpecFor(language) is { } spec ? _servers.GetValueOrDefault(spec.LanguageId) : null;
+
     /// <summary>Stops every server; the next file opened starts its language's server in <paramref name="root"/>.</summary>
     public void OpenFolder(string root)
     {

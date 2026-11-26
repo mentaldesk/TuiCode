@@ -16,6 +16,49 @@ public static class LspSymbols
         return FromInformation(symbols, line, character);
     }
 
+    public static (string Name, string Word, int Line, int Character)? Enclosing(JsonNode? result, int line)
+    {
+        if (result is not JsonArray symbols) return null;
+        var path = new List<string>();
+        (string, string, int, int)? found = null;
+        Innermost(symbols, line, path, ref found);
+        if (found is not null) return found;
+        var symbol = symbols.OfType<JsonObject>()
+            .Where(s => Holds(s["location"]?["range"], line))
+            .Where(s => Named(s))
+            .OrderByDescending(s => s["location"]?["range"]?["start"]?["line"]?.GetValue<int>() ?? 0)
+            .FirstOrDefault();
+        if (symbol is null || Name(symbol) is not { } name || symbol["location"]?["range"]?["start"] is not { } at) return null;
+        var container = symbol["containerName"]?.GetValue<string>();
+        var qualified = string.IsNullOrEmpty(container) ? name : Join([container[(container.LastIndexOf('.') + 1)..], name])!;
+        return (qualified, name, Point(at).Line, Point(at).Character);
+    }
+
+    // Variables are locals, which a server may list inside a member but which no usage is "in".
+    private static bool Named(JsonObject symbol) =>
+        symbol["kind"]?.GetValue<int>() is var kind && !Containers.Contains(kind ?? 0) && kind != 13 && Name(symbol) is not null;
+
+    private static void Innermost(JsonArray symbols, int line, List<string> path, ref (string, string, int, int)? found)
+    {
+        foreach (var symbol in symbols.OfType<JsonObject>())
+        {
+            if (!Holds(symbol["range"], line)) continue;
+            var named = Named(symbol) && symbol["selectionRange"]?["start"] is not null;
+            if (named)
+            {
+                path.Add(Name(symbol)!);
+                var at = Point(symbol["selectionRange"]!["start"]!);
+                found = (Join(path)!, Name(symbol)!, at.Line, at.Character);
+            }
+            if (symbol["children"] is JsonArray children) Innermost(children, line, path, ref found);
+            if (named) path.RemoveAt(path.Count - 1);
+            return;
+        }
+    }
+
+    private static bool Holds(JsonNode? range, int line) =>
+        range?["start"]?["line"]?.GetValue<int>() is { } start && range["end"]?["line"]?.GetValue<int>() is { } end && start <= line && line <= end;
+
     private static bool FindDeclaration(JsonArray symbols, int line, int character, List<string> path)
     {
         foreach (var symbol in symbols.OfType<JsonObject>())

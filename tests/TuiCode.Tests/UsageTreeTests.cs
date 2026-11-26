@@ -65,5 +65,38 @@ public class UsageTreeTests
         Assert.Equal("1 in 1 file", UsageTree.Count(one));
     }
 
+    [Fact]
+    public void Text_usages_are_whole_word_and_match_case_one_per_line_without_the_line_that_defines_the_name()
+    {
+        string[] lines =
+        [
+            "<ItemGroup><Foo Include=\"a\" /></ItemGroup>",
+            "<Message Text=\"$(Foo) @(Foo)\" />",
+            "<Target Name=\"B\" DependsOnTargets=\"A;Foo\" />",
+            "<FooBar>foo</FooBar>",
+            "<Exec Command=\"Foo.exe\" />",
+        ];
+        var path = Full("build/Foo.targets");
+        var matches = TuiCode.Search.TextSearch.FindAll(lines, "Foo", new(MatchCase: true, WholeWord: true)).Select(m => (path, m.Row, m.Column));
+
+        var usages = UsageTree.TextUsages(matches, "Foo", _ => FileDefinitions.MsBuild(lines));
+
+        Assert.Equal([new(path, 1, 17), new(path, 2, 37), new(path, 4, 15)], usages);
+    }
+
+    [Fact]
+    public void With_definitions_each_row_says_what_it_is_in_or_that_it_is_at_the_top_level()
+    {
+        SourceLocation[] usages = [new(Full("src/History.cs"), 2, 25), new(Full("src/History.cs"), 5, 22)];
+        var history = new UsageDefinition("History.Load", "Load", new(Full("src/History.cs"), 1, 9));
+
+        var files = UsageTree.Build(usages, path => Text[path], Root, u => u.Line == 2 ? history : null);
+
+        Assert.Equal(
+            ["3  in History.Load  var hunks = LineDiff.Hunks(a, b);", "6  (top level)  foreach (var h in LineDiff.Hunks(a, b))"],
+            files.SelectMany(f => f.Children).Select(u => u.ToString()));
+        Assert.Equal([true, false], files.SelectMany(f => f.Children).Cast<UsageLineNode>().Select(u => u.CanFollow));
+    }
+
     private static string Full(string relative) => Path.GetFullPath(Path.Combine(Root, relative));
 }

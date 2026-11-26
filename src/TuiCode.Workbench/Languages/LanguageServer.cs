@@ -337,6 +337,11 @@ public sealed class LanguageServer : IDisposable
         return LspSymbols.QualifiedName(symbols, location.Line, location.Character);
     }
 
+    public Task<JsonNode?> DocumentSymbolsAsync(string path) => RequestAsync("textDocument/documentSymbol", new JsonObject
+    {
+        ["textDocument"] = new JsonObject { ["uri"] = UriOf(path) },
+    });
+
     /// <summary>Whether the server said it can rename.</summary>
     public bool CanRename
     {

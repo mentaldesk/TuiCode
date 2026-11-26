@@ -56,7 +56,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
         Assert.Equal("Usages of Diff.Hunks  4 in 3 files", pane.HeaderText);
         Assert.Equal([("Caller.cs", 1), ("Diff.cs", 1), ("Report.cs", 2)], pane.Files.Select(f => (f.Name, f.Count)));
         Assert.Equal(
-            ["5  var hunks = Diff.Hunks();", "4  int Twice() => Hunks() * 2;", "5  Diff.Hunks();", "6  Diff.Hunks();"],
+            ["5  in Caller.Go  var hunks = Diff.Hunks();", "4  in Diff.Twice  int Twice() => Hunks() * 2;", "5  in Report.Print  Diff.Hunks();", "6  in Report.Print  Diff.Hunks();"],
             pane.Files.SelectMany(f => f.Children).Select(u => u.ToString()));
         Assert.Same(pane.Files[0].Children[0], pane.Tree.SelectedObject);
         Assert.Contains(_server.Received("textDocument/references"), p => p!["context"]!["includeDeclaration"]!.GetValue<bool>() == false);
@@ -142,7 +142,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
     }
 
     [Fact]
-    public async Task While_the_server_works_the_tab_says_so_and_the_menu_item_is_dimmed_until_it_is_ready()
+    public async Task While_the_server_works_the_tab_says_so_and_the_menu_item_is_never_dimmed()
     {
         using var hold = new ManualResetEventSlim();
         _server.HoldReferences = hold;
@@ -151,7 +151,7 @@ public class FindUsagesHostTests : StaticConfigurationTest
         using var host = BuildHost(workbench);
         var pane = workbench.Sidebar.Usages;
         string working = "";
-        bool dimmedWhileLoading = false, dimmedWhenReady = true;
+        bool dimmedWhileLoading = true, dimmedWhenReady = true;
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
@@ -171,27 +171,161 @@ public class FindUsagesHostTests : StaticConfigurationTest
             () => { working = pane.HeaderText; hold.Set(); },
             () => pane.Files.Count > 0);
 
-        Assert.True(dimmedWhileLoading);
+        Assert.False(dimmedWhileLoading);
         Assert.False(dimmedWhenReady);
-        Assert.Equal("Finding usages of Hunks…", working);
+        Assert.Matches("^. Finding usages of Hunks…  Esc stop$", working);
         Assert.Equal("Usages of Diff.Hunks  4 in 3 files", pane.HeaderText);
     }
 
     [Fact]
-    public async Task Without_the_server_installed_Ctrl_G_U_says_how_to_install_it()
+    public async Task Without_a_ready_server_Ctrl_G_U_lists_whole_word_text_matches_and_says_so()
     {
         _server.Missing = true;
+        Add("/work/Notes.cs", "class Notes\n{\n    int HunksSeen() => hunks;\n}\n");
         using var workbench = BuildWorkbench();
         using var host = BuildHost(workbench);
-        var shown = "";
+        var pane = workbench.Sidebar.Usages;
 
         await HostSteps.Run(host,
             () => { OpenFile(workbench, "Caller.cs"); },
-            () => { workbench.StatusBar.ShowMessage("elsewhere"); Tab(workbench).MoveCursor(4, 26); Execute(host); },
-            () => { shown = workbench.StatusBar.Message; });
+            () => { Tab(workbench).MoveCursor(4, 26); Execute(host); },
+            () => pane.Files.Count > 0);
 
-        Assert.Equal("No C# language server. Install: dotnet tool install -g csharp-ls", shown);
-        Assert.Equal(SidebarTab.Explorer, workbench.Sidebar.ActiveTab);
+        Assert.Equal("Usages of Hunks · text matches  4 in 3 files", pane.HeaderText);
+        Assert.Equal(
+            ["5  in Go  var hunks = Diff.Hunks();", "4  in Twice  int Twice() => Hunks() * 2;", "5  in Print  Diff.Hunks();", "6  in Print  Diff.Hunks();"],
+            pane.Files.SelectMany(f => f.Children).Select(u => u.ToString()));
+        Assert.Empty(_server.Received("textDocument/references"));
+    }
+
+    private const string NativeTargets = """
+        <Project>
+          <ItemGroup>
+            <SentryNativeBuildInputs Include="CMakeLists.txt" />
+          </ItemGroup>
+
+          <Target Name="_BuildSentryNativeSDK"
+                  Inputs="@(SentryNativeBuildInputs)"
+                  Outputs="out.lib">
+            <Exec Command="cmake" />
+          </Target>
+
+          <Target Name="_SetupSentryNative" DependsOnTargets="_BuildSentryNativeSDK" />
+          <PropertyGroup>
+            <NativeInputs>@(SentryNativeBuildInputs->Count())</NativeInputs>
+            <Flag>$(_BuildSentryNativeSDKFlag);sentrynativebuildinputs</Flag>
+          </PropertyGroup>
+        </Project>
+        """;
+
+    private const string SentryProject = """
+        <Project>
+          <Target Name="Restore" BeforeTargets="Build" DependsOnTargets="A;_BuildSentryNativeSDK" />
+        </Project>
+        """;
+
+    [Fact]
+    public async Task In_an_MSBuild_file_gu_lists_text_matches_right_follows_a_row_into_its_targets_usages_and_Enter_and_Back_work_from_there()
+    {
+        Add("/work/Sentry.Native.targets", NativeTargets);
+        Add("/work/Sentry.csproj", SentryProject);
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var pane = workbench.Sidebar.Usages;
+        string header = "";
+        string[] first = [], trail = [];
+        UsageLineNode? build = null;
+        (string File, int Row) jumped = default, back = default;
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Sentry.Native.targets"); },
+            () => { Tab(workbench).MoveCursor(6, 22); Execute(host); },
+            () => pane.Files.Count > 0 && pane.ResultsHaveFocus,
+            () =>
+            {
+                header = pane.HeaderText;
+                first = [.. pane.Files.SelectMany(f => f.Children).Select(u => u.ToString()!)];
+                build = (UsageLineNode)pane.Files[0].Children[0];
+                host.App.InjectKey(Key.CursorRight);
+            },
+            () => build!.Children.OfType<UsageFileNode>().Any(),
+            () =>
+            {
+                trail = [.. build!.Children.Cast<UsageFileNode>().SelectMany(f => f.Children.Prepend(f)).Select(n => n.ToString()!)];
+                pane.Tree.SelectedObject = build.Children.Cast<UsageFileNode>().First().Children[0];
+                host.App.InjectKey(Key.Enter);
+            },
+            () => Tab(workbench).File.Name == "Sentry.csproj",
+            () => { jumped = (Tab(workbench).File.Name, Tab(workbench).CursorRow); host.App.InjectKey(Key.G.WithCtrl); },
+            () => host.App.InjectKey(Key.P),
+            () => { back = (Tab(workbench).File.Name, Tab(workbench).CursorRow); });
+
+        Assert.Equal("Usages of SentryNativeBuildInputs · text matches  2 in 1 file", header);
+        Assert.Equal(
+            ["7  in _BuildSentryNativeSDK  Inputs=\"@(SentryNativeBuildInputs)\"", "14  in NativeInputs  <NativeInputs>@(SentryNativeBuildInputs->Count())</NativeInputs>"],
+            first.Select(r => r.TrimStart()));
+        Assert.Equal(
+        [
+            "Sentry.csproj",
+            " 2  in Restore  <Target Name=\"Restore\" BeforeTargets=\"Build\" DependsOnTargets=\"A;_BuildSentryNativeSDK\" />",
+            "Sentry.Native.targets",
+            "12  in _SetupSentryNative  <Target Name=\"_SetupSentryNative\" DependsOnTargets=\"_BuildSentryNativeSDK\" />",
+        ], trail);
+        Assert.Equal(("Sentry.csproj", 1), jumped);
+        Assert.Equal(("Sentry.Native.targets", 6), back);
+        Assert.Empty(_server.Received("textDocument/references"));
+    }
+
+    [Fact]
+    public async Task Right_on_a_row_in_a_member_asks_the_server_for_that_members_usages()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var pane = workbench.Sidebar.Usages;
+        UsageLineNode? twice = null;
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => Ready(workbench),
+            () => { Tab(workbench).MoveCursor(4, 26); Execute(host); },
+            () => pane.Files.Count > 0 && pane.ResultsHaveFocus,
+            () =>
+            {
+                twice = (UsageLineNode)pane.Files.Single(f => f.Name == "Diff.cs").Children[0];
+                pane.Tree.SelectedObject = twice;
+                host.App.InjectKey(Key.CursorRight);
+            },
+            () => twice!.Lookup?.State == UsageLookupState.Found);
+
+        Assert.Equal("No usages of Diff.Twice", Assert.Single(twice!.Children).ToString());
+        var asked = _server.Received("textDocument/references").Last()!;
+        Assert.Equal((3, 8), (asked["position"]!["line"]!.GetValue<int>(), asked["position"]!["character"]!.GetValue<int>()));
+    }
+
+    [Fact]
+    public async Task Esc_in_the_Usages_tab_stops_gu_and_its_late_answer_is_dropped()
+    {
+        using var hold = new ManualResetEventSlim();
+        _server.HoldReferences = hold;
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var pane = workbench.Sidebar.Usages;
+        string stopped = "";
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => Ready(workbench),
+            () => { Tab(workbench).MoveCursor(4, 26); Execute(host); },
+            () => pane.IsLooking && workbench.StatusBar.DisplayedFocus == "Usages",
+            () => host.App.InjectKey(Key.Esc),
+            () => !pane.IsLooking,
+            () => { stopped = pane.HeaderText; hold.Set(); },
+            () => _server.Received("textDocument/references").Any());
+
+        Assert.Equal("Stopped finding usages of Hunks", stopped);
+        Assert.Equal("Usages", workbench.StatusBar.DisplayedFocus);
+        Assert.Equal("Stopped finding usages of Hunks", pane.HeaderText);
+        Assert.Empty(pane.Files);
     }
 
     [Fact]
