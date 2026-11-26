@@ -245,13 +245,24 @@ public sealed class SearchView : View
         _status.Text = $"Finding… {files:N0} {Plural.Of(files, "file")}" + (StopKey is { } key ? $" · {key} stop" : string.Empty);
     }
 
+    private static Task<WorkspaceSearchResult> FindAsync(
+        IDirectoryInfo root, Request search, IReadOnlyDictionary<string, string>? buffers, IGitCli? git, Running run) =>
+        FindAsync(root, search, buffers, git, () => Interlocked.Increment(ref run.FilesSearched), run.Cts.Token);
+
     private static async Task<WorkspaceSearchResult> FindAsync(
-        IDirectoryInfo root, Request search, IReadOnlyDictionary<string, string>? buffers, IGitCli? git, Running run)
+        IDirectoryInfo root, Request search, IReadOnlyDictionary<string, string>? buffers, IGitCli? git, Action? fileSearched, CancellationToken token)
     {
-        var token = run.Cts.Token;
         var files = git is null ? null : (await git.ListFilesAsync(root.FullName, search.IncludeIgnored, token)).Value;
-        return WorkspaceSearch.Search(root, search.Query, search.Options, buffers, files,
-            fileSearched: () => Interlocked.Increment(ref run.FilesSearched), cancellationToken: token);
+        return WorkspaceSearch.Search(root, search.Query, search.Options, buffers, files, fileSearched: fileSearched, cancellationToken: token);
+    }
+
+    /// <summary>Searches the files Find globally would, ignored ones left out; call it on the UI thread, which snapshots the open buffers.</summary>
+    public Task<WorkspaceSearchResult>? FindInFolder(string query, MatchOptions options, CancellationToken token)
+    {
+        if (RootProvider?.Invoke() is not { } root) return null;
+        var buffers = OpenBuffers?.Snapshot();
+        var git = InRepository(root) ? Git : null;
+        return Task.Run(() => FindAsync(root, new Request(query, options, false), buffers, git, null, token), token);
     }
 
     /// <summary>

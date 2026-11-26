@@ -71,6 +71,7 @@ public sealed class FocusService(Func<object?> focusedView)
         FocusRegion.Diff => CommandScope.Diff,
         FocusRegion.Review => CommandScope.Review,
         FocusRegion.Assistant => CommandScope.Assistant,
+        FocusRegion.Usages => CommandScope.Usages,
         // The strip is a mode over the editor, which still holds Terminal.Gui's focus underneath it, and the
         // find bar answers its own keys from its layered scope; the rest still act on the file beneath it.
         FocusRegion.Editor or FocusRegion.Tabs or FocusRegion.FindBar => CommandScope.Editor,

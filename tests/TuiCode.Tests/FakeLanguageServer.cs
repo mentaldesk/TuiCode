@@ -438,11 +438,21 @@ internal sealed partial class FakeLanguageServer : ILanguageServerLauncher
             if (type is null && Regex.Match(lines[row], @"\b(?:class|interface)\s+(\w+)") is { Success: true } declaration)
                 type = Symbol(declaration.Groups[1].Value, 5, Range(0, 0, lines.Length, 0), Range(row, declaration.Groups[1].Index, row, declaration.Groups[1].Index + declaration.Groups[1].Length));
             else if (type is not null && Regex.Match(lines[row], @"\b(?:void|int|string)\s+(\w+)\(") is { Success: true } member)
-                members.Add(Symbol($"{member.Groups[1].Value}()", 6, Range(row, 0, row + 1, 0), Range(row, member.Groups[1].Index, row, member.Groups[1].Index + member.Groups[1].Length)));
+                members.Add(Symbol($"{member.Groups[1].Value}()", 6, Range(row, 0, BodyEnd(lines, row), 0), Range(row, member.Groups[1].Index, row, member.Groups[1].Index + member.Groups[1].Length)));
         }
         if (type is null) return [];
         type["children"] = members;
         return [type];
+    }
+
+    // A member runs to the brace closing it at its own indent, or ends on its own line.
+    private static int BodyEnd(string[] lines, int row)
+    {
+        if (lines[row].Contains("=>", StringComparison.Ordinal) || lines[row].TrimEnd().EndsWith(';')) return row;
+        var indent = lines[row].Length - lines[row].TrimStart().Length;
+        for (var end = row + 1; end < lines.Length; end++)
+            if (lines[end].Trim() == "}" && lines[end].Length - lines[end].TrimStart().Length == indent) return end;
+        return row;
     }
 
     private static JsonObject Symbol(string name, int kind, JsonObject range, JsonObject selection) =>

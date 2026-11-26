@@ -61,6 +61,7 @@ internal sealed record KeybindingClash(KeybindingConflict Kind, KeyBinding Exist
         CommandScope.Diff => "a diff tab",
         CommandScope.Review => "the Review tab",
         CommandScope.Assistant => "the AI assistance tab",
+        CommandScope.Usages => "the Usages tab",
         _ => "anything",
     };
 }

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using MentalDesk.Tui;
@@ -18,6 +19,7 @@ using TuiCode.Abstractions;
 using TuiCode.Editor;
 using TuiCode.Icons;
 using TuiCode.Search;
+using TuiCode.Syntax;
 using TuiCode.Workbench.About;
 using TuiCode.Workbench.Actions;
 using TuiCode.Workbench.Assistant;
@@ -115,7 +117,6 @@ public sealed class WorkbenchHost : IDisposable
     private TypePickerView? _activeTypePicker;
     // Only the latest Go to definition jumps, however the answers come back.
     private int _definitionRequest;
-    private int _usagesRequest;
     private QuickInfoView? _activeQuickInfo;
     private LayeredScope? _quickInfoScope;
     private (EditorTab Tab, System.Drawing.Point? Caret, System.Drawing.Rectangle Text) _quickInfoAt;
@@ -292,6 +293,7 @@ public sealed class WorkbenchHost : IDisposable
         ApplyToolCallsSetting();
         ShowAssistant();
 
+        _workbench.Sidebar.Usages.Following += (_, lookup) => FollowUsage(lookup);
         _workbench.Sidebar.Usages.UsageActivated += (_, location) =>
         {
             if (_usagesFileSystem is { } usages) JumpTo(usages, _workbench.Editor.Group.ActiveTab, location);
@@ -743,6 +745,8 @@ public sealed class WorkbenchHost : IDisposable
             () => { if (search.ReplaceVisible) search.RequestReplaceAll(); }, CommandScope.Find, () => search.InputsHaveFocus);
         _commands.Register(CommandIds.SearchStop, "Stop finding", search.StopSearch,
             CommandScope.Find, () => search.InputsHaveFocus && search.IsSearching);
+        var usages = _workbench.Sidebar.Usages;
+        _commands.Register(CommandIds.UsagesStop, "Stop finding usages", usages.StopLooking, CommandScope.Usages, () => usages.IsLooking);
         // Global, gated on a find box having the keys: the find bar's keys are in the Editor scope, the pane's in Find.
         bool InFindBox() => _focus.Region is FocusRegion.FindBar or FocusRegion.Find;
         bool InFindPane() => _focus.Region is FocusRegion.Find;
@@ -891,6 +895,7 @@ public sealed class WorkbenchHost : IDisposable
         _menu.Refresh();
         _workbench.StatusBar.SetHelpKey(KeyOf(CommandIds.ShowHelp));
         _workbench.Sidebar.Search.StopKey = KeyOf(CommandIds.SearchStop);
+        _workbench.Sidebar.Usages.StopKey = KeyOf(CommandIds.UsagesStop);
     }
 
     private KeyColumn? PlaceHelp()
@@ -1184,6 +1189,7 @@ public sealed class WorkbenchHost : IDisposable
         keybindings.Bind("Shift+Tab", CommandIds.SearchSwitchField);
         keybindings.Bind("Ctrl+Enter", CommandIds.SearchReplaceAll);
         keybindings.Bind("Esc", CommandIds.SearchStop);
+        keybindings.Bind("Esc", CommandIds.UsagesStop);
     }
 
     // Flip visibility unconditionally (works from every entry point — see #85), then settle focus
@@ -1533,7 +1539,7 @@ public sealed class WorkbenchHost : IDisposable
     {
         var scope = _commands.ScopeOf(id);
         return (scope == CommandScope.Global || scope == FocusService.ScopeOf(region)) && _commands.IsEnabled(id)
-            && (id is not (CommandIds.GoToDefinition or CommandIds.GoToImplementation or CommandIds.QuickInfo or CommandIds.FindUsages or CommandIds.RenameSymbol) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
+            && (id is not (CommandIds.GoToDefinition or CommandIds.GoToImplementation or CommandIds.QuickInfo or CommandIds.RenameSymbol) || ActiveLanguageServer() is { State: LanguageServerState.Ready });
     }
 
     private LanguageServer? ActiveLanguageServer() =>
@@ -1963,44 +1969,151 @@ public sealed class WorkbenchHost : IDisposable
         return server;
     }
 
-    /// <summary>Find usages (<c>gu</c>): every place the language server says the symbol under the cursor is used, in the Usages tab.</summary>
+    /// <summary>Find usages (<c>gu</c>): from the language server when it's ready, else a whole-word search (#713).</summary>
     private void FindUsages()
     {
-        if (_workbench.Editor.Group.ActiveTab is not { } tab || ReadyLanguageServer(tab) is not { } server) return;
+        if (_workbench.Editor.Group.ActiveTab is not { } tab) return;
         if (IdentifierAt(tab.Lines[tab.CursorRow], tab.CursorCharacter) is not { } symbol)
         {
             _workbench.StatusBar.ShowMessage("No symbol here to find usages of");
             return;
         }
-        var (path, row, character) = (tab.File.FullName, tab.CursorRow, tab.CursorCharacter);
-        var pane = _workbench.Sidebar.Usages;
-        var request = ++_usagesRequest;
-        pane.ShowSearching(symbol);
+        var character = IdentifierStart(tab.Lines[tab.CursorRow], tab.CursorCharacter) ?? tab.CursorCharacter;
+        var target = new UsageDefinition(symbol, symbol, new SourceLocation(tab.File.FullName, tab.CursorRow, character));
+        var lookup = _workbench.Sidebar.Usages.StartLooking(symbol);
         ShowSidebarTab(SidebarTab.Usages);
-        UsagesAsync(server, path, row, character, symbol).ContinueWith(answer => _app.Invoke(() =>
+        LookUpUsages(lookup, target, tab.File.FileSystem, ActiveLanguageServer() is { State: LanguageServerState.Ready } server ? server : null);
+    }
+
+    private void FollowUsage(UsageLookup lookup)
+    {
+        if (lookup.From?.Definition is not { } definition || _usagesFileSystem is not { } fileSystem) return;
+        LookUpUsages(lookup, definition, fileSystem, ReadyServerAt(definition.At.Path));
+    }
+
+    private LanguageServer? ReadyServerAt(string path)
+    {
+        if (_workbench.Languages is not { } languages) return null;
+        var server = _workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path) is { } open
+            ? languages.ServerFor(open)
+            : _workbench.Editor.Group.Syntax?.LanguageForFile(path) is { } language ? languages.ServerFor(language) : null;
+        return server is { State: LanguageServerState.Ready } ? server : null;
+    }
+
+    private void LookUpUsages(UsageLookup lookup, UsageDefinition target, IFileSystem fileSystem, LanguageServer? server)
+    {
+        var pane = _workbench.Sidebar.Usages;
+        void Failed(Exception error)
         {
-            if (_disposed || request != _usagesRequest) return;
+            if (pane.ShowFailed(lookup)) _workbench.StatusBar.ShowMessage($"Find usages failed: {error.Message}", Severity.Error);
+        }
+        void Found(string name, IReadOnlyList<SourceLocation> usages, Func<string, FileDefinitions> definitions, Func<SourceLocation, UsageDefinition?> definitionOf)
+        {
+            var files = UsageTree.Build(usages, p => LinesOf(fileSystem, p), _workbench.Sidebar.Explorer.Root?.FullName, definitionOf);
+            var focused = _focus.Region == FocusRegion.Usages;
+            if (lookup.From is null) _usagesFileSystem = fileSystem;
+            if (pane.ShowUsages(lookup, name, files, server is null) && lookup.From is null && focused) MoveFocus(FocusRegion.Usages);
+        }
+
+        if (server is not null)
+        {
+            _workbench.Languages!.Flush();
+            ServerUsagesAsync(server, target, fileSystem).ContinueWith(answer => _app.Invoke(() =>
+            {
+                if (_disposed || lookup.State != UsageLookupState.Looking) return;
+                if (answer.Exception?.InnerException is { } error)
+                {
+                    Failed(error);
+                    return;
+                }
+                var (name, usages, symbols) = answer.Result;
+                var unnamed = symbols.Where(s => s.Value is null).Select(s => s.Key).ToList();
+                DefinitionsOf(unnamed, fileSystem, lookup, definitions => Found(name, usages, definitions, usage =>
+                    symbols.GetValueOrDefault(usage.Path) is { } named
+                        ? LspSymbols.Enclosing(named, usage.Line) is var (qualified, word, line, character)
+                            ? new UsageDefinition(qualified, word, new SourceLocation(usage.Path, line, character))
+                            : null
+                        : DefinitionAt(definitions(usage.Path), usage)));
+            }), TaskScheduler.Default);
+            return;
+        }
+
+        var options = new MatchOptions(MatchCase: true, WholeWord: true);
+        var search = _workbench.Sidebar.Search.FindInFolder(target.Word, options, lookup.Token)
+            ?? Task.FromResult(InOneFile(fileSystem, target.At.Path, target.Word, options));
+        search.ContinueWith(answer => _app.Invoke(() =>
+        {
+            if (_disposed || lookup.State != UsageLookupState.Looking) return;
+            if (answer.IsCanceled) return;
             if (answer.Exception?.InnerException is { } error)
             {
-                pane.ShowFailed(symbol);
-                _workbench.StatusBar.ShowMessage($"Find usages failed: {error.Message}", Severity.Error);
+                Failed(error);
                 return;
             }
-            var (name, usages) = answer.Result;
-            var fileSystem = tab.File.FileSystem;
-            var files = UsageTree.Build(usages.Where(u => fileSystem.File.Exists(u.Path)), p => LinesOf(fileSystem, p), _workbench.Sidebar.Explorer.Root?.FullName);
-            var focused = _focus.Region == FocusRegion.Usages;
-            _usagesFileSystem = fileSystem;
-            pane.ShowUsages(name, files);
-            if (focused) MoveFocus(FocusRegion.Usages);
+            var matches = answer.Result.Files.SelectMany(f => f.Matches.Select(m => (f.File.FullName, m.Match.Row, m.Match.Column))).ToList();
+            DefinitionsOf([.. matches.Select(m => m.FullName).Distinct()], fileSystem, lookup, definitions =>
+                Found(target.Name, UsageTree.TextUsages(matches, target.Word, definitions), definitions,
+                    usage => DefinitionAt(definitions(usage.Path), usage)));
         }), TaskScheduler.Default);
     }
 
-    /// <summary>The usages, and the symbol named after its type when the server can say what it is.</summary>
-    private static async Task<(string Name, IReadOnlyList<SourceLocation> Usages)> UsagesAsync(
-        LanguageServer server, string path, int row, int character, string symbol)
+    private WorkspaceSearchResult InOneFile(IFileSystem fileSystem, string path, string word, MatchOptions options)
     {
-        var usages = server.ReferencesAsync(path, row, character);
+        if (!fileSystem.File.Exists(path)) return WorkspaceSearchResult.Empty;
+        var lines = LinesOf(fileSystem, path);
+        var matches = TextSearch.FindAll(lines, word, options).Select(m => new LineMatch(m, lines[m.Row])).ToArray();
+        return matches.Length == 0 ? WorkspaceSearchResult.Empty : new([new FileSearchResult(fileSystem.FileInfo.New(path), matches)], false);
+    }
+
+    private static UsageDefinition? DefinitionAt(FileDefinitions definitions, SourceLocation usage) =>
+        definitions.Around(usage.Line) is { } around
+            ? new UsageDefinition(around.Name, around.Name, new SourceLocation(usage.Path, around.Line, around.Character))
+            : null;
+
+    // Symbols are scanned in slices on the UI thread, which owns the grammars, as sticky lines' are.
+    private void DefinitionsOf(IReadOnlyList<string> paths, IFileSystem fileSystem, UsageLookup lookup, Action<Func<string, FileDefinitions>> done)
+    {
+        var found = new Dictionary<string, FileDefinitions>(StringComparer.Ordinal);
+        FileDefinitions Of(string path) => found.GetValueOrDefault(path) ?? FileDefinitions.None;
+        var scans = new Queue<(string Path, SymbolScan Scan)>();
+        foreach (var path in paths)
+        {
+            if (!fileSystem.File.Exists(path)) continue;
+            var lines = LinesOf(fileSystem, path);
+            if (FileDefinitions.IsMsBuild(path)) found[path] = FileDefinitions.MsBuild(lines);
+            else if (_workbench.Editor.Group.Syntax is { } syntax && syntax.CreateSymbolScan(LanguageOf(syntax, path), lines) is { } scan)
+                scans.Enqueue((path, scan));
+        }
+        if (scans.Count == 0)
+        {
+            done(Of);
+            return;
+        }
+        _app.AddTimeout(TimeSpan.Zero, () =>
+        {
+            if (_disposed || lookup.State != UsageLookupState.Looking) return false;
+            var (path, scan) = scans.Peek();
+            if (!scan.Advance(SymbolBudget)) return true;
+            found[path] = FileDefinitions.FromSymbols(scan.Symbols, scan.Lines);
+            scans.Dequeue();
+            if (scans.Count > 0) return true;
+            done(Of);
+            return false;
+        });
+    }
+
+    private static readonly TimeSpan SymbolBudget = TimeSpan.FromMilliseconds(15);
+
+    private SyntaxLanguage? LanguageOf(SyntaxHighlighter syntax, string path) =>
+        _workbench.Editor.Groups.Tabs.FirstOrDefault(t => t.File.FullName == path) is { HasSyntax: true, Grammar: { } grammar }
+            ? grammar
+            : syntax.LanguageForFile(path);
+
+    private static async Task<(string Name, IReadOnlyList<SourceLocation> Usages, Dictionary<string, JsonNode?> Symbols)> ServerUsagesAsync(
+        LanguageServer server, UsageDefinition target, IFileSystem fileSystem)
+    {
+        var (path, row, character) = target.At;
+        var references = server.ReferencesAsync(path, row, character);
         string? name = null;
         try
         {
@@ -2008,7 +2121,14 @@ public sealed class WorkbenchHost : IDisposable
                 name = await server.SymbolNameAsync(definition).ConfigureAwait(false);
         }
         catch (Exception e) when (e is JsonRpcException or IOException) { }
-        return (name ?? symbol, await usages.ConfigureAwait(false));
+        var usages = (await references.ConfigureAwait(false)).Where(u => fileSystem.File.Exists(u.Path)).ToList();
+        var symbols = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
+        foreach (var file in usages.Select(u => u.Path).Distinct(StringComparer.Ordinal))
+        {
+            try { symbols[file] = await server.DocumentSymbolsAsync(file).ConfigureAwait(false); }
+            catch (Exception e) when (e is JsonRpcException or IOException) { symbols[file] = null; }
+        }
+        return (name ?? target.Name, usages, symbols);
     }
 
     /// <summary>Rename symbol (<c>rs</c>, #697): asks for the new name, then makes the server's rename across the folder.</summary>

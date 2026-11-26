@@ -8,17 +8,31 @@ using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace TuiCode.Workbench.Usages;
 
-/// <summary>The sidebar's Usages tab (#455): one symbol's usages, kept until the next Find usages.</summary>
+/// <summary>The sidebar's Usages tab (#455): one symbol's usages, each row followable into its definition's usages (#713).</summary>
 public sealed class UsagesView : View
 {
+    private const string Spinner = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+    private static readonly TimeSpan SpinnerInterval = TimeSpan.FromMilliseconds(100);
+
     private readonly VerbatimLabel _header;
     private readonly VerbatimLabel _count;
     private readonly TreeView<UsageNode> _tree;
     private string _title = "Find usages of a symbol to list them here";
     private string? _counted;
     private string _separator = "  ";
+    private string? _symbol;
+    private int _generation;
+    private int _frame;
+    private bool _spinning;
+    private readonly List<UsageLookup> _looking = [];
 
     public event EventHandler<SourceLocation>? UsageActivated;
+
+    public event EventHandler<UsageLookup>? Following;
+
+    public string? StopKey { get; set; }
+
+    public bool IsLooking => _looking.Count > 0;
 
     public string HeaderText => _counted is null ? _title : $"{_title}{_separator}{_counted}";
     public IReadOnlyList<UsageFileNode> Files { get; private set; } = [];
@@ -37,8 +51,10 @@ public sealed class UsagesView : View
             Y = 2,
             Width = Dim.Fill(),
             Height = Dim.Fill(),
-            TreeBuilder = new DelegateTreeBuilder<UsageNode>(n => n.Children, n => n.Children.Count > 0),
+            TreeBuilder = new DelegateTreeBuilder<UsageNode>(n => n.Children, n => n is UsageFileNode or UsageLineNode { CanFollow: true }),
         };
+        _tree.Style.ExpandableSymbol = new Rune('▸');
+        _tree.Style.CollapseableSymbol = new Rune('▾');
         // Rows are cut to the pane's width as they're drawn, so there's nothing to scroll sideways to.
         _tree.HorizontalScrollBar.VisibilityMode = ScrollBarVisibilityMode.None;
         Add(_header, _count, _tree);
@@ -54,25 +70,150 @@ public sealed class UsagesView : View
         // Same TG quirk as the explorer: Enter maps to Command.Activate but doesn't raise Activated.
         _tree.KeyDown += (_, key) =>
         {
-            if (key != Key.Enter) return;
-            ActivateSelected();
+            if (key == Key.Enter) ActivateSelected();
+            else if (key == Key.CursorRight && _tree.SelectedObject is UsageLineNode row && StartsLooking(row)) Follow(row);
+            else return;
             key.Handled = true;
         };
     }
 
-    public void ShowSearching(string symbol) => Show($"Finding usages of {symbol}…", null, []);
-
-    public void ShowFailed(string symbol) => Show($"Couldn't find usages of {symbol}", null, []);
-
-    public void ShowUsages(string symbol, IReadOnlyList<UsageFileNode> files)
+    public UsageLookup StartLooking(string symbol)
     {
-        if (files.Count == 0) Show($"No usages of {symbol}", null, files);
-        else Show($"Usages of {symbol}", UsageTree.Count(files), files);
+        foreach (var lookup in _looking) lookup.Stop();
+        _looking.Clear();
+        var started = new UsageLookup(symbol, null, ++_generation);
+        _symbol = symbol;
+        _looking.Add(started);
+        Show(Looking(started), null, []);
+        Spin();
+        return started;
+    }
+
+    /// <summary>False, showing nothing, when <paramref name="lookup"/> was stopped or the tab refilled since.</summary>
+    public bool ShowUsages(UsageLookup lookup, string name, IReadOnlyList<UsageFileNode> files, bool textMatches)
+    {
+        if (!Settle(lookup, UsageLookupState.Found)) return false;
+        if (lookup.From is not { } from)
+        {
+            _symbol = name;
+            MarkLoops(files, null);
+            var suffix = textMatches ? " · text matches" : "";
+            if (files.Count == 0) Show($"No usages of {name}{suffix}", null, files);
+            else Show($"Usages of {name}{suffix}", UsageTree.Count(files), files);
+            return true;
+        }
+        MarkLoops(files, from);
+        from.Children.Clear();
+        if (files.Count == 0) from.Children.Add(new UsageNoteNode(() => $"No usages of {lookup.Name}"));
+        else from.Children.AddRange(files);
+        Refresh(from);
+        return true;
+    }
+
+    public bool ShowFailed(UsageLookup lookup)
+    {
+        if (!Settle(lookup, UsageLookupState.Failed)) return false;
+        Say(lookup, $"Couldn't find usages of {lookup.Name}");
+        return true;
+    }
+
+    public void StopLooking()
+    {
+        foreach (var lookup in _looking.ToList())
+        {
+            lookup.Stop();
+            Say(lookup, $"Stopped finding usages of {lookup.Name}");
+        }
+        _looking.Clear();
+    }
+
+    internal void Follow(UsageLineNode row)
+    {
+        if (!StartsLooking(row)) return;
+        var lookup = new UsageLookup(row.Definition!.Name, row, _generation);
+        row.Lookup = lookup;
+        _looking.Add(lookup);
+        row.Children.Clear();
+        row.Children.Add(new UsageNoteNode(() => Looking(lookup)));
+        Refresh(row);
+        Spin();
+        Following?.Invoke(this, lookup);
+    }
+
+    private static bool StartsLooking(UsageLineNode row) =>
+        row.CanFollow && row.Lookup is null or { State: UsageLookupState.Stopped or UsageLookupState.Failed };
+
+    private bool Settle(UsageLookup lookup, UsageLookupState state)
+    {
+        if (lookup.Generation != _generation || lookup.State != UsageLookupState.Looking) return false;
+        lookup.State = state;
+        _looking.Remove(lookup);
+        return true;
+    }
+
+    private void Say(UsageLookup lookup, string text)
+    {
+        if (lookup.From is not { } from)
+        {
+            Show(text, null, []);
+            return;
+        }
+        from.Children.Clear();
+        from.Children.Add(new UsageNoteNode(() => text));
+        Refresh(from);
+    }
+
+    private string Looking(UsageLookup lookup) =>
+        $"{Spinner[_frame % Spinner.Length]} Finding usages of {lookup.Name}…" + (StopKey is { } key ? $"  {key} stop" : "");
+
+    private void MarkLoops(IReadOnlyList<UsageFileNode> files, UsageLineNode? from)
+    {
+        var path = new HashSet<string>(StringComparer.Ordinal);
+        if (_symbol is not null) path.Add(_symbol);
+        for (var row = from; row is not null; row = row.Above)
+            if (row.Definition is { } definition) path.Add(definition.Name);
+        foreach (var usage in files.SelectMany(f => f.Children).OfType<UsageLineNode>())
+        {
+            usage.Above = from;
+            usage.Loops = usage.Definition is { } d && path.Contains(d.Name);
+        }
+    }
+
+    private void Refresh(UsageLineNode row)
+    {
+        _tree.RefreshObject(row);
+        _tree.Expand(row);
+        foreach (var file in row.Children.OfType<UsageFileNode>()) _tree.Expand(file);
+        SetNeedsDraw();
+    }
+
+    private void Spin()
+    {
+        if (_spinning || App is not { } app) return;
+        _spinning = true;
+        app.AddTimeout(SpinnerInterval, () =>
+        {
+            if (_looking.Count == 0)
+            {
+                _spinning = false;
+                return false;
+            }
+            _frame++;
+            if (_looking.Any(l => l.From is null)) _title = Looking(_looking.First(l => l.From is null));
+            ShowHeader();
+            _tree.SetNeedsDraw();
+            return true;
+        });
     }
 
     /// <summary>What a rename changed: <paramref name="changes"/> edits on the lines in <paramref name="files"/>.</summary>
-    public void ShowRenamed(string oldName, string newName, int changes, IReadOnlyList<UsageFileNode> files) =>
+    public void ShowRenamed(string oldName, string newName, int changes, IReadOnlyList<UsageFileNode> files)
+    {
+        foreach (var lookup in _looking) lookup.Stop();
+        _looking.Clear();
+        _generation++;
         Show($"Renamed {oldName} → {newName}", $"{changes} in {files.Count} {Plural.Of(files.Count, "file")}", files, " · ");
+    }
 
     /// <summary>The first usage, or the tab itself while there are none.</summary>
     public bool FocusResults()
@@ -92,7 +233,7 @@ public sealed class UsagesView : View
         ShowHeader();
         _tree.ClearObjects();
         _tree.AddObjects(files);
-        _tree.ExpandAll();
+        foreach (var file in files) _tree.Expand(file);
         if (files.Count > 0) _tree.SelectedObject = files[0].Children[0];
         if (hadFocus && files.Count == 0) SetFocus();
         SetNeedsDraw();

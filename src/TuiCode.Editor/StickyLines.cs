@@ -31,11 +31,14 @@ public sealed class StickyLines
             var symbol = symbols[i];
             if (symbol.Kind is SymbolKind.Field or SymbolKind.EnumMember) continue;
             if (regions.Count > 0 && regions[^1].Start == symbol.Line) continue;
-            var end = symbol.Kind == SymbolKind.Heading ? SectionEnd(symbols, i, lines.Count) : BodyEnd(lines, symbol.Line);
+            var end = EndOf(symbols, i, lines);
             if (end > symbol.Line) regions.Add((symbol.Line, end));
         }
         return new StickyLines([.. regions]);
     }
+
+    public static int EndOf(IReadOnlyList<FileSymbol> symbols, int index, IReadOnlyList<string> lines) =>
+        symbols[index].Kind == SymbolKind.Heading ? SectionEnd(symbols, index, lines.Count) : BodyEnd(lines, symbols[index].Line);
 
     /// <summary>The first lines of the definitions enclosing <paramref name="line"/>, outermost first.</summary>
     public IReadOnlyList<int> Enclosing(int line)
