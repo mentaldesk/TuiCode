@@ -277,6 +277,32 @@ public class FindUsagesHostTests : StaticConfigurationTest
     }
 
     [Fact]
+    public async Task Right_on_a_row_in_a_member_asks_the_server_for_that_members_usages()
+    {
+        using var workbench = BuildWorkbench();
+        using var host = BuildHost(workbench);
+        var pane = workbench.Sidebar.Usages;
+        UsageLineNode? twice = null;
+
+        await HostSteps.Run(host,
+            () => { OpenFile(workbench, "Caller.cs"); },
+            () => Ready(workbench),
+            () => { Tab(workbench).MoveCursor(4, 26); Execute(host); },
+            () => pane.Files.Count > 0 && pane.ResultsHaveFocus,
+            () =>
+            {
+                twice = (UsageLineNode)pane.Files.Single(f => f.Name == "Diff.cs").Children[0];
+                pane.Tree.SelectedObject = twice;
+                host.App.InjectKey(Key.CursorRight);
+            },
+            () => twice!.Lookup?.State == UsageLookupState.Found);
+
+        Assert.Equal("No usages of Diff.Twice", Assert.Single(twice!.Children).ToString());
+        var asked = _server.Received("textDocument/references").Last()!;
+        Assert.Equal((3, 8), (asked["position"]!["line"]!.GetValue<int>(), asked["position"]!["character"]!.GetValue<int>()));
+    }
+
+    [Fact]
     public async Task Esc_in_the_Usages_tab_stops_gu_and_its_late_answer_is_dropped()
     {
         using var hold = new ManualResetEventSlim();
